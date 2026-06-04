@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Camera,
+  CameraOff,
   ChevronDown,
   ChevronUp,
   Loader2,
@@ -17,6 +19,7 @@ import {
   type SimSessionState,
   type SimVideoConfig,
 } from "./swift-stream-client";
+import { SwiftCameraCapture, type CameraCaptureState } from "./swift-camera-capture";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { BuildIssuesPanel } from "./build-issues-panel";
@@ -94,6 +97,7 @@ export function SwiftSimulatorPreview({
   const [rebuilding, setRebuilding] = useState(false);
   const [fps, setFps] = useState(0);
   const [kbdFocused, setKbdFocused] = useState(false);
+  const [cameraState, setCameraState] = useState<CameraCaptureState>("idle");
 
   const [deviceScale, setDeviceScale] = useState(1);
   const deviceOuterRef = useRef<HTMLDivElement | null>(null);
@@ -108,6 +112,7 @@ export function SwiftSimulatorPreview({
   const videoDecoderRef = useRef<VideoDecoder | null>(null);
   const videoConfiguredRef = useRef(false);
   const waitingForVideoKeyframeRef = useRef(true);
+  const cameraRef = useRef<SwiftCameraCapture | null>(null);
 
   // ────────────────────────────────────────────────────────────────────────────
   // Session lifecycle — delegated to a refcounted pool keyed by projectId.
@@ -151,6 +156,12 @@ export function SwiftSimulatorPreview({
           onBuildStatus: handleBuildStatus,
           onBuildLog: appendLog,
           onBuildDiagnostics: handleBuildDiagnostics,
+          onCameraRequest: (active) => {
+            // The app opened/closed its camera — auto start/stop the webcam so
+            // the user gets the permission prompt exactly when it's needed.
+            if (active) startCamera();
+            else stopCamera();
+          },
         });
         clientRef.current = client;
         client.start();
@@ -162,6 +173,11 @@ export function SwiftSimulatorPreview({
 
     return () => {
       cancelled = true;
+      // Stop the webcam (turns off the browser indicator light) before the WS.
+      if (cameraRef.current) {
+        cameraRef.current.stop();
+        cameraRef.current = null;
+      }
       if (clientRef.current) {
         clientRef.current.close();
         clientRef.current = null;
@@ -188,6 +204,46 @@ export function SwiftSimulatorPreview({
     forceEndSession(projectId);
     onStop?.();
   }, [projectId, onStop]);
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Webcam → simulator camera. getUserMedia (browser permission prompt) → JPEG
+  // frames over the WS → host agent → injected camera shim. Started either
+  // automatically when the app opens its camera (onCameraRequest) or manually
+  // via the toolbar toggle.
+  // ────────────────────────────────────────────────────────────────────────────
+  const startCamera = useCallback(() => {
+    if (cameraRef.current && cameraRef.current.state !== "idle") return;
+    const capture =
+      cameraRef.current ??
+      new SwiftCameraCapture({
+        onFrame: (jpeg, ts) => clientRef.current?.sendCameraFrame(jpeg, ts),
+        onStateChange: (s) => {
+          setCameraState(s);
+          if (s === "active") clientRef.current?.sendCameraState(true);
+          else if (s === "idle") clientRef.current?.sendCameraState(false);
+          else if (s === "denied") {
+            toast({
+              title: "Camera blocked",
+              description: "Allow camera access in your browser to use the webcam in the simulator.",
+            });
+          } else if (s === "unsupported") {
+            toast({ title: "Camera unsupported", description: "This browser can't share a webcam." });
+          }
+        },
+      });
+    cameraRef.current = capture;
+    void capture.start();
+  }, [toast]);
+
+  const stopCamera = useCallback(() => {
+    cameraRef.current?.stop();
+  }, []);
+
+  const toggleCamera = useCallback(() => {
+    const s = cameraRef.current?.state ?? "idle";
+    if (s === "active" || s === "requesting") stopCamera();
+    else startCamera();
+  }, [startCamera, stopCamera]);
 
   // ────────────────────────────────────────────────────────────────────────────
   // Event handlers
@@ -621,6 +677,37 @@ export function SwiftSimulatorPreview({
           >
             <RefreshCw size={isPip ? 11 : 12} className={rebuilding ? "animate-spin" : ""} />
             {!isPip && <span>Refresh build</span>}
+          </button>
+          {/* Webcam toggle — routes the browser camera into the simulator */}
+          <button
+            onClick={toggleCamera}
+            disabled={pill.kind !== "live"}
+            className={cn(
+              "flex items-center rounded-md border border-border bg-elevated hover:text-fg",
+              "disabled:cursor-not-allowed disabled:opacity-40",
+              cameraState === "active"
+                ? "text-accent"
+                : cameraState === "denied"
+                  ? "text-red-400"
+                  : "text-muted",
+              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px]",
+            )}
+            title={
+              cameraState === "active"
+                ? "Stop sharing your webcam"
+                : cameraState === "denied"
+                  ? "Camera blocked — allow access in your browser"
+                  : "Share your webcam with the simulator"
+            }
+          >
+            {cameraState === "requesting" ? (
+              <Loader2 size={isPip ? 11 : 12} className="animate-spin" />
+            ) : cameraState === "active" ? (
+              <Camera size={isPip ? 11 : 12} />
+            ) : (
+              <CameraOff size={isPip ? 11 : 12} />
+            )}
+            {!isPip && <span>{cameraState === "active" ? "Webcam on" : "Webcam"}</span>}
           </button>
           {/* Issues — full mode only */}
           {!isPip && (

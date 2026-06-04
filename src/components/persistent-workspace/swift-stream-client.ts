@@ -88,9 +88,15 @@ export interface SimStreamHandlers {
   onBuildLog: (line: string, stream: SimLogStream) => void;
   /** `final:true` = authoritative xcresult set (replaces); `false` = live append. */
   onBuildDiagnostics: (diagnostics: SimBuildDiagnostic[], final: boolean) => void;
+  /** The app inside the simulator started (true) or stopped (false) its camera.
+   * The UI uses this to lazily prompt for the webcam and start/stop streaming. */
+  onCameraRequest?: (active: boolean) => void;
   onOpen: () => void;
   onClose: (code: number) => void;
 }
+
+// Binary camera-frame protocol version (must match @sim/shared CAMERA_FRAME_VERSION).
+const CAMERA_FRAME_VERSION = 2;
 
 interface ServerMsg {
   type: string;
@@ -187,6 +193,9 @@ export class SwiftStreamClient {
             Boolean(msg.final),
           );
           break;
+        case "camera_request":
+          this.handlers.onCameraRequest?.(Boolean(msg.active));
+          break;
         case "pong":
           break;
       }
@@ -211,6 +220,27 @@ export class SwiftStreamClient {
   sendInput(input: SimInput): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
     this.ws.send(JSON.stringify({ type: "input", input }));
+  }
+
+  /** Tell the server whether the browser is (about to be) streaming webcam frames. */
+  sendCameraState(streaming: boolean, width?: number, height?: number): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    this.ws.send(JSON.stringify({ type: "camera_state", streaming, width, height }));
+  }
+
+  /** Send one webcam JPEG frame (reverse media channel) as binary:
+   * [ver=2][reserved][timestampMs:u64 BE][jpeg]. */
+  sendCameraFrame(jpeg: Uint8Array, timestampMs: number): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    // Drop frames if the socket is backed up — a stale webcam frame is worthless.
+    if (this.ws.bufferedAmount > 2 * 1024 * 1024) return;
+    const packet = new Uint8Array(10 + jpeg.byteLength);
+    const view = new DataView(packet.buffer);
+    view.setUint8(0, CAMERA_FRAME_VERSION);
+    view.setUint8(1, 0); // reserved
+    view.setBigUint64(2, BigInt(Math.max(0, Math.floor(timestampMs))));
+    packet.set(jpeg, 10);
+    this.ws.send(packet);
   }
 
   setCalibration(screenRect: SimScreenRect): void {
