@@ -40,7 +40,7 @@ export async function POST(
   // Pick the template based on platform + backendType.
   let template: SandboxTemplate;
   if (project.platform === "swift") {
-    template = "swift";
+    template = project.backendType === "none" ? "swift" : "swiftConvex";
   } else if (project.backendType === "none") {
     template = "vite";
   } else {

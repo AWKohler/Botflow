@@ -81,9 +81,9 @@ export async function POST(request: NextRequest) {
     const resolvedBackendType = normalizeBackendType(backendType);
     // Stamp the sandbox template up-front so the reaper / auto-reseed paths
     // know how to repopulate /vercel/sandbox after a true 404.
-    const sandboxTemplate: 'swift' | 'vite' | 'viteConvex' | null =
+    const sandboxTemplate: 'swift' | 'swiftConvex' | 'vite' | 'viteConvex' | null =
       resolvedPlatform === 'swift'
-        ? 'swift'
+        ? (resolvedBackendType === 'none' ? 'swift' : 'swiftConvex')
         : resolvedPlatform === 'sandboxed-web'
           ? (resolvedBackendType === 'none' ? 'vite' : 'viteConvex')
           : null;

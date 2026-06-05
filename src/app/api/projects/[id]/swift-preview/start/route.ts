@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
 import { tarSandboxProject } from "@/lib/vercel-sandbox";
+import { materializeSwiftConvexConfig } from "@/lib/sandbox-env";
 import {
   createSession,
   releaseSession,
@@ -52,7 +53,12 @@ export async function POST(
     sessionId = session.sessionId;
     recordSwiftPreviewSession(sessionId, userId, projectId);
 
-    const tarball = await tarSandboxProject(projectId);
+    // Bake the project's Convex deployment URL into ConvexConfig.swift before
+    // tarring (no-op for no-backend / unprovisioned / non-Swift projects), and
+    // drop the /convex TS backend from the simulator upload — the Mac doesn't
+    // build it.
+    await materializeSwiftConvexConfig(projectId);
+    const tarball = await tarSandboxProject(projectId, { excludeConvex: true });
     await uploadBuild(sessionId, tarball);
 
     return NextResponse.json({

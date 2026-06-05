@@ -26,6 +26,7 @@ const SANDBOX_PORTS: number[] = [3000, 5173, 4173, 8000];
 
 const TEMPLATE_REPOS = {
   swift: "https://github.com/AWKohler/swift-template.git",
+  swiftConvex: "https://github.com/AWKohler/swift-convex-template.git",
   viteConvex: "https://github.com/AWKohler/vite_convex_template.git",
   vite: "https://github.com/AWKohler/vite_template.git",
 } as const;
@@ -125,10 +126,18 @@ type TemplatePickerInput = {
 
 export function pickSandboxTemplate(p: TemplatePickerInput): SandboxTemplate | null {
   // Explicit column wins
-  if (p.sandboxTemplate === "swift" || p.sandboxTemplate === "vite" || p.sandboxTemplate === "viteConvex") {
+  if (
+    p.sandboxTemplate === "swift" ||
+    p.sandboxTemplate === "swiftConvex" ||
+    p.sandboxTemplate === "vite" ||
+    p.sandboxTemplate === "viteConvex"
+  ) {
     return p.sandboxTemplate;
   }
-  if (p.platform === "swift") return "swift";
+  if (p.platform === "swift") {
+    // Swift with a backend gets the Convex-wired template; "none" stays plain.
+    return p.backendType === "none" ? "swift" : "swiftConvex";
+  }
   if (p.platform === "sandboxed-web") {
     return p.backendType === "none" ? "vite" : "viteConvex";
   }
@@ -678,7 +687,10 @@ export async function sandboxGrep(
  * Tar (gzipped) the project's source tree from the persistent sandbox and
  * return it as a Buffer.
  */
-export async function tarSandboxProject(projectId: string): Promise<Buffer> {
+export async function tarSandboxProject(
+  projectId: string,
+  opts: { excludeConvex?: boolean } = {},
+): Promise<Buffer> {
   const excludes = [
     "--exclude=.git",
     "--exclude=node_modules",
@@ -690,6 +702,13 @@ export async function tarSandboxProject(projectId: string): Promise<Buffer> {
     "--exclude=DerivedData",
     "--exclude=.DS_Store",
   ];
+  // Swift simulator builds don't compile the TypeScript Convex backend, so the
+  // /convex tree is dead weight in the bytes shipped to the controller on every
+  // start/rebuild. The backend reaches Convex through the separate deploy
+  // pipeline (buildConvexDeployZip), not this tarball.
+  if (opts.excludeConvex) {
+    excludes.push("--exclude=./convex", "--exclude=convex");
+  }
   const cmd = [
     "set -o pipefail",
     `tar czf - ${excludes.join(" ")} -C ${SANDBOX_ROOT} . 2>/dev/null | base64 -w 0`,

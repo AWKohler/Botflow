@@ -10,7 +10,7 @@ import { projects } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 
-import { SYSTEM_PROMPT_MOBILE, SYSTEM_PROMPT_MULTIPLATFORM, SYSTEM_PROMPT_SWIFT, buildSandboxedWebSystemPrompt, buildWebSystemPrompt } from "@/lib/agent/prompts";
+import { SYSTEM_PROMPT_MOBILE, SYSTEM_PROMPT_MULTIPLATFORM, buildSwiftSystemPrompt, buildSandboxedWebSystemPrompt, buildWebSystemPrompt } from "@/lib/agent/prompts";
 import { isSandboxPlatform } from "@/lib/project-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { getPersistentTools } from "@/lib/agent/persistent-tools";
@@ -602,7 +602,7 @@ export async function POST(req: Request) {
     const modelConfig = MODEL_CONFIGS[selectedModel];
     const systemPrompt =
       platform === "swift"
-        ? SYSTEM_PROMPT_SWIFT
+        ? buildSwiftSystemPrompt({ hasBackend })
         : platform === "sandboxed-web"
           ? buildSandboxedWebSystemPrompt({ hasBackend })
           : platform === "mobile"
@@ -629,7 +629,15 @@ export async function POST(req: Request) {
           : {}),
       });
     } else if (isSandboxPlatform(platform ?? "") && projectId) {
-      tools = getPersistentTools(projectId);
+      // Swift (and other persistent-sandbox platforms): file/exec tools, plus
+      // Convex deploy/logs when the project has a backend. Forward Cookie so the
+      // internal /api/projects/:id/convex/deploy call sees the same Clerk session.
+      const cookie = req.headers.get("cookie") ?? "";
+      tools = getPersistentTools(projectId, {
+        hasBackend,
+        appBaseUrl: new URL(req.url).origin,
+        ...(cookie ? { authHeaders: { cookie } } : {}),
+      });
     } else {
       tools = getTools({ hasBackend });
     }

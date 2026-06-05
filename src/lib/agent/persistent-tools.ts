@@ -42,8 +42,15 @@ function safe<T>(fn: () => Promise<T>): Promise<string> {
   );
 }
 
-export function getPersistentTools(projectId: string) {
-  return {
+export function getPersistentTools(
+  projectId: string,
+  opts: {
+    hasBackend?: boolean;
+    appBaseUrl?: string;
+    authHeaders?: Record<string, string>;
+  } = {},
+) {
+  const baseTools = {
     bash: tool({
       description:
         "Run a shell command in the persistent sandbox (bash -lc). Working directory is the project root (/vercel/sandbox). " +
@@ -359,5 +366,64 @@ export function getPersistentTools(projectId: string) {
         return summary;
       },
     }),
-  } as const;
+  };
+
+  // No-backend (or missing app URL) → file/exec tools only.
+  if (!opts.hasBackend || !opts.appBaseUrl) {
+    return baseTools;
+  }
+
+  // Backend-enabled Swift projects get the Convex deploy + logs tools. The
+  // /convex deploy pipeline is platform-agnostic (zips /convex, pushes to the
+  // worker), so the same plumbing the web agent uses works here.
+  const appBaseUrl = opts.appBaseUrl;
+  const authHeaders = opts.authHeaders;
+  return {
+    ...baseTools,
+    convexDeploy: tool({
+      description:
+        "Deploy Convex backend changes. Zips the /convex folder and supporting files (package.json, tsconfig.json) from the sandbox and sends them to the deploy worker. May take several minutes. " +
+        "Only call this AFTER editing files in /convex (functions, schema) — changes are not live until deployed. The Swift app reads the deployed backend via the ConvexMobile SDK.",
+      inputSchema: z.object({}),
+      async execute() {
+        const { deployConvexFromSandbox } = await import("@/lib/sandbox-convex-deploy");
+        const result = await deployConvexFromSandbox({
+          projectId,
+          appBaseUrl,
+          ...(authHeaders ? { authHeaders } : {}),
+        });
+        return result.ok
+          ? {
+              ok: true,
+              message: "Convex deployment completed successfully.",
+              output: result.output ?? "",
+              generatedFilesCount: result.generatedFiles?.length ?? 0,
+            }
+          : {
+              ok: false,
+              message: result.error ?? "Convex deployment failed.",
+              output: result.output ?? "",
+            };
+      },
+    }),
+    getConvexLogs: tool({
+      description:
+        "Read recent function-execution logs from this project's Convex deployment — query/mutation/action completions, console.log output, execution time, and thrown errors. " +
+        "Use this to debug why a Convex function failed: when a subscribe/mutation call errors in the Swift app, call this to see the real server-side error (Convex hides thrown error details from the client). " +
+        "Set onlyErrors=true to filter to just failed calls.",
+      inputSchema: z.object({
+        limit: z.number().int().positive().optional()
+          .describe("Max entries to return (most recent). Default 50, max 200."),
+        onlyErrors: z.boolean().optional()
+          .describe("When true, only return calls that threw an error."),
+      }),
+      async execute(args) {
+        const { getConvexLogs } = await import("@/lib/convex-admin");
+        return getConvexLogs(projectId, {
+          ...(typeof args.limit === "number" ? { limit: args.limit } : {}),
+          ...(typeof args.onlyErrors === "boolean" ? { onlyErrors: args.onlyErrors } : {}),
+        });
+      },
+    }),
+  };
 }

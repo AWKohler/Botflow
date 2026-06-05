@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
 import { tarSandboxProject } from "@/lib/vercel-sandbox";
+import { materializeSwiftConvexConfig } from "@/lib/sandbox-env";
 import { uploadBuild } from "@/lib/sim-platform";
 import {
   hasSwiftPreviewSession,
@@ -65,7 +66,8 @@ export async function POST(
   }
 
   try {
-    const tarball = await tarSandboxProject(projectId);
+    await materializeSwiftConvexConfig(projectId);
+    const tarball = await tarSandboxProject(projectId, { excludeConvex: true });
     await uploadBuild(sessionId, tarball);
     return NextResponse.json({ ok: true, tarBytes: tarball.length });
   } catch (error) {
