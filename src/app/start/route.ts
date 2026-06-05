@@ -181,11 +181,12 @@ export async function GET(request: Request) {
     //   'platform' -> Botflow-managed (default)
     const creds = await getUserCredentials(userId);
     let backendType: BackendType;
-    // 'No Backend' is supported on the web platforms (web + sandboxed-web) —
-    // both have a no-backend Vite template variant. Mobile/multiplatform/swift
-    // templates ship with Convex baked in (or don't apply), so silently coerce
-    // `none` -> `platform` for those.
-    const supportsNoBackend = platform === 'web' || platform === 'sandboxed-web';
+    // 'No Backend' is supported on platforms that have a no-backend template
+    // variant: web + sandboxed-web (plain Vite) and swift (the plain swift
+    // template vs. swift-convex). Mobile/multiplatform ship with Convex baked
+    // in, so for those we silently coerce `none` -> `platform`.
+    const supportsNoBackend =
+      platform === 'web' || platform === 'sandboxed-web' || platform === 'swift';
     // Honor either the URL param OR the saved user preference for `none`. The
     // page client puts backendType=none in the URL when the user selects it,
     // but if anything strips/loses that param in transit, the saved preference

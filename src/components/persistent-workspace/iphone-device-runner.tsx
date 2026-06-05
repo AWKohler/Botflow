@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 const COMPANION_BASE_URL = "http://127.0.0.1:17321";
 
 type CompanionStatus = "idle" | "checking" | "online" | "offline";
+type InstallStatus = "idle" | "building" | "installing";
 
 interface CompanionDevice {
   id: string;
@@ -34,10 +35,34 @@ interface DevicesResponse {
   devices: CompanionDevice[];
 }
 
-export function IPhoneDeviceRunner() {
+interface DeviceBuildSummary {
+  buildId: string;
+  state: "queued" | "building" | "succeeded" | "failed";
+  logs?: Array<{ line: string; stream: "stdout" | "stderr"; at: number }>;
+  diagnostics?: Array<{ message: string; file: string | null; line: number | null }>;
+  error?: string;
+  ipaUrl: string | null;
+}
+
+interface CompanionInstallResponse {
+  jobId?: string;
+  id?: string;
+  status?: string;
+  state?: string;
+  error?: string;
+  message?: string;
+}
+
+interface IPhoneDeviceRunnerProps {
+  projectId: string;
+}
+
+export function IPhoneDeviceRunner({ projectId }: IPhoneDeviceRunnerProps) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<CompanionStatus>("idle");
+  const [installStatus, setInstallStatus] = useState<InstallStatus>("idle");
+  const [installMessage, setInstallMessage] = useState<string | null>(null);
   const [devices, setDevices] = useState<CompanionDevice[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +113,82 @@ export function IPhoneDeviceRunner() {
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open]);
 
+  const buildAndInstall = useCallback(async () => {
+    const selectedDevice = devices.find((device) => device.id === selectedDeviceId);
+    if (!selectedDevice || installStatus !== "idle") return;
+
+    try {
+      setInstallStatus("building");
+      setInstallMessage("Building IPA on Botflow Mac...");
+
+      const start = await fetch(`/api/projects/${projectId}/swift-device/build`, {
+        method: "POST",
+      });
+      if (!start.ok) {
+        throw new Error(await responseError(start, "Device build failed to start."));
+      }
+
+      let build = (await start.json()) as DeviceBuildSummary;
+      for (let attempt = 0; attempt < 90 && !isBuildTerminal(build.state); attempt += 1) {
+        await sleep(2000);
+        const statusRes = await fetch(
+          `/api/projects/${projectId}/swift-device/build/${encodeURIComponent(build.buildId)}`,
+          { cache: "no-store" },
+        );
+        if (!statusRes.ok) {
+          throw new Error(await responseError(statusRes, "Device build status failed."));
+        }
+        build = (await statusRes.json()) as DeviceBuildSummary;
+        const lastLog = build.logs?.at(-1)?.line;
+        setInstallMessage(lastLog ? trimStatusLine(lastLog) : "Building IPA on Botflow Mac...");
+      }
+
+      if (build.state !== "succeeded" || !build.ipaUrl) {
+        const diagnostic = build.diagnostics?.[0];
+        throw new Error(
+          build.error ??
+            diagnostic?.message ??
+            "Device build did not produce an IPA.",
+        );
+      }
+
+      setInstallStatus("installing");
+      setInstallMessage(`Installing on ${selectedDevice.name}...`);
+      const install = await fetchCompanionJson<CompanionInstallResponse>("/botflow/v1/install", {
+        method: "POST",
+        body: JSON.stringify({
+          deviceId: selectedDevice.id,
+          ipaUrl: build.ipaUrl,
+          projectId,
+        }),
+      });
+
+      const jobId = install.jobId ?? install.id;
+      if (jobId) {
+        await pollCompanionInstall(jobId, (message) => setInstallMessage(message));
+      } else if (isFailedInstallState(install.status ?? install.state)) {
+        throw new Error(install.error ?? install.message ?? "Companion install failed.");
+      }
+
+      setInstallStatus("idle");
+      setInstallMessage(null);
+      toast({
+        title: "Installed on iPhone",
+        description: `${selectedDevice.name} has the latest Botflow build.`,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Install failed.";
+      setInstallStatus("idle");
+      setInstallMessage(null);
+      toast({
+        title: "iPhone install failed",
+        description: message,
+      });
+    }
+  }, [devices, installStatus, projectId, selectedDeviceId, toast]);
+
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId);
+  const isInstalling = installStatus !== "idle";
   const statusLabel =
     status === "online"
       ? devices.length > 0
@@ -216,24 +316,28 @@ export function IPhoneDeviceRunner() {
             <Button
               size="sm"
               className="w-full gap-2"
-              disabled={!selectedDevice}
+              disabled={!selectedDevice || isInstalling}
               title={
-                selectedDevice
-                  ? "Device artifact build is next"
-                  : "Select a connected iPhone"
+                selectedDevice ? "Build and install on selected iPhone" : "Select a connected iPhone"
               }
-              onClick={() => {
-                toast({
-                  title: "Device build pending",
-                  description: selectedDevice
-                    ? `Selected ${selectedDevice.name}. Cloud IPA builds are being wired next.`
-                    : "Select a connected iPhone first.",
-                });
-              }}
+              onClick={buildAndInstall}
             >
-              <Smartphone size={14} />
-              Install Build
+              {isInstalling ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Smartphone size={14} />
+              )}
+              {installStatus === "building"
+                ? "Building IPA"
+                : installStatus === "installing"
+                  ? "Installing"
+                  : "Install Build"}
             </Button>
+            {installMessage && (
+              <div className="mt-2 truncate text-center text-[11px] text-muted">
+                {installMessage}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -281,14 +385,19 @@ function shortDeviceId(id: string): string {
   return `${id.slice(0, 6)}...${id.slice(-6)}`;
 }
 
-async function fetchCompanionJson<T>(path: string): Promise<T> {
+async function fetchCompanionJson<T>(path: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 2500);
+  const timeout = window.setTimeout(() => controller.abort(), init?.method === "POST" ? 15000 : 2500);
 
   try {
     const res = await fetch(`${COMPANION_BASE_URL}${path}`, {
-      method: "GET",
-      headers: { Accept: "application/json" },
+      method: init?.method ?? "GET",
+      headers: {
+        Accept: "application/json",
+        ...(init?.body ? { "content-type": "application/json" } : {}),
+        ...init?.headers,
+      },
+      body: init?.body,
       cache: "no-store",
       signal: controller.signal,
     });
@@ -307,4 +416,65 @@ async function fetchCompanionJson<T>(path: string): Promise<T> {
   } finally {
     window.clearTimeout(timeout);
   }
+}
+
+async function pollCompanionInstall(
+  jobId: string,
+  onMessage: (message: string) => void,
+): Promise<void> {
+  for (let attempt = 0; attempt < 90; attempt += 1) {
+    await sleep(1000);
+    const job = await fetchCompanionJson<CompanionInstallResponse>(
+      `/botflow/v1/install/${encodeURIComponent(jobId)}`,
+    );
+    const state = job.status ?? job.state;
+    if (state) onMessage(humanInstallState(state));
+    if (isSucceededInstallState(state)) return;
+    if (isFailedInstallState(state)) {
+      throw new Error(job.error ?? job.message ?? "Companion install failed.");
+    }
+  }
+  throw new Error("Companion install timed out.");
+}
+
+function isBuildTerminal(state: DeviceBuildSummary["state"]): boolean {
+  return state === "succeeded" || state === "failed";
+}
+
+function isSucceededInstallState(state: string | undefined): boolean {
+  return state === "succeeded" || state === "success" || state === "installed" || state === "completed";
+}
+
+function isFailedInstallState(state: string | undefined): boolean {
+  return state === "failed" || state === "error";
+}
+
+function humanInstallState(state: string): string {
+  switch (state) {
+    case "queued":
+      return "Waiting for companion...";
+    case "running":
+    case "installing":
+      return "Signing and installing...";
+    case "succeeded":
+    case "success":
+    case "installed":
+    case "completed":
+      return "Install complete.";
+    default:
+      return state.replace(/_/g, " ");
+  }
+}
+
+function trimStatusLine(line: string): string {
+  return line.length > 96 ? `${line.slice(0, 93)}...` : line;
+}
+
+async function responseError(res: Response, fallback: string): Promise<string> {
+  const body = await res.json().catch(() => null) as { error?: string } | null;
+  return body?.error ?? fallback;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }

@@ -51,6 +51,7 @@ import {
   Frame,
   ArrowUpRight,
   ExternalLink,
+  MousePointer2,
 } from "lucide-react";
 import type { PreviewInfo } from "@/lib/preview-store";
 import { cn } from "@/lib/utils";
@@ -115,6 +116,7 @@ export function SandboxedWebWorkspace({
     "desktop" | "tablet" | "mobile" | "responsive" | "figma"
   >("desktop");
   const [previewReloadKey, setPreviewReloadKey] = useState(0);
+  const [editMode, setEditMode] = useState(false);
   const [isDevServerRunning, setIsDevServerRunning] = useState(false);
   const [isStartingServer, setIsStartingServer] = useState(false);
 
@@ -1153,6 +1155,21 @@ export function SandboxedWebWorkspace({
               </button>
             )}
             {currentView === "preview" && (
+              <button
+                onClick={() => setEditMode((v) => !v)}
+                className={cn(
+                  "flex items-center gap-1.5 text-sm border rounded-full px-3 py-1 transition-colors",
+                  editMode
+                    ? "border-accent text-accent bg-accent/10"
+                    : "border-border text-muted hover:text-fg",
+                )}
+                title="Toggle visual edit mode"
+              >
+                <MousePointer2 size={15} />
+                Edit
+              </button>
+            )}
+            {currentView === "preview" && (
               <div className="flex items-center gap-2 border border-border rounded-full px-3 py-1 min-w-[220px]">
                 <button
                   onClick={() =>
@@ -1376,6 +1393,12 @@ export function SandboxedWebWorkspace({
               isStartingServer={isStartingServer}
               onToggleDevServer={handleStartDevServer}
               platform="sandboxed-web"
+              editMode={editMode}
+              onElementSelected={(sel) => {
+                if (sel) {
+                  console.log("[visual-editor] selected:", sel.tag, sel.loc, sel);
+                }
+              }}
             />
           </div>
         </div>

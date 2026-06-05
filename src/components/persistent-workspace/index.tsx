@@ -381,7 +381,7 @@ export function PersistentWorkspace({
               appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }}
             />
 
-            {platform === "swift" && <IPhoneDeviceRunner />}
+            {platform === "swift" && <IPhoneDeviceRunner projectId={projectId} />}
 
             {hasBackend && (
               <Button

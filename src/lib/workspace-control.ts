@@ -16,6 +16,7 @@ import { getOrCreatePersistentSandbox, sandboxBash } from "@/lib/vercel-sandbox"
 import { materializeFrontendEnv } from "@/lib/sandbox-env";
 import { getRedis } from "@/lib/redis";
 import { sanitizeOutput } from "@/lib/output-sanitizer";
+import { buildBotflowViteConfig } from "@/lib/preview-editor/wrapper";
 
 const DEV_LOG_PATH = "/tmp/dev-server.log";
 const BROWSER_LOG_MAX = 2000;
@@ -172,30 +173,10 @@ export async function startSandboxDevServer(
     }
 
     // Write the wrapper Vite config that overlays `server.allowedHosts: true`
-    // (Vite 5+ rejects the random *.vercel.run host without this).
-    const WRAPPER_CONFIG = `import { defineConfig, mergeConfig, loadConfigFromFile } from "vite";
-import path from "node:path";
-
-export default defineConfig(async ({ command, mode }) => {
-  const candidates = ["vite.config.ts", "vite.config.js", "vite.config.mjs"];
-  let userConfig = {};
-  for (const file of candidates) {
-    const abs = path.resolve(process.cwd(), file);
-    try {
-      const result = await loadConfigFromFile({ command, mode }, abs);
-      if (result?.config) { userConfig = result.config; break; }
-    } catch (e) {
-      console.warn("[botflow] Failed to load " + file + ":", e?.message ?? e);
-    }
-  }
-  return mergeConfig(userConfig, {
-    server: {
-      host: "0.0.0.0",
-      allowedHosts: true,
-    },
-  });
-});
-`;
+    // (Vite 5+ rejects the random *.vercel.run host without this) and, in dev,
+    // the Botflow visual-editor plugin (source-location stamping + in-iframe
+    // selection runtime). See src/lib/preview-editor/wrapper.ts.
+    const WRAPPER_CONFIG = buildBotflowViteConfig();
     await sandbox.writeFiles([{
       path: "/vercel/sandbox/.botflow-vite.config.mjs",
       content: Buffer.from(WRAPPER_CONFIG, "utf-8"),

@@ -42,6 +42,30 @@ interface PreviewProps {
   isAgentWorking?: boolean;
   /** Fetch page HTML via WebContainer (bypasses CORS) */
   onFetchHtml?: (url: string) => Promise<string>;
+  /** Visual editor: when true, clicking an element in the preview selects it. */
+  editMode?: boolean;
+  /** Visual editor: called when an element is selected in the preview. */
+  onElementSelected?: (selection: BfSelection | null) => void;
+}
+
+/** A visual-editor selection reported by the in-iframe runtime. */
+export interface BfSelection {
+  loc: string | null;
+  id: string | null;
+  tag: string;
+  className: string;
+  text: string;
+  computed: Record<string, string>;
+  /** Element bounds in the iframe's own viewport coordinates. */
+  rect: { left: number; top: number; width: number; height: number };
+}
+
+/** A box positioned in parent-viewport (fixed) coordinates. */
+interface BfBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
 const DEVICE_SIZES = {
@@ -605,6 +629,8 @@ export function Preview({
   htmlSnapshotUrl,
   isAgentWorking,
   onFetchHtml,
+  editMode = false,
+  onElementSelected,
 }: PreviewProps) {
   const [internalDevice, setInternalDevice] =
     useState<keyof typeof DEVICE_SIZES>("desktop");
@@ -625,7 +651,84 @@ export function Preview({
   // Multiplatform: toggle between web and mobile preview modes
   const [multiPreviewMode, setMultiPreviewMode] = useState<"web" | "mobile">("web");
 
+  // Visual editor overlay state. Boxes are in parent-viewport (fixed) coords.
+  const [hoverBox, setHoverBox] = useState<BfBox | null>(null);
+  const [selectedBox, setSelectedBox] = useState<BfBox | null>(null);
+  const [selection, setSelection] = useState<BfSelection | null>(null);
+  const editModeRef = useRef(editMode);
+  editModeRef.current = editMode;
+
   const activePreview = previews[activePreviewIndex];
+
+  // Translate an iframe-viewport rect into parent-viewport (fixed) coords.
+  const toParentBox = useCallback(
+    (rect: { left: number; top: number; width: number; height: number }): BfBox | null => {
+      const el = iframeRef.current;
+      if (!el) return null;
+      const ir = el.getBoundingClientRect();
+      return {
+        left: ir.left + rect.left,
+        top: ir.top + rect.top,
+        width: rect.width,
+        height: rect.height,
+      };
+    },
+    [],
+  );
+
+  const postToIframe = useCallback((msg: Record<string, unknown>) => {
+    iframeRef.current?.contentWindow?.postMessage(msg, "*");
+  }, []);
+
+  // Enable/disable the in-iframe runtime when editMode flips.
+  useEffect(() => {
+    postToIframe({ type: editMode ? "BF_EDITOR_ENABLE" : "BF_EDITOR_DISABLE" });
+    if (!editMode) {
+      setHoverBox(null);
+      setSelectedBox(null);
+      setSelection(null);
+      onElementSelected?.(null);
+    }
+  }, [editMode, postToIframe, onElementSelected]);
+
+  // Receive selection/hover events from the in-iframe runtime.
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      if (
+        !event.origin.endsWith(".vercel.run") &&
+        !event.origin.startsWith("http://localhost")
+      ) {
+        return;
+      }
+      const data = event.data as Record<string, unknown> | undefined;
+      if (!data || typeof data !== "object") return;
+
+      switch (data.type) {
+        case "BF_EDITOR_READY":
+          // Runtime (re)loaded — sync current mode.
+          postToIframe({
+            type: editModeRef.current ? "BF_EDITOR_ENABLE" : "BF_EDITOR_DISABLE",
+          });
+          break;
+        case "BF_EDITOR_HOVER": {
+          const rect = data.rect as BfSelection["rect"] | null;
+          setHoverBox(rect ? toParentBox(rect) : null);
+          break;
+        }
+        case "BF_EDITOR_SELECTED": {
+          const sel = data as unknown as BfSelection;
+          setSelection(sel);
+          setSelectedBox(toParentBox(sel.rect));
+          onElementSelected?.(sel);
+          break;
+        }
+        default:
+          break;
+      }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [postToIframe, toParentBox, onElementSelected]);
 
   // Fetch HTML snapshot content
   useEffect(() => {
@@ -1111,6 +1214,37 @@ export function Preview({
 
   return (
     <div className="h-full flex flex-col bg-surface rounded-xl border border-border">
+      {/* Visual editor overlay (fixed = parent-viewport coords) */}
+      {editMode && hoverBox && (
+        <div
+          className="fixed z-[60] pointer-events-none border-2 border-accent/50 bg-accent/5 rounded-sm"
+          style={{
+            left: hoverBox.left,
+            top: hoverBox.top,
+            width: hoverBox.width,
+            height: hoverBox.height,
+          }}
+        />
+      )}
+      {editMode && selectedBox && (
+        <div
+          className="fixed z-[61] pointer-events-none border-2 border-accent rounded-sm"
+          style={{
+            left: selectedBox.left,
+            top: selectedBox.top,
+            width: selectedBox.width,
+            height: selectedBox.height,
+          }}
+        >
+          {selection && (
+            <span className="absolute -top-6 left-0 px-1.5 py-0.5 rounded bg-accent text-accent-foreground text-[11px] font-medium whitespace-nowrap shadow">
+              {selection.tag}
+              {selection.loc ? ` · ${selection.loc}` : " · (no source)"}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Multiplatform: Web / Mobile toggle tabs */}
       {platform === "multiplatform" && (
         <div className="flex items-center gap-1 px-3 pt-2 pb-0">

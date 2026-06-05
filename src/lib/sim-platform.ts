@@ -24,6 +24,35 @@ export interface UploadBuildInput {
   bundleId?: string;
 }
 
+export interface DeviceBuildLogLine {
+  line: string;
+  stream: "stdout" | "stderr";
+  at: number;
+}
+
+export interface DeviceBuildSummary {
+  buildId: string;
+  state: "queued" | "building" | "succeeded" | "failed";
+  createdAt: number;
+  updatedAt: number;
+  hostId: string | null;
+  scheme?: string;
+  bundleId?: string;
+  durationMs?: number;
+  unsigned?: boolean;
+  diagnostics: Array<{
+    severity: "error" | "warning";
+    file: string | null;
+    line: number | null;
+    column: number | null;
+    message: string;
+    snippet: string[] | null;
+  }>;
+  logs: DeviceBuildLogLine[];
+  error?: string;
+  ipaUrl: string | null;
+}
+
 function controllerBase(): { http: string; ws: string } {
   const http = process.env.SIM_CONTROLLER_URL;
   if (!http) {
@@ -114,6 +143,68 @@ export async function releaseSession(sessionId: string): Promise<void> {
       `releaseSession failed (${res.status}): ${await jsonOrText(res)}`,
     );
   }
+}
+
+export async function createDeviceBuild(
+  tarball: Buffer,
+  input: UploadBuildInput = {},
+): Promise<DeviceBuildSummary> {
+  const { http } = controllerBase();
+  const headers: Record<string, string> = {
+    "content-type": "application/octet-stream",
+    "content-length": String(tarball.length),
+    "x-platform-token": platformToken(),
+  };
+  if (input.scheme) headers["x-build-scheme"] = input.scheme;
+  if (input.bundleId) headers["x-build-bundle-id"] = input.bundleId;
+
+  const res = await fetch(`${http}/api/device-builds`, {
+    method: "POST",
+    headers,
+    body: tarball as unknown as BodyInit,
+  });
+  if (!res.ok) {
+    throw new Error(
+      `createDeviceBuild failed (${res.status}): ${await jsonOrText(res)}`,
+    );
+  }
+  return (await res.json()) as DeviceBuildSummary;
+}
+
+export async function getDeviceBuild(buildId: string): Promise<DeviceBuildSummary> {
+  const { http } = controllerBase();
+  const res = await fetch(`${http}/api/device-builds/${buildId}`, {
+    headers: { "x-platform-token": platformToken() },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(
+      `getDeviceBuild failed (${res.status}): ${await jsonOrText(res)}`,
+    );
+  }
+  return (await res.json()) as DeviceBuildSummary;
+}
+
+export async function downloadDeviceBuildIpa(buildId: string): Promise<{
+  bytes: ArrayBuffer;
+  contentType: string;
+  contentDisposition: string | null;
+}> {
+  const { http } = controllerBase();
+  const res = await fetch(`${http}/api/device-builds/${buildId}/ipa`, {
+    headers: { "x-platform-token": platformToken() },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(
+      `downloadDeviceBuildIpa failed (${res.status}): ${await jsonOrText(res)}`,
+    );
+  }
+  return {
+    bytes: await res.arrayBuffer(),
+    contentType: res.headers.get("content-type") ?? "application/octet-stream",
+    contentDisposition: res.headers.get("content-disposition"),
+  };
 }
 
 /**

@@ -1,0 +1,219 @@
+/**
+ * Botflow visual editor — sandbox injection.
+ *
+ * We build the `.botflow-vite.config.mjs` wrapper that the dev server runs with
+ * `--config`. On top of the existing `server.allowedHosts` overlay it adds, in
+ * dev (`command === "serve"`) only, a single self-contained Vite plugin that:
+ *
+ *   1. transform (enforce: "pre"): stamps every host JSX element with
+ *      `data-bf-loc="<relpath>:<line>:<col>"` + `data-bf-id` via Babel, so the
+ *      preview DOM carries an exact source pointer. Runs before
+ *      @vitejs/plugin-react compiles the JSX away. JSX/TS are preserved.
+ *
+ *   2. transformIndexHtml: injects the dormant in-iframe runtime (below) which
+ *      does hover/click selection and posts selection data to the parent IDE.
+ *
+ * Babel never has to be installed in the sandbox on our behalf: we reuse the
+ * `@babel/core` that ships as a dependency of `@vitejs/plugin-react`, resolving
+ * it defensively. If it can't be found, stamping is skipped (graceful degrade)
+ * and the editor simply has nothing to select.
+ *
+ * The AST *write-back* runs server-side in our own API route, never here.
+ */
+
+/**
+ * In-iframe runtime. Plain ES5-ish JS, kept free of backticks and `${` so it
+ * can live inside a template literal and be JSON-encoded into the config.
+ * Dormant until the parent posts BF_EDITOR_ENABLE.
+ */
+const EDITOR_RUNTIME = `
+(function () {
+  if (typeof window === "undefined") return;
+  if (window.__bfEditorInstalled) return;
+  if (window.parent === window) return; // only inside the IDE preview iframe
+  window.__bfEditorInstalled = true;
+
+  var enabled = false;
+  var lastHover = null;
+
+  function post(msg) { try { window.parent.postMessage(msg, "*"); } catch (e) {} }
+  function pick(el) { return el && el.closest ? el.closest("[data-bf-loc]") : null; }
+  function rectOf(el) {
+    var r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, width: r.width, height: r.height };
+  }
+  function computedSubset(el) {
+    var cs = window.getComputedStyle(el);
+    var keys = ["color","backgroundColor","fontSize","fontWeight","lineHeight",
+      "textAlign","paddingTop","paddingRight","paddingBottom","paddingLeft",
+      "marginTop","marginRight","marginBottom","marginLeft","borderRadius",
+      "display","width","height"];
+    var out = {};
+    for (var i = 0; i < keys.length; i++) out[keys[i]] = cs[keys[i]];
+    return out;
+  }
+  function describe(el) {
+    return {
+      loc: el.getAttribute("data-bf-loc"),
+      id: el.getAttribute("data-bf-id"),
+      tag: el.tagName.toLowerCase(),
+      className: el.getAttribute("class") || "",
+      text: (el.textContent || "").slice(0, 200),
+      computed: computedSubset(el),
+      rect: rectOf(el)
+    };
+  }
+
+  function onMove(e) {
+    if (!enabled) return;
+    var el = pick(e.target);
+    if (!el) {
+      if (lastHover) { lastHover = null; post({ type: "BF_EDITOR_HOVER", rect: null }); }
+      return;
+    }
+    if (el === lastHover) return;
+    lastHover = el;
+    post({ type: "BF_EDITOR_HOVER", rect: rectOf(el), tag: el.tagName.toLowerCase(), loc: el.getAttribute("data-bf-loc") });
+  }
+
+  function onClick(e) {
+    if (!enabled) return;
+    var el = pick(e.target);
+    if (!el) return;
+    e.preventDefault();
+    e.stopPropagation();
+    post(Object.assign({ type: "BF_EDITOR_SELECTED" }, describe(el)));
+  }
+
+  function setEnabled(on) {
+    enabled = on;
+    if (document.body) document.body.style.cursor = on ? "crosshair" : "";
+    if (!on) { lastHover = null; post({ type: "BF_EDITOR_HOVER", rect: null }); }
+  }
+
+  window.addEventListener("message", function (e) {
+    var d = e.data;
+    if (!d || typeof d !== "object") return;
+    if (d.type === "BF_EDITOR_ENABLE") setEnabled(true);
+    else if (d.type === "BF_EDITOR_DISABLE") setEnabled(false);
+  });
+
+  document.addEventListener("mousemove", onMove, true);
+  document.addEventListener("click", onClick, true);
+
+  post({ type: "BF_EDITOR_READY" });
+})();
+`;
+
+/**
+ * Returns the full contents of `.botflow-vite.config.mjs`.
+ * Mirrors the previous inline WRAPPER_CONFIG, plus the editor plugin in dev.
+ */
+export function buildBotflowViteConfig(): string {
+  return `import { defineConfig, mergeConfig, loadConfigFromFile } from "vite";
+import path from "node:path";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const EDITOR_RUNTIME = ${JSON.stringify(EDITOR_RUNTIME)};
+
+// Reuse the @babel/core that @vitejs/plugin-react depends on (pnpm keeps it
+// out of the project root, so a bare require usually misses it).
+function loadBabel() {
+  try { return require("@babel/core"); } catch (e) {}
+  try {
+    const pr = require.resolve("@vitejs/plugin-react");
+    return createRequire(pr)("@babel/core");
+  } catch (e) {}
+  try {
+    const pr = require.resolve("@vitejs/plugin-react-swc");
+    return createRequire(pr)("@babel/core");
+  } catch (e) {}
+  return null;
+}
+
+function bfStampPlugin(babel, root) {
+  const t = babel.types;
+  return {
+    name: "bf-stamp",
+    visitor: {
+      JSXOpeningElement(p, state) {
+        const nameNode = p.node.name;
+        if (!t.isJSXIdentifier(nameNode)) return;       // skip member/namespaced
+        if (!/^[a-z]/.test(nameNode.name)) return;       // host elements only
+        const has = p.node.attributes.some(
+          (a) => t.isJSXAttribute(a) && a.name && a.name.name === "data-bf-loc"
+        );
+        if (has) return;
+        const loc = p.node.loc;
+        if (!loc) return;
+        const abs = (state.file && state.file.opts && state.file.opts.filename) || "";
+        const rel = path.relative(root, abs).split(path.sep).join("/");
+        const line = loc.start.line;
+        const col = loc.start.column + 1;
+        p.node.attributes.push(
+          t.jsxAttribute(t.jsxIdentifier("data-bf-loc"), t.stringLiteral(rel + ":" + line + ":" + col)),
+          t.jsxAttribute(t.jsxIdentifier("data-bf-id"), t.stringLiteral(path.basename(rel) + "_" + line + "_" + col))
+        );
+      }
+    }
+  };
+}
+
+function botflowEditorPlugin() {
+  const babel = loadBabel();
+  const root = process.cwd();
+  if (!babel) {
+    console.warn("[botflow] visual editor: @babel/core not found; source stamping disabled");
+  }
+  return {
+    name: "botflow-visual-editor",
+    enforce: "pre",
+    transform(code, id) {
+      if (!babel) return null;
+      const clean = id.split("?")[0];
+      if (!/\\.(tsx|jsx)$/.test(clean)) return null;
+      if (clean.includes("/node_modules/")) return null;
+      try {
+        const result = babel.transformSync(code, {
+          filename: clean,
+          root,
+          babelrc: false,
+          configFile: false,
+          sourceMaps: true,
+          parserOpts: { plugins: ["jsx", "typescript"] },
+          plugins: [bfStampPlugin(babel, root)]
+        });
+        if (!result || !result.code) return null;
+        return { code: result.code, map: result.map };
+      } catch (e) {
+        console.warn("[botflow] stamp skipped for " + clean + ": " + (e && e.message));
+        return null;
+      }
+    },
+    transformIndexHtml() {
+      return [{ tag: "script", attrs: { type: "module" }, children: EDITOR_RUNTIME, injectTo: "body" }];
+    }
+  };
+}
+
+export default defineConfig(async ({ command, mode }) => {
+  const candidates = ["vite.config.ts", "vite.config.js", "vite.config.mjs"];
+  let userConfig = {};
+  for (const file of candidates) {
+    const abs = path.resolve(process.cwd(), file);
+    try {
+      const result = await loadConfigFromFile({ command, mode }, abs);
+      if (result && result.config) { userConfig = result.config; break; }
+    } catch (e) {
+      console.warn("[botflow] Failed to load " + file + ":", (e && e.message) || e);
+    }
+  }
+  const overlay = { server: { host: "0.0.0.0", allowedHosts: true } };
+  if (command === "serve") {
+    overlay.plugins = [botflowEditorPlugin()];
+  }
+  return mergeConfig(userConfig, overlay);
+});
+`;
+}

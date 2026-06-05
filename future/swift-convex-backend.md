@@ -41,18 +41,34 @@ SwiftData, which Convex's sync engine wholly replaces.
     `hasBackend`; wired from `agent/route.ts`.
   - Deploy route (`convex/deploy`) needed **no change** — already platform-agnostic.
 
-**Remaining (not yet built):**
-- **Push the template** to `github.com/AWKohler/swift-convex-template` (the
-  `TEMPLATE_REPOS` URL points there; repo currently only exists locally).
-- **Swift workspace UI**: backend choice (none/platform/BYOC) at Swift project
-  creation; a Database/Convex panel; a "Deploy backend" button; and
-  provision-on-mount (so the first preview has a live URL). `convex-admin.ts` /
-  `convex-env.ts` are frontend-agnostic and ready to back these.
-- **Provisioning trigger**: currently lazy (deploy route auto-provisions), same
-  as web. Until a backend is provisioned, `ConvexConfig.swift` keeps its
-  placeholder. Decide whether to provision eagerly on Swift project create.
-- **Edge case**: `deployConvexFromSandbox` auto-reseed path hardcodes the
-  `viteConvex` template; make it template-aware before relying on it for Swift.
+**Also implemented (UI + integration, 2026-06-05):**
+- ✅ **Template pushed** → `github.com/AWKohler/swift-convex-template` (public).
+  The `TEMPLATE_REPOS` URL now resolves.
+- ✅ **Backend choice for Swift at creation**: the homepage backend selector
+  (none / platform / BYOC) now shows for `swift`, and `/start` + the page
+  coercion guard treat swift as `supportsNoBackend` (plain `swift` vs.
+  `swiftConvex`). `/start` already provisions platform/BYOC for swift.
+- ✅ **Swift workspace UI** (`persistent-workspace/index.tsx`): fetches the
+  project row; a **Database tab** reusing the platform-agnostic `ConvexDashboard`
+  (embedded Convex dashboard); a header **Deploy** button (`convex/deploy`); and
+  a one-time **provision-on-mount** safety net (`deployBackend({ silent })`) that
+  fires only when a swift+backend project is unprovisioned.
+- ✅ **Auto-reseed bug fixed elegantly**: `deployConvexFromSandbox` now derives
+  the template from the project row via `pickSandboxTemplate` and regenerates the
+  platform-correct config (Swift → `ConvexConfig.swift`, web → `.env`) instead of
+  hardcoding `viteConvex`.
+
+**Remaining / follow-ups:**
+- **Initial schema deploy UX**: `/start` provisions the deployment URL but does
+  not push the `/convex` functions. The app builds + connects to an empty
+  deployment; data appears after the first Deploy (button or agent
+  `convexDeploy`). The template UI degrades gracefully ("No items yet"). Consider
+  an eager first-deploy if we want the demo populated on first preview.
+- **Cross-component rebuild**: after a backend Deploy, the user clicks the
+  preview's Rebuild to pick up the URL (we toast a hint). Could wire an automatic
+  rebuild trigger from the Deploy button into `SwiftSimulatorPreview`.
+- **BYOC connect entry point** inside the Swift workspace (today BYOC is chosen
+  at creation via the existing homepage OAuth flow).
 - **Auth**: out of scope (see below).
 
 ## The key insight: the backend is already portable

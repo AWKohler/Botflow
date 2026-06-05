@@ -1684,13 +1684,14 @@ export default function LandingV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 'No Backend' is supported by web platforms only (web + sandboxed-web) —
-  // there are no convex-less variants of the mobile, multiplatform, or swift
-  // templates. If the user picked 'none' and then switched to one of those
-  // platforms, fall back to 'platform' to avoid creating a project with a
-  // Convex template but `backendType: 'none'` (inconsistent state).
+  // 'No Backend' is supported by platforms with a convex-less template variant:
+  // web + sandboxed-web (plain Vite) and swift (plain swift vs. swift-convex).
+  // Mobile/multiplatform have no such variant. If the user picked 'none' and
+  // then switched to one of those, fall back to 'platform' to avoid creating a
+  // project with a Convex template but `backendType: 'none'` (inconsistent).
   useEffect(() => {
-    const supportsNoBackend = platform === 'web' || platform === 'sandboxed-web';
+    const supportsNoBackend =
+      platform === 'web' || platform === 'sandboxed-web' || platform === 'swift';
     if (!supportsNoBackend && convexBackendType === 'none') {
       setConvexBackendType('platform');
     }
@@ -1940,11 +1941,11 @@ export default function LandingV2() {
                             });
                           }}
                         />
-                        {/* The backend selector is meaningful for web platforms (web +
-                            sandboxed-web) — both have a no-backend Vite template variant.
-                            Mobile/multiplatform/swift templates always include Convex (or
-                            don't apply), so the selector stays hidden there. */}
-                        {isSignedIn && (platform === 'web' || platform === 'sandboxed-web') && (
+                        {/* The backend selector is meaningful for platforms with a
+                            no-backend template variant: web + sandboxed-web (plain Vite)
+                            and swift (plain swift vs. swift-convex). Mobile/multiplatform
+                            always include Convex, so the selector stays hidden there. */}
+                        {isSignedIn && (platform === 'web' || platform === 'sandboxed-web' || platform === 'swift') && (
                           <div ref={convexSelectorRef} className="relative shrink-0">
                             <button
                               type="button"
