@@ -15,7 +15,8 @@ import { FileSearch } from "./file-search";
 import { SwiftSimulatorPreview } from "./swift-simulator-preview";
 import { SwiftPipWindow } from "./swift-pip-window";
 import { IPhoneDeviceRunner } from "./iphone-device-runner";
-import { PanelLeft, Play, Save, Loader2 } from "lucide-react";
+import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
+import { PanelLeft, Play, Save, Loader2, Database, Rocket } from "lucide-react";
 import type { ProjectPlatform } from "@/lib/project-platform";
 
 const PersistentTerminal = dynamic(
@@ -23,9 +24,18 @@ const PersistentTerminal = dynamic(
   { ssr: false, loading: () => <div className="h-full w-full bg-elevated" /> },
 );
 
-type WorkspaceView = "preview" | "code";
+type WorkspaceView = "preview" | "code" | "database";
 type SandboxStatus = "idle" | "booting" | "ready" | "error";
 type FileEntry = { type: "file" | "folder" };
+
+// Minimal project row shape the workspace needs for backend awareness.
+type ProjectRow = {
+  name: string;
+  platform: string;
+  backendType: string;
+  convexDeployUrl: string | null;
+  userConvexUrl: string | null;
+};
 
 interface PersistentWorkspaceProps {
   projectId: string;
@@ -89,6 +99,13 @@ export function PersistentWorkspace({
 
   const initializedRef = useRef(false);
 
+  // Project row (fetched client-side) — drives backend-aware UI. Null until loaded.
+  const [project, setProject] = useState<ProjectRow | null>(null);
+  const [deployingBackend, setDeployingBackend] = useState(false);
+  const hasBackend = project != null && project.backendType !== "none";
+  const backendProvisioned =
+    project != null && Boolean(project.convexDeployUrl || project.userConvexUrl);
+
   const refreshFiles = useCallback(async () => {
     try {
       const res = await fetch(`/api/projects/${projectId}/sandbox/files`);
@@ -99,6 +116,69 @@ export function PersistentWorkspace({
       console.warn("Failed to load files", e);
     }
   }, [projectId]);
+
+  const refreshProject = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}`);
+      if (res.ok) setProject((await res.json()) as ProjectRow);
+    } catch (e) {
+      console.warn("Failed to load project", e);
+    }
+  }, [projectId]);
+
+  // Load the project row once on mount so we know platform/backendType.
+  useEffect(() => {
+    void refreshProject();
+  }, [refreshProject]);
+
+  // Deploy the Convex backend (zips /convex, pushes to the worker; auto-
+  // provisions a platform backend on first call). `silent` is used by the
+  // one-time provision-on-mount so we don't spam toasts.
+  const deployBackend = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      const silent = opts?.silent ?? false;
+      setDeployingBackend(true);
+      if (!silent) {
+        toast({ title: "Deploying backend…", description: "Pushing your Convex functions." });
+      }
+      try {
+        const res = await fetch(`/api/projects/${projectId}/convex/deploy`, { method: "POST" });
+        const body = (await res.json().catch(() => ({}))) as {
+          ok?: boolean; message?: string; error?: string;
+        };
+        if (!res.ok || body.ok === false) {
+          throw new Error(body.message || body.error || `HTTP ${res.status}`);
+        }
+        await refreshProject();
+        if (!silent) {
+          toast({
+            title: "Backend deployed",
+            description: "Rebuild the preview to connect to the latest backend.",
+          });
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Deploy failed";
+        if (!silent) toast({ title: "Backend deploy failed", description: msg });
+        else console.warn("[swift backend auto-provision]", msg);
+      } finally {
+        setDeployingBackend(false);
+      }
+    },
+    [projectId, refreshProject, toast],
+  );
+
+  // One-time provision-on-mount: once the sandbox is seeded and we know this is
+  // a Swift project with a backend that has never been provisioned, deploy it
+  // once so the first preview connects to a live deployment.
+  const autoProvisionRef = useRef(false);
+  useEffect(() => {
+    if (autoProvisionRef.current) return;
+    if (sandboxStatus !== "ready") return;
+    if (!project || project.platform !== "swift" || project.backendType === "none") return;
+    if (project.convexDeployUrl || project.userConvexUrl) return; // already provisioned
+    autoProvisionRef.current = true;
+    void deployBackend({ silent: true });
+  }, [sandboxStatus, project, deployBackend]);
 
   // Boot sandbox + seed + load files
   useEffect(() => {
@@ -117,7 +197,7 @@ export function PersistentWorkspace({
         const seedRes = await fetch(`/api/projects/${projectId}/sandbox/seed`, { method: "POST" });
         if (seedRes.ok) {
           const { seeded } = await seedRes.json() as { seeded: boolean };
-          if (seeded) toast({ title: "Project initialized", description: "Seeded the swift-template starter." });
+          if (seeded) toast({ title: "Project initialized", description: "Seeded the starter template." });
         }
         if (cancelled) return;
 
@@ -235,6 +315,7 @@ export function PersistentWorkspace({
               [
                 { value: "preview", text: "Preview" },
                 { value: "code", text: "Code" },
+                ...(hasBackend ? [{ value: "database", text: "Database" }] : []),
               ] as TabOption<WorkspaceView>[]
             }
             selected={currentView}
@@ -301,6 +382,24 @@ export function PersistentWorkspace({
             />
 
             {platform === "swift" && <IPhoneDeviceRunner />}
+
+            {hasBackend && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void deployBackend()}
+                disabled={deployingBackend}
+                className="text-muted hover:text-fg bolt-hover"
+                title="Deploy Convex backend"
+              >
+                {deployingBackend ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Rocket size={16} />
+                )}
+                <span className="ml-1">{deployingBackend ? "Deploying…" : "Deploy"}</span>
+              </Button>
+            )}
 
             <Button
               variant="default"
@@ -402,6 +501,38 @@ export function PersistentWorkspace({
           {/* Preview view — empty container.  The actual <SwiftSimulatorPreview/>
               is rendered ONCE below in a stable React-tree position so it stays
               mounted across tab switches (and survives drag in/out of PIP). */}
+          {/* Database view — embedded Convex dashboard (reuses ConvexDashboard). */}
+          {hasBackend && (
+            <div
+              className={cn(
+                "absolute inset-0 pb-2.5 pr-2.5",
+                currentView === "database" ? "block" : "hidden",
+              )}
+            >
+              <div className="w-full h-full rounded-xl border border-border overflow-hidden bg-elevated/60">
+                {backendProvisioned ? (
+                  <ConvexDashboard projectId={projectId} />
+                ) : (
+                  <div className="flex flex-col items-center justify-center w-full h-full text-sm text-muted gap-3 px-6 text-center">
+                    <Database size={22} />
+                    <p className="text-fg font-semibold">Backend not provisioned yet</p>
+                    <p className="max-w-xs">
+                      Deploy your Convex backend to create the deployment and open the
+                      database dashboard.
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={() => void deployBackend()}
+                      disabled={deployingBackend}
+                    >
+                      {deployingBackend ? "Provisioning…" : "Provision & deploy backend"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div
             className={cn(
               "absolute inset-0",
