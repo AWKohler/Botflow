@@ -45,7 +45,7 @@ export async function POST(
     await materializeSwiftConvexConfig(projectId);
     const tarball = await tarSandboxProject(projectId, { excludeConvex: true });
     const build = await createDeviceBuild(tarball);
-    recordSwiftDeviceBuild(build.buildId, userId, projectId);
+    await recordSwiftDeviceBuild(build.buildId, userId, projectId);
     return NextResponse.json({ ...build, ipaUrl: null });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Device build failed";

@@ -41,13 +41,13 @@ export async function GET(
       { status: 403 },
     );
   }
-  if (!ownsSwiftDeviceBuild(buildId, userId, projectId)) {
+  if (!(await ownsSwiftDeviceBuild(buildId, userId, projectId))) {
     return NextResponse.json({ error: "Device build not found" }, { status: 404 });
   }
 
   try {
     const build = await getDeviceBuild(buildId);
-    return NextResponse.json(withDownloadUrl(build, req, projectId));
+    return NextResponse.json(await withDownloadUrl(build, req, projectId));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Device build status failed";
     console.error("[swift-device/build/status]", message);
@@ -55,13 +55,13 @@ export async function GET(
   }
 }
 
-function withDownloadUrl<T extends { buildId: string; state: string; ipaUrl: string | null }>(
+async function withDownloadUrl<T extends { buildId: string; state: string; ipaUrl: string | null }>(
   build: T,
   req: NextRequest,
   projectId: string,
-): T {
+): Promise<T> {
   if (build.state !== "succeeded") return { ...build, ipaUrl: null };
-  const token = swiftDeviceBuildDownloadToken(build.buildId);
+  const token = await swiftDeviceBuildDownloadToken(build.buildId);
   if (!token) return { ...build, ipaUrl: null };
   const url = new URL(
     `/api/projects/${projectId}/swift-device/build/${build.buildId}/ipa`,

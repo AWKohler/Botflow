@@ -1,4 +1,15 @@
+/**
+ * Ownership + download-token store for physical-device (.ipa) builds.
+ *
+ * Backed by Redis (Upstash), NOT an in-memory Map: on Vercel each request can
+ * hit a different serverless instance, so the POST that records ownership and
+ * the later GET/IPA requests that check it run in separate processes. An
+ * in-memory Map silently returns "not found" cross-instance — which is exactly
+ * the bug this replaces.
+ */
+
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { redis } from "./redis";
 
 interface DeviceBuildOwnership {
   userId: string;
@@ -7,61 +18,53 @@ interface DeviceBuildOwnership {
   createdAt: number;
 }
 
-const store = new Map<string, DeviceBuildOwnership>();
+const TTL_SECONDS = 30 * 60;
+const keyFor = (buildId: string): string => `swiftdev:build:${buildId}`;
 
-const TTL_MS = 30 * 60 * 1000;
-const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
-
-let sweeper: NodeJS.Timeout | null = null;
-function ensureSweeper(): void {
-  if (sweeper) return;
-  sweeper = setInterval(() => {
-    const now = Date.now();
-    for (const [buildId, ownership] of store) {
-      if (now - ownership.createdAt > TTL_MS) store.delete(buildId);
-    }
-  }, SWEEP_INTERVAL_MS);
-  sweeper.unref();
+async function getOwnership(buildId: string): Promise<DeviceBuildOwnership | null> {
+  return (await redis.get<DeviceBuildOwnership>(keyFor(buildId))) ?? null;
 }
 
-export function recordSwiftDeviceBuild(
+export async function recordSwiftDeviceBuild(
   buildId: string,
   userId: string,
   projectId: string,
-): string {
-  ensureSweeper();
+): Promise<string> {
   const downloadToken = randomBytes(32).toString("base64url");
-  store.set(buildId, {
+  const ownership: DeviceBuildOwnership = {
     userId,
     projectId,
     downloadToken,
     createdAt: Date.now(),
-  });
+  };
+  await redis.set(keyFor(buildId), ownership, { ex: TTL_SECONDS });
   return downloadToken;
 }
 
-export function ownsSwiftDeviceBuild(
+export async function ownsSwiftDeviceBuild(
   buildId: string,
   userId: string,
   projectId: string,
-): boolean {
-  const ownership = store.get(buildId);
+): Promise<boolean> {
+  const ownership = await getOwnership(buildId);
   if (!ownership) return false;
   return ownership.userId === userId && ownership.projectId === projectId;
 }
 
-export function verifySwiftDeviceBuildDownloadToken(
+export async function verifySwiftDeviceBuildDownloadToken(
   buildId: string,
   projectId: string,
   token: string | null,
-): boolean {
-  const ownership = store.get(buildId);
+): Promise<boolean> {
+  const ownership = await getOwnership(buildId);
   if (!ownership || ownership.projectId !== projectId || !token) return false;
   const expected = Buffer.from(ownership.downloadToken);
   const provided = Buffer.from(token);
   return expected.length === provided.length && timingSafeEqual(expected, provided);
 }
 
-export function swiftDeviceBuildDownloadToken(buildId: string): string | null {
-  return store.get(buildId)?.downloadToken ?? null;
+export async function swiftDeviceBuildDownloadToken(
+  buildId: string,
+): Promise<string | null> {
+  return (await getOwnership(buildId))?.downloadToken ?? null;
 }

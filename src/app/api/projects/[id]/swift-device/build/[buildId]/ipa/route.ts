@@ -20,7 +20,7 @@ export async function GET(
 ) {
   const { id: projectId, buildId } = await params;
   const token = req.nextUrl.searchParams.get("token");
-  const tokenAllowed = verifySwiftDeviceBuildDownloadToken(buildId, projectId, token);
+  const tokenAllowed = await verifySwiftDeviceBuildDownloadToken(buildId, projectId, token);
 
   if (!tokenAllowed) {
     const { userId } = await auth();
@@ -45,7 +45,7 @@ export async function GET(
         { status: 403 },
       );
     }
-    if (!ownsSwiftDeviceBuild(buildId, userId, projectId)) {
+    if (!(await ownsSwiftDeviceBuild(buildId, userId, projectId))) {
       return NextResponse.json({ error: "Device build not found" }, { status: 404 });
     }
   }
