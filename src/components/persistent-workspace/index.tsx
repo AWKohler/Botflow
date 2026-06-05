@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { FileSearch } from "./file-search";
 import { SwiftSimulatorPreview } from "./swift-simulator-preview";
 import { SwiftPipWindow } from "./swift-pip-window";
+import { IPhoneDeviceRunner } from "./iphone-device-runner";
 import { PanelLeft, Play, Save, Loader2 } from "lucide-react";
 import type { ProjectPlatform } from "@/lib/project-platform";
 
@@ -298,6 +299,8 @@ export function PersistentWorkspace({
               afterSignOutUrl="/"
               appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }}
             />
+
+            {platform === "swift" && <IPhoneDeviceRunner />}
 
             <Button
               variant="default"

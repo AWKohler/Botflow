@@ -91,16 +91,35 @@ export async function deployConvexFromSandbox(params: {
     let zipBlob = await buildConvexDeployZip(projectId);
 
     if (!zipBlob) {
-      // Sandbox may have expired and been re-created empty. Try auto-seeding.
+      // Sandbox may have expired and been re-created empty. Try auto-seeding —
+      // but with the project's OWN template, not a hardcoded web one. A Swift
+      // project must reseed `swiftConvex`, never `viteConvex`, or we'd clobber
+      // its source tree.
       try {
-        const { seedSandboxIfEmpty } = await import("./vercel-sandbox");
-        const { materializeFrontendEnv } = await import("./sandbox-env");
-        const seeded = await seedSandboxIfEmpty(projectId, "viteConvex");
-        if (seeded) {
-          // Regenerate .env from the DB (frontend vars + VITE_CONVEX_URL) so the
-          // re-created sandbox keeps the user's configured frontend vars.
-          await materializeFrontendEnv(projectId).catch(() => undefined);
-          zipBlob = await buildConvexDeployZip(projectId);
+        const { seedSandboxIfEmpty, pickSandboxTemplate } = await import("./vercel-sandbox");
+        const { getDb } = await import("@/db");
+        const { projects } = await import("@/db/schema");
+        const { eq } = await import("drizzle-orm");
+
+        const db = getDb();
+        const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+        const template = project ? pickSandboxTemplate(project) : null;
+
+        if (template) {
+          const seeded = await seedSandboxIfEmpty(projectId, template);
+          if (seeded) {
+            // Regenerate the platform-correct config so the re-created sandbox
+            // keeps its backend wiring: Swift gets ConvexConfig.swift, web gets
+            // .env (frontend vars + VITE_CONVEX_URL).
+            const { materializeFrontendEnv, materializeSwiftConvexConfig } =
+              await import("./sandbox-env");
+            const regenerate =
+              project?.platform === "swift"
+                ? materializeSwiftConvexConfig
+                : materializeFrontendEnv;
+            await regenerate(projectId).catch(() => undefined);
+            zipBlob = await buildConvexDeployZip(projectId);
+          }
         }
       } catch (reseedErr) {
         console.warn("[sandbox-convex-deploy] auto-reseed failed:", reseedErr);
