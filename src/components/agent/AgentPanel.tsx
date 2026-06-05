@@ -26,7 +26,7 @@ import {
   type AgentBackend,
 } from '@/lib/agent/backend-resolution';
 import { deriveAgentBackend } from '@/lib/agent/derive-backend';
-import { BackendBadge, BackendChip } from './BackendBadge';
+import { BackendChip, BackendGlyphInfo } from './BackendBadge';
 import { ThinkingBlock } from './ThinkingBlock';
 import { QuestionPrompt, type QuestionConfig, type QuestionAnswerPayload } from './QuestionPrompt';
 import {
@@ -1480,8 +1480,6 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             <Cog size={16} />
           </button>
           <CreditGauge pct={creditPct} size="sm" />
-          {/* Always-visible identity badge — communicates the active agent. */}
-          <BackendBadge backend={agentBackend} />
         </div>
         <div className="flex items-center gap-2">
           <ModelSelector
@@ -1504,6 +1502,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             onTierLocked={setLimitPayload}
             size="sm"
             useTogetherKimi={useTogetherKimi}
+            leading={<BackendGlyphInfo backend={agentBackend} />}
           />
           <Button
             type="button"

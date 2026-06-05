@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, Lock } from 'lucide-react';
 import { MODEL_CONFIGS, type ModelId } from '@/lib/agent/models';
 import { cn } from '@/lib/utils';
@@ -20,6 +20,10 @@ export interface ModelSelectorProps {
   /** When true, Kimi K2.6 is served by Together AI (USE_TOGETHER_KIMI flag),
    *  so its provider badge reads "Together" instead of "Fireworks". */
   useTogetherKimi?: boolean;
+  /** Optional content rendered inside the trigger pill, left of the model
+   *  name and separated by a divider — e.g. the agent backend glyph, so the
+   *  agent identity and the model read as one body. */
+  leading?: ReactNode;
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -94,7 +98,7 @@ const MODEL_ORDER: ModelId[] = [
   'gpt-5.5',                 // x12
 ];
 
-export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', className, useTogetherKimi = false }: ModelSelectorProps) {
+export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', className, useTogetherKimi = false, leading }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -182,10 +186,16 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
         className={cn(
           'inline-flex items-center gap-1.5 border transition min-w-0',
           isSm
-            ? 'bg-elevated border-border rounded-md px-2 py-1 text-xs text-muted max-w-[120px]'
+            ? 'bg-elevated border-border rounded-md px-2 py-1 text-xs text-muted max-w-[180px]'
             : 'pointer-events-auto rounded-full border-border bg-elevated px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm shadow-soft hover:border-transparent hover:bg-accent/15 max-w-[120px] sm:max-w-[200px]',
         )}
       >
+        {leading != null && (
+          <>
+            {leading}
+            <span aria-hidden className="h-4 w-px shrink-0 bg-border" />
+          </>
+        )}
         <span className="truncate">{currentConfig.displayName}</span>
         <ChevronDown className={cn(isSm ? 'h-3 w-3' : 'h-3.5 w-3.5', 'opacity-50 shrink-0')} />
       </button>
@@ -209,7 +219,10 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
             const isSelected = modelId === value;
 
             const tierBadge = requiredTierRank > 0 ? TIER_LABELS[requiredTier] : null;
-            const costLabel = MODEL_COST_LABEL[modelId];
+            // Kimi K2.6 costs more on Together AI ($1.20 input → x4 vs x3 on Fireworks).
+            const costLabel = modelId === 'fireworks-kimi-k2p6' && useTogetherKimi
+              ? 'x4'
+              : MODEL_COST_LABEL[modelId];
 
             return (
               <button
