@@ -93,7 +93,7 @@ export function DeviceFrame({
   const bezelZ = g.canvasInFront ? 1 : 2;
 
   return (
-    <div ref={outerRef} className="relative flex h-full w-full flex-1 items-center justify-center overflow-hidden">
+    <div ref={outerRef} className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
       <div
         style={{
           position: "relative",

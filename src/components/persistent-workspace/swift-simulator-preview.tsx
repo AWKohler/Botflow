@@ -119,6 +119,9 @@ export function SwiftSimulatorPreview({
   const videoConfiguredRef = useRef(false);
   const waitingForVideoKeyframeRef = useRef(true);
   const cameraRef = useRef<SwiftCameraCapture | null>(null);
+  // Orientation the user just asked for via the toggle; compared against what
+  // the host reports back so we can tell the user when a rotate didn't apply.
+  const pendingOrientationRef = useRef<OrientationUI | null>(null);
 
   // ────────────────────────────────────────────────────────────────────────────
   // Session lifecycle — delegated to a refcounted pool keyed by projectId.
@@ -168,7 +171,26 @@ export function SwiftSimulatorPreview({
             if (active) startCamera();
             else stopCamera();
           },
-          onOrientation: (o) => setLiveOrientation(o),
+          onOrientation: (o) => {
+            setLiveOrientation(o);
+            const pending = pendingOrientationRef.current;
+            if (pending) {
+              pendingOrientationRef.current = null;
+              if (o !== pending) {
+                // The host couldn't rotate the device (needs Accessibility
+                // permission on the companion Mac). Sync the control to reality
+                // and tell the user instead of silently doing nothing.
+                setOrientation(o);
+                toast({
+                  title: "Couldn't rotate the simulator",
+                  description:
+                    "The companion Mac needs Accessibility permission to rotate the device, so it stays in " +
+                    o +
+                    " for now.",
+                });
+              }
+            }
+          },
         });
         clientRef.current = client;
         client.start();
@@ -231,6 +253,7 @@ export function SwiftSimulatorPreview({
   // reports back via onOrientation, which updates the bezel to match.
   const toggleOrientation = useCallback(() => {
     const next: OrientationUI = orientation === "portrait" ? "landscape" : "portrait";
+    pendingOrientationRef.current = next;
     setOrientation(next);
     setLiveOrientation(null);
     clientRef.current?.sendSetOrientation(next);
