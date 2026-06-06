@@ -24,6 +24,11 @@ interface PooledSession {
   wsUrl: string;
 }
 
+export interface SessionOptions {
+  deviceModel?: "iPhone-16-Pro" | "iPad-Pro";
+  orientation?: "portrait" | "landscape";
+}
+
 interface PoolEntry {
   projectId: string;
   refcount: number;
@@ -35,6 +40,15 @@ interface PoolEntry {
 }
 
 const pool = new Map<string, PoolEntry>();
+
+// The pool key folds the device family into the projectId so switching device
+// (iPhone ↔ iPad needs a different simulator) starts a fresh session and tears
+// the old one down, while Strict-Mode's same-device remount still dedupes to
+// one session. Orientation is NOT in the key — it's set at creation and then
+// changed live via the `set_orientation` control path (no rebuild).
+function poolKey(projectId: string, opts: SessionOptions): string {
+  return `${projectId}::${opts.deviceModel ?? "iPhone-16-Pro"}`;
+}
 
 // Grace window between "last consumer released" and "issue DELETE." React
 // Strict Mode's mount → cleanup → mount cycle finishes in <50ms, so 250ms is
@@ -50,10 +64,14 @@ const DELETE_GRACE_MS = 250;
  * Throws if provisioning fails. The pool entry is removed on failure so a
  * retry mounts a fresh provisioning attempt.
  */
-export function acquireSession(projectId: string): Promise<PooledSession> {
-  let entry = pool.get(projectId);
+export function acquireSession(
+  projectId: string,
+  opts: SessionOptions = {},
+): Promise<PooledSession> {
+  const key = poolKey(projectId, opts);
+  let entry = pool.get(key);
   if (!entry) {
-    const promise = startSession(projectId);
+    const promise = startSession(projectId, opts);
     entry = {
       projectId,
       refcount: 0,
@@ -62,18 +80,18 @@ export function acquireSession(projectId: string): Promise<PooledSession> {
       failed: null,
       endTimer: null,
     };
-    pool.set(projectId, entry);
+    pool.set(key, entry);
     // Track outcome on the entry so future inspections (and the eventual
     // DELETE) know the sessionId or failure.
     promise.then(
       (data) => {
-        if (pool.get(projectId) === entry) entry!.resolved = data;
+        if (pool.get(key) === entry) entry!.resolved = data;
       },
       (err: Error) => {
-        if (pool.get(projectId) === entry) {
+        if (pool.get(key) === entry) {
           entry!.failed = err;
           // Failed provisioning shouldn't stick — let the next acquire retry.
-          pool.delete(projectId);
+          pool.delete(key);
         }
       },
     );
@@ -92,8 +110,9 @@ export function acquireSession(projectId: string): Promise<PooledSession> {
  * immediately — we wait `DELETE_GRACE_MS` so a re-acquire (Strict Mode
  * remount) can re-claim. On real unmount the timer fires and we DELETE.
  */
-export function releaseSession(projectId: string): void {
-  const entry = pool.get(projectId);
+export function releaseSession(projectId: string, opts: SessionOptions = {}): void {
+  const key = poolKey(projectId, opts);
+  const entry = pool.get(key);
   if (!entry) return;
   entry.refcount = Math.max(0, entry.refcount - 1);
   if (entry.refcount > 0) return;
@@ -101,9 +120,9 @@ export function releaseSession(projectId: string): void {
   entry.endTimer = setTimeout(() => {
     // Re-check: a re-acquire during the grace window would have cancelled
     // this timer, but double-check refcount as belt-and-suspenders.
-    const current = pool.get(projectId);
+    const current = pool.get(key);
     if (current !== entry || current.refcount > 0) return;
-    pool.delete(projectId);
+    pool.delete(key);
     if (entry.resolved) {
       void fetch(
         `/api/projects/${projectId}/swift-preview/${entry.resolved.sessionId}`,
@@ -118,11 +137,12 @@ export function releaseSession(projectId: string): void {
  * Used by the Stop button so the user's intent to stop is honored without
  * the grace-window delay.
  */
-export function forceEndSession(projectId: string): void {
-  const entry = pool.get(projectId);
+export function forceEndSession(projectId: string, opts: SessionOptions = {}): void {
+  const key = poolKey(projectId, opts);
+  const entry = pool.get(key);
   if (!entry) return;
   if (entry.endTimer) clearTimeout(entry.endTimer);
-  pool.delete(projectId);
+  pool.delete(key);
   if (entry.resolved) {
     void fetch(
       `/api/projects/${projectId}/swift-preview/${entry.resolved.sessionId}`,
@@ -131,9 +151,17 @@ export function forceEndSession(projectId: string): void {
   }
 }
 
-async function startSession(projectId: string): Promise<PooledSession> {
+async function startSession(
+  projectId: string,
+  opts: SessionOptions,
+): Promise<PooledSession> {
   const res = await fetch(`/api/projects/${projectId}/swift-preview/start`, {
     method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      deviceModel: opts.deviceModel ?? "iPhone-16-Pro",
+      ...(opts.orientation ? { orientation: opts.orientation } : {}),
+    }),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };

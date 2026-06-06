@@ -13,19 +13,36 @@ import {
 } from "@/lib/sim-platform";
 import { recordSwiftPreviewSession } from "@/lib/swift-preview-store";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import type { SimDeviceModel, SimOrientation } from "@/lib/sim-platform";
+
+const DEVICE_MODELS: readonly SimDeviceModel[] = ["iPhone-16-Pro", "iPad-Pro"];
+const ORIENTATIONS: readonly SimOrientation[] = ["portrait", "landscape"];
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Optional body: { deviceModel?, orientation? }. Defaults preserve the
+  // original iPhone behavior when the browser sends nothing.
+  const body = (await req.json().catch(() => ({}))) as {
+    deviceModel?: string;
+    orientation?: string;
+  };
+  const deviceModel = DEVICE_MODELS.includes(body.deviceModel as SimDeviceModel)
+    ? (body.deviceModel as SimDeviceModel)
+    : "iPhone-16-Pro";
+  const orientation = ORIENTATIONS.includes(body.orientation as SimOrientation)
+    ? (body.orientation as SimOrientation)
+    : undefined;
 
   const { id: projectId } = await params;
   const db = getDb();
@@ -49,7 +66,7 @@ export async function POST(
 
   let sessionId: string | null = null;
   try {
-    const session = await createSession({ awaitBuild: true });
+    const session = await createSession({ awaitBuild: true, deviceModel, orientation });
     sessionId = session.sessionId;
     recordSwiftPreviewSession(sessionId, userId, projectId);
 

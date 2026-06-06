@@ -9,7 +9,10 @@ import {
   Loader2,
   Maximize2,
   RefreshCw,
+  RotateCw,
+  Smartphone,
   Square,
+  Tablet,
 } from "lucide-react";
 import {
   SwiftStreamClient,
@@ -20,6 +23,11 @@ import {
   type SimVideoConfig,
 } from "./swift-stream-client";
 import { SwiftCameraCapture, type CameraCaptureState } from "./swift-camera-capture";
+import {
+  DeviceFrame,
+  type DeviceModelUI,
+  type OrientationUI,
+} from "./device-frame";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { BuildIssuesPanel } from "./build-issues-panel";
@@ -30,20 +38,11 @@ import {
   releaseSession,
 } from "./swift-preview-session-pool";
 
-// iPhone 17 Pro frame PNG dimensions and screen area (measured from the PNG):
-// Image: 1350×2760. Screen transparent hole: x=72, y=69, w=1206, h=2622.
-// The PNG has alpha=0 for the screen area and outside the phone, so the
-// canvas underneath shows through naturally — no blend-mode tricks needed.
-const PHONE_W = 1350;
-const PHONE_H = 2760;
-const SCREEN_X = 72;
-const SCREEN_Y = 69;
-const SCREEN_W = 1206;
-const SCREEN_H = 2622;
-// Inner corner radius of the screen, measured from the PNG at full resolution.
-// The arc at the top-left corner extends ~196px rightward from the straight edge
-// before leveling off, putting the radius at ~200px at 1350px image width.
-const SCREEN_RADIUS = 130;
+// Device bezel geometry now lives in <DeviceFrame>. The natural orientation per
+// device drives the default when a user switches device family.
+function naturalOrientation(model: DeviceModelUI): OrientationUI {
+  return model === "iPad-Pro" ? "landscape" : "portrait";
+}
 
 interface SwiftSimulatorPreviewProps {
   projectId: string;
@@ -99,8 +98,14 @@ export function SwiftSimulatorPreview({
   const [kbdFocused, setKbdFocused] = useState(false);
   const [cameraState, setCameraState] = useState<CameraCaptureState>("idle");
 
-  const [deviceScale, setDeviceScale] = useState(1);
-  const deviceOuterRef = useRef<HTMLDivElement | null>(null);
+  // Device family + orientation. Changing device restarts the session (different
+  // simulator); changing orientation rotates live (no rebuild). `liveOrientation`
+  // is what the host reports — used for the bezel so it matches the real stream
+  // even if a rotate silently fails.
+  const [deviceModel, setDeviceModel] = useState<DeviceModelUI>("iPhone-16-Pro");
+  const [orientation, setOrientation] = useState<OrientationUI>("portrait");
+  const [liveOrientation, setLiveOrientation] = useState<OrientationUI | null>(null);
+  const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const clientRef = useRef<SwiftStreamClient | null>(null);
@@ -138,7 +143,7 @@ export function SwiftSimulatorPreview({
     (async () => {
       try {
         setPill({ kind: "starting", label: "Provisioning…" });
-        const data = await acquireSession(projectId);
+        const data = await acquireSession(projectId, { deviceModel, orientation });
         if (cancelled) return;
         setSessionId(data.sessionId);
         setPill({ kind: "starting", label: "Connecting…" });
@@ -162,6 +167,7 @@ export function SwiftSimulatorPreview({
             if (active) startCamera();
             else stopCamera();
           },
+          onOrientation: (o) => setLiveOrientation(o),
         });
         clientRef.current = client;
         client.start();
@@ -192,18 +198,42 @@ export function SwiftSimulatorPreview({
         videoConfiguredRef.current = false;
       }
       // Refcounted: the pool may defer the actual DELETE in case a strict-
-      // mode remount re-claims within the grace window.
-      releaseSession(projectId);
+      // mode remount re-claims within the grace window. Keyed by deviceModel so
+      // switching device tears down the old simulator and starts a new one.
+      releaseSession(projectId, { deviceModel });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, deviceModel]);
 
   // Stop is special: the user explicitly wants the simulator gone. Bypass
   // the pool grace window so the slot is freed immediately on click.
   const handleStop = useCallback(() => {
-    forceEndSession(projectId);
+    forceEndSession(projectId, { deviceModel });
     onStop?.();
-  }, [projectId, onStop]);
+  }, [projectId, onStop, deviceModel]);
+
+  // Switch device family (iPhone ↔ iPad). The session effect (keyed on
+  // deviceModel) tears down the old simulator and starts a new one in the new
+  // device's natural orientation.
+  const switchDevice = useCallback(
+    (m: DeviceModelUI) => {
+      setDeviceMenuOpen(false);
+      if (m === deviceModel) return;
+      setDeviceModel(m);
+      setOrientation(naturalOrientation(m));
+      setLiveOrientation(null);
+    },
+    [deviceModel],
+  );
+
+  // Rotate the device live (no rebuild). The host rotates the simulator and
+  // reports back via onOrientation, which updates the bezel to match.
+  const toggleOrientation = useCallback(() => {
+    const next: OrientationUI = orientation === "portrait" ? "landscape" : "portrait";
+    setOrientation(next);
+    setLiveOrientation(null);
+    clientRef.current?.sendSetOrientation(next);
+  }, [orientation]);
 
   // ────────────────────────────────────────────────────────────────────────────
   // Webcam → simulator camera. getUserMedia (browser permission prompt) → JPEG
@@ -592,19 +622,6 @@ export function SwiftSimulatorPreview({
     };
   }, [pill.kind]);
 
-  // Auto-scale phone mockup to fit available space
-  useEffect(() => {
-    const outer = deviceOuterRef.current;
-    if (!outer) return;
-    const ro = new ResizeObserver(() => {
-      const h = outer.clientHeight;
-      const w = outer.clientWidth;
-      const base = Math.min(h / PHONE_H, w / PHONE_W);
-      setDeviceScale(Math.max(0.05, Math.min(base * 0.92, 2)));
-    });
-    ro.observe(outer);
-    return () => ro.disconnect();
-  }, []);
 
   // ────────────────────────────────────────────────────────────────────────────
   // Rebuild
@@ -658,6 +675,69 @@ export function SwiftSimulatorPreview({
               {fps} fps
             </span>
           )}
+          {/* Device picker — switch iPhone ↔ iPad (restarts the session). */}
+          <div className="relative">
+            <button
+              onClick={() => setDeviceMenuOpen((v) => !v)}
+              className={cn(
+                "flex items-center rounded-md border border-border bg-elevated text-muted hover:text-fg",
+                isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px]",
+              )}
+              title={deviceModel === "iPad-Pro" ? "iPad Pro" : "iPhone 17 Pro"}
+            >
+              {deviceModel === "iPad-Pro" ? (
+                <Tablet size={isPip ? 11 : 12} />
+              ) : (
+                <Smartphone size={isPip ? 11 : 12} />
+              )}
+              {!isPip && (
+                <span>{deviceModel === "iPad-Pro" ? "iPad Pro" : "iPhone 17 Pro"}</span>
+              )}
+              {!isPip && <ChevronDown size={12} />}
+            </button>
+            {deviceMenuOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-[60]"
+                  onClick={() => setDeviceMenuOpen(false)}
+                />
+                <div className="absolute right-0 z-[61] mt-1 w-40 overflow-hidden rounded-md border border-border bg-elevated shadow-lg">
+                  {([
+                    { id: "iPhone-16-Pro" as DeviceModelUI, label: "iPhone 17 Pro", Icon: Smartphone },
+                    { id: "iPad-Pro" as DeviceModelUI, label: "iPad Pro", Icon: Tablet },
+                  ]).map(({ id, label, Icon }) => (
+                    <button
+                      key={id}
+                      onClick={() => switchDevice(id)}
+                      className={cn(
+                        "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] hover:bg-surface",
+                        id === deviceModel ? "text-accent" : "text-fg/80",
+                      )}
+                    >
+                      <Icon size={13} />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          {/* Orientation toggle — live rotate (no rebuild) while streaming. */}
+          <button
+            onClick={toggleOrientation}
+            disabled={pill.kind !== "live"}
+            className={cn(
+              "flex items-center rounded-md border border-border bg-elevated text-muted hover:text-fg",
+              "disabled:cursor-not-allowed disabled:opacity-40",
+              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px]",
+            )}
+            title={`Rotate to ${orientation === "portrait" ? "landscape" : "portrait"}`}
+          >
+            <RotateCw size={isPip ? 11 : 12} />
+            {!isPip && (
+              <span className="capitalize">{liveOrientation ?? orientation}</span>
+            )}
+          </button>
           {/* Refresh — both modes; iconic in PIP */}
           <button
             onClick={onRebuild}
@@ -752,92 +832,39 @@ export function SwiftSimulatorPreview({
         </div>
       </div>
 
-      {/* Stream / state surface — canvas inside iPhone 17 Pro frame PNG */}
-      <div
-        ref={deviceOuterRef}
-        className="relative flex-1 overflow-hidden flex items-center justify-center"
-      >
-        {/* Phone container at natural PNG dimensions, scaled to fit */}
-        <div
-          style={{
-            position: "relative",
-            width: PHONE_W,
-            height: PHONE_H,
-            transform: `scale(${deviceScale})`,
-            transformOrigin: "center center",
-            flexShrink: 0,
-          }}
-        >
-          {/* Screen content area — positioned at measured transparent hole coords */}
-          <div
-            style={{
-              position: "absolute",
-              left: SCREEN_X,
-              top: SCREEN_Y,
-              width: SCREEN_W,
-              height: SCREEN_H,
-              borderRadius: SCREEN_RADIUS,
-              overflow: "hidden",
-              background: "#000",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <canvas
-              ref={canvasRef}
-              tabIndex={pill.kind === "live" ? 0 : -1}
-              className={cn(
-                "block max-h-full max-w-full select-none outline-none",
-                pill.kind === "live"
-                  ? "relative cursor-crosshair"
-                  : "pointer-events-none absolute opacity-0",
-                kbdFocused && "ring-2 ring-accent/70",
-              )}
-              style={{ touchAction: "none" }}
-            />
-          </div>
-          {/* iPhone 17 Pro frame overlay — transparent screen area lets canvas show through */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/iphone_17_pro.png"
-            alt=""
-            style={{
-              position: "absolute",
-              inset: 0,
-              width: "100%",
-              height: "100%",
-              pointerEvents: "none",
-              userSelect: "none",
-            }}
-          />
-        </div>
-
-        {/* Text overlays — outside the scaled phone so layout isn't broken by deviceScale,
-            but scaled proportionally so they shrink with the phone when the panel is small.
-            At a ~600px tall container deviceScale ≈ 0.2, so ×5 gives scale≈1. */}
-        {pill.kind !== "live" && (
-          <div
-            className="pointer-events-none absolute inset-0 flex items-center justify-center"
-            style={{ transform: `scale(${Math.max(0.45, Math.min(0.8, deviceScale * 3.5))})` }}
-          >
+      {/* Stream / state surface — canvas inside the device bezel. DeviceFrame
+          owns geometry, orientation, and fit-scaling for both iPhone + iPad. */}
+      <DeviceFrame
+        deviceModel={deviceModel}
+        orientation={liveOrientation ?? orientation}
+        overlay={
+          pill.kind !== "live" ? (
             <CenterContent pill={pill} hasCalibration={!!calibration} />
-          </div>
-        )}
-        {/* Keyboard-status hint — full mode only (would obscure a small PIP). */}
-        {!isPip && pill.kind === "live" && (
-          <div
-            className="pointer-events-none absolute bottom-3 rounded-md bg-black/55 px-2 py-0.5 text-[10px] text-white/70 backdrop-blur whitespace-nowrap"
-            style={{
-              left: "50%",
-              transform: `translateX(-50%) scale(${Math.max(0.45, Math.min(0.8, deviceScale * 3.5))})`,
-              transformOrigin: "center bottom",
-            }}
-          >
-            {kbdFocused ? "Keyboard connected — typing goes to the device" : "Click the screen to enable keyboard"}
-          </div>
-        )}
-      </div>
+          ) : undefined
+        }
+        footer={
+          !isPip && pill.kind === "live" ? (
+            <div className="rounded-md bg-black/55 px-2 py-0.5 text-[10px] text-white/70 backdrop-blur whitespace-nowrap">
+              {kbdFocused
+                ? "Keyboard connected — typing goes to the device"
+                : "Click the screen to enable keyboard"}
+            </div>
+          ) : undefined
+        }
+      >
+        <canvas
+          ref={canvasRef}
+          tabIndex={pill.kind === "live" ? 0 : -1}
+          className={cn(
+            "block max-h-full max-w-full select-none outline-none",
+            pill.kind === "live"
+              ? "relative cursor-crosshair"
+              : "pointer-events-none absolute opacity-0",
+            kbdFocused && "ring-2 ring-accent/70",
+          )}
+          style={{ touchAction: "none" }}
+        />
+      </DeviceFrame>
 
       {/* Structured build Issues panel — full mode only.
           In PIP, a build failure pops a toast and the user expands. */}

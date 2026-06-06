@@ -2,8 +2,12 @@
 // Used by the swift-preview API routes to provision sessions and ship build
 // tarballs across the Tailscale Funnel / Cloudflare Tunnel boundary.
 
+export type SimDeviceModel = "iPhone-16-Pro" | "iPad-Pro";
+export type SimOrientation = "portrait" | "landscape";
+
 export interface CreateSessionInput {
-  deviceModel?: "iPhone-16-Pro";
+  deviceModel?: SimDeviceModel;
+  orientation?: SimOrientation;
   awaitBuild?: boolean;
 }
 
@@ -11,6 +15,7 @@ export interface CreateSessionResult {
   sessionId: string;
   state: string;
   deviceModel: string;
+  orientation?: SimOrientation;
   queuePosition: number | null;
   createdAt: number;
   hostId: string | null;
@@ -93,6 +98,7 @@ export async function createSession(
     },
     body: JSON.stringify({
       deviceModel: input.deviceModel ?? "iPhone-16-Pro",
+      ...(input.orientation ? { orientation: input.orientation } : {}),
       awaitBuild: input.awaitBuild ?? true,
     }),
   });

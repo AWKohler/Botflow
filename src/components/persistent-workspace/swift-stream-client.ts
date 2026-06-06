@@ -91,6 +91,9 @@ export interface SimStreamHandlers {
   /** The app inside the simulator started (true) or stopped (false) its camera.
    * The UI uses this to lazily prompt for the webcam and start/stop streaming. */
   onCameraRequest?: (active: boolean) => void;
+  /** The host reported the device's current orientation (on ready + after a
+   * rotate completes). The UI uses this to match the bezel to the live stream. */
+  onOrientation?: (orientation: "portrait" | "landscape") => void;
   onOpen: () => void;
   onClose: (code: number) => void;
 }
@@ -196,6 +199,11 @@ export class SwiftStreamClient {
         case "camera_request":
           this.handlers.onCameraRequest?.(Boolean(msg.active));
           break;
+        case "orientation":
+          if (msg.orientation === "portrait" || msg.orientation === "landscape") {
+            this.handlers.onOrientation?.(msg.orientation);
+          }
+          break;
         case "pong":
           break;
       }
@@ -241,6 +249,12 @@ export class SwiftStreamClient {
     view.setBigUint64(2, BigInt(Math.max(0, Math.floor(timestampMs))));
     packet.set(jpeg, 10);
     this.ws.send(packet);
+  }
+
+  /** Ask the host to rotate the device to the given orientation (live, no rebuild). */
+  sendSetOrientation(orientation: "portrait" | "landscape"): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    this.ws.send(JSON.stringify({ type: "set_orientation", orientation }));
   }
 
   setCalibration(screenRect: SimScreenRect): void {
