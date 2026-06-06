@@ -38,10 +38,11 @@ import {
   releaseSession,
 } from "./swift-preview-session-pool";
 
-// Device bezel geometry now lives in <DeviceFrame>. The natural orientation per
-// device drives the default when a user switches device family.
-function naturalOrientation(model: DeviceModelUI): OrientationUI {
-  return model === "iPad-Pro" ? "landscape" : "portrait";
+// Device bezel geometry lives in <DeviceFrame>. Both devices default to portrait
+// (the orientation they actually boot in) so a session never depends on a
+// rotation to come up; landscape is reached via the orientation toggle.
+function naturalOrientation(_model: DeviceModelUI): OrientationUI {
+  return "portrait";
 }
 
 interface SwiftSimulatorPreviewProps {
