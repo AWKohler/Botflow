@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertCircle,
   CheckCircle2,
@@ -67,6 +68,8 @@ export function IPhoneDeviceRunner({ projectId }: IPhoneDeviceRunnerProps) {
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [panelPos, setPanelPos] = useState<{ top: number; right: number } | null>(null);
 
   const loadCompanion = useCallback(async () => {
     setStatus("checking");
@@ -103,14 +106,27 @@ export function IPhoneDeviceRunner({ projectId }: IPhoneDeviceRunnerProps) {
   useEffect(() => {
     if (!open) return;
 
+    // Anchor the portal panel under the trigger button (fixed coords).
+    const place = () => {
+      const r = rootRef.current?.getBoundingClientRect();
+      if (r) setPanelPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) });
+    };
+    place();
+
     const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      const t = event.target as Node;
+      // The panel is portaled out of rootRef, so check both.
+      if (!rootRef.current?.contains(t) && !panelRef.current?.contains(t)) {
         setOpen(false);
       }
     };
 
+    window.addEventListener("resize", place);
     document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
+    return () => {
+      window.removeEventListener("resize", place);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
   }, [open]);
 
   const buildAndInstall = useCallback(async () => {
@@ -221,8 +237,12 @@ export function IPhoneDeviceRunner({ projectId }: IPhoneDeviceRunnerProps) {
         />
       </Button>
 
-      {open && (
-        <div className="absolute right-0 top-10 z-50 w-[360px] overflow-hidden rounded-lg border border-border bg-surface shadow-2xl">
+      {open && panelPos && createPortal(
+        <div
+          ref={panelRef}
+          style={{ position: "fixed", top: panelPos.top, right: panelPos.right }}
+          className="z-[1000] w-[360px] overflow-hidden rounded-lg border border-border bg-surface shadow-2xl"
+        >
           <div className="flex h-11 items-center justify-between border-b border-border px-3">
             <div className="flex items-center gap-2 min-w-0">
               <StatusIcon status={status} hasDevices={devices.length > 0} />
@@ -339,7 +359,8 @@ export function IPhoneDeviceRunner({ projectId }: IPhoneDeviceRunnerProps) {
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
