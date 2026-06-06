@@ -136,6 +136,12 @@ export function DeviceFrame({
             top: (box.h - g.box.h) / 2,
             width: g.box.w,
             height: g.box.h,
+            // Tailwind's preflight sets `img { max-width: 100%; height: auto }`,
+            // which would cap the rotated bezel (e.g. a 776px-wide image inside a
+            // 595px-wide box) and squish it — breaking the frame alignment.
+            // Pin the intrinsic size explicitly.
+            maxWidth: "none",
+            maxHeight: "none",
             transform: rotated ? "rotate(90deg)" : "none",
             transformOrigin: "center center",
             pointerEvents: "none",
