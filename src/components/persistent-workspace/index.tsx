@@ -413,15 +413,15 @@ export function PersistentWorkspace({
               </>
             )}
 
+            {/* Run on iPhone — Preview tab only, left of the user button. */}
+            {platform === "swift" && currentView === "preview" && (
+              <IPhoneDeviceRunner projectId={projectId} />
+            )}
+
             <UserButton
               afterSignOutUrl="/"
               appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }}
             />
-
-            {/* Run on iPhone — Preview tab only. */}
-            {platform === "swift" && currentView === "preview" && (
-              <IPhoneDeviceRunner projectId={projectId} />
-            )}
 
             <Button
               variant="default"

@@ -9,10 +9,15 @@ import {
   RefreshCw,
   Smartphone,
   X,
+  Download,
+  ArrowUpRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+
+// Hosted on Vercel's CDN (public/downloads). macOS-only for now.
+const COMPANION_DOWNLOAD_URL = "/downloads/BotflowCompanion.zip";
 
 const COMPANION_BASE_URL = "http://127.0.0.1:17321";
 
@@ -282,24 +287,9 @@ export function IPhoneDeviceRunner({ projectId }: IPhoneDeviceRunnerProps) {
                 Checking companion...
               </div>
             ) : status === "offline" ? (
-              <div className="rounded-md border border-border bg-elevated/60 p-3">
-                <div className="flex items-start gap-2">
-                  <AlertCircle size={16} className="mt-0.5 text-yellow-500" />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-fg">Companion offline</div>
-                    <div className="mt-1 text-xs leading-5 text-muted">
-                      {error ?? "Start Botflow Companion and try again."}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <CompanionSetupGuide error={error} onRetry={loadCompanion} />
             ) : devices.length === 0 ? (
-              <div className="rounded-md border border-border bg-elevated/60 p-3">
-                <div className="text-sm font-medium text-fg">No devices found</div>
-                <div className="mt-1 text-xs leading-5 text-muted">
-                  Connect an iPhone with Developer Mode enabled.
-                </div>
-              </div>
+              <NoDevicesGuide />
             ) : (
               <div className="space-y-2">
                 {devices.map((device) => (
@@ -498,4 +488,95 @@ async function responseError(res: Response, fallback: string): Promise<string> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+// ── Setup walkthrough (companion offline) ───────────────────────────────────
+function GuideStep({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-[11px] font-semibold text-accent">
+        {n}
+      </span>
+      <div className="text-xs leading-5 text-muted">{children}</div>
+    </div>
+  );
+}
+
+function CompanionSetupGuide({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start gap-2 rounded-md border border-border bg-elevated/60 p-3">
+        <AlertCircle size={16} className="mt-0.5 shrink-0 text-yellow-500" />
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-fg">Botflow Companion not running</div>
+          <div className="mt-1 text-xs leading-5 text-muted">
+            Running an app on your own iPhone happens on your Mac. Install the free
+            companion (macOS) — it signs the build with your Apple ID and installs it
+            over USB.
+          </div>
+        </div>
+      </div>
+
+      <a href={COMPANION_DOWNLOAD_URL} download className="block">
+        <Button className="w-full gap-2 font-semibold">
+          <Download size={15} />
+          Download Botflow Companion (macOS)
+        </Button>
+      </a>
+
+      <div className="space-y-2.5 rounded-md border border-border bg-elevated/40 p-3">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+          Set up (one time)
+        </div>
+        <GuideStep n={1}>Unzip and drag <span className="font-medium text-fg">Botflow Companion</span> into your Applications folder.</GuideStep>
+        <GuideStep n={2}>
+          First launch: right-click the app → <span className="font-medium text-fg">Open</span> → Open
+          (this clears macOS Gatekeeper for an app downloaded from the web).
+        </GuideStep>
+        <GuideStep n={3}>It lives in your menu bar. Open it and <span className="font-medium text-fg">sign in with your Apple ID</span> — a free Apple ID works.</GuideStep>
+        <GuideStep n={4}>Connect your iPhone with a cable, unlock it, and tap <span className="font-medium text-fg">Trust</span>.</GuideStep>
+        <GuideStep n={5}>The companion will guide you to turn on <span className="font-medium text-fg">Developer Mode</span> if it isn&apos;t already.</GuideStep>
+      </div>
+
+      <Button variant="outline" size="sm" className="w-full gap-2" onClick={onRetry}>
+        <RefreshCw size={13} />
+        I&apos;ve installed it — check again
+      </Button>
+
+      {error && (
+        <div className="text-[11px] leading-4 text-muted">{error}</div>
+      )}
+    </div>
+  );
+}
+
+// ── No connected device ─────────────────────────────────────────────────────
+function NoDevicesGuide() {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-md border border-border bg-elevated/60 p-3">
+        <div className="text-sm font-medium text-fg">No iPhone connected</div>
+        <div className="mt-1 text-xs leading-5 text-muted">
+          Botflow Companion is running. Now connect your device:
+        </div>
+      </div>
+      <div className="space-y-2.5 rounded-md border border-border bg-elevated/40 p-3">
+        <GuideStep n={1}>Plug your iPhone into this Mac with a cable and unlock it.</GuideStep>
+        <GuideStep n={2}>Tap <span className="font-medium text-fg">Trust This Computer</span> and enter your passcode.</GuideStep>
+        <GuideStep n={3}>
+          Turn on Developer Mode: <span className="font-medium text-fg">Settings → Privacy &amp; Security → Developer Mode</span>,
+          then restart. The companion shows live status and detailed steps.
+        </GuideStep>
+      </div>
+      <a
+        href="https://developer.apple.com/documentation/xcode/enabling-developer-mode-on-a-device"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-1.5 text-xs text-muted hover:text-fg"
+      >
+        <ArrowUpRight size={13} />
+        About Developer Mode
+      </a>
+    </div>
+  );
 }
