@@ -45,6 +45,41 @@ function naturalOrientation(_model: DeviceModelUI): OrientationUI {
   return "portrait";
 }
 
+/**
+ * Draw a decoded frame to the canvas, compensating for the iOS-26 simulator
+ * quirk where the captured framebuffer stays portrait even when the app is in
+ * landscape (content rendered sideways). For a landscape display we swap the
+ * canvas to landscape dims and rotate the source 90° clockwise so it shows
+ * upright; for portrait we draw 1:1. `sw`/`sh` are the source's natural dims.
+ */
+function blitToCanvas(
+  canvas: HTMLCanvasElement,
+  source: CanvasImageSource,
+  sw: number,
+  sh: number,
+  landscape: boolean,
+): void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  if (landscape) {
+    if (canvas.width !== sh || canvas.height !== sw) {
+      canvas.width = sh;
+      canvas.height = sw;
+    }
+    ctx.save();
+    ctx.translate(canvas.width, 0); // = sh
+    ctx.rotate(Math.PI / 2); // 90° clockwise
+    ctx.drawImage(source, 0, 0, sw, sh);
+    ctx.restore();
+  } else {
+    if (canvas.width !== sw || canvas.height !== sh) {
+      canvas.width = sw;
+      canvas.height = sh;
+    }
+    ctx.drawImage(source, 0, 0, sw, sh);
+  }
+}
+
 interface SwiftSimulatorPreviewProps {
   projectId: string;
   /** Layout mode. "full" is the original Preview-tab layout. "pip" is a
@@ -109,6 +144,12 @@ export function SwiftSimulatorPreview({
   const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // The orientation currently shown (live takes precedence). Held in a ref so the
+  // draw/input callbacks (which capture state once) always see the latest value.
+  // On iOS 26 the simulator's captured frame is ALWAYS portrait even when the app
+  // is landscape — so for a landscape orientation we rotate the video 90° in the
+  // canvas and inverse-map pointer coordinates. See blitFrameToCanvas / norm().
+  const displayOrientationRef = useRef<OrientationUI>("portrait");
   const clientRef = useRef<SwiftStreamClient | null>(null);
   const logBoxRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ pos: { normX: number; normY: number } } | null>(null);
@@ -436,18 +477,23 @@ export function SwiftSimulatorPreview({
     if (el) el.scrollTop = el.scrollHeight;
   }, [logs, issuesOpen]);
 
+  // Keep the draw/input callbacks' view of the current orientation fresh.
+  useEffect(() => {
+    displayOrientationRef.current = liveOrientation ?? orientation;
+  }, [orientation, liveOrientation]);
+
   const drawFrame = useCallback((b64: string) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
     const img = new Image();
     img.onload = () => {
-      if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-      }
-      ctx.drawImage(img, 0, 0);
+      blitToCanvas(
+        canvas,
+        img,
+        img.naturalWidth,
+        img.naturalHeight,
+        displayOrientationRef.current === "landscape",
+      );
       frameCountRef.current++;
       const now = Date.now();
       const elapsed = now - fpsTimeRef.current;
@@ -484,13 +530,14 @@ export function SwiftSimulatorPreview({
     const decoder = new VideoDecoder({
       output: (frame: VideoFrame) => {
         const c = canvasRef.current;
-        const ctx = c?.getContext("2d");
-        if (c && ctx) {
-          if (c.width !== frame.displayWidth || c.height !== frame.displayHeight) {
-            c.width = frame.displayWidth;
-            c.height = frame.displayHeight;
-          }
-          ctx.drawImage(frame, 0, 0, c.width, c.height);
+        if (c) {
+          blitToCanvas(
+            c,
+            frame,
+            frame.displayWidth,
+            frame.displayHeight,
+            displayOrientationRef.current === "landscape",
+          );
         }
         frame.close();
         frameCountRef.current++;
@@ -548,10 +595,15 @@ export function SwiftSimulatorPreview({
 
     const norm = (e: MouseEvent | WheelEvent): { normX: number; normY: number } => {
       const r = canvas.getBoundingClientRect();
-      return {
-        normX: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
-        normY: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)),
-      };
+      const dnx = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      const dny = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+      // In landscape the canvas shows the portrait device surface rotated 90° CW,
+      // so invert that to get coordinates in the device's (portrait) surface space
+      // — which is what the host's tap mapping expects. (CW: snx=dny, sny=1-dnx.)
+      if (displayOrientationRef.current === "landscape") {
+        return { normX: dny, normY: 1 - dnx };
+      }
+      return { normX: dnx, normY: dny };
     };
 
     const onDown = (e: MouseEvent): void => {
