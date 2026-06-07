@@ -28,6 +28,12 @@ import {
   type DeviceModelUI,
   type OrientationUI,
 } from "./device-frame";
+import {
+  loadDevicePref,
+  saveDevicePref,
+  loadOrientationPref,
+  saveOrientationPref,
+} from "./swift-preview-prefs";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { BuildIssuesPanel } from "./build-issues-panel";
@@ -138,8 +144,9 @@ export function SwiftSimulatorPreview({
   // simulator); changing orientation rotates live (no rebuild). `liveOrientation`
   // is what the host reports — used for the bezel so it matches the real stream
   // even if a rotate silently fails.
-  const [deviceModel, setDeviceModel] = useState<DeviceModelUI>("iPhone-16-Pro");
-  const [orientation, setOrientation] = useState<OrientationUI>("portrait");
+  // Default to the device/orientation the user last used (persisted globally).
+  const [deviceModel, setDeviceModel] = useState<DeviceModelUI>(loadDevicePref);
+  const [orientation, setOrientation] = useState<OrientationUI>(loadOrientationPref);
   const [liveOrientation, setLiveOrientation] = useState<OrientationUI | null>(null);
   const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
 
@@ -149,7 +156,7 @@ export function SwiftSimulatorPreview({
   // On iOS 26 the simulator's captured frame is ALWAYS portrait even when the app
   // is landscape — so for a landscape orientation we rotate the video 90° in the
   // canvas and inverse-map pointer coordinates. See blitFrameToCanvas / norm().
-  const displayOrientationRef = useRef<OrientationUI>("portrait");
+  const displayOrientationRef = useRef<OrientationUI>(loadOrientationPref());
   const clientRef = useRef<SwiftStreamClient | null>(null);
   const logBoxRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ pos: { normX: number; normY: number } } | null>(null);
@@ -286,6 +293,8 @@ export function SwiftSimulatorPreview({
       setDeviceModel(m);
       setOrientation(naturalOrientation(m));
       setLiveOrientation(null);
+      saveDevicePref(m);
+      saveOrientationPref(naturalOrientation(m));
     },
     [deviceModel],
   );
@@ -297,6 +306,7 @@ export function SwiftSimulatorPreview({
     pendingOrientationRef.current = next;
     setOrientation(next);
     setLiveOrientation(null);
+    saveOrientationPref(next);
     clientRef.current?.sendSetOrientation(next);
   }, [orientation]);
 

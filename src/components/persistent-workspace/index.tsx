@@ -16,8 +16,15 @@ import { SwiftSimulatorPreview } from "./swift-simulator-preview";
 import { SwiftPipWindow } from "./swift-pip-window";
 import { IPhoneDeviceRunner } from "./iphone-device-runner";
 import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
-import { PanelLeft, Play, Save, Loader2, Database, Rocket } from "lucide-react";
+import { PanelLeft, Play, Save, Loader2, Database, Rocket, Smartphone, Tablet, RotateCw } from "lucide-react";
 import type { ProjectPlatform } from "@/lib/project-platform";
+import { DeviceFrame, type DeviceModelUI, type OrientationUI } from "./device-frame";
+import {
+  loadDevicePref,
+  saveDevicePref,
+  loadOrientationPref,
+  saveOrientationPref,
+} from "./swift-preview-prefs";
 
 const PersistentTerminal = dynamic(
   () => import("./terminal").then((m) => m.PersistentTerminal),
@@ -600,29 +607,91 @@ export function PersistentWorkspace({
 }
 
 /**
- * Placeholder shown in the Preview tab when the user has explicitly stopped
- * the simulator. Click Play to re-provision a new session.
+ * Shown in the Preview tab when the simulator is stopped. Renders the actual
+ * device bezel (switched-off / black screen) with a Play button on top, plus a
+ * device + orientation picker — so the user can choose the device BEFORE the
+ * session provisions. The selection is persisted (and read back by the live
+ * preview on start), so the preview always comes up on the last-used device.
  */
 function StoppedPreviewPlaceholder({ onPlay }: { onPlay: () => void }) {
+  const [device, setDevice] = useState<DeviceModelUI>(loadDevicePref);
+  const [orientation, setOrientation] = useState<OrientationUI>(loadOrientationPref);
+
+  const pickDevice = (d: DeviceModelUI): void => {
+    if (d === device) return;
+    setDevice(d);
+    saveDevicePref(d);
+    // Match the live preview's switchDevice(): both devices come up portrait,
+    // landscape is reached via the toggle. Keeps the placeholder and the running
+    // preview consistent so a session never starts in an unexpected orientation.
+    setOrientation("portrait");
+    saveOrientationPref("portrait");
+  };
+  const toggleOrientation = (): void => {
+    const next: OrientationUI = orientation === "portrait" ? "landscape" : "portrait";
+    setOrientation(next);
+    saveOrientationPref(next);
+  };
+
   return (
-    <div className="absolute inset-0 pb-2.5 pr-2.5">
-      <div className="flex h-full w-full items-center justify-center rounded-xl border border-border bg-elevated/60">
-        <div className="flex flex-col items-center gap-3 text-center text-muted">
+    <div className="absolute inset-0 flex flex-col gap-2 p-2.5 pb-2.5 pr-2.5">
+      {/* Picker bar — choose the device/orientation before starting. */}
+      <div className="flex h-9 flex-shrink-0 items-center rounded-xl border border-border bg-elevated/60 px-3">
+        <span className="text-[11px] text-muted">
+          Preview stopped — pick a device, then press play
+        </span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <div className="flex items-center gap-0.5 rounded-md border border-border bg-elevated p-0.5">
+            {([
+              { id: "iPhone-16-Pro" as DeviceModelUI, label: "iPhone", Icon: Smartphone },
+              { id: "iPad-Pro" as DeviceModelUI, label: "iPad", Icon: Tablet },
+            ]).map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => pickDevice(id)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] transition",
+                  device === id ? "bg-accent text-bg" : "text-muted hover:text-fg",
+                )}
+              >
+                <Icon size={12} />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
           <button
             type="button"
-            onClick={onPlay}
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-accent text-bg shadow-lg transition hover:scale-105"
-            title="Start the simulator"
+            onClick={toggleOrientation}
+            className="flex items-center gap-1.5 rounded-md border border-border bg-elevated px-2 py-1 text-[11px] text-muted hover:text-fg"
+            title={`Rotate to ${orientation === "portrait" ? "landscape" : "portrait"}`}
           >
-            <Play size={26} className="ml-1 fill-current" />
+            <RotateCw size={12} />
+            <span className="capitalize">{orientation}</span>
           </button>
-          <div>
-            <p className="font-semibold text-fg">Preview stopped</p>
-            <p className="mt-1 max-w-xs px-6 text-xs">
-              Click play to start a new simulator session.
-            </p>
-          </div>
         </div>
+      </div>
+
+      {/* Device bezel (off) with a Play button overlaid on the screen.
+          `flex flex-col` is required so DeviceFrame's `flex-1` root gets a
+          bounded height (otherwise it grows to the device's own size). */}
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-elevated/60">
+        <DeviceFrame
+          deviceModel={device}
+          orientation={orientation}
+          overlay={
+            <button
+              type="button"
+              onClick={onPlay}
+              className="pointer-events-auto flex h-16 w-16 items-center justify-center rounded-full bg-accent text-bg shadow-xl transition hover:scale-105"
+              title="Start the simulator"
+            >
+              <Play size={30} className="ml-1 fill-current" />
+            </button>
+          }
+        >
+          <></>
+        </DeviceFrame>
       </div>
     </div>
   );
