@@ -16,7 +16,7 @@ import { SwiftSimulatorPreview } from "./swift-simulator-preview";
 import { SwiftPipWindow } from "./swift-pip-window";
 import { IPhoneDeviceRunner } from "./iphone-device-runner";
 import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
-import { PanelLeft, Play, Save, Loader2, Database, Rocket, Smartphone, Tablet, RotateCw } from "lucide-react";
+import { PanelLeft, Play, Save, Loader2, Database, Rocket, Smartphone, Tablet, RotateCw, ArrowUpRight } from "lucide-react";
 import type { ProjectPlatform } from "@/lib/project-platform";
 import { DeviceFrame, type DeviceModelUI, type OrientationUI } from "./device-frame";
 import {
@@ -383,29 +383,44 @@ export function PersistentWorkspace({
               ) : null}
             </div>
 
+            {/* Convex Deploy + dashboard — Database tab only. Sits between the
+                sandbox status indicator and the user button. */}
+            {currentView === "database" && hasBackend && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void deployBackend()}
+                  disabled={deployingBackend}
+                  className="text-muted hover:text-fg"
+                  title="Deploy Convex backend"
+                >
+                  {deployingBackend ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Rocket size={16} />
+                  )}
+                  <span className="ml-1">{deployingBackend ? "Deploying…" : "Deploy"}</span>
+                </Button>
+                <button
+                  onClick={() => window.open(`/workspace/${projectId}/database`, "_blank")}
+                  className="flex items-center gap-1.5 text-sm text-muted hover:text-fg border border-border rounded-md px-3 py-1 bolt-hover"
+                  title="Open database in new tab"
+                >
+                  <ArrowUpRight size={14} />
+                  Open in new tab
+                </button>
+              </>
+            )}
+
             <UserButton
               afterSignOutUrl="/"
               appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }}
             />
 
-            {platform === "swift" && <IPhoneDeviceRunner projectId={projectId} />}
-
-            {hasBackend && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void deployBackend()}
-                disabled={deployingBackend}
-                className="text-muted hover:text-fg bolt-hover"
-                title="Deploy Convex backend"
-              >
-                {deployingBackend ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <Rocket size={16} />
-                )}
-                <span className="ml-1">{deployingBackend ? "Deploying…" : "Deploy"}</span>
-              </Button>
+            {/* Run on iPhone — Preview tab only. */}
+            {platform === "swift" && currentView === "preview" && (
+              <IPhoneDeviceRunner projectId={projectId} />
             )}
 
             <Button
