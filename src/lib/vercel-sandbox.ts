@@ -47,6 +47,31 @@ function assertSandboxAuth(): void {
   }
 }
 
+type SandboxCredentials = { token: string; teamId: string; projectId: string };
+
+// Explicit access-token credentials for the Sandbox SDK.
+//
+// When VERCEL_TOKEN / VERCEL_PROJECT_ID / VERCEL_TEAM_ID are all set, return
+// them so we can pass them directly to `Sandbox.get` / `Sandbox.create`. The
+// SDK uses these verbatim and skips its OIDC resolution entirely.
+//
+// Why this matters: without explicit creds the SDK falls back to OIDC, reading
+// a per-request `x-vercel-oidc-token` (prod) or `$VERCEL_OIDC_TOKEN` (local).
+// Locally that token doesn't exist, so every sandbox op fails; in prod, if the
+// request-scoped OIDC context is ever unavailable the SDK drops into its
+// file-based token-refresh path, which throws cryptic errors (e.g. `The "path"
+// argument must be of type string. Received undefined`) on the serverless
+// filesystem. Passing the access token we already have makes auth deterministic
+// in both environments. Returns `undefined` when the trio isn't fully set, so
+// callers fall back to OIDC (the only option in that case).
+function getSandboxCredentials(): SandboxCredentials | undefined {
+  const token = process.env.VERCEL_TOKEN;
+  const teamId = process.env.VERCEL_TEAM_ID;
+  const projectId = process.env.VERCEL_PROJECT_ID;
+  if (token && teamId && projectId) return { token, teamId, projectId };
+  return undefined;
+}
+
 export function getSandboxName(projectId: string): string {
   return `botflow-project-${projectId}`;
 }
@@ -169,10 +194,11 @@ async function doAcquireSandbox(projectId: string): Promise<Sandbox> {
   assertSandboxAuth();
 
   const name = getSandboxName(projectId);
+  const creds = getSandboxCredentials();
 
   // 1. Try to resume existing sandbox.
   try {
-    return await withSandboxRetry(() => Sandbox.get({ name }), { label: "Sandbox.get" });
+    return await withSandboxRetry(() => Sandbox.get({ name, ...creds }), { label: "Sandbox.get" });
   } catch (error) {
     if (error instanceof APIError) {
       const status = error.response.status;
@@ -196,6 +222,7 @@ async function doAcquireSandbox(projectId: string): Promise<Sandbox> {
   //    newer SDK versions even though the local typings predate the field.
   const sandbox = await withSandboxRetry(
     () => Sandbox.create({
+      ...creds,
       name,
       runtime: DEFAULT_RUNTIME,
       timeout: DEFAULT_TIMEOUT_MS,
@@ -448,8 +475,9 @@ export async function runPersistentSandboxSmokeTest(
 export async function deletePersistentSandbox(projectId: string): Promise<void> {
   assertSandboxAuth();
   const name = getSandboxName(projectId);
+  const creds = getSandboxCredentials();
   try {
-    const sandbox = await withSandboxRetry(() => Sandbox.get({ name }), {
+    const sandbox = await withSandboxRetry(() => Sandbox.get({ name, ...creds }), {
       label: "Sandbox.get(reaper)",
     });
     const s = sandbox as unknown as { delete?: () => Promise<void>; stop?: () => Promise<void> };
