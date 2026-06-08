@@ -26,6 +26,14 @@ export const CLAUDE_CODE_ENABLED =
 export const STRIPE_CONNECT_ENABLED =
   process.env.NEXT_PUBLIC_STRIPE_CONNECT_ENABLED === 'true';
 
+/** When true: the RevenueCat (iOS in-app purchases) integration is exposed —
+ *  the `initializeRevenueCatPayments` AI tool is registered, the payments tab
+ *  can appear in Swift workspaces, and the RevenueCat endpoints accept
+ *  requests. When false: all of those are hidden / refuse. Default off until
+ *  the slice is verified end-to-end. */
+export const REVENUECAT_ENABLED =
+  process.env.NEXT_PUBLIC_REVENUECAT_ENABLED === 'true';
+
 /** When true: Kimi K2.6 traffic is routed to Together AI instead of Fireworks.
  *  The model id stays `fireworks-kimi-k2p6` (so existing project preferences and
  *  the model selector are unaffected) — only the backend provider changes. The
