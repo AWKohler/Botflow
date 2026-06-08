@@ -12,6 +12,7 @@ import {
 import { applyDiff } from "@/lib/agent/diff";
 import { getDb } from "@/db";
 import { chatQuestions, projects } from "@/db/schema";
+import { REVENUECAT_ENABLED } from "@/lib/feature-flags";
 
 // Server-side tool execution for the persistent (Vercel Sandbox) platform.
 // Each tool's execute() runs in the Next.js route handler and talks directly
@@ -425,5 +426,40 @@ export function getPersistentTools(
         });
       },
     }),
+    ...(REVENUECAT_ENABLED
+      ? {
+          initializeRevenueCatPayments: tool({
+            description:
+              "Set up RevenueCat (iOS in-app purchases) for this Swift project. Call this when the user asks to add a paywall, subscriptions, premium features, a tip jar, consumables/credits, or any other in-app payment flow.\n\n" +
+              "Botflow uses RevenueCat with a bring-your-own-account model: the user links their own RevenueCat account once and reuses it across their apps. Apple — not Botflow — collects the money and pays the user directly; Apple takes 15–30% and RevenueCat sits on top for entitlements + analytics.\n\n" +
+              "FLOW (this tool is NON-BLOCKING — it returns immediately):\n" +
+              "  1. status='already-connected' — the user linked RevenueCat on a previous project; this one is enabled now. Proceed to add the SDK + paywall.\n" +
+              "  2. status='needs-connect' — the Payments tab is now open with a setup wizard. DO NOT wait. CONTINUE building (add the RevenueCat SDK + a paywall to the Swift app) and tell the user to finish connecting in the Payments tab. Entitlements won't be live until they complete setup.\n" +
+              "  3. status='backend-blocked' — the project has no Convex backend (required). Relay the message.\n" +
+              "  4. status='tier-blocked' — Pro/Max only; relay the message verbatim.\n\n" +
+              "IMPORTANT: Real purchases require the user to finish Apple-side setup (paid Apple Developer account, Paid Apps agreement + banking/tax, products created and PASSED App Review, distribution via TestFlight/App Store). For local testing in the simulator, a StoreKit configuration file demonstrates the purchase flow without any of that. Always set this expectation with the user.",
+            inputSchema: z.object({}),
+            async execute() {
+              const url = `${appBaseUrl}/api/projects/${projectId}/revenuecat/initialize`;
+              const res = await fetch(url, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  ...(authHeaders ?? {}),
+                },
+              });
+              const text = await res.text();
+              try {
+                return JSON.parse(text);
+              } catch {
+                return {
+                  ok: false,
+                  error: `revenuecat/initialize returned non-JSON (HTTP ${res.status}): ${text.slice(0, 500)}`,
+                };
+              }
+            },
+          }),
+        }
+      : {}),
   };
 }

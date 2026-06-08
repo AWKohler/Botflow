@@ -253,3 +253,25 @@ export async function canUseStripeConnect(
       'Stripe payments are a Pro/Max feature. Upgrade your plan to accept payments through your project.',
   };
 }
+
+// ─── RevenueCat ─────────────────────────────────────────────────────────────────
+
+/**
+ * Whether the given user is allowed to use RevenueCat (iOS in-app purchases) on
+ * their projects. Pro/Max only — mirrors {@link canUseStripeConnect}. Returns a
+ * user-facing message on the deny path so callers can surface it directly.
+ */
+export async function canUseRevenueCat(
+  userId: string
+): Promise<{ allowed: boolean; tier: Tier; reason?: string }> {
+  const tier = await getUserTier(userId);
+  if (tierMeetsRequirement(tier, 'pro')) {
+    return { allowed: true, tier };
+  }
+  return {
+    allowed: false,
+    tier,
+    reason:
+      'In-app purchases are a Pro/Max feature. Upgrade your plan to accept payments in your iOS app.',
+  };
+}

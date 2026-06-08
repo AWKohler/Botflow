@@ -104,6 +104,20 @@ export const projects = pgTable('projects', {
   // Per-project HMAC used when the platform forwards normalized webhook
   // events into the project's Convex HTTP endpoint. Generated at init.
   stripeWebhookSecret: text('stripe_webhook_secret'),
+  // ─── RevenueCat (iOS in-app purchases) ────────────────────────────────────
+  // See drizzle/0023_add_revenuecat_integration.sql + src/lib/revenuecat.ts.
+  // BYO model: the user links their own RevenueCat account; we provision
+  // products/entitlements via their secret key and read entitlement state via
+  // webhooks. The payments tab hosts the entire connection flow (no modal):
+  //   'none'       — not set up
+  //   'connecting' — the agent enabled it; the tab is showing the setup wizard
+  //   'connected'  — keys verified; the tab shows the link-out dashboard page
+  revenuecatStatus: text('revenuecat_status').notNull().default('none'),
+  revenuecatProjectId: text('revenuecat_project_id'),
+  // Per-project HMAC for the Botflow→Convex webhook fan-out (mirrors
+  // stripeWebhookSecret). Generated when the project is enabled.
+  revenuecatWebhookSecret: text('revenuecat_webhook_secret'),
+  revenuecatEnvironment: text('revenuecat_environment').notNull().default('sandbox'), // 'sandbox' | 'production'
 }, (t) => ({
   stripeTestAccountIdIdx: index('projects_stripe_test_account_id_idx').on(t.stripeTestAccountId),
   stripeLiveAccountIdIdx: index('projects_stripe_live_account_id_idx').on(t.stripeLiveAccountId),
@@ -513,3 +527,41 @@ export const stripeWebhookEndpoints = pgTable('stripe_webhook_endpoints', {
 
 export type StripeWebhookEndpoint = typeof stripeWebhookEndpoints.$inferSelect;
 export type NewStripeWebhookEndpoint = typeof stripeWebhookEndpoints.$inferInsert;
+
+// ─── RevenueCat (iOS in-app purchases) ─────────────────────────────────────────
+
+// One row per Botflow user. BYO model: the user links their own RevenueCat
+// account once and reuses it across their iOS apps (mirrors how one Stripe
+// account is reused across projects). Bearer secrets (RevenueCat secret key,
+// Apple .p8) are encrypted at rest via src/lib/secrets.ts.
+// See drizzle/0023_add_revenuecat_integration.sql.
+export const userRevenueCatIdentity = pgTable('user_revenuecat_identity', {
+  userId: text('user_id').primaryKey(),
+  // RevenueCat credentials.
+  rcSecretKey: text('rc_secret_key'), // encrypted — server-side v2 API key (sk_...)
+  rcPublicSdkKey: text('rc_public_sdk_key'), // public app-specific SDK key (appl_...)
+  rcProjectId: text('rc_project_id'), // the RevenueCat project id (proj...)
+  // The Authorization header value we expect inbound RevenueCat webhooks to
+  // carry (the user pastes this into their RevenueCat dashboard).
+  rcInboundWebhookSecret: text('rc_inbound_webhook_secret'),
+  // Apple App Store Connect API key — reused for distribution + IAP product
+  // creation, and uploaded by the user to RevenueCat for receipt validation.
+  ascIssuerId: text('asc_issuer_id'),
+  ascKeyId: text('asc_key_id'),
+  ascPrivateKeyP8: text('asc_private_key_p8'), // encrypted
+  connectedAt: timestamp('connected_at'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type UserRevenueCatIdentity = typeof userRevenueCatIdentity.$inferSelect;
+export type NewUserRevenueCatIdentity = typeof userRevenueCatIdentity.$inferInsert;
+
+// Dedupe table for inbound RevenueCat webhook events. RevenueCat retries up to
+// 5 times; primary-key conflict on the event id makes the handler idempotent.
+export const revenueCatWebhookEvents = pgTable('revenuecat_webhook_events', {
+  eventId: text('event_id').primaryKey(),
+  receivedAt: timestamp('received_at').defaultNow().notNull(),
+});
+
+export type RevenueCatWebhookEvent = typeof revenueCatWebhookEvents.$inferSelect;
+export type NewRevenueCatWebhookEvent = typeof revenueCatWebhookEvents.$inferInsert;
