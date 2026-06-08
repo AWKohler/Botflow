@@ -2480,25 +2480,29 @@ export default function LandingV2() {
       {/* ================================================================ */}
       {/* SOCIAL PROOF / PLACEHOLDER                                       */}
       {/* ================================================================ */}
-      <LineDivider />
-      <section className="relative bg-[var(--sand-surface)]">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
-          <Reveal>
-            <div className="text-center max-w-4xl mx-auto">
-              <SectionLabel>Showcase</SectionLabel>
-              <h2
-                className={cn(
-                  serif.className,
-                  'text-3xl sm:text-4xl tracking-tight mb-10',
-                )}
-              >
-                What people are building
-              </h2>
-              <LandingShowcase />
+      {process.env.NEXT_PUBLIC_HIDE_EXPLORE !== 'true' && (
+        <>
+          <LineDivider />
+          <section className="relative bg-[var(--sand-surface)]">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
+              <Reveal>
+                <div className="text-center max-w-4xl mx-auto">
+                  <SectionLabel>Showcase</SectionLabel>
+                  <h2
+                    className={cn(
+                      serif.className,
+                      'text-3xl sm:text-4xl tracking-tight mb-10',
+                    )}
+                  >
+                    What people are building
+                  </h2>
+                  <LandingShowcase />
+                </div>
+              </Reveal>
             </div>
-          </Reveal>
-        </div>
-      </section>
+          </section>
+        </>
+      )}
 
       {/* ================================================================ */}
       {/* CTA                                                              */}

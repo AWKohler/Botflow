@@ -12,7 +12,7 @@ Botflow deploys to [Cloudflare Pages](https://pages.cloudflare.com/) — a globa
 3. Click **Deploy** (or the equivalent button for your project type).
 
 Botflow will:
-- Run your project's build command (`pnpm run build`) inside the WebContainer
+- Run your project's build command (`pnpm run build`) inside the sandbox
 - Upload the compiled output to Cloudflare Pages
 - Return a unique URL like `https://your-project-name.pages.dev`
 
@@ -20,7 +20,7 @@ The first deploy usually takes 15–45 seconds depending on build time. Subseque
 
 ## Re-deploying
 
-After the first deploy, the **Publish** panel shows your current deployment URL. Click **Deploy** again at any time to push the latest changes from your WebContainer to Cloudflare. You don't need to commit to GitHub first — the build runs directly from your in-browser filesystem.
+After the first deploy, the **Publish** panel shows your current deployment URL. Click **Deploy** again at any time to push the latest changes from your sandbox to Cloudflare. You don't need to commit to GitHub first — the build runs directly from the project's current files in the sandbox.
 
 <Tip>
 Re-deploying does not take your app offline. Cloudflare swaps to the new version atomically once the upload completes.
@@ -34,35 +34,53 @@ The URL is shown in the Publish panel and can be copied directly. Share it with 
 
 ## Custom domains (Pro and Max)
 
-Pro and Max plan users can attach a custom domain to any published project.
+Pro and Max plan users can serve a published project from their own domain instead of the `*.pages.dev` URL. The **Domain** section of the Publish panel offers two approaches — **Managed** and **CNAME** — on a small toggle.
 
-### Adding a domain
+### Managed domains (recommended)
 
-1. Open the **Publish** panel.
-2. In the **Custom Domain** section, enter your domain (e.g. `myapp.com` or `app.mycompany.com`).
-3. Click **Save**.
-4. Botflow will show you a CNAME record to add in your DNS provider:
+With a managed domain, Botflow runs the DNS for you — no records to copy, no registrar fiddling per project.
+
+<Steps>
+  <Step title="Add your domain once">
+    Go to the [Domains page](https://botflow.io/domains) and add your apex domain (e.g. `myapp.com`). Botflow gives you nameservers to set at your registrar. Once the domain points at Botflow, its status flips from **pending** to **active**.
+  </Step>
+  <Step title="Assign it to a project">
+    In the Publish panel's **Managed** tab, pick the domain, choose a subdomain (e.g. `www`, `app`, or `@` for the apex), and click **Assign domain**. Botflow creates the DNS records and provisions SSL automatically.
+  </Step>
+  <Step title="Optionally serve both">
+    Leave **Also serve at …** checked to point both the apex (`myapp.com`) and `www.myapp.com` at the same site.
+  </Step>
+</Steps>
+
+Because Botflow controls the zone, assigning a subdomain to a project is instant — you only do the nameserver step once, no matter how many projects you publish.
+
+### CNAME (bring your own DNS)
+
+Prefer to keep your DNS where it is? Use the **CNAME** tab to point a hostname at your project without moving nameservers.
+
+1. Open the **Publish** panel and switch the Domain section to **CNAME**.
+2. Enter your hostname (e.g. `www.myapp.com`) and click **Add custom domain**.
+3. At your registrar or DNS provider, add a CNAME record pointing that hostname at your project's `*.pages.dev` address (shown in the panel):
 
 | Type | Name | Value |
 |------|------|-------|
-| CNAME | `@` or `app` | `your-pages-project.pages.dev` |
+| CNAME | `www` (or your subdomain) | `your-pages-project.pages.dev` |
 
-5. Add the record in your domain registrar or DNS provider (Cloudflare, Namecheap, Route 53, etc.).
-6. Botflow polls for the DNS change. Once it detects the CNAME, it provisions an SSL certificate automatically.
+4. Botflow polls for the record and provisions an SSL certificate automatically once it's detected.
 
 DNS propagation typically takes a few minutes but can take up to 24 hours in some configurations.
 
 ### Domain status
 
-The Publish panel shows the current status of your custom domain:
+The Publish panel shows the current status of an attached domain:
 
-- **Pending** — Botflow is waiting to detect the DNS record
+- **Pending** — Botflow is waiting on DNS (the nameserver delegation for managed domains, or the CNAME record for the CNAME flow)
 - **Active** — the domain is live and SSL is provisioned
-- **Error** — DNS is not configured correctly; check the CNAME record
+- **Error** — DNS isn't configured correctly; re-check your records
 
 ### Removing a domain
 
-Click the trash icon next to the domain in the Publish panel to remove it. Your app continues to be available at the `*.pages.dev` URL.
+Click the trash icon next to the domain in the Publish panel to detach it. Your app continues to be available at the `*.pages.dev` URL.
 
 ## Build requirements
 
@@ -79,12 +97,3 @@ Build errors will be shown in the Publish panel. If your app builds locally (in 
 ## Troubleshooting deployments
 
 Having issues deploying? See [Troubleshooting → Deployment issues](/features/troubleshooting#deployment-issues) for common problems and solutions.
-
-## Publishing mobile / native builds
-
-For **Universal** (Expo) projects, the Publish panel has two sections:
-
-- **Web deploy** — same Cloudflare Pages flow as above, deploys the web build (`expo export`)
-- **Native builds** — iOS and Android builds via Expo EAS Build (coming soon)
-
-The web deploy gives you a working browser version immediately. Native builds produce `.ipa` and `.apk` files that can be submitted to the App Store and Google Play.

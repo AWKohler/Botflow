@@ -3,7 +3,7 @@ title: Convex Backend
 description: A real-time database and serverless functions, built into every project.
 ---
 
-Every Botflow project that uses the **Web** or **Universal** template comes with [Convex](https://convex.dev) as its backend. Convex gives your app a typed database, reactive queries, serverless functions, scheduled jobs, and file storage — all defined in TypeScript alongside your frontend code.
+By default, every Botflow project comes with [Convex](https://convex.dev) as its backend (you can also create a frontend-only project with no backend). Convex gives your app a typed database, reactive queries, serverless functions, scheduled jobs, and file storage — all defined in TypeScript alongside your frontend code.
 
 ## What Convex gives you
 
@@ -13,6 +13,18 @@ Every Botflow project that uses the **Web** or **Universal** template comes with
 - **HTTP endpoints** — expose individual functions as REST endpoints for webhooks and third-party integrations.
 - **Scheduled jobs** — run a function on a recurring cron schedule or delay it to a specific time.
 - **File storage** — upload, store, and serve files through the same TypeScript API.
+
+## Projects without a backend
+
+Not every app needs a database. When you create a project you can choose **No Backend** — a frontend-only app (a landing page, a marketing site, a calculator, a client-side tool) with no Convex deployment at all.
+
+In a frontend-only project:
+
+- There's **no `convex/` folder** and **no Database tab**.
+- Features that depend on the backend — [Authentication](/features/auth), [Payments](/features/payments), and the data tools above — aren't available.
+- The agent won't pull in Convex packages, so the app stays lean and purely client-side.
+
+Choose it when you know you only need a static or client-side app. If you later need user accounts, saved data, or payments, start a project with a Convex backend.
 
 ## Accessing the database in the workspace
 
@@ -33,7 +45,7 @@ The Database tab shows the real Convex dashboard embedded in an iframe. Any chan
 
 | Plan | What you get |
 |------|-------------|
-| **Free** | Bring your own Convex account. Connect it in [Settings → Connections](/features/settings#connections) and Botflow injects `VITE_CONVEX_URL` (or `EXPO_PUBLIC_CONVEX_URL`) automatically. |
+| **Free** | Bring your own Convex account. Connect it in [Settings → Connections](/features/settings#connections) and Botflow injects `VITE_CONVEX_URL` automatically. |
 | **Pro** | A platform-managed Convex deployment per project. No setup needed — just build. |
 | **Max** | Same as Pro, with higher function limits and priority support. |
 
@@ -44,11 +56,33 @@ The Database tab shows the real Convex dashboard embedded in an iframe. Any chan
 3. In Botflow, go to **Settings → Connections** and click **Connect Convex**.
 4. Paste your Convex deployment URL.
 
-Botflow will inject the URL as an environment variable (`VITE_CONVEX_URL` or `EXPO_PUBLIC_CONVEX_URL`). The AI agent automatically uses this variable when generating Convex client code.
+Botflow will inject the URL as an environment variable (`VITE_CONVEX_URL`). The AI agent automatically uses this variable when generating Convex client code.
 
 <Note>
 After connecting Convex, the **Database** tab becomes available in your workspace. See [Workspace → Database](/features/workspace#right-panel--database) for details on using the Convex dashboard.
 </Note>
+
+## Editing data through the agent
+
+Beyond writing functions, the AI agent can work with your database **directly** — handy for seeding sample data, debugging, or one-off fixes without building a UI for them. Just ask:
+
+```
+Seed the products table with 5 realistic example rows
+```
+
+```
+Show me the 10 most recent orders
+```
+
+```
+Delete the test user with email demo@example.com
+```
+
+Under the hood the agent can list your tables, read documents (with pagination), and insert, update, or delete rows. It also reads your **function execution logs**, so you can ask it to "check why the createOrder mutation is failing" and it will look at the real error output.
+
+<Warning>
+Direct writes change live data immediately. The agent will confirm before destructive changes, but treat it like running SQL by hand — double-check before seeding or deleting against data you care about.
+</Warning>
 
 ## Writing Convex code
 
@@ -60,7 +94,7 @@ A typical Convex file structure:
 convex/
   schema.ts       # Table definitions with validators
   tasks.ts        # Queries and mutations for the tasks table
-  auth.config.ts  # Auth configuration (if using Clerk)
+  auth.config.ts  # Auth configuration (if you've added authentication)
   _generated/     # Auto-generated API types (don't edit)
 ```
 
@@ -100,7 +134,7 @@ export function TaskList() {
 
 ## Prompting the AI to use Convex
 
-The agent understands Convex and will use it automatically in Web and Universal projects. You can be explicit:
+The agent understands Convex and will use it automatically in any project with a Convex backend. You can be explicit:
 
 ```
 Add a Convex mutation that marks a task as complete. Update the task list component to call it when the checkbox is clicked.

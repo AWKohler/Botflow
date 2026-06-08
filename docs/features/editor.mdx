@@ -1,6 +1,6 @@
 ---
 title: Editor & Terminal
-description: Monaco-powered code editing and a full in-browser terminal.
+description: Monaco-powered code editing and a full Linux terminal wired to your project's sandbox.
 ---
 
 <img
@@ -21,7 +21,7 @@ The **Files** tab in the sidebar shows your entire project as a collapsible tree
 - **Drag files from your computer** into any folder in the tree to upload them. Text files (`.ts`, `.tsx`, `.json`, `.md`, etc.) are imported as UTF-8; binary files (images, fonts, WASM) are written as raw bytes.
 
 <Note>
-Large files (`.zip`, video, etc.) may be slow to upload because everything goes through the in-browser filesystem. Import only what your project actually needs.
+Large files (`.zip`, video, etc.) may be slow to upload because each file is streamed up to the sandbox. Import only what your project actually needs.
 </Note>
 
 ## Monaco editor
@@ -40,10 +40,10 @@ The editor is built on [Monaco](https://microsoft.github.io/monaco-editor/) — 
 
 **Saving your work:**
 
-Press `Cmd+S` (Mac) or `Ctrl+S` (Windows/Linux), or click the **Save** button that appears in the toolbar when there are unsaved changes. Saving writes the file to the WebContainer filesystem immediately — the dev server picks up the change and the preview reloads.
+Press `Cmd+S` (Mac) or `Ctrl+S` (Windows/Linux), or click the **Save** button that appears in the toolbar when there are unsaved changes. Saving writes the file to the sandbox filesystem immediately — the dev server picks up the change and the preview reloads.
 
 <Warning>
-Files in the WebContainer filesystem are persisted to cloud storage periodically, but it's good practice to save regularly and use [GitHub sync](/features/github) if you're making important changes.
+Your sandbox keeps files on a persistent disk and Botflow snapshots it automatically, but it's good practice to save regularly and use [GitHub sync](/features/github) if you're making important changes.
 </Warning>
 
 ## File search
@@ -52,13 +52,9 @@ Click the **Search** tab in the sidebar to do a full-text search across all file
 
 ## Terminal
 
-The terminal panel lives at the bottom of the Code view. It's a real shell running inside the WebContainer — you can run Node.js, `pnpm`, and any CLI tool that ships as a Node package.
+The terminal panel lives at the bottom of the Code view. It's a real shell running inside your project's Linux sandbox — the same environment the dev server and the AI agent use. Anything you'd run on a normal Linux dev box works here: `pnpm`, `node`, `git`, and native binaries alike.
 
-**Opening terminals:**
-
-- Click the **`>_` Terminal** tab to open the first terminal.
-- Click the **`+`** icon next to the terminal tab to open a second (or third) terminal in a new tab.
-- Multiple terminals run independently in parallel.
+The terminal stays connected for the life of the session and shares one working directory with your project (the sandbox's project root). Because each line you enter runs as its own command, a bare `cd` won't persist on its own — chain directory changes into the command that needs them (e.g. `cd packages/api && pnpm test`).
 
 **Common commands:**
 
@@ -75,13 +71,13 @@ pnpm test
 # Add a new package
 pnpm add zod
 
-# Check TypeScript types
-pnpm tsc --noEmit
+# Work with Git directly
+git status
 ```
 
-**Limitations:**
+**Good to know:**
 
-The WebContainer terminal supports Node.js-based tools natively. Some tools (like native binaries, Rust toolchains, or Python heavy scientific stacks) are not available because there is no Linux kernel — only a WASI-based Node.js runtime.
+It's a genuine Linux environment, so native binaries and toolchains work — there's no WebAssembly sandbox limiting you to pure-Node tools. The main constraints are the usual ones for a hosted box: it hibernates when idle (and resumes on your next visit), and long-running background processes you start by hand may be stopped when the sandbox sleeps.
 
 ## Keyboard shortcuts
 

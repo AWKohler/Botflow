@@ -15,6 +15,7 @@ import {
   Play,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { VisualEditorPanel } from "@/components/workspace/VisualEditorPanel";
 import { PreviewInfo } from "@/lib/preview-store";
 import {
   isWebLikePlatform,
@@ -46,6 +47,8 @@ interface PreviewProps {
   editMode?: boolean;
   /** Visual editor: called when an element is selected in the preview. */
   onElementSelected?: (selection: BfSelection | null) => void;
+  /** Visual editor: project id, required for committing edits. */
+  projectId?: string;
 }
 
 /** A visual-editor selection reported by the in-iframe runtime. */
@@ -61,7 +64,7 @@ export interface BfSelection {
 }
 
 /** A box positioned in parent-viewport (fixed) coordinates. */
-interface BfBox {
+export interface BfBox {
   left: number;
   top: number;
   width: number;
@@ -631,6 +634,7 @@ export function Preview({
   onFetchHtml,
   editMode = false,
   onElementSelected,
+  projectId,
 }: PreviewProps) {
   const [internalDevice, setInternalDevice] =
     useState<keyof typeof DEVICE_SIZES>("desktop");
@@ -720,6 +724,12 @@ export function Preview({
           setSelection(sel);
           setSelectedBox(toParentBox(sel.rect));
           onElementSelected?.(sel);
+          break;
+        }
+        case "BF_EDITOR_RECT": {
+          // Selected element moved (scroll/resize) — keep the outline aligned.
+          const rect = data.rect as BfSelection["rect"] | null;
+          if (rect) setSelectedBox(toParentBox(rect));
           break;
         }
         default:
@@ -1243,6 +1253,33 @@ export function Preview({
             </span>
           )}
         </div>
+      )}
+      {editMode && selection && projectId && (
+        <VisualEditorPanel
+          projectId={projectId}
+          selection={selection}
+          box={selectedBox}
+          onPreview={(className) =>
+            postToIframe({
+              type: "BF_EDITOR_PREVIEW",
+              loc: selection.loc,
+              className,
+            })
+          }
+          onCommitted={(loc) => {
+            // Let HMR apply the source change, then refresh selection geometry.
+            window.setTimeout(
+              () => postToIframe({ type: "BF_EDITOR_RESELECT", loc }),
+              250,
+            );
+          }}
+          onClose={() => {
+            setSelection(null);
+            setSelectedBox(null);
+            setHoverBox(null);
+            onElementSelected?.(null);
+          }}
+        />
       )}
 
       {/* Multiplatform: Web / Mobile toggle tabs */}

@@ -1,0 +1,92 @@
+---
+title: Payments
+description: Accept payments and subscriptions in your app with Stripe — your account, your money.
+---
+
+Botflow can wire your app up to take real payments through [Stripe](https://stripe.com). You connect **your own** Stripe account, products and payouts live there, and money lands in your bank — Botflow just builds the integration and proxies the API calls.
+
+<Note>
+Payments are available on **Pro and Max** plans and require a project with a **Convex backend** (Stripe needs somewhere server-side to receive webhooks). If you don't see the **Stripe** tab in your workspace, it isn't enabled for your account yet.
+</Note>
+
+## How it works
+
+Botflow uses **Stripe Connect**: you link your Stripe account once, and Botflow acts on its behalf to create checkout sessions, products, and payouts. A few things to know up front:
+
+- **It's your account.** Customers pay you directly; you keep ownership of the account, the data, and the relationship.
+- **One connection, all projects.** Once you've linked Stripe, every project you build can use it — you won't re-authorize each time.
+- **Platform fee.** Botflow adds a **1% fee** on live transactions, on top of Stripe's standard processing fees.
+- **Cards never touch your app.** All card entry happens on Stripe's hosted Checkout page. Botflow deliberately blocks card UI from being added to your app code so you stay out of PCI scope.
+
+## Connecting Stripe
+
+Just ask the agent for what you want to build:
+
+```
+Add a checkout button so users can buy the Pro plan for $15/month
+```
+
+The first time, a **Connect with Stripe** panel opens in the workspace. Click it, complete Stripe's OAuth flow, and you're linked. If you've connected Stripe on a previous project, this step is skipped automatically.
+
+Once connected, the agent scaffolds the backend integration into your project's `convex/` folder and continues building what you asked for.
+
+<Note>
+Before you can accept **live** charges, you'll need to finish Stripe's onboarding (business details and identity verification). You can build and test everything in test mode first — see [Test mode and going live](#test-mode-and-going-live).
+</Note>
+
+## Products and prices
+
+You don't manage products by hand — the agent creates them for you on your Stripe account. Ask for what you're selling:
+
+```
+Create a one-time product "Lifetime License" for $99, and a "Pro" subscription at $12/month
+```
+
+Each product gets a stable **lookup key** that the agent uses in your checkout code. The lookup key is mode-agnostic: it resolves to the right price whether you're in test or live mode, so your code never has to change when you switch.
+
+The agent can also list your existing products, so you can ask it to "use my existing Pro plan in this button."
+
+## Checkout
+
+When a customer clicks your buy button, your app asks the backend to create a **Stripe Checkout Session** and redirects them to Stripe's hosted, secure payment page. After paying, Stripe sends them back to a success URL in your app.
+
+The generated backend code handles this for you and supports:
+
+- **One-time payments** — sell a product or a license
+- **Subscriptions** — recurring billing, tied back to the signed-in user so you can unlock features for them
+- **Reconciliation** — a way to confirm a payment landed even if the webhook is delayed
+
+For subscriptions, pair this with [Authentication](/features/auth) so each subscription maps to a real user account. Tell the agent: "when someone subscribes, mark their account as Pro."
+
+### Where your billing logic lives
+
+The agent writes two kinds of files:
+
+- **Generated, read-only plumbing** — the Checkout and webhook wiring. The agent won't let you (or itself) edit these by hand, because they're regenerated authoritatively.
+- **Your editable `billing.ts`** — this is where you decide what a payment *means*. "On `checkout.session.completed`, flip this user to Pro." Ask the agent to write that logic, or edit it yourself.
+
+## The Stripe tab
+
+Pro and Max projects get a **Stripe** tab in the workspace — an embedded Stripe dashboard so you don't have to leave the IDE. From there you can:
+
+- See **payments, balances, and payouts**
+- Check your **account status** — whether onboarding is complete and charges/payouts are enabled
+- Toggle between **test and live** mode
+- **Disconnect** the account from the project
+
+## Test mode and going live
+
+Every connected account works in **test mode** first. In test mode you can run the whole flow — checkout, subscriptions, webhooks — using [Stripe's test cards](https://stripe.com/docs/testing) (e.g. `4242 4242 4242 4242`) without moving real money.
+
+When you're ready, flip to **live** mode from the Stripe tab. Botflow automatically mirrors the products you created in test over to live, so your lookup keys keep working and you don't have to recreate anything. Make sure your Stripe onboarding is complete so live charges are enabled.
+
+<Warning>
+Always validate the full purchase flow in test mode before going live — especially the part of `billing.ts` that grants access after payment. A subscription that charges but never unlocks the feature is the most common mistake.
+</Warning>
+
+## Troubleshooting
+
+- **No Stripe tab** — Confirm you're on a Pro or Max plan and the project has a Convex backend. Frontend-only ("No Backend") projects can't use payments.
+- **"Connect with Stripe" never completes** — The connect panel waits a few minutes for you to finish Stripe's OAuth flow. If it times out, just ask the agent to add payments again.
+- **Live charges are declined / disabled** — Your Stripe onboarding (KYC) isn't finished. Open the Stripe tab and complete the account requirements.
+- **Payment succeeds but nothing unlocks** — The logic in `billing.ts` isn't granting access. Ask the agent to handle the relevant Stripe event and update the user's record.

@@ -29,6 +29,8 @@
               "features/editor",
               "features/preview",
               "features/convex",
+              "features/auth",
+              "features/payments",
               "features/env-vars",
               "features/github",
               "features/deploy",

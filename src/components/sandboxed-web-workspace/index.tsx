@@ -1393,6 +1393,7 @@ export function SandboxedWebWorkspace({
               isStartingServer={isStartingServer}
               onToggleDevServer={handleStartDevServer}
               platform="sandboxed-web"
+              projectId={projectId}
               editMode={editMode}
               onElementSelected={(sel) => {
                 if (sel) {

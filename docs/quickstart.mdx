@@ -36,7 +36,7 @@ The more specific your prompt, the better the first result. Include the tech you
 
 The workspace has two main areas:
 
-- **Left panel** — the AI agent chat. Your build conversation lives here. The agent shows you exactly which files it touches (every `applyDiff`, `executeCommand`, and `readFile` call is listed as a collapsible step).
+- **Left panel** — the AI agent chat. Your build conversation lives here. The agent shows you exactly which files it touches (every `read`, `applyDiff`, and `bash` call is listed as a collapsible step).
 - **Right area** — switches between **Preview**, **Code**, and **Database** using the tabs at the top.
 
 The **Preview** tab is active by default and shows your running app as the agent builds it.
@@ -52,7 +52,7 @@ Click the **Code** tab at the top to open the editor view.
 />
 
 - **Files** — click any file in the left sidebar to open it in the Monaco editor.
-- **Terminal** — the panel at the bottom is a full WebContainer terminal. Run `pnpm install`, `pnpm dev`, or anything else.
+- **Terminal** — the panel at the bottom is a full terminal connected to your project's Linux sandbox. Run `pnpm install`, `pnpm dev`, `git`, or anything else.
 - **Save** — press `Cmd+S` / `Ctrl+S` or click the **Save** button in the toolbar.
 
 ## 5. Iterate with the AI
@@ -79,7 +79,7 @@ When you're happy with your app, click **Publish** in the top-right corner of th
 
 <Steps>
   <Step title="Build">
-    Botflow runs `pnpm run build` (or the equivalent for your template) inside the WebContainer and bundles your app.
+    Botflow runs `pnpm run build` (or the equivalent for your template) inside the sandbox and bundles your app.
   </Step>
   <Step title="Upload">
     The compiled output is sent to Cloudflare Pages.

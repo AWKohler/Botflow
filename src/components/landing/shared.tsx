@@ -215,9 +215,11 @@ export function LandingNav() {
                   My Projects
                 </a>
               </SignedIn>
-              <Link href="/explore" className="font-medium hover:text-[var(--sand-accent)] transition">
-                Explore
-              </Link>
+              {process.env.NEXT_PUBLIC_HIDE_EXPLORE !== 'true' && (
+                <Link href="/explore" className="font-medium hover:text-[var(--sand-accent)] transition">
+                  Explore
+                </Link>
+              )}
               <Link href="/convex" className="font-medium hover:text-[var(--sand-accent)] transition">
                 Convex
               </Link>

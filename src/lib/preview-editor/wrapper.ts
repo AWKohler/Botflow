@@ -35,9 +35,19 @@ const EDITOR_RUNTIME = `
 
   var enabled = false;
   var lastHover = null;
+  var selectedEl = null;
+  var rectRAF = 0;
 
   function post(msg) { try { window.parent.postMessage(msg, "*"); } catch (e) {} }
   function pick(el) { return el && el.closest ? el.closest("[data-bf-loc]") : null; }
+  function findByLoc(loc) {
+    if (!loc) return null;
+    var all = document.querySelectorAll("[data-bf-loc]");
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].getAttribute("data-bf-loc") === loc) return all[i];
+    }
+    return null;
+  }
   function rectOf(el) {
     var r = el.getBoundingClientRect();
     return { left: r.left, top: r.top, width: r.width, height: r.height };
@@ -82,13 +92,26 @@ const EDITOR_RUNTIME = `
     if (!el) return;
     e.preventDefault();
     e.stopPropagation();
+    selectedEl = el;
     post(Object.assign({ type: "BF_EDITOR_SELECTED" }, describe(el)));
   }
 
   function setEnabled(on) {
     enabled = on;
     if (document.body) document.body.style.cursor = on ? "crosshair" : "";
-    if (!on) { lastHover = null; post({ type: "BF_EDITOR_HOVER", rect: null }); }
+    if (!on) { lastHover = null; selectedEl = null; post({ type: "BF_EDITOR_HOVER", rect: null }); }
+  }
+
+  // Keep the parent's overlay aligned with the selected element while the page
+  // scrolls or resizes (rAF-throttled).
+  function postSelectedRect() {
+    if (!enabled || !selectedEl || rectRAF) return;
+    rectRAF = requestAnimationFrame(function () {
+      rectRAF = 0;
+      if (selectedEl && selectedEl.isConnected) {
+        post({ type: "BF_EDITOR_RECT", loc: selectedEl.getAttribute("data-bf-loc"), rect: rectOf(selectedEl) });
+      }
+    });
   }
 
   window.addEventListener("message", function (e) {
@@ -96,10 +119,24 @@ const EDITOR_RUNTIME = `
     if (!d || typeof d !== "object") return;
     if (d.type === "BF_EDITOR_ENABLE") setEnabled(true);
     else if (d.type === "BF_EDITOR_DISABLE") setEnabled(false);
+    else if (d.type === "BF_EDITOR_PREVIEW") {
+      var t = findByLoc(d.loc);
+      if (t) {
+        if (typeof d.className === "string") t.setAttribute("class", d.className);
+        if (d.style && typeof d.style === "object") {
+          for (var k in d.style) { try { t.style[k] = d.style[k]; } catch (e2) {} }
+        }
+      }
+    } else if (d.type === "BF_EDITOR_RESELECT") {
+      var r = findByLoc(d.loc);
+      if (r) { selectedEl = r; post(Object.assign({ type: "BF_EDITOR_SELECTED" }, describe(r))); }
+    }
   });
 
   document.addEventListener("mousemove", onMove, true);
   document.addEventListener("click", onClick, true);
+  window.addEventListener("scroll", postSelectedRect, true);
+  window.addEventListener("resize", postSelectedRect, true);
 
   post({ type: "BF_EDITOR_READY" });
 })();
@@ -112,6 +149,7 @@ const EDITOR_RUNTIME = `
 export function buildBotflowViteConfig(): string {
   return `import { defineConfig, mergeConfig, loadConfigFromFile } from "vite";
 import path from "node:path";
+import fs from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -132,8 +170,38 @@ function loadBabel() {
   return null;
 }
 
-function bfStampPlugin(babel, root) {
+// First host-element line in a source string (or null). Used to detect the
+// line offset between Vite's transform input (which has a prepended HMR/refresh
+// preamble) and the pristine on-disk file the write-back reads.
+function firstHostLine(babel, src) {
   const t = babel.types;
+  let line = null;
+  try {
+    const ast = babel.parse(src, {
+      babelrc: false, configFile: false,
+      parserOpts: { plugins: ["jsx", "typescript"] },
+    });
+    babel.traverse(ast, {
+      JSXOpeningElement(p) {
+        if (line !== null) return;
+        const n = p.node;
+        if (t.isJSXIdentifier(n.name) && /^[a-z]/.test(n.name.name) && n.loc) {
+          line = n.loc.start.line;
+        }
+      },
+    });
+  } catch (e) {}
+  return line;
+}
+
+function bfStampPlugin(babel, root, originalSrc) {
+  const t = babel.types;
+  // The pristine on-disk first host line. The difference between the transform
+  // input's first host line and this is the preamble offset to subtract, so the
+  // stamped line numbers index into the on-disk file (what the API edits).
+  const diskFirst = firstHostLine(babel, originalSrc);
+  let offset = 0;
+  let offsetSet = false;
   return {
     name: "bf-stamp",
     visitor: {
@@ -147,9 +215,15 @@ function bfStampPlugin(babel, root) {
         if (has) return;
         const loc = p.node.loc;
         if (!loc) return;
+        if (!offsetSet) {
+          // First host element visited (document order) lines up with diskFirst.
+          if (diskFirst !== null) offset = loc.start.line - diskFirst;
+          if (offset < 0) offset = 0;
+          offsetSet = true;
+        }
         const abs = (state.file && state.file.opts && state.file.opts.filename) || "";
         const rel = path.relative(root, abs).split(path.sep).join("/");
-        const line = loc.start.line;
+        const line = loc.start.line - offset; // columns are unaffected by a top preamble
         const col = loc.start.column + 1;
         p.node.attributes.push(
           t.jsxAttribute(t.jsxIdentifier("data-bf-loc"), t.stringLiteral(rel + ":" + line + ":" + col)),
@@ -174,6 +248,11 @@ function botflowEditorPlugin() {
       const clean = id.split("?")[0];
       if (!/\\.(tsx|jsx)$/.test(clean)) return null;
       if (clean.includes("/node_modules/")) return null;
+      // Vite's transform input may carry a prepended HMR/refresh preamble, which
+      // shifts line numbers. Read the pristine file so stamped lines index into
+      // what the write-back API edits.
+      let originalSrc = code;
+      try { originalSrc = fs.readFileSync(clean, "utf8"); } catch (e) {}
       try {
         const result = babel.transformSync(code, {
           filename: clean,
@@ -182,7 +261,7 @@ function botflowEditorPlugin() {
           configFile: false,
           sourceMaps: true,
           parserOpts: { plugins: ["jsx", "typescript"] },
-          plugins: [bfStampPlugin(babel, root)]
+          plugins: [bfStampPlugin(babel, root, originalSrc)]
         });
         if (!result || !result.code) return null;
         return { code: result.code, map: result.map };

@@ -279,6 +279,17 @@ When in doubt about an irreversible action, ask. The cost of pausing is low; the
 
 ---
 
+## 14a. You are probably not the only agent running
+
+Assume other agents may be working in this repo at the same time as you. That means interference is possible — a remote that moved under you, a file changed between your read and your commit, a Vercel build that reflects someone else's push, or a test repo that appeared without you creating it.
+
+- **Generally each agent is kept on its own branch.** Stay on yours. Don't commit to or push another agent's branch, and don't rebase/force-push a branch you didn't create.
+- Before you push, re-check the remote (`git fetch` + `git log origin/<branch>`). If it moved, someone else (an agent or a human) touched it — reconcile deliberately, don't blindly `--force`.
+- If a deploy, toast, or piece of state looks wrong, consider that a *concurrent* agent's push or change may be the cause, not your own — verify the SHA/branch you're actually looking at before assuming your change broke something.
+- Don't touch shared mutable state (the `main` branch, shared test repos, another agent's working branch) on the assumption you're alone. When branches are isolated, conflicts are rare; the failure mode is acting as if no one else exists.
+
+---
+
 ## 15. Reporting back
 
 When you finish a cycle:

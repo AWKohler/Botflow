@@ -213,11 +213,14 @@ The agent uses a set of built-in tools to interact with your project. These are 
 
 | Tool | What it does |
 |------|-------------|
-| `readFile` | Reads the contents of a file |
-| `applyDiff` | Applies a targeted edit to a file (patch-style) |
-| `writeFile` | Writes an entire file |
-| `executeCommand` | Runs a shell command in the WebContainer |
-| `listFiles` | Lists files in a directory |
+| `read` | Reads the contents of a file |
+| `write` | Writes an entire file |
+| `edit` | Makes a targeted edit to a file |
+| `applyDiff` | Applies a patch-style edit to a file |
+| `bash` | Runs a shell command in the project's sandbox |
+| `glob` | Finds files matching a glob pattern |
 | `grep` | Searches for a pattern across the project |
-| `refreshPreview` | Reloads the live preview after a change |
+| `listFiles` | Lists files in a directory |
+| `startDevServer` / `refreshPreview` | Starts the dev server or reloads the live preview |
+| `askQuestion` | Asks you a question when it needs a decision |
 | `endTurn` | Signals the agent has finished its task |

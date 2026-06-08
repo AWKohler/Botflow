@@ -1,0 +1,97 @@
+---
+title: Authentication
+description: Add sign-in to your app — email + password out of the box, or Google sign-in in a few steps.
+---
+
+Botflow apps can have real user accounts. Authentication is powered by [Convex Auth](https://labs.convex.dev/auth), which issues signed JWTs and stores sessions for you — so you get sign-up, sign-in, and protected data without standing up an auth server.
+
+You don't wire this up by hand. Ask the AI agent for it in plain English, and it sets up the auth system, generates the boilerplate, and adds the UI.
+
+<Note>
+Authentication requires a **Convex backend**. Projects created as frontend-only ("No Backend") can't use it — Convex is where sessions and user records live. See [Convex Backend](/features/convex).
+</Note>
+
+## Adding email + password sign-in
+
+This is the default and the fastest path. Just ask:
+
+```
+Add authentication with email and password, and gate the dashboard behind login
+```
+
+Behind the scenes the agent:
+
+1. **Sets up Convex Auth** — generates signing keys on the server (they never touch your synced files), configures the deployment, and installs `@convex-dev/auth`.
+2. **Writes the auth module** — a `convex/auth.ts` pre-wired with the **Password** provider, plus a small `src/lib/botflowAuth.ts` helper.
+3. **Builds the UI** — a sign-up / sign-in form and the logic to protect the routes or data you asked about.
+
+Once it deploys, you can create an account in the preview and sign in immediately.
+
+<Tip>
+Be specific about what should be protected: "only signed-in users can create posts," "show the user's email in the header," "redirect to /login when logged out." The agent turns those into the right `useQuery`/`useMutation` guards.
+</Tip>
+
+## Adding "Sign in with Google"
+
+Google sign-in needs OAuth credentials that only you can create (they're tied to your Google account), so there's one short manual step. Ask the agent explicitly:
+
+```
+Add "Sign in with Google"
+```
+
+The agent calls its OAuth-setup tool and a **Google sign-in** panel opens in the workspace. From there:
+
+<Steps>
+  <Step title="Create an OAuth client in Google Cloud">
+    Open the [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials) and choose **Create Credentials → OAuth client ID**. Pick **Web application** as the type.
+  </Step>
+  <Step title="Add the redirect URI">
+    The panel shows a **redirect URI** — copy it and paste it into the **Authorized redirect URIs** field of your new Google OAuth client. This is what lets Google return users to your app after they sign in.
+  </Step>
+  <Step title="Paste your credentials">
+    Copy the **Client ID** and **Client Secret** Google generates, paste them into the panel, and save. Botflow stores them encrypted on your project's backend — never in your synced code.
+  </Step>
+</Steps>
+
+Once you save, the agent finishes the job: it adds Google to your auth providers, re-deploys the backend, and drops a **Sign in with Google** button into your UI.
+
+<Note>
+If you close the panel before finishing, no problem — just ask the agent to add Google sign-in again when you have your credentials ready.
+</Note>
+
+### Why Google sign-in opens a new tab
+
+Your app's preview runs inside a frame in the workspace, and Google (like most OAuth providers) refuses to load its login page inside a frame. So when a user clicks **Sign in with Google** in the preview, Botflow automatically reopens your app in a new top-level browser tab to complete the sign-in, then returns them to the app.
+
+This is handled for you by the generated `src/lib/botflowAuth.ts` helper — there's nothing to configure. It only affects the in-workspace preview; on your deployed site, Google sign-in happens inline like normal.
+
+## Where secrets live
+
+- **Signing keys** for session tokens are generated on the server when auth is set up. They're written to your project's backend deployment, never to the files you see or sync to GitHub.
+- **Google Client ID and Secret** are stored encrypted on the backend deployment as environment variables. They aren't committed to your repo.
+
+This means it's safe to push your project to a public GitHub repository — none of the auth secrets travel with your source.
+
+## Using the signed-in user in your code
+
+After setup, your Convex functions can read the current user, and your React components can check auth state. Tell the agent what you need:
+
+```
+Only let the logged-in user edit their own profile
+```
+
+```
+Add a "My account" page that shows the current user's email and a sign-out button
+```
+
+The agent already knows the project's auth shape, so it wires queries and mutations to the authenticated user without you managing tokens.
+
+## Troubleshooting
+
+- **"Add Google sign-in" did nothing** — Make sure the project has a Convex backend and that basic auth was set up first. Ask the agent to "set up authentication" before adding a provider.
+- **Google returns a redirect-URI error** — The redirect URI in your Google OAuth client must exactly match the one shown in the workspace panel (no trailing slash, correct scheme). Re-copy it and update the client in Google Cloud Console.
+- **Sign-in works in the deployed app but not the preview** — That's the iframe limitation above; the new-tab handoff is expected. If the new tab is blocked, allow pop-ups for botflow.io.
+
+<Note>
+Currently the one-click social provider is **Google**. Email + password is always available, and you can ask the agent to wire up other providers manually if you need them.
+</Note>

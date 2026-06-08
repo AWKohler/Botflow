@@ -5,25 +5,22 @@ description: Common issues and how to resolve them.
 
 Running into problems? This guide covers the most common issues and how to fix them.
 
-## WebContainer won't start
+## Sandbox won't start
 
-### "SharedArrayBuffer is not available"
-
-WebContainers require cross-origin isolation headers to access `SharedArrayBuffer`, which is essential for running Node.js in the browser.
+Your project runs in a cloud Linux sandbox. When you open a workspace, Botflow resumes (or boots) that sandbox before the preview and terminal become usable.
 
 **Symptoms:**
-- Black screen when opening a workspace
-- Console error: `SharedArrayBuffer is not defined`
-- Preview shows an error about cross-origin isolation
+- The workspace sits on a "Starting sandbox…" state longer than ~30 seconds
+- Preview or terminal show a connection error
+- Console errors about failed requests to `/api/projects/.../sandbox/...`
 
 **Solutions:**
-1. **Try a different browser** — Chrome, Edge, and Brave have the best support. Firefox and Safari have limited or no support.
-2. **Disable browser extensions** — Some extensions (especially privacy or security tools) can interfere with the required headers.
-3. **Check your network** — If you're behind a corporate proxy or firewall, it may be stripping headers. Try a different network.
-4. **Clear site data** — In Chrome: Settings → Privacy → Clear browsing data → select "Cached images and files" → Clear data.
+1. **Reload the page** — Resuming a hibernated sandbox is usually quick; a hard refresh re-runs the start handshake if it stalled.
+2. **Check your network** — The IDE keeps a live connection to the sandbox. A flaky connection, restrictive corporate proxy, or VPN that blocks `*.vercel.run` can break preview and terminal streaming. Try a different network.
+3. **Check status** — If sandboxes are down platform-wide, opening any project will fail the same way. Check the [Dashboard](https://botflow.io/projects) and try again shortly.
 
 <Note>
-WebContainers require a secure context (HTTPS). The production app at botflow.io always uses HTTPS. Local development requires additional configuration.
+Sandboxes run server-side, so there are **no special browser requirements** — no `SharedArrayBuffer`, cross-origin isolation, or WebAssembly support needed. Any modern desktop browser works.
 </Note>
 
 ### Dev server fails to start
@@ -173,22 +170,14 @@ When your local files and the remote repository both have changes to the same fi
 
 ## Browser compatibility
 
-Botflow requires a modern browser with WebContainer support.
+The sandbox runs server-side, so the IDE itself has no exotic browser requirements — any current version of Chrome, Edge, Brave, Firefox, or Safari can drive a workspace.
 
-**Supported browsers:**
-- ✅ Chrome 119+ (recommended)
-- ✅ Edge 119+
-- ✅ Brave 1.60+
-- ⚠️ Firefox (limited support, some features may not work)
-- ❌ Safari (not supported)
-
-**Required features:**
-- `SharedArrayBuffer` with cross-origin isolation
-- WebAssembly (WASM)
-- Service Workers
+**Recommended:**
+- ✅ A recent version of Chrome, Edge, Brave, Firefox, or Safari
+- ✅ A desktop or laptop — the workspace is a dense, multi-panel IDE designed for a large screen
 
 <Note>
-For the best experience, use the latest version of Chrome or Edge on desktop. Mobile browsers are not supported for running workspaces, but you can view deployed apps on any device.
+Workspaces are built for desktop. You can **view** any deployed app from a phone or tablet, but building inside the IDE on a mobile browser isn't supported. If a panel renders oddly, make sure your browser is up to date and that no extension is blocking iframes or `*.vercel.run` connections.
 </Note>
 
 ---

@@ -13,7 +13,7 @@ Botflow has a built-in GitHub integration that lets you version-control your pro
 4. Select the repository you want to link to this project.
 
 <Note>
-You can connect a fresh empty repository or an existing one. If you connect an existing repository with files, Botflow will pull the default branch into your WebContainer.
+You can connect a fresh empty repository or an existing one. If you connect an existing repository with files, Botflow clones the default branch into your project's sandbox.
 </Note>
 
 ## Viewing the status
@@ -35,23 +35,39 @@ The commit is created and added to the pending-commits list. Your files are unch
 
 ## Pushing to GitHub
 
-After creating one or more commits, click **Push** to upload them to GitHub. Botflow uses the GitHub REST API to write files in batches — no `git` binary is needed in the WebContainer.
+After creating one or more commits, click **Push** to upload them to GitHub. Botflow runs a real `git push` from inside the sandbox — your OAuth token is injected only for the duration of the push and is never written to disk.
 
 <Tip>
 Push frequently to avoid divergence between your local workspace and the remote. If you're building something significant, push after each logical chunk of work.
 </Tip>
 
+## Letting the agent commit for you
+
+The first time you link a repository, the AI agent asks how you'd like commits handled. Your choice is saved per-project, and you can change it any time by telling the agent (e.g. "stop committing automatically").
+
+There are three modes:
+
+| Mode | What the agent does |
+|------|---------------------|
+| **Autonomous** | Commits and pushes on its own after each meaningful change — you don't have to think about Git. |
+| **Ask each time** | Pauses and asks for confirmation before every commit, so you stay in control of what lands. |
+| **Manual** | The agent never touches Git. You commit and push yourself from the GitHub panel. |
+
+<Tip>
+**Autonomous** pairs well with frequent, low-stakes iteration — every change is captured in history. Switch to **Ask each time** or **Manual** when you're working toward a specific commit and want clean, deliberate history.
+</Tip>
+
 ## Pulling from GitHub
 
-If the remote branch has new commits (e.g. from a collaborator or from another device), click **Pull** to fetch and apply them.
+If the remote branch has new commits (e.g. from a collaborator or from another device), click **Pull** to fetch and merge them.
 
-Botflow performs a three-way merge:
+Botflow uses a real Git merge:
 
-1. It downloads the remote files.
-2. It compares them against your last-known remote state.
-3. It applies the diff to your local files.
+1. It fetches the latest commits from the remote.
+2. Any uncommitted local changes are safely set aside as a work-in-progress commit first, so nothing is lost.
+3. It merges the remote branch into your working tree.
 
-If the merge is clean, your WebContainer is updated silently. If there are conflicts, Botflow opens the **Conflict Resolution** dialog.
+If the merge is clean, your sandbox files are updated in place. If the same lines changed on both sides, Botflow opens the **Conflict Resolution** dialog.
 
 ## Resolving conflicts
 
@@ -70,7 +86,7 @@ To unlink the repository from this project, open the GitHub panel and click the 
 ## Tips
 
 - **One repository per project** — each Botflow project maps to a single GitHub repository (or a single branch of a repository).
-- **No `.git` folder needed** — Botflow's GitHub integration works via the GitHub API, not the `git` binary. You won't see a `.git` directory in your file tree.
+- **Real Git under the hood** — the integration runs the actual `git` binary inside your sandbox, so the project has a genuine `.git` directory and full history. You can also use `git` directly from the [terminal](/features/editor#terminal) if you prefer.
 - **Large files** — GitHub has a 100 MB file size limit per file. Files larger than that will fail to push. Use [Git LFS](https://git-lfs.com) or keep large assets in cloud storage.
 - **Private repos** — fully supported. The OAuth token Botflow stores is scoped to repository read/write access only.
 - **Alternative to cloud backup** — GitHub sync provides off-site backup and version history. For critical projects, push frequently or maintain local backups via the [Download](/features/editor#downloading-your-project) button.

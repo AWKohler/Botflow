@@ -11,12 +11,12 @@ description: Botflow is a browser-based IDE for building and deploying full-stac
 
 ## What is Botflow?
 
-Botflow is a browser-based IDE that lets you build, run, and deploy full-stack web applications without installing anything locally. Describe what you want to build in plain English, and the AI agent writes the code, installs packages, and shows you a live preview — all inside a single browser tab.
+Botflow is a browser-based IDE that lets you build, run, and deploy full-stack web applications without installing anything locally. Describe what you want to build in plain English, and the AI agent writes the code, installs packages, and shows you a live preview — all from a single browser tab.
 
-Under the hood, every project runs in a real Node.js environment powered by [WebContainers](https://webcontainers.io/) — a technology that runs Node.js directly in your browser using WebAssembly. There is no virtual machine, no remote server spinning up for you — your code executes directly in your browser with full file system access, `pnpm`, and a proper terminal.
+Under the hood, every project runs in its own **cloud sandbox** — a real, isolated Linux environment with Node.js, a full filesystem, `git`, `pnpm`, and a proper terminal. The IDE in your browser (editor, terminal, preview, and AI agent) talks to that sandbox over the network, so you get the power of a genuine dev machine without provisioning, installing, or maintaining one yourself.
 
 <Note>
-**What are WebContainers?** WebContainers are a breakthrough technology that lets Node.js run entirely in your browser. They provide a full filesystem, terminal, and dev server without sending your code to a remote server. Everything stays in your browser tab. Learn more at [webcontainers.io](https://webcontainers.io).
+**What's a sandbox?** Each project gets a dedicated Linux microVM running on cloud infrastructure. It's a true server environment — native binaries, real `git`, ripgrep, and any Node package all work exactly as they would locally. The sandbox stays with your project across sessions: it hibernates when you step away and resumes where you left off, with your files preserved.
 </Note>
 
 ## Key features
@@ -48,33 +48,17 @@ Under the hood, every project runs in a real Node.js environment powered by [Web
 2. **Build in your browser** — The workspace opens with a file tree, editor, and live preview. Chat with the agent to add features, fix bugs, or explain code.
 3. **Ship it** — Click **Publish** to deploy to Cloudflare Pages. Share the link. Done.
 
-## Platform types
+## What a project ships with
 
-Botflow supports multiple project types, each with a tailored template:
+Every new project is a **Web** project, scaffolded from a production-ready template:
 
-| Type | Stack | Use when |
-|------|-------|----------|
-| **Web** | Vite + React + Convex | Building web apps, dashboards, SaaS products, internal tools |
-| **Universal** | Expo + NativeWind + Convex | Targeting iOS, Android, and web from a single TypeScript codebase |
+- **Vite** for a fast dev server and optimized production builds
+- **React** with **TypeScript**
+- **Tailwind CSS** for styling
+- **Convex** for a real-time backend (Pro/Max plans include a managed Convex deployment; Free-plan users connect their own, or skip the backend entirely for a frontend-only app)
+- Pre-configured for one-click deployment to **Cloudflare Pages**
 
-**Web projects** include:
-- Vite for fast dev server and optimized builds
-- React with TypeScript
-- Tailwind CSS for styling
-- Convex for real-time backend (Pro/Max plans include managed Convex; Free plan users connect their own)
-- Pre-configured for deployment to Cloudflare Pages
-
-**Universal projects** include:
-- Expo for cross-platform development
-- NativeWind for Tailwind-style styling on native
-- React Native for iOS and Android
-- React Native Web for browser support
-- Convex for real-time backend
-- One codebase that compiles to iOS, Android, and web
-
-<Note>
-Universal projects show a web preview in the workspace. To build native iOS and Android apps, use the Publish panel to trigger Expo EAS Build. See [Deploy](/features/deploy).
-</Note>
+Because the project runs in a full Linux sandbox, you're not limited to that template — the AI agent (or you, from the terminal) can install any npm package, add tooling, or restructure the project however you like.
 
 ## Bring your own model
 

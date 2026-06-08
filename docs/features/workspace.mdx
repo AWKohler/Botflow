@@ -33,7 +33,7 @@ The slim bar running across the top of the screen is your command center.
 The left panel contains the AI agent chat. It's always visible regardless of which view (Preview, Code, Database) is active on the right.
 
 - **Conversation history** — Every message you've sent and every reply the agent has made is preserved here for the life of the project.
-- **Tool calls** — Each agent step is shown as a collapsible row (e.g. `applyDiff`, `readFile`, `executeCommand`). Click any row to see exactly what the agent read or wrote.
+- **Tool calls** — Each agent step is shown as a collapsible row (e.g. `read`, `applyDiff`, `bash`). Click any row to see exactly what the agent read or wrote.
 - **Input bar** — Type your next instruction at the bottom. Press `Enter` to send. Attach images with the paperclip icon (supported on GPT-5.3, GPT-5.4, Claude, and Gemini).
 - **Token counter** — Shows estimated context usage against the selected model's limit (e.g. `25.0k / 1000.0k`).
 
@@ -64,7 +64,7 @@ Clicking the **Code** tab reveals:
   - **Search** — full-text search across all project files.
   - **ENV** — view and manage [environment variables](/features/env-vars).
 - **Editor** — Monaco editor for the selected file. Supports syntax highlighting, autocomplete, go-to-definition, and multi-cursor editing.
-- **Terminal** — one or more terminal tabs at the bottom. Each tab is an independent shell inside the WebContainer.
+- **Terminal** — a shell at the bottom running inside your project's Linux sandbox.
 
 See [Editor](/features/editor) and [Terminal](/features/editor#terminal) for more.
 
@@ -85,7 +85,7 @@ See [Convex Backend](/features/convex) for details.
 The [My Projects](https://botflow.io/projects) page lists all your projects as cards showing:
 
 - **Thumbnail** — an auto-generated snapshot of the last preview render
-- **Platform badge** — Web or Universal
+- **Platform badge** — the project type (e.g. Web)
 - **Public badge** — shown when the project is publicly visible, with its star count
 - **Last opened date** and the model used to build it
 
@@ -104,8 +104,8 @@ Your work is automatically saved as you go, but it's important to understand how
 
 ### Auto-save
 
-- **File edits** — Files are saved to the WebContainer filesystem immediately when you press `Cmd+S` / `Ctrl+S`
-- **Cloud backup** — Changes are synced to cloud storage periodically (every few minutes) and when you close the workspace
+- **File edits** — Files are written to the sandbox filesystem immediately when you press `Cmd+S` / `Ctrl+S`
+- **Persistent sandbox** — Your sandbox keeps files on a persistent disk; Botflow snapshots it automatically so your work is there when you return, even after it hibernates
 - **Environment variables** — Saved immediately when added or updated
 
 ### What happens if I close the tab?

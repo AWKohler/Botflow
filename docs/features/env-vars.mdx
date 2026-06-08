@@ -3,7 +3,7 @@ title: Environment Variables
 description: Manage secrets and configuration for your project.
 ---
 
-The **ENV** tab (in the sidebar when Code view is active) lets you manage environment variables for your project. Variables are injected into the WebContainer's process environment and are available to your app at runtime.
+The **ENV** tab (in the sidebar when Code view is active) lets you manage environment variables for your project. Botflow stores them with the project and writes them into the sandbox as a `.env` file, so your dev server and production build can read them at runtime.
 
 ## Viewing variables
 
@@ -26,7 +26,11 @@ In the **ADD VARIABLE** section at the bottom of the ENV panel:
 3. Optionally check **Mark as secret** — secret values are masked in the UI after saving and never shown in plaintext again.
 4. Click **+ Add**.
 
-The variable is immediately available in new terminal sessions and on the next dev server start. Running processes need to be restarted to pick up changes.
+The variable is written to the project's `.env` and picked up on the next dev server start or build. Already-running processes need to be restarted to see the change.
+
+<Note>
+The `.env` file is regenerated from this panel each time you save, start the dev server, or deploy — so manage your variables here rather than editing `.env` by hand, since hand edits will be overwritten.
+</Note>
 
 <Tip>
 Prefix variables with `VITE_` (for Vite-based web projects) to make them accessible in browser-side code. Without the prefix, the variable is only available in Node.js/server contexts.
@@ -50,7 +54,7 @@ Click the **download icon** to export all user variables as a `.env` file. Secre
 
 ## How variables are used
 
-- **Dev server** — variables are injected into the WebContainer's environment before the dev server starts. Your Vite or Next.js app can read them via `import.meta.env.VITE_*` or `process.env.*`.
+- **Dev server** — variables are written to the sandbox's `.env` file before the dev server starts. Your Vite or Next.js app can read them via `import.meta.env.VITE_*` or `process.env.*`.
 - **Deploy** — when you publish to Cloudflare Pages, user variables are bundled into the build environment. Secrets are passed as encrypted Cloudflare environment variables.
 - **AI agent** — the agent does not read variable values, only their keys. This means the agent can reference `VITE_CONVEX_URL` in generated code without ever seeing the actual URL.
 
@@ -63,7 +67,6 @@ These variables are set automatically by the platform based on your project conf
 | Variable | Description | Injected when |
 |----------|-------------|---------------|
 | `VITE_CONVEX_URL` | Convex backend URL for web projects | Project has Convex configured |
-| `EXPO_PUBLIC_CONVEX_URL` | Convex backend URL for Expo/mobile projects | Universal project with Convex |
 | `VITE_UPLOADTHING_TOKEN` | UploadThing file upload token | Project uses UploadThing |
 
 ### Framework-specific prefixes
@@ -79,10 +82,6 @@ Different frameworks expose environment variables to client-side code differentl
 - Prefix with `NEXT_PUBLIC_` to expose to browser code
 - Example: `NEXT_PUBLIC_API_URL` → accessible via `process.env.NEXT_PUBLIC_API_URL`
 - Without prefix: only available on the server via `process.env`
-
-**Expo/React Native projects:**
-- Prefix with `EXPO_PUBLIC_` to expose to app code
-- Example: `EXPO_PUBLIC_API_URL` → accessible via `process.env.EXPO_PUBLIC_API_URL`
 
 ### Usage examples
 
@@ -105,14 +104,6 @@ export async function getServerSideProps() {
 
 // Client-side
 const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-```
-
-**Expo:**
-```tsx
-import Constants from 'expo-constants';
-
-const apiUrl = Constants.expoConfig?.extra?.apiUrl 
-  ?? process.env.EXPO_PUBLIC_API_URL;
 ```
 
 ## Security
