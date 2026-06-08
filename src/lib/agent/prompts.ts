@@ -1,6 +1,7 @@
 /**
  * System prompts for the agent — extracted for maintainability.
  */
+import { REVENUECAT_ENABLED } from "@/lib/feature-flags";
 
 const END_TURN_INSTRUCTION = [
   "",
@@ -1092,6 +1093,33 @@ const SWIFT_CONVEX_SECTION: string[] = [
   "",
 ];
 
+// RevenueCat (iOS in-app purchases) boundaries for Swift projects. Only
+// included when the feature flag is on AND the project has a Convex backend
+// (payments require one). Gated by REVENUECAT_ENABLED, which stays off until the
+// whole slice is verified end-to-end.
+const SWIFT_PROMPT_REVENUECAT: string[] = [
+  "",
+  "## In-app purchases (RevenueCat)",
+  "When the user asks for a paywall, subscriptions, premium features, a tip jar, consumables/credits, or any in-app payment flow:",
+  "1. Call `initializeRevenueCatPayments` FIRST. It is NON-BLOCKING and returns immediately:",
+  "   - `status='already-connected'` → the user linked RevenueCat before; this project is enabled. Proceed.",
+  "   - `status='needs-connect'` → the Payments tab is now open with a setup wizard. DO NOT wait or poll. CONTINUE building (add the SDK + paywall) and tell the user to finish connecting in the Payments tab. Entitlements won't be live until they finish.",
+  "   - `status='backend-blocked'` → no Convex backend; relay the message (payments require one).",
+  "   - `status='tier-blocked'` → Pro/Max only; relay the message verbatim.",
+  "2. Add the RevenueCat SDK via Swift Package Manager in `project.yml` (packages: `https://github.com/RevenueCat/purchases-ios-spm`), depending on both `RevenueCat` and `RevenueCatUI`. Run `make generate` is NOT available here (builds are remote) — just edit `project.yml` and Sources; the remote build resolves packages.",
+  "3. Configure the SDK ONCE at app launch: `Purchases.configure(withAPIKey: <public appl_ key>, appUserID: <the app's auth user id>)`. The public SDK key is provided by the platform in the app's build config — read it from there, NEVER hardcode a key. The `appUserID` MUST be the user's stable id so webhook events join back to your Convex user.",
+  "4. Build the paywall with `RevenueCatUI`: `PaywallView` or the `.presentPaywallIfNeeded(requiredEntitlementIdentifier:)` modifier. The paywall is configured remotely in RevenueCat — you don't hand-build the pricing UI.",
+  "5. Gate features on entitlements: `Purchases.shared.customerInfo().entitlements.active[\"<entitlement>\"]?.isActive == true`. Provide a Restore Purchases action (`Purchases.shared.restorePurchases()`).",
+  "6. For local testing, a `.storekit` configuration file lets the streamed simulator demo the purchase flow with no Apple/RevenueCat setup. Note this clearly: a pure local `.storekit` run shows the UI but does NOT sync entitlements to RevenueCat's servers — that needs a sandbox tester on TestFlight/device.",
+  "",
+  "**Reality to communicate (do not skip):** real purchases require the user to (a) connect RevenueCat in the Payments tab, (b) have a paid Apple Developer account with the Paid Apps agreement + banking/tax, and (c) create in-app products that PASS App Review. You can build and demo everything in the simulator now; real money has this Apple-side tail you cannot shortcut.",
+  "",
+  "**Hard rules:**",
+  "- Do NOT hand-roll raw StoreKit purchase code (`Product.purchase()`, `Transaction`, receipt validation) — RevenueCat handles all of it. Use the RevenueCat SDK.",
+  "- Do NOT hardcode the RevenueCat API key — it is injected into the build config by the platform.",
+  "- Entitlement reaction logic on the backend goes in `convex/billing.ts` (when the webhook scaffold is present), keyed on `event.data.app_user_id`.",
+];
+
 function buildSwiftPromptLines(hasBackend: boolean): string[] {
   return [
   "You are **Botflow**, an expert coding agent operating inside a real **Linux sandbox** (Vercel Sandbox).",
@@ -1121,6 +1149,7 @@ function buildSwiftPromptLines(hasBackend: boolean): string[] {
   "If the user wants to test, they run `./deploy.sh` from their machine which syncs and builds remotely.",
   "",
   ...(hasBackend ? SWIFT_CONVEX_SECTION : []),
+  ...(hasBackend && REVENUECAT_ENABLED ? SWIFT_PROMPT_REVENUECAT : []),
   "---",
   "",
   "## File Paths",
