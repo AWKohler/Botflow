@@ -16,6 +16,7 @@
  * }
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { and, eq } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
@@ -24,6 +25,7 @@ import { projects, userRevenueCatIdentity } from '@/db/schema';
 import { canUseRevenueCat } from '@/lib/tier';
 import { encryptSecret } from '@/lib/secrets';
 import { validateConnection } from '@/lib/revenuecat';
+import { scaffoldRevenueCatIntoProject } from '@/lib/revenuecat-scaffold';
 import { REVENUECAT_ENABLED } from '@/lib/feature-flags';
 
 export const runtime = 'nodejs';
@@ -160,6 +162,21 @@ export async function POST(
       updatedAt: now,
     })
     .where(eq(projects.id, projectId));
+
+  // Scaffold the Convex files + env vars after the response is sent so the user
+  // isn't blocked on a cold sandbox. Non-fatal — best-effort.
+  after(async () => {
+    try {
+      const result = await scaffoldRevenueCatIntoProject(projectId, {
+        webhookSecret,
+        proxyBase: new URL(req.url).origin,
+        environment: project.revenuecatEnvironment ?? 'sandbox',
+      });
+      console.log('[revenuecat/connect] scaffold complete', projectId, result);
+    } catch (err) {
+      console.error('[revenuecat/connect] scaffold threw:', err);
+    }
+  });
 
   return NextResponse.json({
     ok: true,

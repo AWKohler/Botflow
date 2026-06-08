@@ -18,6 +18,7 @@
  *   • backend-blocked / tier-blocked — preflight failures.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { and, eq } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
@@ -25,6 +26,7 @@ import { getDb } from '@/db';
 import { projects, userRevenueCatIdentity } from '@/db/schema';
 import { canUseRevenueCat } from '@/lib/tier';
 import { decryptSecret } from '@/lib/secrets';
+import { scaffoldRevenueCatIntoProject } from '@/lib/revenuecat-scaffold';
 import { REVENUECAT_ENABLED } from '@/lib/feature-flags';
 
 export const runtime = 'nodejs';
@@ -108,17 +110,30 @@ export async function POST(
   );
 
   if (hasLinkedAccount && identity) {
-    await setStatus(projectId, 'connected', project.revenuecatWebhookSecret);
+    const webhookSecret = await setStatus(projectId, 'connected', project.revenuecatWebhookSecret);
     // Carry the user's RC project id onto this project for deep-links / proxy.
     await db
       .update(projects)
       .set({ revenuecatProjectId: identity.rcProjectId, updatedAt: new Date() })
       .where(eq(projects.id, projectId));
+    // Scaffold the Convex files + env vars after the response is sent.
+    after(async () => {
+      try {
+        const result = await scaffoldRevenueCatIntoProject(projectId, {
+          webhookSecret,
+          proxyBase: new URL(req.url).origin,
+          environment: project.revenuecatEnvironment ?? 'sandbox',
+        });
+        console.log('[revenuecat/initialize] scaffold complete', projectId, result);
+      } catch (err) {
+        console.error('[revenuecat/initialize] scaffold threw:', err);
+      }
+    });
     return NextResponse.json({
       ok: true,
       status: 'already-connected',
       message:
-        'The user has previously linked their RevenueCat account. This project is now enabled. Proceed to add the RevenueCat SDK + paywall to the Swift app. Remind the user that products must be created in App Store Connect and pass App Review before real purchases work in production.',
+        'The user has previously linked their RevenueCat account. This project is now enabled. Convex files (revenueCatWebhook.ts, billing.ts, http.ts route) are scaffolding into /convex/ in the background — wait ~5 seconds, then run convexDeploy to push them. Then add the RevenueCat SDK + paywall to the Swift app. billing.ts is yours to edit (server-side entitlement reactions). Remind the user that products must be created in App Store Connect and pass App Review before real purchases work in production.',
     });
   }
 
