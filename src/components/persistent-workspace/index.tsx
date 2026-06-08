@@ -16,6 +16,8 @@ import { SwiftSimulatorPreview } from "./swift-simulator-preview";
 import { SwiftPipWindow } from "./swift-pip-window";
 import { IPhoneDeviceRunner } from "./iphone-device-runner";
 import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
+import { RevenueCatTab } from "./revenuecat-tab";
+import { REVENUECAT_ENABLED } from "@/lib/feature-flags";
 import { PanelLeft, Play, Save, Loader2, Database, Rocket, Smartphone, Tablet, RotateCw, ArrowUpRight } from "lucide-react";
 import type { ProjectPlatform } from "@/lib/project-platform";
 import { DeviceFrame, type DeviceModelUI, type OrientationUI } from "./device-frame";
@@ -31,7 +33,7 @@ const PersistentTerminal = dynamic(
   { ssr: false, loading: () => <div className="h-full w-full bg-elevated" /> },
 );
 
-type WorkspaceView = "preview" | "code" | "database";
+type WorkspaceView = "preview" | "code" | "database" | "revenuecat";
 type SandboxStatus = "idle" | "booting" | "ready" | "error";
 type FileEntry = { type: "file" | "folder" };
 
@@ -42,6 +44,7 @@ type ProjectRow = {
   backendType: string;
   convexDeployUrl: string | null;
   userConvexUrl: string | null;
+  revenuecatStatus?: string;
 };
 
 interface PersistentWorkspaceProps {
@@ -112,6 +115,10 @@ export function PersistentWorkspace({
   const hasBackend = project != null && project.backendType !== "none";
   const backendProvisioned =
     project != null && Boolean(project.convexDeployUrl || project.userConvexUrl);
+  // RevenueCat (iOS in-app purchases) — requires a Convex backend.
+  const revenuecatStatus =
+    (project?.revenuecatStatus as "none" | "connecting" | "connected" | undefined) ?? "none";
+  const revenuecatEnabled = REVENUECAT_ENABLED && hasBackend && revenuecatStatus !== "none";
 
   const refreshFiles = useCallback(async () => {
     try {
@@ -186,6 +193,37 @@ export function PersistentWorkspace({
     autoProvisionRef.current = true;
     void deployBackend({ silent: true });
   }, [sandboxStatus, project, deployBackend]);
+
+  // ── RevenueCat status poller ────────────────────────────────────────────────
+  // The agent's initializeRevenueCatPayments tool flips revenuecat_status to
+  // 'connecting' server-side. Poll the project row while it's still 'none' so the
+  // Payments tab appears without a manual refresh. Stops once non-'none'.
+  useEffect(() => {
+    if (!REVENUECAT_ENABLED || !hasBackend) return;
+    if (revenuecatStatus !== "none") return;
+    if (sandboxStatus !== "ready") return;
+    const timer = setInterval(() => {
+      void refreshProject();
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [hasBackend, revenuecatStatus, sandboxStatus, refreshProject]);
+
+  // Auto-open the Payments tab once, only on the live none→connecting transition
+  // (when the agent just enabled it). Opening an already-connected project must
+  // NOT yank the view, so we baseline from the first real project load.
+  const prevRcStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!project) return;
+    const now = (project.revenuecatStatus as string | undefined) ?? "none";
+    if (prevRcStatusRef.current === null) {
+      prevRcStatusRef.current = now; // baseline on first load — no auto-open
+      return;
+    }
+    if (prevRcStatusRef.current === "none" && now === "connecting") {
+      setCurrentView("revenuecat");
+    }
+    prevRcStatusRef.current = now;
+  }, [project]);
 
   // Boot sandbox + seed + load files
   useEffect(() => {
@@ -323,6 +361,7 @@ export function PersistentWorkspace({
                 { value: "preview", text: "Preview" },
                 { value: "code", text: "Code" },
                 ...(hasBackend ? [{ value: "database", text: "Database" }] : []),
+                ...(revenuecatEnabled ? [{ value: "revenuecat", text: "Payments" }] : []),
               ] as TabOption<WorkspaceView>[]
             }
             selected={currentView}
@@ -519,6 +558,25 @@ export function PersistentWorkspace({
               <PersistentTerminal projectId={projectId} ready={sandboxStatus === "ready"} />
             </div>
           </div>
+
+          {/* Payments view — RevenueCat link-out / setup wizard (Convex backend
+              required, so it only renders when revenuecatEnabled). */}
+          {revenuecatEnabled && (
+            <div
+              className={cn(
+                "absolute inset-0 pb-2.5 pr-2.5",
+                currentView === "revenuecat" ? "block" : "hidden",
+              )}
+            >
+              <div className="w-full h-full rounded-xl border border-border overflow-hidden bg-elevated/60">
+                <RevenueCatTab
+                  projectId={projectId}
+                  status={revenuecatStatus === "connected" ? "connected" : "connecting"}
+                  onChanged={() => void refreshProject()}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Preview view — empty container.  The actual <SwiftSimulatorPreview/>
               is rendered ONCE below in a stable React-tree position so it stays
