@@ -122,12 +122,153 @@ export function resumePendingOAuthSignIn(
 }
 `;
 
-function buildAuthBoilerplate(): ConvexAuthFile[] {
+/**
+ * Swift-only `convex/http.ts`. In addition to Convex Auth's own routes, it
+ * serves the in-app-browser sign-in PAGE from this deployment's *.convex.site
+ * origin. The native app (BotflowAuthProvider) opens GET /auth/signin inside an
+ * ASWebAuthenticationSession; the page runs the SAME `auth:signIn` action the
+ * web client uses and 303-redirects to the app's custom scheme with the tokens
+ * in the URL fragment. Pure server-rendered HTML — no client JS, same-origin
+ * POST (no CORS). Emitted verbatim — keep free of backticks and ${...}.
+ */
+export const SWIFT_AUTH_HTTP_TS = `import { httpRouter } from "convex/server";
+import { httpAction } from "./_generated/server";
+import { api } from "./_generated/api";
+import { auth } from "./auth";
+
+const http = httpRouter();
+
+// Convex Auth's own OAuth-callback / sign-out / well-known routes.
+auth.addHttpRoutes(http);
+
+// ── In-app-browser sign-in page (Swift / ConvexMobile client) ──
+//
+// Opened by the native app inside an ASWebAuthenticationSession. On submit it
+// runs the "auth:signIn" action and redirects to:
+//   botflowauth://auth-callback#token=<jwt>&refresh=<refreshToken>
+
+function esc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function page(redirect: string, flow: string, error: string | null): string {
+  const signUp = flow === "signUp";
+  const title = signUp ? "Create account" : "Sign in";
+  const toggleLabel = signUp ? "Have an account? Sign in" : "Need an account? Sign up";
+  const toggleFlow = signUp ? "signIn" : "signUp";
+  const toggleHref = "/auth/signin?redirect=" + encodeURIComponent(redirect) + "&flow=" + toggleFlow;
+  const errHtml = error ? '<p class="err">' + esc(error) + "</p>" : "";
   return [
-    {
-      path: "src/lib/botflowAuth.ts",
-      content: AUTH_HELPER_TS,
-    },
+    "<!doctype html>",
+    '<html lang="en"><head><meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">',
+    "<title>" + esc(title) + "</title>",
+    "<style>",
+    ":root{color-scheme:dark}*{box-sizing:border-box}",
+    "body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;",
+    "background:#000;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#fff}",
+    ".card{width:100%;max-width:360px;padding:32px 24px}",
+    "h1{font-size:26px;font-weight:700;margin:0 0 4px;text-align:center}",
+    "p.sub{margin:0 0 24px;text-align:center;color:rgba(255,255,255,.45);font-size:14px}",
+    "label{display:block;font-size:13px;color:rgba(255,255,255,.55);margin:14px 0 6px}",
+    "input{width:100%;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.12);",
+    "background:rgba(255,255,255,.06);color:#fff;font-size:16px;outline:none}",
+    "input:focus{border-color:rgba(150,110,255,.7)}",
+    "button{width:100%;margin-top:22px;padding:15px;border:0;border-radius:14px;background:#fff;",
+    "color:#000;font-size:16px;font-weight:600}",
+    "a{display:block;text-align:center;margin-top:18px;color:rgba(255,255,255,.55);font-size:14px;text-decoration:none}",
+    ".err{color:#ff9b6b;font-size:13px;text-align:center;margin:14px 0 0}",
+    "</style></head><body><div class=\\"card\\">",
+    "<h1>" + esc(title) + "</h1>",
+    '<p class="sub">' + (signUp ? "Sign up to continue." : "Welcome back.") + "</p>",
+    '<form method="POST" action="/auth/signin">',
+    '<input type="hidden" name="flow" value="' + flow + '">',
+    '<input type="hidden" name="redirect" value="' + esc(redirect) + '">',
+    "<label>Email</label>",
+    '<input name="email" type="email" autocomplete="email" autocapitalize="none" required>',
+    "<label>Password</label>",
+    '<input name="password" type="password" autocomplete="' + (signUp ? "new-password" : "current-password") + '" minlength="8" required>',
+    errHtml,
+    '<button type="submit">' + esc(title) + "</button>",
+    "</form>",
+    '<a href="' + toggleHref + '">' + esc(toggleLabel) + "</a>",
+    "</div></body></html>",
+  ].join("");
+}
+
+function htmlResponse(body: string, status: number): Response {
+  return new Response(body, {
+    status,
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+  });
+}
+
+http.route({
+  path: "/auth/signin",
+  method: "GET",
+  handler: httpAction(async (_ctx, request) => {
+    const url = new URL(request.url);
+    const redirect = url.searchParams.get("redirect") || "";
+    const flow = url.searchParams.get("flow") === "signUp" ? "signUp" : "signIn";
+    return htmlResponse(page(redirect, flow, null), 200);
+  }),
+});
+
+http.route({
+  path: "/auth/signin",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const form = await request.formData();
+    const email = String(form.get("email") || "").trim();
+    const password = String(form.get("password") || "");
+    const flow = String(form.get("flow") || "signIn") === "signUp" ? "signUp" : "signIn";
+    const redirect = String(form.get("redirect") || "");
+
+    if (!redirect || !redirect.includes("://")) {
+      return htmlResponse(page(redirect, flow, "Missing or invalid redirect target."), 400);
+    }
+
+    try {
+      const result: any = await ctx.runAction(api.auth.signIn, {
+        provider: "password",
+        params: { email, password, flow },
+      });
+      const tokens = result && result.tokens;
+      if (!tokens || !tokens.token || !tokens.refreshToken) {
+        return htmlResponse(page(redirect, flow, "Sign-in failed. Please try again."), 200);
+      }
+      const dest =
+        redirect +
+        "#token=" + encodeURIComponent(tokens.token) +
+        "&refresh=" + encodeURIComponent(tokens.refreshToken);
+      return new Response(null, {
+        status: 303,
+        headers: { Location: dest, "Cache-Control": "no-store" },
+      });
+    } catch (e) {
+      const msg = flow === "signUp"
+        ? "Could not sign up. The email may already be in use, or your password may be too short (8+ characters)."
+        : "Could not sign in. Check your email and password.";
+      return htmlResponse(page(redirect, flow, msg), 200);
+    }
+  }),
+});
+
+export default http;
+`;
+
+function buildAuthBoilerplate(platform: "web" | "swift" = "web"): ConvexAuthFile[] {
+  const files: ConvexAuthFile[] = [];
+  if (platform === "web") {
+    // Web-only: React helper for OAuth from the preview iframe. The Swift client
+    // uses an in-app browser + BotflowAuthProvider instead (no React helper).
+    files.push({ path: "src/lib/botflowAuth.ts", content: AUTH_HELPER_TS });
+  }
+  files.push(
     {
       path: "convex/auth.config.ts",
       content: `// Required by @convex-dev/auth — tells Convex to trust JWTs issued by
@@ -191,7 +332,10 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
     },
     {
       path: "convex/http.ts",
-      content: `import { httpRouter } from "convex/server";
+      content:
+        platform === "swift"
+          ? SWIFT_AUTH_HTTP_TS
+          : `import { httpRouter } from "convex/server";
 import { auth } from "./auth";
 
 const http = httpRouter();
@@ -228,7 +372,8 @@ export const viewer = query({
 });
 `,
     },
-  ];
+  );
+  return files;
 }
 
 /**
@@ -475,6 +620,62 @@ IMPORTANT NOTES:
 }
 
 /**
+ * Swift-flavored agent context. The Swift client does NOT use React/@convex-dev/
+ * auth/react — sign-in is an in-app browser flow handled entirely by the
+ * template's BotflowAuthProvider. The agent's job is the BACKEND + gating the UI.
+ */
+function buildSwiftAgentContext(convexSiteUrl: string): string {
+  return `
+=== CONVEX AUTH (SWIFT) REFERENCE ===
+
+HOW IT WORKS (you do NOT write any native auth UI):
+  • setupAuth configured @convex-dev/auth on the deployment and set the signing
+    keys (you never see them). It also wrote convex/http.ts, which now serves an
+    in-app-browser SIGN-IN PAGE at:  ${convexSiteUrl}/auth/signin
+  • The Swift template already contains the client side: BotflowAuthProvider
+    (opens that page in an ASWebAuthenticationSession), Keychain storage,
+    AuthStore, and SignInView. Botflow flipped ConvexConfig.authEnabled to true,
+    so ContentView now gates the app behind sign-in automatically.
+  • The user signs in with email + password on the hosted page. Tokens come back
+    to the app; refresh is automatic via the auth:signIn action.
+
+WHAT YOU MUST DO AFTER setupAuth RETURNS:
+  1. Write each file in the returned \`files\` array (convex/auth.ts,
+     auth.config.ts, http.ts, schema.ts, users.ts) with the write tool.
+     NOTE: schema.ts now spreads authTables. If the project already had a
+     schema, MERGE your existing tables into the new one (keep ...authTables).
+  2. cd convex && pnpm add @convex-dev/auth @auth/core   (deps for the backend)
+  3. Run convexDeploy. The sign-in page and auth functions are NOT live until you do.
+  4. That is it for enabling sign-in — do NOT edit ConvexConfig.swift (platform-
+     managed) and do NOT build a native login form; the hosted page IS the form.
+
+PROTECTING DATA (backend pattern, identical to web):
+  import { getAuthUserId } from "@convex-dev/auth/server";
+  export const myQuery = query({
+    handler: async (ctx) => {
+      const userId = await getAuthUserId(ctx); // null when signed out — never throws
+      if (userId === null) throw new Error("Not authenticated");
+      return await ctx.db.query("things").withIndex("by_user", q => q.eq("userId", userId)).collect();
+    },
+  });
+
+READING THE CURRENT USER FROM SWIFT:
+  • users.ts exposes the \`users:viewer\` query (current user doc or null).
+    Subscribe to it like any other query via Convex.shared.
+  • Gate views on AuthStore.state if you add more screens; SignInView is shown
+    automatically when signed out.
+
+OAUTH / SOCIAL SIGN-IN: out of scope for now (password only). Do not add Google
+or other providers unless explicitly asked — there is no Swift OAuth path yet.
+
+NOTES:
+  • CONVEX_SITE_URL (auto-set by Convex) = ${convexSiteUrl}
+  • Run convexDeploy after EVERY change to files under /convex.
+  • The password "flow" field ("signIn" | "signUp") is handled by the hosted page.
+`.trim();
+}
+
+/**
  * Set environment variables on a Convex deployment using its own HTTP admin API.
  * This is the same mechanism the Convex CLI uses for `convex env set`.
  */
@@ -501,8 +702,15 @@ async function setEnvVarsViaDeployKey(
 
 export async function setupConvexAuth(
   projectId: string,
-  opts: { siteUrl: string; userConvexOAuthToken?: string | null },
+  opts: {
+    siteUrl: string;
+    userConvexOAuthToken?: string | null;
+    /** "web" (default) emits the React helper; "swift" emits the in-app-browser
+     *  sign-in page in convex/http.ts and a Swift-flavored agent context. */
+    platform?: "web" | "swift";
+  },
 ): Promise<SetupConvexAuthResult | SetupConvexAuthError> {
+  const platform = opts.platform ?? "web";
   const db = getDb();
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
 
@@ -584,9 +792,12 @@ export async function setupConvexAuth(
 
   return {
     ok: true,
-    files: buildAuthBoilerplate(),
+    files: buildAuthBoilerplate(platform),
     packagesToInstall: ["@convex-dev/auth", "@auth/core"],
-    context: buildAgentContext(convexSiteUrl),
+    context:
+      platform === "swift"
+        ? buildSwiftAgentContext(convexSiteUrl)
+        : buildAgentContext(convexSiteUrl),
   };
 }
 

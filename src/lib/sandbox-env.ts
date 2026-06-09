@@ -89,9 +89,12 @@ const SWIFT_CONVEX_CONFIG_PATH = "/Sources/Core/ConvexConfig.swift";
  * Swift gets a compile-time constant baked into the app. Must match the shape
  * of the committed placeholder in the swift-convex-template.
  */
-export function swiftConvexConfigContent(convexUrl: string): string {
+export function swiftConvexConfigContent(convexUrl: string, authEnabled = false): string {
   // JSON.stringify gives us a safely-quoted Swift string literal too.
   const literal = JSON.stringify(convexUrl);
+  // NOTE: this shape must stay in sync with the template's committed
+  // Sources/Core/ConvexConfig.swift — the Swift client (ConvexClient+Shared,
+  // BotflowAuthProvider) references `authEnabled` and `siteURL`.
   return [
     "// ─────────────────────────────────────────────────────────────────",
     "// ConvexConfig.swift — Convex deployment URL (PLATFORM-MANAGED)",
@@ -104,7 +107,11 @@ export function swiftConvexConfigContent(convexUrl: string): string {
     "",
     "enum ConvexConfig {",
     `    static let url = ${literal}`,
+    `    static let authEnabled = ${authEnabled ? "true" : "false"}`,
     "    static var isPlaceholder: Bool { url.contains(\"placeholder\") }",
+    "    static var siteURL: String {",
+    "        url.replacingOccurrences(of: \".convex.cloud\", with: \".convex.site\")",
+    "    }",
     "}",
     "",
   ].join("\n");
@@ -132,6 +139,6 @@ export async function materializeSwiftConvexConfig(projectId: string): Promise<v
   await sandboxWriteFile(
     projectId,
     SWIFT_CONVEX_CONFIG_PATH,
-    swiftConvexConfigContent(convexUrl),
+    swiftConvexConfigContent(convexUrl, project.authConfigured === true),
   );
 }
