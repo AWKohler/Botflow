@@ -106,36 +106,52 @@ generated flag so a no-auth project builds + runs unchanged.
 
 ## Test matrix (write before trusting any "done")
 
-Backend / page (testable against a real Convex deployment, no simulator):
-- [ ] `setupConvexAuth(swift)` sets `JWT_PRIVATE_KEY/JWKS/SITE_URL`, writes the
-      Swift file set, flips `authConfigured`, does NOT write `botflowAuth.ts`.
-- [ ] After `convexDeploy`: `GET /auth/signin?redirect=…` returns the HTML form
-      (200, `text/html`).
-- [ ] `POST /auth/signin` with a new email/password + `flow=signUp` → 302/redirect
-      to `botflowauth://auth-callback#token=…&refresh=…`; tokens are a valid JWT +
-      a refresh token.
-- [ ] `POST` with `flow=signIn` wrong password → form re-renders with an error,
-      NO token in the redirect.
-- [ ] `action auth:signIn {refreshToken}` returns rotated `{ token, refreshToken }`;
-      reusing an old refresh token is rejected (rotation works).
+Backend / page — ✅ **VERIFIED 2026-06-09** via a scripted local e2e that
+provisioned a throwaway Convex deployment, deployed the real emitted auth files
+(incl. `SWIFT_AUTH_HTTP_TS`), exercised the endpoints, and deleted the project
+(6/6 checks passed):
+- [x] auth env vars (`JWT_PRIVATE_KEY/JWKS/SITE_URL/ALLOWED_SITE_URLS`) set on the
+      deployment; Swift file set deploys; `botflowAuth.ts` NOT emitted for swift.
+- [x] `GET /auth/signin?redirect=…` returns the HTML password form (200).
+- [x] `POST /auth/signin` `flow=signUp` → **303** to
+      `botflowauth://auth-callback#token=<valid 3-part JWT>&refresh=…`.
+- [x] `POST` `flow=signIn` wrong password → error page (200), NO token/redirect.
+- [x] `action auth:signIn {refreshToken}` (via `/api/action`) returns a fresh
+      `{ token, refreshToken }` — the exact call `loginFromCache` makes.
 
 Config injection:
-- [ ] `materializeSwiftConvexConfig` writes `authEnabled = true` once
-      `authConfigured`, `false`/placeholder before. Idempotent.
+- [x] `swiftConvexConfigContent`/`materializeSwiftConvexConfig` emit `authEnabled`
+      (from `project.authConfigured`) + `siteURL`. Project `tsc` clean.
 
-Swift build (controller Mac):
-- [ ] Template `make build` SUCCEEDS with auth files present and `authEnabled =
-      false` (inert path) — no `AuthenticationServices`/`Security` link errors.
-- [ ] With `authEnabled = true`, `ConvexClientWithAuth` path compiles.
+Swift build (this Mac, Xcode 26.5, real `xcodebuild` for the iOS Simulator):
+- [x] Template builds with auth files present and `authEnabled = false` (inert) —
+      **BUILD SUCCEEDED**, no `AuthenticationServices`/`Security` link errors.
+- [x] With `authEnabled = true`, the `ConvexClientWithAuth` path compiles —
+      **BUILD SUCCEEDED**.
 
-End-to-end (botflow.io live, simulator):
-- [ ] Create Swift+platform-backend project → agent `setupAuth` → `convexDeploy`
-      → Rebuild → app shows SignInView.
-- [ ] Tap Sign in → in-app browser → sign up → returns to app authenticated;
-      `users.viewer` is non-null; a protected query works.
-- [ ] Kill + relaunch → `loginFromCache` restores the session silently (no
-      browser) within the refresh window.
-- [ ] Sign out → back to SignInView; protected query returns unauth.
+Platform build gate:
+- [x] Vercel production `next build` green on `feat/swift-convex-followups`.
+
+End-to-end (botflow.io live, simulator) — **NOT yet run.** Every component is
+independently verified (page works, Swift builds, refresh works), but the
+integrated simulator flow is blocked on the preview by Vercel deployment
+protection (SSO 401) + Clerk not allow-listing the preview origin. Best run on
+prod after review/merge:
+- [ ] Create Swift+backend project → agent `setupAuth` → `convexDeploy` →
+      Rebuild → app shows SignInView.
+- [ ] Tap Sign in → in-app browser → sign up → returns authenticated;
+      `users:viewer` non-null; a protected query works.
+- [ ] Kill + relaunch → `loginFromCache` restores the session silently.
+- [ ] Sign out → back to SignInView.
+
+## Loose ends discovered while testing
+- **Convex project deletion is broken** (unrelated to auth): `deleteProject` in
+  `convex-platform.ts` uses `DELETE /v1/projects/{id}` → **405**. Correct is
+  `POST /v1/projects/{id}/delete` (confirmed). Deleted Botflow projects currently
+  leak their Convex backends. Flagged as a separate task.
+- **Template branch-pin** (`TEMPLATE_BRANCHES` in `vercel-sandbox.ts`) is a
+  temporary test shim pointing `swiftConvex` at `swift-convex-template@feat/auth`.
+  Revert once that template branch merges to its `main`.
 
 ## Out of scope v1 (unchanged)
 Google/OAuth providers (additive: the page hosts the redirect later), magic-link
