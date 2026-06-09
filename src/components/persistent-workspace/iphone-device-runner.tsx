@@ -29,6 +29,10 @@ interface CompanionDevice {
   name: string;
   osVersion: string;
   type: "iphone" | "ipad" | "apple_tv" | "unknown";
+  // Reported by the companion; absent on older builds (treated as ready).
+  developerMode?: "enabled" | "disabled" | "restricted" | string;
+  ddiReady?: boolean;
+  transport?: string;
 }
 
 interface CompanionHealth {
@@ -210,6 +214,11 @@ export function IPhoneDeviceRunner({ projectId }: IPhoneDeviceRunnerProps) {
 
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId);
   const isInstalling = installStatus !== "idle";
+  // Block install when the companion reports Developer Mode is off (an install
+  // would otherwise fail). Unknown/absent (older companion) is treated as ready.
+  const devModeBlocked =
+    selectedDevice?.developerMode === "disabled" ||
+    selectedDevice?.developerMode === "restricted";
   const statusLabel =
     status === "online"
       ? devices.length > 0
@@ -323,12 +332,24 @@ export function IPhoneDeviceRunner({ projectId }: IPhoneDeviceRunnerProps) {
           </div>
 
           <div className="border-t border-border p-3">
+            {devModeBlocked && (
+              <div className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+                Developer Mode is {selectedDevice?.developerMode === "restricted" ? "restricted on this device" : "off"} on{" "}
+                <span className="font-medium">{selectedDevice?.name}</span>. Open the Botflow
+                Companion app and click <span className="font-medium">Enable Developer Mode</span>,
+                then confirm on the device and retry.
+              </div>
+            )}
             <Button
               size="sm"
               className="w-full gap-2"
-              disabled={!selectedDevice || isInstalling}
+              disabled={!selectedDevice || isInstalling || devModeBlocked}
               title={
-                selectedDevice ? "Build and install on selected iPhone" : "Select a connected iPhone"
+                !selectedDevice
+                  ? "Select a connected iPhone"
+                  : devModeBlocked
+                    ? "Enable Developer Mode on the device first"
+                    : "Build and install on selected iPhone"
               }
               onClick={buildAndInstall}
             >
