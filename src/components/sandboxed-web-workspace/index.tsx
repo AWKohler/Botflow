@@ -52,6 +52,7 @@ import {
   ArrowUpRight,
   ExternalLink,
   MousePointer2,
+  RefreshCw,
 } from "lucide-react";
 import type { PreviewInfo } from "@/lib/preview-store";
 import { cn } from "@/lib/utils";
@@ -1194,13 +1195,36 @@ export function SandboxedWebWorkspace({
                   {previewDevice === "responsive" && <AppWindow size={16} />}
                   {previewDevice === "figma" && <Frame size={16} />}
                 </button>
-                <span className="text-muted text-sm select-none">/</span>
                 <input
                   className="flex-1 bg-transparent outline-none text-sm text-fg placeholder:text-muted"
                   value={previewPath}
                   onChange={(e) => setPreviewPath(e.target.value)}
                   placeholder="/"
                 />
+                <button
+                  onClick={() => {
+                    const baseUrl = previews[activePreviewIndex]?.baseUrl;
+                    if (!baseUrl) return;
+                    const path = previewPath.startsWith("/")
+                      ? previewPath
+                      : "/" + previewPath;
+                    window.open(
+                      `/preview-popup?url=${encodeURIComponent(baseUrl + path)}`,
+                      "_blank",
+                    );
+                  }}
+                  className="text-muted hover:text-fg"
+                  title="Open preview in new tab"
+                >
+                  <ArrowUpRight size={16} />
+                </button>
+                <button
+                  onClick={() => setPreviewReloadKey((k) => k + 1)}
+                  className="text-muted hover:text-fg"
+                  title="Refresh preview"
+                >
+                  <RefreshCw size={15} />
+                </button>
               </div>
             )}
             <UserButton />
