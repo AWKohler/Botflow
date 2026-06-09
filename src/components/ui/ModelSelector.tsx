@@ -44,6 +44,7 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
   'gpt-5.5': 'pro',             // Pro+
   'claude-sonnet-4-6': 'pro',   // Pro+
   'claude-opus-4-7': 'pro',     // Pro+
+  'claude-fable-5': 'max',      // Max-only
   'gemini-3.1-pro-preview': 'pro', // Pro+ for server key; free requires BYOK
 };
 
@@ -60,6 +61,7 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
   'gpt-5.5',
   'claude-sonnet-4-6',
   'claude-opus-4-7',
+  'claude-fable-5',
   'gemini-3.1-pro-preview',
 ]);
 
@@ -74,6 +76,7 @@ const MODEL_COST_LABEL: Record<ModelId, string> = {
   'gpt-5.4': 'x6',
   'claude-opus-4-7': 'x10',
   'gpt-5.5': 'x12',
+  'claude-fable-5': 'x20',
 };
 
 const TIER_RANK: Record<string, number> = { free: 0, pro: 1, max: 2 };
@@ -96,6 +99,7 @@ const MODEL_ORDER: ModelId[] = [
   'gpt-5.4',                 // x6
   'claude-opus-4-7',         // x10
   'gpt-5.5',                 // x12
+  'claude-fable-5',          // x20 — most expensive (Max-only)
 ];
 
 export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', className, useTogetherKimi = false, leading }: ModelSelectorProps) {

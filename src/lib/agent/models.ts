@@ -8,6 +8,7 @@ export type ModelId =
   | "gpt-5.5"
   | "claude-sonnet-4-6"
   | "claude-opus-4-7"
+  | "claude-fable-5"
   | "gemini-3.1-pro-preview"
   | "fireworks-minimax-m2p7"
   | "fireworks-glm-5p1"
@@ -79,6 +80,16 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     apiModelId: "claude-opus-4-7",
     displayName: "Claude Opus 4.7",
     maxContextTokens: 200_000,
+    warnThreshold: 0.7,
+    criticalThreshold: 0.9,
+    supportsImages: true,
+  },
+  "claude-fable-5": {
+    id: "claude-fable-5",
+    provider: "anthropic",
+    apiModelId: "claude-fable-5",
+    displayName: "Claude Fable 5 (Mythos)",
+    maxContextTokens: 1_000_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,

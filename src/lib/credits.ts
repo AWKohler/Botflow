@@ -88,6 +88,14 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     output:      25.00 / BASE_PRICE,  // 83.33
     cacheWrite:  6.25 / BASE_PRICE,   // 20.83 (5-min ephemeral cache write)
   },
+  // Claude Fable 5 ("Mythos") — exactly 2× Opus 4.8 on every axis. Zero-markup
+  // pass-through, same as every other model: rate = $/MTok ÷ 0.30.
+  'claude-fable-5': {
+    input:      10.00 / BASE_PRICE,   // 33.33
+    cachedInput: 1.00 / BASE_PRICE,   //  3.33 (cache hit/refresh)
+    output:     50.00 / BASE_PRICE,   // 166.67
+    cacheWrite: 12.50 / BASE_PRICE,   // 41.67 (5-min ephemeral cache write)
+  },
   // Gemini 3.1 Pro pricing at ≤200K context — the >200K tier handled in calculateCredits()
   'gemini-3.1-pro-preview': {
     input:       2.00 / BASE_PRICE,   // 6.67
@@ -142,6 +150,7 @@ export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = {
   'gpt-5.4': 6,
   'claude-opus-4-7': 10,
   'gpt-5.5': 12,
+  'claude-fable-5': 20,
 };
 
 /**

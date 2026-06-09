@@ -511,6 +511,7 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
   'gpt-5.5',                 // pro+
   'claude-sonnet-4-6',       // pro+
   'claude-opus-4-7',         // pro+
+  'claude-fable-5',          // max-only
   'gemini-3.1-pro-preview',  // pro+
 ]);
 
