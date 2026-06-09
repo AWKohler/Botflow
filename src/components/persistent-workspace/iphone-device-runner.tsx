@@ -16,10 +16,20 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
-// Hosted on Vercel's CDN (public/downloads). macOS-only for now.
-const COMPANION_DOWNLOAD_URL = "/downloads/BotflowCompanion.zip";
+// Hosted on Vercel's CDN (public/downloads). Per-OS builds.
+const COMPANION_DOWNLOAD_MAC = "/downloads/BotflowCompanion.zip";
+const COMPANION_DOWNLOAD_WIN = "/downloads/BotflowCompanionSetup.exe";
 
 const COMPANION_BASE_URL = "http://127.0.0.1:17321";
+
+type HostOS = "mac" | "windows" | "other";
+function detectOS(): HostOS {
+  if (typeof navigator === "undefined") return "other";
+  const s = `${navigator.userAgent} ${navigator.platform ?? ""}`.toLowerCase();
+  if (s.includes("win")) return "windows";
+  if (s.includes("mac")) return "mac";
+  return "other";
+}
 
 type CompanionStatus = "idle" | "checking" | "online" | "offline";
 type InstallStatus = "idle" | "building" | "installing";
@@ -524,6 +534,12 @@ function GuideStep({ n, children }: { n: number; children: React.ReactNode }) {
 }
 
 function CompanionSetupGuide({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  const os = detectOS();
+  const isWin = os === "windows";
+  const isMac = os === "mac";
+  const url = isWin ? COMPANION_DOWNLOAD_WIN : COMPANION_DOWNLOAD_MAC;
+  const osLabel = isWin ? "Windows" : "macOS";
+
   return (
     <div className="space-y-3">
       <div className="flex items-start gap-2 rounded-md border border-border bg-elevated/60 p-3">
@@ -531,32 +547,51 @@ function CompanionSetupGuide({ error, onRetry }: { error: string | null; onRetry
         <div className="min-w-0">
           <div className="text-sm font-medium text-fg">Botflow Companion not running</div>
           <div className="mt-1 text-xs leading-5 text-muted">
-            Running an app on your own iPhone happens on your Mac. Install the free
-            companion (macOS) — it signs the build with your Apple ID and installs it
-            over USB.
+            Running an app on your own iPhone happens on your computer. Install the free
+            companion — it signs the build with your Apple ID and installs it over USB.
           </div>
         </div>
       </div>
 
-      <a href={COMPANION_DOWNLOAD_URL} download className="block">
+      <a href={url} download className="block">
         <Button className="w-full gap-2 font-semibold">
           <Download size={15} />
-          Download Botflow Companion (macOS)
+          Download Botflow Companion ({osLabel})
         </Button>
       </a>
+      {os === "other" && (
+        <div className="text-[11px] leading-4 text-muted">
+          We auto-detected an unsupported OS. The companion is available for macOS and Windows.
+        </div>
+      )}
 
       <div className="space-y-2.5 rounded-md border border-border bg-elevated/40 p-3">
         <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
           Set up (one time)
         </div>
-        <GuideStep n={1}>Unzip and drag <span className="font-medium text-fg">Botflow Companion</span> into your Applications folder.</GuideStep>
-        <GuideStep n={2}>
-          First launch: right-click the app → <span className="font-medium text-fg">Open</span> → Open
-          (this clears macOS Gatekeeper for an app downloaded from the web).
-        </GuideStep>
-        <GuideStep n={3}>It lives in your menu bar. Open it and <span className="font-medium text-fg">sign in with your Apple ID</span> — a free Apple ID works.</GuideStep>
-        <GuideStep n={4}>Connect your iPhone with a cable, unlock it, and tap <span className="font-medium text-fg">Trust</span>.</GuideStep>
-        <GuideStep n={5}>The companion will guide you to turn on <span className="font-medium text-fg">Developer Mode</span> if it isn&apos;t already.</GuideStep>
+        {isWin ? (
+          <>
+            <GuideStep n={1}>
+              Run <span className="font-medium text-fg">BotflowCompanionSetup.exe</span>. It installs
+              the app and Apple&apos;s device driver. If Windows SmartScreen warns,
+              click <span className="font-medium text-fg">More info → Run anyway</span>.
+            </GuideStep>
+            <GuideStep n={2}>It lives in your <span className="font-medium text-fg">system tray</span>. Open it and <span className="font-medium text-fg">sign in with your Apple ID</span> — a free Apple ID works.</GuideStep>
+            <GuideStep n={3}>Connect your iPhone with a cable, unlock it, and tap <span className="font-medium text-fg">Trust</span>.</GuideStep>
+            <GuideStep n={4}>Click <span className="font-medium text-fg">Enable Developer Mode</span> in the companion, then turn it on in Settings → Privacy &amp; Security and restart the device.</GuideStep>
+          </>
+        ) : (
+          <>
+            <GuideStep n={1}>Unzip and drag <span className="font-medium text-fg">Botflow Companion</span> into your Applications folder.</GuideStep>
+            <GuideStep n={2}>
+              First launch: right-click the app → <span className="font-medium text-fg">Open</span> → Open
+              (this clears macOS Gatekeeper for an app downloaded from the web).
+            </GuideStep>
+            <GuideStep n={3}>It lives in your menu bar. Open it and <span className="font-medium text-fg">sign in with your Apple ID</span> — a free Apple ID works.</GuideStep>
+            <GuideStep n={4}>Connect your iPhone with a cable, unlock it, and tap <span className="font-medium text-fg">Trust</span>.</GuideStep>
+            <GuideStep n={5}>The companion will guide you to turn on <span className="font-medium text-fg">Developer Mode</span> if it isn&apos;t already.</GuideStep>
+          </>
+        )}
       </div>
 
       <Button variant="outline" size="sm" className="w-full gap-2" onClick={onRetry}>
@@ -582,7 +617,7 @@ function NoDevicesGuide() {
         </div>
       </div>
       <div className="space-y-2.5 rounded-md border border-border bg-elevated/40 p-3">
-        <GuideStep n={1}>Plug your iPhone into this Mac with a cable and unlock it.</GuideStep>
+        <GuideStep n={1}>Plug your iPhone into this computer with a cable and unlock it.</GuideStep>
         <GuideStep n={2}>Tap <span className="font-medium text-fg">Trust This Computer</span> and enter your passcode.</GuideStep>
         <GuideStep n={3}>
           Turn on Developer Mode: <span className="font-medium text-fg">Settings → Privacy &amp; Security → Developer Mode</span>,
