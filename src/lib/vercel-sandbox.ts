@@ -33,6 +33,15 @@ const TEMPLATE_REPOS = {
 
 export type SandboxTemplate = keyof typeof TEMPLATE_REPOS;
 
+// TEMPORARY (feat/swift-convex-followups): pin a template to a non-default
+// branch so the Swift Convex Auth scaffolding (which lives on
+// swift-convex-template@feat/auth) can be validated end-to-end on this branch's
+// preview deployment WITHOUT merging the template to its main. Remove once
+// swift-convex-template feat/auth merges to main.
+const TEMPLATE_BRANCHES: Partial<Record<SandboxTemplate, string>> = {
+  swiftConvex: "feat/auth",
+};
+
 function assertSandboxAuth(): void {
   const hasOidcToken = Boolean(process.env.VERCEL_OIDC_TOKEN);
   const hasAccessTokenAuth =
@@ -344,6 +353,8 @@ async function seedSandboxInternal(sandbox: Sandbox, template: SandboxTemplate):
   if (out) return false;
 
   const repoUrl = TEMPLATE_REPOS[template];
+  const branch = TEMPLATE_BRANCHES[template];
+  const branchFlag = branch ? `--branch ${branch} ` : "";
   const tmpDir = `/tmp/${template}-template`;
 
   const seed = await sandbox.runCommand("sh", [
@@ -351,7 +362,7 @@ async function seedSandboxInternal(sandbox: Sandbox, template: SandboxTemplate):
     [
       "set -e",
       `rm -rf ${tmpDir}`,
-      `git clone --depth=1 ${repoUrl} ${tmpDir}`,
+      `git clone --depth=1 ${branchFlag}${repoUrl} ${tmpDir}`,
       `cp -a ${tmpDir}/. ${SANDBOX_ROOT}/`,
       `rm -rf ${SANDBOX_ROOT}/.git`,
       `rm -rf ${tmpDir}`,
