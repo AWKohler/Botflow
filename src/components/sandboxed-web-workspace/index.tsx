@@ -121,6 +121,13 @@ export function SandboxedWebWorkspace({
   const [editMode, setEditMode] = useState(false);
   const [isDevServerRunning, setIsDevServerRunning] = useState(false);
   const [isStartingServer, setIsStartingServer] = useState(false);
+  /** Last-seen HTML snapshot (UploadThing) — rendered blurred while the dev
+   *  server is off. */
+  const [htmlSnapshotUrl, setHtmlSnapshotUrl] = useState<string | null>(null);
+  /** Mirrors AgentPanel's debounced busy state via the agent-busy-change event. */
+  const [isAgentWorking, setIsAgentWorking] = useState(false);
+  /** True only while the agent works on the project's FIRST message. */
+  const [isInitialBuild, setIsInitialBuild] = useState(false);
 
   // ── Project metadata ─────────────────────────────────────────────────
   const [backendType, setBackendType] = useState<BackendType>(
@@ -212,6 +219,7 @@ export function SandboxedWebWorkspace({
         if (proj?.stripePaymentMode === "live" || proj?.stripePaymentMode === "test") {
           setStripePaymentMode(proj.stripePaymentMode);
         }
+        if (typeof proj?.htmlSnapshotUrl === "string") setHtmlSnapshotUrl(proj.htmlSnapshotUrl);
       } catch (e) {
         console.warn("Failed to load project metadata", e);
       }
@@ -909,6 +917,22 @@ export function SandboxedWebWorkspace({
     };
   }, [projectId, hasBackend, sandboxStatus]);
 
+  // ── Agent working state (from AgentPanel's custom event) ─────────────
+  // isInitialBuild latches on while the agent's FIRST turn runs and releases
+  // when it ends — the preview veils itself only during that window.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as
+        | { isBusy?: boolean; isFirstTurn?: boolean }
+        | undefined;
+      if (!detail) return;
+      setIsAgentWorking(Boolean(detail.isBusy));
+      setIsInitialBuild(Boolean(detail.isBusy && detail.isFirstTurn));
+    };
+    window.addEventListener("agent-busy-change", handler);
+    return () => window.removeEventListener("agent-busy-change", handler);
+  }, []);
+
   // ── Dev server ───────────────────────────────────────────────────────
   const handleStartDevServer = useCallback(async () => {
     if (isStartingServer) return;
@@ -1487,6 +1511,9 @@ export function SandboxedWebWorkspace({
               onToggleDevServer={handleStartDevServer}
               platform="sandboxed-web"
               projectId={projectId}
+              htmlSnapshotUrl={htmlSnapshotUrl}
+              isAgentWorking={isAgentWorking}
+              isInitialBuild={isInitialBuild}
               editMode={editMode}
               onElementSelected={(sel) => {
                 if (sel) {

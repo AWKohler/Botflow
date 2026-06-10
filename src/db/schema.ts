@@ -20,6 +20,12 @@ export const projects = pgTable('projects', {
   // UploadThing file keys for deletion (format: "fileKey" from uploadthing)
   thumbnailKey: text('thumbnail_key'),
   htmlSnapshotKey: text('html_snapshot_key'),
+  // Swift simulator screenshots — the "last seen" frame per device family,
+  // shown blurred in the stopped preview state. One file kept per device.
+  swiftScreenshotIphoneUrl: text('swift_screenshot_iphone_url'),
+  swiftScreenshotIphoneKey: text('swift_screenshot_iphone_key'),
+  swiftScreenshotIpadUrl: text('swift_screenshot_ipad_url'),
+  swiftScreenshotIpadKey: text('swift_screenshot_ipad_key'),
   // Convex backend integration (for web and multiplatform projects)
   convexProjectId: text('convex_project_id'),       // Convex platform project ID
   convexDeploymentId: text('convex_deployment_id'), // Deployment name (e.g., "happy-otter-123")

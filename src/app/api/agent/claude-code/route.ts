@@ -302,6 +302,17 @@ export async function POST(req: Request) {
         "open_pull_request",
       );
     }
+  } else if (platform === "swift") {
+    // Simulator control — the sim never runs while the agent works (no HMR;
+    // compiling is expensive). The agent opens it once its work is done.
+    customTools.push(
+      "start_simulator",
+      "stop_simulator",
+      "get_simulator_status",
+      // In-chat question + env-var primitives are platform-agnostic.
+      "ask_question",
+      "request_env_var",
+    );
   }
 
   const bridgeConfig = {

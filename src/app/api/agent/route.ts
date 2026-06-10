@@ -637,6 +637,7 @@ export async function POST(req: Request) {
       tools = getPersistentTools(projectId, {
         hasBackend,
         appBaseUrl: new URL(req.url).origin,
+        ...(platform ? { platform } : {}),
         ...(cookie ? { authHeaders: { cookie } } : {}),
       });
     } else {

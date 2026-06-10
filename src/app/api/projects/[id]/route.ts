@@ -149,7 +149,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
     // Delete thumbnail and html snapshot from UploadThing
     try {
-      const keysToDelete = [proj.thumbnailKey, proj.htmlSnapshotKey].filter(Boolean) as string[];
+      const keysToDelete = [
+        proj.thumbnailKey,
+        proj.htmlSnapshotKey,
+        proj.swiftScreenshotIphoneKey,
+        proj.swiftScreenshotIpadKey,
+      ].filter(Boolean) as string[];
       if (keysToDelete.length > 0) {
         await utapi.deleteFiles(keysToDelete);
       }

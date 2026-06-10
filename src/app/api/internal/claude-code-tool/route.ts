@@ -42,6 +42,10 @@ import {
   stopSandboxDevServer,
 } from "@/lib/workspace-control";
 import {
+  getSimulatorStatus,
+  requestSimulatorAction,
+} from "@/lib/swift-sim-control";
+import {
   abortMerge,
   commitAll,
   getCurrentBranch,
@@ -209,6 +213,40 @@ export async function POST(req: Request) {
     // ── Workspace control: dev server lifecycle + browser/dev logs ──────
     // All six tools call into the same server-side primitives the Botflow
     // sandboxed-web agent uses, so the two agent paths stay in lockstep.
+    // ── Simulator control (Swift) ────────────────────────────────────────
+    // Desired-state only: the user's open workspace owns the stream session
+    // and polls /swift-preview/state to honor these requests.
+    case "start_simulator": {
+      if (project.platform !== "swift") {
+        return NextResponse.json({ ok: false, content: "start_simulator is only available on Swift projects." });
+      }
+      await requestSimulatorAction(binding.projectId, "start");
+      return NextResponse.json({
+        ok: true,
+        content:
+          "Simulator start requested. The user's workspace will build the project and begin streaming within a few seconds (if their tab is open).",
+      });
+    }
+
+    case "stop_simulator": {
+      if (project.platform !== "swift") {
+        return NextResponse.json({ ok: false, content: "stop_simulator is only available on Swift projects." });
+      }
+      await requestSimulatorAction(binding.projectId, "stop");
+      return NextResponse.json({ ok: true, content: "Simulator stop requested." });
+    }
+
+    case "get_simulator_status": {
+      if (project.platform !== "swift") {
+        return NextResponse.json({ ok: false, content: "get_simulator_status is only available on Swift projects." });
+      }
+      const status = await getSimulatorStatus(binding.projectId);
+      return NextResponse.json({
+        ok: true,
+        content: JSON.stringify(status),
+      });
+    }
+
     case "startDevServer": {
       const result = await startSandboxDevServer(binding.projectId, {
         port: 5173,

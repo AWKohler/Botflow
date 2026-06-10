@@ -100,6 +100,9 @@ interface SwiftSimulatorPreviewProps {
   onStop?: () => void;
   /** Pop the PIP back to full-screen Preview tab. Pip-only. */
   onExpand?: () => void;
+  /** Last-seen simulator screenshots per device family. Shown blurred inside
+   * the device screen while the session boots; de-blurs on the first frame. */
+  screenshots?: { iphone?: string | null; ipad?: string | null };
 }
 
 type PillState =
@@ -125,6 +128,7 @@ export function SwiftSimulatorPreview({
   onOpenFile,
   onStop,
   onExpand,
+  screenshots,
 }: SwiftSimulatorPreviewProps) {
   const isPip = mode === "pip";
   const { toast } = useToast();
@@ -171,6 +175,53 @@ export function SwiftSimulatorPreview({
   // the host reports back so we can tell the user when a rotate didn't apply.
   const pendingOrientationRef = useRef<OrientationUI | null>(null);
 
+  // ── Last-seen screenshot overlay + capture ───────────────────────────────
+  // While the session boots, the previous run's screenshot (if any) covers the
+  // black screen under a blur; the FIRST decoded frame triggers a ~700ms
+  // de-blur, then the overlay unmounts. The canvas is also grabbed (toBlob)
+  // periodically and on Stop so the next stopped state shows fresh content.
+  const [hasFrame, setHasFrame] = useState(false);
+  const hasFrameRef = useRef(false);
+  const [screenshotOverlayGone, setScreenshotOverlayGone] = useState(false);
+  const deviceModelRef = useRef<DeviceModelUI>(loadDevicePref());
+  const lastScreenshotAtRef = useRef(0);
+
+  const markFrame = useCallback(() => {
+    if (!hasFrameRef.current) {
+      hasFrameRef.current = true;
+      setHasFrame(true);
+    }
+  }, []);
+
+  const captureScreenshot = useCallback((force = false) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !hasFrameRef.current) return;
+    if (!force && Date.now() - lastScreenshotAtRef.current < 10_000) return;
+    lastScreenshotAtRef.current = Date.now();
+    try {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return;
+          const form = new FormData();
+          form.append("file", blob, "simulator.jpg");
+          form.append(
+            "deviceModel",
+            deviceModelRef.current === "iPad-Pro" ? "iPad-Pro" : "iPhone-16-Pro",
+          );
+          void fetch(`/api/projects/${projectId}/swift-preview/screenshot`, {
+            method: "POST",
+            body: form,
+            keepalive: true,
+          }).catch(() => {});
+        },
+        "image/jpeg",
+        0.85,
+      );
+    } catch {
+      // Canvas hiccup — next interval tries again.
+    }
+  }, [projectId]);
+
   // ────────────────────────────────────────────────────────────────────────────
   // Session lifecycle — delegated to a refcounted pool keyed by projectId.
   //
@@ -191,6 +242,13 @@ export function SwiftSimulatorPreview({
   useEffect(() => {
     let cancelled = false;
     let client: SwiftStreamClient | null = null;
+
+    // Fresh session (mount or device switch) — frames from the previous
+    // session don't count toward the de-blur.
+    hasFrameRef.current = false;
+    setHasFrame(false);
+    setScreenshotOverlayGone(false);
+    deviceModelRef.current = deviceModel;
 
     (async () => {
       try {
@@ -277,11 +335,13 @@ export function SwiftSimulatorPreview({
   }, [projectId, deviceModel]);
 
   // Stop is special: the user explicitly wants the simulator gone. Bypass
-  // the pool grace window so the slot is freed immediately on click.
+  // the pool grace window so the slot is freed immediately on click. Grab a
+  // final screenshot first — it becomes the blurred stopped-state image.
   const handleStop = useCallback(() => {
+    captureScreenshot(true);
     forceEndSession(projectId, { deviceModel });
     onStop?.();
-  }, [projectId, onStop, deviceModel]);
+  }, [projectId, onStop, deviceModel, captureScreenshot]);
 
   // Switch device family (iPhone ↔ iPad). The session effect (keyed on
   // deviceModel) tears down the old simulator and starts a new one in the new
@@ -492,6 +552,64 @@ export function SwiftSimulatorPreview({
     displayOrientationRef.current = liveOrientation ?? orientation;
   }, [orientation, liveOrientation]);
 
+  // Keep the screenshot uploader's device label fresh.
+  useEffect(() => {
+    deviceModelRef.current = deviceModel;
+  }, [deviceModel]);
+
+  // ── Publish actual stream state (agent's getSimulatorStatus reads this) ──
+  useEffect(() => {
+    const state =
+      pill.kind === "starting"
+        ? "starting"
+        : pill.kind === "building"
+          ? "building"
+          : pill.kind === "installing"
+            ? "installing"
+            : pill.kind === "live"
+              ? "live"
+              : pill.kind === "failed" || pill.kind === "error"
+                ? "failed"
+                : "stopped"; // idle | ended
+    void fetch(`/api/projects/${projectId}/swift-preview/state`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state, deviceModel }),
+      keepalive: true,
+    }).catch(() => {});
+  }, [pill.kind, projectId, deviceModel]);
+
+  // Publish "stopped" when the preview unmounts (Stop button / tab close).
+  useEffect(() => {
+    return () => {
+      void fetch(`/api/projects/${projectId}/swift-preview/state`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state: "stopped", deviceModel: null }),
+        keepalive: true,
+      }).catch(() => {});
+    };
+  }, [projectId]);
+
+  // ── Periodic screenshot while live ───────────────────────────────────────
+  useEffect(() => {
+    if (pill.kind !== "live") return;
+    // First grab shortly after going live, then every 30s.
+    const first = setTimeout(() => captureScreenshot(), 5_000);
+    const timer = setInterval(() => captureScreenshot(), 30_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [pill.kind, captureScreenshot]);
+
+  // ── Screenshot overlay de-blur: first frame → 700ms transition → unmount ─
+  useEffect(() => {
+    if (!hasFrame) return;
+    const t = setTimeout(() => setScreenshotOverlayGone(true), 750);
+    return () => clearTimeout(t);
+  }, [hasFrame]);
+
   const drawFrame = useCallback((b64: string) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -504,6 +622,7 @@ export function SwiftSimulatorPreview({
         img.naturalHeight,
         displayOrientationRef.current === "landscape",
       );
+      markFrame();
       frameCountRef.current++;
       const now = Date.now();
       const elapsed = now - fpsTimeRef.current;
@@ -514,7 +633,7 @@ export function SwiftSimulatorPreview({
       }
     };
     img.src = `data:image/jpeg;base64,${b64}`;
-  }, []);
+  }, [markFrame]);
 
   const handleVideoConfig = useCallback((config: SimVideoConfig) => {
     const canvas = canvasRef.current;
@@ -550,6 +669,7 @@ export function SwiftSimulatorPreview({
           );
         }
         frame.close();
+        markFrame();
         frameCountRef.current++;
         const now = Date.now();
         const elapsed = now - fpsTimeRef.current;
@@ -574,7 +694,7 @@ export function SwiftSimulatorPreview({
     videoDecoderRef.current = decoder;
     videoConfiguredRef.current = true;
     waitingForVideoKeyframeRef.current = true;
-  }, []);
+  }, [markFrame]);
 
   const handleVideoChunk = useCallback((chunk: Uint8Array, timestampMs: number, keyframe: boolean) => {
     const decoder = videoDecoderRef.current;
@@ -950,6 +1070,29 @@ export function SwiftSimulatorPreview({
           )}
           style={{ touchAction: "none" }}
         />
+        {/* Last-seen screenshot — covers the black screen (blurred) while the
+            session provisions/builds; de-blurs away on the first real frame. */}
+        {(() => {
+          const screenshotUrl =
+            deviceModel === "iPad-Pro" ? screenshots?.ipad : screenshots?.iphone;
+          if (!screenshotUrl || screenshotOverlayGone) return null;
+          return (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={screenshotUrl}
+              alt=""
+              className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover"
+              style={{
+                filter: hasFrame
+                  ? "blur(0px) brightness(1)"
+                  : "blur(14px) brightness(0.65)",
+                opacity: hasFrame ? 0 : 1,
+                transform: "scale(1.06)", // hide blur edge bleed
+                transition: "filter 700ms ease, opacity 700ms ease",
+              }}
+            />
+          );
+        })()}
       </DeviceFrame>
 
       {/* Structured build Issues panel — full mode only.

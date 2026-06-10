@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import {
@@ -49,6 +49,8 @@ export function getPersistentTools(
     hasBackend?: boolean;
     appBaseUrl?: string;
     authHeaders?: Record<string, string>;
+    /** Project platform — Swift projects get the simulator control tools. */
+    platform?: string;
   } = {},
 ) {
   const baseTools = {
@@ -369,9 +371,59 @@ export function getPersistentTools(
     }),
   };
 
+  // Simulator control — Swift only. The simulator session is owned by the
+  // user's open workspace (it holds the WebSocket stream), so these tools
+  // publish desired-state to Redis; the workspace polls and honors it. See
+  // src/lib/swift-sim-control.ts.
+  const simulatorTools: ToolSet =
+    opts.platform === "swift"
+      ? {
+          startSimulator: tool({
+            description:
+              "Build the project and run it on the iOS simulator in the user's workspace. The simulator does NOT run while you work (no HMR — compiling is expensive), so call this ONCE at the END of your turn, after your changes are complete and you believe the project builds. " +
+              "The user's open workspace picks the request up within a few seconds and starts streaming; if their workspace tab is closed the request simply expires. Do NOT call this mid-work or when the build is known-broken.",
+            inputSchema: z.object({}),
+            async execute() {
+              return safe(async () => {
+                const { requestSimulatorAction } = await import("@/lib/swift-sim-control");
+                await requestSimulatorAction(projectId, "start");
+                return {
+                  ok: true,
+                  message:
+                    "Simulator start requested. The user's workspace will build the project and begin streaming within a few seconds (if their tab is open).",
+                };
+              });
+            },
+          }),
+          stopSimulator: tool({
+            description:
+              "Stop the running iOS simulator stream in the user's workspace. Use when the user asks to stop it, or before making a large batch of changes that would make the running build stale.",
+            inputSchema: z.object({}),
+            async execute() {
+              return safe(async () => {
+                const { requestSimulatorAction } = await import("@/lib/swift-sim-control");
+                await requestSimulatorAction(projectId, "stop");
+                return { ok: true, message: "Simulator stop requested." };
+              });
+            },
+          }),
+          getSimulatorStatus: tool({
+            description:
+              "Check whether the iOS simulator is currently running/streaming in the user's workspace. Returns state ('stopped' | 'starting' | 'building' | 'installing' | 'live' | 'failed'), the device model, and any pending start/stop request. Cheap — call before startSimulator if unsure.",
+            inputSchema: z.object({}),
+            async execute() {
+              return safe(async () => {
+                const { getSimulatorStatus } = await import("@/lib/swift-sim-control");
+                return getSimulatorStatus(projectId);
+              });
+            },
+          }),
+        }
+      : {};
+
   // No-backend (or missing app URL) → file/exec tools only.
   if (!opts.hasBackend || !opts.appBaseUrl) {
-    return baseTools;
+    return { ...baseTools, ...simulatorTools };
   }
 
   // Backend-enabled Swift projects get the Convex deploy + logs tools. The
@@ -381,6 +433,7 @@ export function getPersistentTools(
   const authHeaders = opts.authHeaders;
   return {
     ...baseTools,
+    ...simulatorTools,
     convexDeploy: tool({
       description:
         "Deploy Convex backend changes. Zips the /convex folder and supporting files (package.json, tsconfig.json) from the sandbox and sends them to the deploy worker. May take several minutes. " +

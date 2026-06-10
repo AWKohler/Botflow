@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "20";
+export const BRIDGE_SCRIPT_VERSION = "21";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -383,6 +383,42 @@ function buildCustomTools(customTools) {
         "Force the preview iframe in the user's workspace to hard-reload. Useful after changes that Vite HMR cannot pick up.",
         {},
         makeHostToolHandler("refreshPreview"),
+      ),
+    );
+  }
+
+  // ── Simulator control (Swift) — desired-state via the host, honored by the
+  // user's open workspace (it owns the stream). ─────────────────────────────
+  if (customTools.includes("start_simulator")) {
+    tools.push(
+      tool(
+        "start_simulator",
+        "Build the project and run it on the iOS simulator in the user's workspace. The simulator does NOT run while you work (no HMR — compiling is expensive), so call this ONCE at the END of your turn, after your changes are complete and you believe the project builds. " +
+        "The user's open workspace picks the request up within a few seconds and starts streaming; if their workspace tab is closed the request simply expires. Do NOT call this mid-work or when the build is known-broken.",
+        {},
+        makeHostToolHandler("start_simulator"),
+      ),
+    );
+  }
+
+  if (customTools.includes("stop_simulator")) {
+    tools.push(
+      tool(
+        "stop_simulator",
+        "Stop the running iOS simulator stream in the user's workspace. Use when the user asks to stop it, or before making a large batch of changes that would make the running build stale.",
+        {},
+        makeHostToolHandler("stop_simulator"),
+      ),
+    );
+  }
+
+  if (customTools.includes("get_simulator_status")) {
+    tools.push(
+      tool(
+        "get_simulator_status",
+        "Check whether the iOS simulator is currently running/streaming in the user's workspace. Returns state ('stopped' | 'starting' | 'building' | 'installing' | 'live' | 'failed'), the device model, and any pending start/stop request. Cheap — call before start_simulator if unsure.",
+        {},
+        makeHostToolHandler("get_simulator_status"),
       ),
     );
   }

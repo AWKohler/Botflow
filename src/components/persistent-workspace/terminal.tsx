@@ -58,7 +58,6 @@ export function PersistentTerminal({ projectId, ready, cwd = "/vercel/sandbox" }
     const ro = new ResizeObserver(() => fit.fit());
     ro.observe(containerRef.current);
 
-    term.writeln("\x1b[36mPersistent sandbox terminal\x1b[0m");
     term.writeln("\x1b[2mEach command runs in a fresh shell. Use `cd <dir>` to change the working directory.\x1b[0m");
     term.writeln("");
 
@@ -78,7 +77,7 @@ export function PersistentTerminal({ projectId, ready, cwd = "/vercel/sandbox" }
 
     const writePrompt = () => {
       const cwdLabel = cwdRef.current.replace(/^\/vercel\/sandbox/, "") || "/";
-      term.write(`\r\n\x1b[2m${cwdLabel}\x1b[0m\r\n${PROMPT}`);
+      term.write(`\r\n\x1b[2m${cwdLabel}\x1b[0m ${PROMPT}`);
       inputRef.current = "";
       cursorRef.current = 0;
     };
@@ -348,7 +347,7 @@ export function PersistentTerminal({ projectId, ready, cwd = "/vercel/sandbox" }
     if (!term || !ready || initialPromptShownRef.current) return;
     initialPromptShownRef.current = true;
     const cwdLabel = cwdRef.current.replace(/^\/vercel\/sandbox/, "") || "/";
-    term.write(`\x1b[2m${cwdLabel}\x1b[0m\r\n${PROMPT}`);
+    term.write(`\x1b[2m${cwdLabel}\x1b[0m ${PROMPT}`);
   }, [ready]);
 
   return (

@@ -114,11 +114,67 @@ const EDITOR_RUNTIME = `
     });
   }
 
+  // Serialize the *rendered* DOM into a static, self-contained-ish HTML string.
+  // Used by the parent IDE to store a "last seen" snapshot of the app that it
+  // can render (blurred) while the dev server is off. Scripts are stripped —
+  // the snapshot must be static; Vite module scripts would point at a dead
+  // origin. <style> tags survive the clone (Vite injects dev CSS inline), and
+  // same-origin <img>s are inlined as data URLs since the origin won't be
+  // reachable when the snapshot is shown.
+  function buildSnapshotHtml() {
+    var clone = document.documentElement.cloneNode(true);
+    var i;
+    var scripts = clone.querySelectorAll("script");
+    for (i = 0; i < scripts.length; i++) {
+      if (scripts[i].parentNode) scripts[i].parentNode.removeChild(scripts[i]);
+    }
+    var stamped = clone.querySelectorAll("[data-bf-loc]");
+    for (i = 0; i < stamped.length; i++) {
+      stamped[i].removeAttribute("data-bf-loc");
+      stamped[i].removeAttribute("data-bf-id");
+    }
+    // Inline same-origin images (best effort, bounded). Live <img> elements and
+    // their clones come back in the same document order, so we can pair them.
+    var liveImgs = document.querySelectorAll("img");
+    var cloneImgs = clone.querySelectorAll("img");
+    var inlined = 0;
+    for (i = 0; i < liveImgs.length && i < cloneImgs.length; i++) {
+      if (inlined >= 30) break;
+      var img = liveImgs[i];
+      if (!img.complete || !img.naturalWidth) continue;
+      var src = img.currentSrc || img.src || "";
+      if (src.indexOf("data:") === 0) continue;
+      try {
+        var canvas = document.createElement("canvas");
+        var w = Math.min(img.naturalWidth, 1280);
+        var scale = w / img.naturalWidth;
+        canvas.width = w;
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        cloneImgs[i].setAttribute("src", canvas.toDataURL("image/jpeg", 0.8));
+        cloneImgs[i].removeAttribute("srcset");
+        inlined++;
+      } catch (err) { /* cross-origin taint — leave the original src */ }
+    }
+    var head = clone.querySelector("head");
+    if (head) {
+      var base = document.createElement("base");
+      base.setAttribute("href", window.location.origin + "/");
+      head.insertBefore(base, head.firstChild);
+    }
+    return "<!DOCTYPE html>" + String.fromCharCode(10) + clone.outerHTML;
+  }
+
   window.addEventListener("message", function (e) {
     var d = e.data;
     if (!d || typeof d !== "object") return;
     if (d.type === "BF_EDITOR_ENABLE") setEnabled(true);
     else if (d.type === "BF_EDITOR_DISABLE") setEnabled(false);
+    else if (d.type === "BF_SNAPSHOT_REQUEST") {
+      var html = null;
+      try { html = buildSnapshotHtml(); } catch (err) {}
+      post({ type: "BF_SNAPSHOT_RESULT", id: d.id || null, html: html });
+    }
     else if (d.type === "BF_EDITOR_PREVIEW") {
       var t = findByLoc(d.loc);
       if (t) {

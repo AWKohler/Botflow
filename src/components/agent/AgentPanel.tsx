@@ -908,12 +908,29 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
 
   const isAgentWorking = isBusy;
 
+  // --- First-turn detection ---
+  // True while the agent is working on the very first message of a brand-new
+  // project (exactly one user message when the turn starts). The workspace
+  // uses this to veil the preview during the initial build — and ONLY then;
+  // follow-up turns never blur.
+  const [isFirstTurn, setIsFirstTurn] = useState(false);
+  const prevBusyForFirstTurnRef = useRef(false);
+  useEffect(() => {
+    if (isBusy && !prevBusyForFirstTurnRef.current) {
+      const userCount = messagesRef.current.filter((m) => m.role === 'user').length;
+      setIsFirstTurn(userCount <= 1);
+    } else if (!isBusy) {
+      setIsFirstTurn(false);
+    }
+    prevBusyForFirstTurnRef.current = isBusy;
+  }, [isBusy]);
+
   // Emit custom event when busy state changes (workspace listens for preview loading state)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('agent-busy-change', { detail: { isBusy } }));
+      window.dispatchEvent(new CustomEvent('agent-busy-change', { detail: { isBusy, isFirstTurn } }));
     }
-  }, [isBusy]);
+  }, [isBusy, isFirstTurn]);
 
   // --- "Agent may not have finished" warning ---
   // Only show when busy state truly settles to false (debounced) and endTurn wasn't called
