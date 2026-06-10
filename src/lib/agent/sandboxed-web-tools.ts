@@ -30,6 +30,13 @@ import { projects, oauthProviderRequests } from "@/db/schema";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { STRIPE_CONNECT_ENABLED } from "@/lib/feature-flags";
 import {
+  createEnvVarRequest,
+  envVarOutcomeMessage,
+  pollEnvVarRequest,
+  validateEnvVarRequest,
+  type EnvVarTarget,
+} from "@/lib/agent/env-var-requests";
+import {
   commitAll,
   getCurrentBranch,
   getDiff,
@@ -820,6 +827,57 @@ REQUIRED NEXT STEPS:
             "Timed out waiting for Google OAuth credentials (5 minutes elapsed). " +
             "The modal is no longer visible. You can call setupOAuthProvider again when ready.",
         };
+      },
+    }),
+    requestEnvVar: tool({
+      description:
+        "Ask the user to enter the value of an environment variable. " +
+        "Calling this opens a modal in the user's workspace showing the variable NAME you chose; the user types only the VALUE. " +
+        "The value is stored server-side and is NEVER shown to you — assume it is set and write code that reads it.\n\n" +
+        "TARGETS:\n" +
+        "  • 'client' — frontend Vite .env. Remember Vite only exposes VITE_-prefixed vars to browser code (EXPO_PUBLIC_ on Expo).\n" +
+        "  • 'server' — the project's Convex deployment env (read with process.env in Convex functions). Requires a Convex backend.\n\n" +
+        "Use this for third-party API keys, webhook secrets, etc. that only the user knows. " +
+        "Set isSecret=true for sensitive values so they're masked in the Env panel. " +
+        "Include a short `message` explaining what the value is and where to find it — it's rendered in the modal.\n\n" +
+        "Blocks until the user saves or dismisses (up to 5 minutes). On dismiss: do NOT retry automatically; continue without it.",
+      inputSchema: z.object({
+        target: z.enum(["client", "server"]).describe("'client' = frontend Vite .env; 'server' = Convex deployment env."),
+        key: z.string().describe("Variable name, e.g. VITE_MAPBOX_TOKEN or OPENAI_API_KEY. Shown read-only to the user."),
+        message: z.string().optional().describe("Short explanation rendered in the modal (what the value is, where the user finds it)."),
+        isSecret: z.boolean().optional().describe("Mask the value as a secret in the Env panel (client target). Default false."),
+      }),
+      async execute({ target, key, message, isSecret }) {
+        const invalid = validateEnvVarRequest({ target, key });
+        if (invalid) return { ok: false, error: invalid };
+
+        const db = getDb();
+        const [proj] = await db
+          .select({ userId: projects.userId, backendType: projects.backendType })
+          .from(projects)
+          .where(eq(projects.id, projectId))
+          .limit(1);
+        if (!proj) return { ok: false, error: "Project not found." };
+        if (target === "server" && proj.backendType === "none") {
+          return {
+            ok: false,
+            error: "This project has no Convex backend, so server env vars can't be set. Use target 'client' instead.",
+          };
+        }
+
+        const requestId = await createEnvVarRequest({
+          projectId,
+          userId: proj.userId,
+          target: target as EnvVarTarget,
+          key,
+          message: message ?? null,
+          isSecret: isSecret ?? false,
+        });
+        const outcome = await pollEnvVarRequest({ requestId, projectId });
+        const result = envVarOutcomeMessage(outcome, key, target as EnvVarTarget);
+        return result.ok
+          ? { ok: true, status: outcome, context: result.content }
+          : { ok: false, status: outcome, error: result.content };
       },
     }),
     convexDeploy: tool({

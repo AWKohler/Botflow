@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "18";
+export const BRIDGE_SCRIPT_VERSION = "20";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -113,6 +113,70 @@ function makeHostToolHandler(toolName) {
       };
     }
   };
+}
+
+// ---------------------------------------------------------------------------
+// Native AskUserQuestion → Botflow question UI.
+//
+// Claude Code's built-in AskUserQuestion tool requests user input through the
+// canUseTool callback (the SDK invokes it even under bypassPermissions — it's
+// an input request, not a permission check). Without a handler the call never
+// reaches the user and the question UI never shows. We forward it to the same
+// host "ask_question" endpoint the MCP tool uses, so both tools share one
+// chat_questions row + QuestionPrompt UI + answer flow, then hand the answers
+// back to the SDK in its expected { questions, answers: { [questionText]:
+// label } } shape (recent CLIs look answers up by question text).
+// ---------------------------------------------------------------------------
+async function handleNativeAskUserQuestion(input) {
+  const rawQuestions = Array.isArray(input && input.questions) ? input.questions : [];
+  if (rawQuestions.length === 0) {
+    return { behavior: "deny", message: "AskUserQuestion requires a non-empty questions array." };
+  }
+
+  // Convert to the host ask_question schema, which requires ids. Ids are
+  // deterministic ("q-0", "opt-0-1") — the stream translator derives the same
+  // ids for the UI card, so the user's selectedIds line up with these.
+  const converted = rawQuestions.map((q, qi) => ({
+    id: "q-" + qi,
+    ...(q && q.header ? { header: String(q.header) } : {}),
+    question: q && typeof q.question === "string" ? q.question : "",
+    options: (q && Array.isArray(q.options) ? q.options : []).map((opt, oi) => ({
+      id: "opt-" + qi + "-" + oi,
+      label: opt && typeof opt.label === "string" ? opt.label : "Option " + (oi + 1),
+      ...(opt && opt.description ? { description: String(opt.description) } : {}),
+    })),
+    multiSelect: !!(q && q.multiSelect),
+  }));
+
+  // One host call for all questions: the host blocks (up to 5 min) until the
+  // user answers or dismisses in the workspace UI.
+  const result = await callHostTool("ask_question", { questions: converted });
+  if (!result || result.answered !== true) {
+    return {
+      behavior: "deny",
+      message:
+        "The user dismissed the question (or it timed out) without answering. " +
+        "Do not ask again; continue with a reasonable default.",
+    };
+  }
+
+  const labels = Array.isArray(result.selectedLabels) ? result.selectedLabels : [];
+  let answerText = labels.join(", ");
+  if (result.customText) {
+    answerText = answerText ? answerText + " — " + result.customText : String(result.customText);
+  }
+  if (!answerText) answerText = "(no selection)";
+
+  // The Botflow question card collects a single answer (for the first
+  // question), so map it there and mark any extras unanswered.
+  const answers = {};
+  converted.forEach((q, qi) => {
+    answers[q.question] = qi === 0
+      ? answerText
+      : "(not answered — the user was only shown the first question; use your best judgment)";
+  });
+
+  return { behavior: "allow", updatedInput: { questions: rawQuestions, answers } };
 }
 
 function buildCustomTools(customTools) {
@@ -348,6 +412,25 @@ function buildCustomTools(customTools) {
     );
   }
 
+  if (customTools.includes("request_env_var")) {
+    tools.push(
+      tool(
+        "request_env_var",
+        "Ask the user to enter the value of an environment variable. Opens a modal in the user's workspace showing the variable NAME you chose; the user types only the VALUE. The value is stored server-side and NEVER shown to you — assume it is set and write code that reads it. " +
+        "Targets: 'client' = frontend Vite .env (only VITE_-prefixed vars reach browser code); 'server' = the Convex deployment env (process.env in Convex functions; requires a backend). " +
+        "Use for third-party API keys, webhook secrets, etc. Set isSecret=true for sensitive values. Include a short message explaining what the value is and where to find it — it's rendered in the modal. " +
+        "Blocks until the user saves or dismisses (up to 5 minutes). On dismiss: do NOT retry automatically; continue without it.",
+        {
+          target: z.enum(["client", "server"]),
+          key: z.string(),
+          message: z.string().optional(),
+          isSecret: z.boolean().optional(),
+        },
+        makeHostToolHandler("request_env_var"),
+      ),
+    );
+  }
+
   // ── Git tools (Phase D — only registered when project has a GitHub repo) ──
   // The host route gates these on project.githubRepoOwner; we still need to
   // advertise them to Claude Code when the route includes them in customTools.
@@ -511,6 +594,23 @@ async function main() {
     // the action stream surfaced in the Botflow UI is the user-visible audit
     // trail. Equivalent to claude --dangerously-skip-permissions.
     permissionMode: "bypassPermissions",
+    // AskUserQuestion is routed through canUseTool even in bypassPermissions
+    // mode — it's a user-input request, not a permission check. Everything
+    // else is allowed unchanged (bypassPermissions already covers it; this is
+    // just the backstop for any call the SDK still routes here).
+    canUseTool: async (toolName, toolInput) => {
+      if (toolName === "AskUserQuestion") {
+        try {
+          return await handleNativeAskUserQuestion(toolInput);
+        } catch (err) {
+          return {
+            behavior: "deny",
+            message: "Question UI unavailable: " + (err && err.message ? err.message : String(err)),
+          };
+        }
+      }
+      return { behavior: "allow", updatedInput: toolInput };
+    },
     env: { ...process.env },
     includePartialMessages: false,
   };

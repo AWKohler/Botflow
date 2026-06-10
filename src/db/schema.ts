@@ -338,6 +338,34 @@ export const oauthProviderRequests = pgTable('oauth_provider_requests', {
 export type OAuthProviderRequest = typeof oauthProviderRequests.$inferSelect;
 export type NewOAuthProviderRequest = typeof oauthProviderRequests.$inferInsert;
 
+// Env-var entry requests — created by the agent's requestEnvVar tool call;
+// resolved when the user enters the value in the workspace modal. The agent
+// picks the variable NAME and target; only the VALUE comes from the user, and
+// it never flows back through the agent (it's written straight to the Vite
+// .env / Convex deployment server-side).
+export const envVarRequests = pgTable('env_var_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull(),
+  /** 'client' → frontend Vite .env (project_env_vars). 'server' → Convex deployment env. */
+  target: text('target').notNull(),
+  /** Variable name chosen by the agent, shown read-only in the modal. */
+  key: text('key').notNull(),
+  /** Optional agent-authored explanation rendered in the modal. */
+  message: text('message'),
+  /** Whether the value should be stored/displayed as a secret (client target only). */
+  isSecret: boolean('is_secret').notNull().default(false),
+  /** 'pending' → modal is open. 'completed' → value saved. 'dismissed' → user cancelled. */
+  status: text('status').notNull().default('pending'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  projectIdIdx: index('env_var_requests_project_id_idx').on(t.projectId),
+}));
+
+export type EnvVarRequest = typeof envVarRequests.$inferSelect;
+export type NewEnvVarRequest = typeof envVarRequests.$inferInsert;
+
 // In-chat questions surfaced by the agent (via the askQuestion tool) and
 // resolved by the user clicking an option in the agent panel. Used as the
 // async-handshake channel for the Claude Code bridge path; the Botflow path

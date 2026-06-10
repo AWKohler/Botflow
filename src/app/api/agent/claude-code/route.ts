@@ -269,6 +269,8 @@ export async function POST(req: Request) {
       "refreshPreview",
       // In-chat question primitive — always available on sandboxed-web.
       "ask_question",
+      // Env-var entry modal — agent picks the name, user types the value.
+      "request_env_var",
     );
     if (hasBackend) {
       customTools.push(

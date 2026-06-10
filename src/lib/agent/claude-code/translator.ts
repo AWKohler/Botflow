@@ -103,9 +103,51 @@ export function normalizeToolName(name: string): string {
     case "BashOutput":
     case "KillShell":
       return name.toLowerCase();
+    case "AskUserQuestion":
+      // Claude Code's native question tool. The bridge answers it through the
+      // same host ask_question flow as the MCP tool; renaming it here lets the
+      // AgentPanel render the same QuestionPrompt card for both.
+      return "ask_question";
     default:
       return name;
   }
+}
+
+/**
+ * Convert Claude Code's native AskUserQuestion input — { questions: [{
+ * question, header?, options: [{ label, description? }], multiSelect? }] } —
+ * into the shared QuestionConfig shape the QuestionPrompt UI expects (ids on
+ * questions and options). Ids must match the bridge script's conversion
+ * ("q-{i}" / "opt-{i}-{j}") so the user's selectedIds line up with the row
+ * the bridge created on the host.
+ */
+function convertNativeQuestionInput(input: unknown): unknown {
+  const raw = (input as { questions?: unknown })?.questions;
+  if (!Array.isArray(raw)) return input;
+  return {
+    questions: raw.map((q, qi) => {
+      const qq = (q ?? {}) as {
+        question?: unknown;
+        header?: unknown;
+        options?: unknown;
+        multiSelect?: unknown;
+      };
+      return {
+        id: `q-${qi}`,
+        ...(qq.header ? { header: String(qq.header) } : {}),
+        question: typeof qq.question === "string" ? qq.question : "",
+        options: (Array.isArray(qq.options) ? qq.options : []).map((opt, oi) => {
+          const oo = (opt ?? {}) as { label?: unknown; description?: unknown };
+          return {
+            id: `opt-${qi}-${oi}`,
+            label: typeof oo.label === "string" ? oo.label : `Option ${oi + 1}`,
+            ...(oo.description ? { description: String(oo.description) } : {}),
+          };
+        }),
+        multiSelect: qq.multiSelect === true,
+      };
+    }),
+  };
 }
 
 /* --------------------------- translator state --------------------------- */
@@ -188,16 +230,20 @@ export function createTranslator(writer: UIMessageStreamWriter): {
         };
         const toolCallId = toolBlock.id;
         const toolName = normalizeToolName(toolBlock.name);
+        const input =
+          toolBlock.name === "AskUserQuestion"
+            ? convertNativeQuestionInput(toolBlock.input)
+            : toolBlock.input;
         state.openToolIds.add(toolCallId);
         state.toolNamesById.set(toolCallId, toolName);
-        state.toolInputsById.set(toolCallId, toolBlock.input);
+        state.toolInputsById.set(toolCallId, input);
 
         emit({ type: "tool-input-start", toolCallId, toolName });
         emit({
           type: "tool-input-available",
           toolCallId,
           toolName,
-          input: toolBlock.input ?? {},
+          input: input ?? {},
         });
       } else if (block.type === "thinking") {
         // Thinking tokens — surface as reasoning so the UI can display them

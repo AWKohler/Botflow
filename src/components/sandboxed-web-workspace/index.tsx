@@ -64,6 +64,7 @@ import {
 import { FileSearch } from "@/components/persistent-workspace/file-search";
 import { GoogleOAuthModal } from "@/components/workspace/google-oauth-modal";
 import { StripeConnectModal } from "@/components/workspace/stripe-connect-modal";
+import { EnvVarModal } from "@/components/workspace/env-var-modal";
 import { StripeTab, StripeModeToggle } from "@/components/sandboxed-web-workspace/stripe-tab";
 import { SandboxGitHubPanel } from "./github-panel";
 import { SandboxPublishPanel } from "./publish-panel";
@@ -139,6 +140,14 @@ export function SandboxedWebWorkspace({
     id: string;
     mode: "test" | "live";
     authorizeUrl: string;
+  } | null>(null);
+  /** Pending env-var entry request surfaced by the agent's requestEnvVar tool. */
+  const [pendingEnvVarRequest, setPendingEnvVarRequest] = useState<{
+    id: string;
+    target: "client" | "server";
+    key: string;
+    message: string | null;
+    isSecret: boolean;
   } | null>(null);
   /** Project's Stripe state — populated from /api/projects/[id]. */
   const [stripeEnabled, setStripeEnabled] = useState(false);
@@ -666,6 +675,46 @@ export function SandboxedWebWorkspace({
     };
   }, [projectId, hasBackend, sandboxStatus]);
 
+  // ── Env-var request polling ──────────────────────────────────────────
+  // When the agent calls requestEnvVar, it creates a pending request in the
+  // DB. We poll for it and show the EnvVarModal when one is found. Not gated
+  // on hasBackend — client (Vite) env vars work on frontend-only projects.
+  useEffect(() => {
+    if (sandboxStatus !== "ready") return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/env/request`, {
+          cache: "no-store",
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json() as {
+          ok: boolean;
+          pending: {
+            id: string;
+            target: "client" | "server";
+            key: string;
+            message: string | null;
+            isSecret: boolean;
+          } | null;
+        };
+        if (!cancelled && data.ok) {
+          setPendingEnvVarRequest(data.pending);
+        }
+      } catch {
+        // Network blip — retry on next tick
+      }
+    };
+
+    void poll();
+    const timer = setInterval(poll, 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [projectId, sandboxStatus]);
+
   // ── Agent-stop → dismiss pending OAuth request ────────────────────────
   // When the user clicks X while setupOAuthProvider is polling, we need to:
   //  1. Close the modal immediately.
@@ -687,6 +736,14 @@ export function SandboxedWebWorkspace({
       setPendingStripeRequest((current) => {
         if (current) {
           fetch(`/api/projects/${projectId}/stripe/connect-request`, {
+            method: "DELETE",
+          }).catch(() => {});
+        }
+        return null;
+      });
+      setPendingEnvVarRequest((current) => {
+        if (current) {
+          fetch(`/api/projects/${projectId}/env/request`, {
             method: "DELETE",
           }).catch(() => {});
         }
@@ -940,6 +997,18 @@ export function SandboxedWebWorkspace({
           mode={pendingStripeRequest.mode}
           authorizeUrl={pendingStripeRequest.authorizeUrl}
           onClose={() => setPendingStripeRequest(null)}
+        />
+      )}
+      {/* Env-var entry modal — shown when agent calls requestEnvVar */}
+      {pendingEnvVarRequest && (
+        <EnvVarModal
+          requestId={pendingEnvVarRequest.id}
+          projectId={projectId}
+          target={pendingEnvVarRequest.target}
+          envKey={pendingEnvVarRequest.key}
+          message={pendingEnvVarRequest.message}
+          isSecret={pendingEnvVarRequest.isSecret}
+          onClose={() => setPendingEnvVarRequest(null)}
         />
       )}
       {checkoutHandoffUrl && (

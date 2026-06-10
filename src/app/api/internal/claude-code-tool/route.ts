@@ -23,6 +23,13 @@ import {
   type DeployResult,
 } from "@/lib/sandbox-convex-deploy";
 import { setupConvexAuth, refreshAuthSiteUrl } from "@/lib/convex-auth-setup";
+import {
+  createEnvVarRequest,
+  envVarOutcomeMessage,
+  pollEnvVarRequest,
+  validateEnvVarRequest,
+  type EnvVarTarget,
+} from "@/lib/agent/env-var-requests";
 import { makeStripeLookupKey } from "@/lib/stripe-scaffold";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
@@ -900,6 +907,40 @@ REQUIRED NEXT STEPS:
           "Timed out waiting for Google OAuth credentials (5 minutes). " +
           "Call setup_oauth_provider again when the user is ready.",
       });
+    }
+
+    case "request_env_var": {
+      // Mirror of the Botflow requestEnvVar tool: open the env-var modal in
+      // the workspace, block until the user saves or dismisses, report the
+      // outcome. The value itself never flows through here.
+      const target = body.input?.target;
+      const key = body.input?.key;
+      const invalid = validateEnvVarRequest({ target, key });
+      if (invalid) {
+        return NextResponse.json({ ok: false, content: invalid });
+      }
+      if (target === "server" && project.backendType === "none") {
+        return NextResponse.json({
+          ok: false,
+          content:
+            "This project has no Convex backend, so server env vars can't be set. Use target 'client' instead.",
+        });
+      }
+
+      const requestId = await createEnvVarRequest({
+        projectId: binding.projectId,
+        userId: binding.userId,
+        target: target as EnvVarTarget,
+        key: key as string,
+        message: typeof body.input?.message === "string" ? body.input.message : null,
+        isSecret: body.input?.isSecret === true,
+      });
+      const outcome = await pollEnvVarRequest({
+        requestId,
+        projectId: binding.projectId,
+      });
+      const result = envVarOutcomeMessage(outcome, key as string, target as EnvVarTarget);
+      return NextResponse.json({ ok: result.ok, content: result.content });
     }
 
     case "ask_question": {

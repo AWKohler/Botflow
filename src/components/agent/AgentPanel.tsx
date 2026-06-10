@@ -175,6 +175,30 @@ function SubagentCard({ steps, label }: { steps: SubagentStep[]; label?: string 
 // ============================================================================
 // Token display formatter
 // ============================================================================
+/** Hover wrapper for the header gauges — shows a small labelled tooltip so
+ *  the user knows which usage each ring measures. */
+function GaugeWithTooltip({
+  label,
+  lines,
+  children,
+}: {
+  label: string;
+  lines: string[];
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative group inline-flex">
+      {children}
+      <div className="pointer-events-none absolute left-0 top-full mt-1.5 z-50 hidden group-hover:block w-max max-w-[240px] rounded-lg border border-border bg-elevated px-3 py-2 shadow-xl">
+        <div className="text-[11px] font-medium text-fg">{label}</div>
+        {lines.map((line, i) => (
+          <div key={i} className="text-[11px] text-muted leading-relaxed">{line}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function formatTokenCount(tokens: number): string {
   if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`;
   return String(tokens);
@@ -407,12 +431,34 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // --- Credit gauge state ---
   const [creditPct, setCreditPct] = useState(0);
 
+  // --- Claude plan usage gauge (OAuth subscription only) ---
+  // Mirrors Claude Code's /usage numbers: session (5h) and week (7d)
+  // utilization of the user's Claude subscription. Only fetched/shown when
+  // the turn actually runs on Claude Code via OAuth.
+  const [claudePlanUsage, setClaudePlanUsage] = useState<{
+    fiveHour: number | null;
+    sevenDay: number | null;
+  } | null>(null);
+
   const fetchCredits = useCallback(() => {
     fetch('/api/usage/credits')
       .then(r => r.ok ? r.json() : null)
       .then((d: { pct?: number; tier?: string } | null) => {
         if (d?.pct !== undefined) setCreditPct(d.pct);
         if (d?.tier === 'pro' || d?.tier === 'max') setUserTier(d.tier as 'pro' | 'max');
+      })
+      .catch(() => {});
+  }, []);
+
+  const fetchClaudePlanUsage = useCallback(() => {
+    fetch('/api/usage/claude-plan')
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { available?: boolean; fiveHour?: number | null; sevenDay?: number | null } | null) => {
+        if (d?.available) {
+          setClaudePlanUsage({ fiveHour: d.fiveHour ?? null, sevenDay: d.sevenDay ?? null });
+        } else {
+          setClaudePlanUsage(null);
+        }
       })
       .catch(() => {});
   }, []);
@@ -531,6 +577,22 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     [model, platform, hasClaudeOAuth, hasAnthropicKey, preferredAnthropicBackend, userTier],
   );
   const agentBackend = derivedBackend.backend;
+
+  // Claude Code running on the user's Claude subscription (OAuth) — the only
+  // case where turns consume their Claude plan instead of platform credits
+  // alone, so the only case where the plan-usage gauge is shown.
+  const usesClaudePlan = derivedBackend.reason === 'oauth_claude_code';
+
+  useEffect(() => {
+    if (!usesClaudePlan) {
+      setClaudePlanUsage(null);
+      return;
+    }
+    fetchClaudePlanUsage();
+    const handler = () => fetchClaudePlanUsage();
+    window.addEventListener('agent-turn-finished', handler);
+    return () => window.removeEventListener('agent-turn-finished', handler);
+  }, [usesClaudePlan, fetchClaudePlanUsage]);
 
   // --- Chat segment tracking ---
   // Each message belongs to a segment_id; switching agents mints a new one.
@@ -1479,7 +1541,27 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           <button onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings" className="text-muted hover:text-fg">
             <Cog size={16} />
           </button>
-          <CreditGauge pct={creditPct} size="sm" />
+          <GaugeWithTooltip
+            label="Botflow credits"
+            lines={[`${Math.round(creditPct)}% of your weekly platform credits used.`]}
+          >
+            <CreditGauge pct={creditPct} size="sm" />
+          </GaugeWithTooltip>
+          {usesClaudePlan && claudePlanUsage && (
+            <GaugeWithTooltip
+              label="Claude plan usage"
+              lines={[
+                ...(claudePlanUsage.fiveHour !== null ? [`Session (5h): ${claudePlanUsage.fiveHour}% used`] : []),
+                ...(claudePlanUsage.sevenDay !== null ? [`Week (7d): ${claudePlanUsage.sevenDay}% used`] : []),
+                'Claude Code runs on your Claude subscription.',
+              ]}
+            >
+              <CreditGauge
+                pct={Math.max(claudePlanUsage.fiveHour ?? 0, claudePlanUsage.sevenDay ?? 0)}
+                size="sm"
+              />
+            </GaugeWithTooltip>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <ModelSelector
@@ -1706,6 +1788,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                             toolName === 'askQuestion'
                             || toolName === 'ask_question'
                             || toolName === 'mcp__botflow__ask_question'
+                            || toolName === 'AskUserQuestion'
                           ) {
                             const tc = part as { toolCallId?: string; state?: string; input?: { questions?: QuestionConfig[] }; output?: unknown };
                             const qs = (tc.input?.questions ?? []) as QuestionConfig[];
@@ -1714,6 +1797,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                             const isDone = tc.state === 'output-available';
                             // Derive a collapsed-summary answer payload from the tool output
                             const summaryAnswer: QuestionAnswerPayload | undefined = (() => {
+                              // A tool error here means the question was dismissed or timed
+                              // out (Claude Code's native AskUserQuestion resolves the
+                              // dismiss path as a denied/errored call).
+                              if (tc.state === 'output-error') return { kind: 'skip' };
                               if (!isDone) return undefined;
                               const o = tc.output as { answered?: boolean; selectedIds?: string[]; selectedLabels?: string[]; customText?: string | null; dismissed?: boolean } | null;
                               if (!o) return undefined;
