@@ -434,6 +434,13 @@ BACKEND PATTERN — protecting queries and mutations:
 
   // getAuthUserId returns null when not authenticated — it never throws.
   // Always check for null before using the id.
+  //
+  // CONVENTION — tolerant reads, strict writes: for any query a component may
+  // subscribe to around sign-in/sign-out (or anything rendered outside
+  // <Authenticated>), prefer returning [] / null when userId is null instead
+  // of throwing — a query can briefly run before the auth token attaches, and
+  // a throw surfaces as a generic ServerError. Keep mutations/actions strict
+  // (throw when unauthenticated).
 
 ─────────────────────────────────────────────────────────────
 FRONTEND PATTERN — main.tsx setup:
@@ -649,13 +656,33 @@ WHAT YOU MUST DO AFTER setupAuth RETURNS:
   4. That is it for enabling sign-in — do NOT edit ConvexConfig.swift (platform-
      managed) and do NOT build a native login form; the hosted page IS the form.
 
-PROTECTING DATA (backend pattern, identical to web):
+PROTECTING DATA — tolerant reads, strict writes (IMPORTANT):
+  The Swift app's live subscriptions can fire BEFORE the SDK has attached the
+  auth token (app launch, sign-in handoff, token refresh). A query that throws
+  "Not authenticated" during that window surfaces as a generic ServerError in
+  the UI. So:
+  • QUERIES (anything subscribed) must TOLERATE missing auth — return [] or
+    null when getAuthUserId is null. The subscription re-fires with real data
+    the moment auth attaches.
+  • MUTATIONS/ACTIONS must REQUIRE auth — throw when getAuthUserId is null.
+
   import { getAuthUserId } from "@convex-dev/auth/server";
-  export const myQuery = query({
+
+  export const list = query({
+    args: {},
     handler: async (ctx) => {
       const userId = await getAuthUserId(ctx); // null when signed out — never throws
-      if (userId === null) throw new Error("Not authenticated");
-      return await ctx.db.query("things").withIndex("by_user", q => q.eq("userId", userId)).collect();
+      if (userId === null) return [];          // tolerate the auth race — do NOT throw
+      return await ctx.db.query("notes").withIndex("by_user", q => q.eq("userId", userId)).collect();
+    },
+  });
+
+  export const add = mutation({
+    args: { text: v.string() },
+    handler: async (ctx, { text }) => {
+      const userId = await getAuthUserId(ctx);
+      if (userId === null) throw new Error("Not authenticated"); // writes stay strict
+      await ctx.db.insert("notes", { userId, text });
     },
   });
 
