@@ -16,9 +16,12 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
-// Hosted on Vercel's CDN (public/downloads). Per-OS builds.
-const COMPANION_DOWNLOAD_MAC = "/downloads/BotflowCompanion.zip";
-const COMPANION_DOWNLOAD_WIN = "/downloads/BotflowCompanionSetup.exe";
+// Per-OS companion downloads. Override the host via env so large binaries can be
+// served off-Vercel (GitHub Releases / Cloudflare R2) without code changes.
+const COMPANION_DOWNLOAD_MAC =
+  process.env.NEXT_PUBLIC_COMPANION_MAC_URL || "/downloads/BotflowCompanion.zip";
+const COMPANION_DOWNLOAD_WIN =
+  process.env.NEXT_PUBLIC_COMPANION_WIN_URL || "/downloads/BotflowCompanionSetup.exe";
 
 const COMPANION_BASE_URL = "http://127.0.0.1:17321";
 
@@ -277,6 +280,17 @@ export function IPhoneDeviceRunner({ projectId }: IPhoneDeviceRunnerProps) {
             </div>
 
             <div className="flex items-center gap-1">
+              {status === "online" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => window.open(`${COMPANION_BASE_URL}/`, "_blank", "noopener")}
+                  title="Open companion control panel (sign in, devices, Developer Mode)"
+                >
+                  <ArrowUpRight size={14} />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -378,6 +392,16 @@ export function IPhoneDeviceRunner({ projectId }: IPhoneDeviceRunnerProps) {
               <div className="mt-2 truncate text-center text-[11px] text-muted">
                 {installMessage}
               </div>
+            )}
+            {status === "online" && (
+              <button
+                type="button"
+                onClick={() => window.open(`${COMPANION_BASE_URL}/`, "_blank", "noopener")}
+                className="mt-2 flex w-full items-center justify-center gap-1 text-[11px] text-muted transition hover:text-fg"
+                title="Opens http://127.0.0.1:17321 — sign in, manage devices, enable Developer Mode"
+              >
+                Open companion control panel <ArrowUpRight size={11} />
+              </button>
             )}
           </div>
         </div>,
