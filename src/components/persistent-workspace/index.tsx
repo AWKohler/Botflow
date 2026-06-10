@@ -815,7 +815,7 @@ function StoppedPreviewPlaceholder({
               alt=""
               className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover"
               style={{
-                filter: "blur(14px) brightness(0.65)",
+                filter: "blur(7px) brightness(0.75)",
                 transform: "scale(1.06)", // hide blur edge bleed
               }}
             />

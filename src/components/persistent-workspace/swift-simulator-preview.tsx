@@ -208,11 +208,16 @@ export function SwiftSimulatorPreview({
             "deviceModel",
             deviceModelRef.current === "iPad-Pro" ? "iPad-Pro" : "iPhone-16-Pro",
           );
+          // NO keepalive here: keepalive caps the body at 64KB and a frame
+          // JPEG is far bigger — the browser would reject the request outright.
+          // A plain fetch survives component unmount (only page navigation
+          // kills it), which covers the Stop-then-unmount path.
           void fetch(`/api/projects/${projectId}/swift-preview/screenshot`, {
             method: "POST",
             body: form,
-            keepalive: true,
-          }).catch(() => {});
+          }).then((res) => {
+            if (!res.ok) console.warn("[swift-screenshot] upload failed:", res.status);
+          }).catch((e) => console.warn("[swift-screenshot] upload failed:", e));
         },
         "image/jpeg",
         0.85,
@@ -1085,7 +1090,7 @@ export function SwiftSimulatorPreview({
               style={{
                 filter: hasFrame
                   ? "blur(0px) brightness(1)"
-                  : "blur(14px) brightness(0.65)",
+                  : "blur(7px) brightness(0.75)",
                 opacity: hasFrame ? 0 : 1,
                 transform: "scale(1.06)", // hide blur edge bleed
                 transition: "filter 700ms ease, opacity 700ms ease",

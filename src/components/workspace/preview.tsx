@@ -1201,8 +1201,9 @@ export function Preview({
               title="Project Snapshot"
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             />
-            {/* Blur veil with play button — emphasizes "switched off" */}
-            <div className="absolute inset-0 bg-black/30 backdrop-blur-lg flex items-center justify-center">
+            {/* Blur veil with play button — emphasizes "switched off" while
+                keeping the app recognizable underneath */}
+            <div className="absolute inset-0 bg-black/20 backdrop-blur-[7px] flex items-center justify-center">
               <button
                 onClick={onToggleDevServer}
                 disabled={Boolean(isInstalling) || Boolean(isStartingServer)}
@@ -1814,9 +1815,9 @@ export function Preview({
                 <div
                   className="absolute inset-0"
                   style={{
-                    backgroundColor: veilClearing ? "rgba(0,0,0,0)" : "rgba(0,0,0,0.3)",
-                    backdropFilter: veilClearing ? "blur(0px)" : "blur(16px)",
-                    WebkitBackdropFilter: veilClearing ? "blur(0px)" : "blur(16px)",
+                    backgroundColor: veilClearing ? "rgba(0,0,0,0)" : "rgba(0,0,0,0.2)",
+                    backdropFilter: veilClearing ? "blur(0px)" : "blur(7px)",
+                    WebkitBackdropFilter: veilClearing ? "blur(0px)" : "blur(7px)",
                     transition:
                       "backdrop-filter 700ms ease, -webkit-backdrop-filter 700ms ease, background-color 700ms ease",
                   }}
@@ -1834,11 +1835,11 @@ export function Preview({
               className="absolute inset-0 z-10 flex items-center justify-center"
               style={{
                 opacity: initialVeilClearing ? 0 : 1,
-                backdropFilter: initialVeilClearing ? "blur(0px)" : "blur(16px)",
-                WebkitBackdropFilter: initialVeilClearing ? "blur(0px)" : "blur(16px)",
+                backdropFilter: initialVeilClearing ? "blur(0px)" : "blur(8px)",
+                WebkitBackdropFilter: initialVeilClearing ? "blur(0px)" : "blur(8px)",
                 backgroundColor: initialVeilClearing
                   ? "rgba(0,0,0,0)"
-                  : "rgba(0,0,0,0.35)",
+                  : "rgba(0,0,0,0.25)",
                 transition:
                   "backdrop-filter 700ms ease, -webkit-backdrop-filter 700ms ease, background-color 700ms ease, opacity 700ms ease",
                 pointerEvents: initialVeilClearing ? "none" : "auto",
