@@ -17,7 +17,10 @@ import {
   ConnectPayments,
   ConnectPayouts,
 } from "@stripe/react-connect-js";
-import { loadConnectAndInitialize, type StripeConnectInstance } from "@stripe/connect-js";
+// The /pure entry skips the module-load side effect (injecting the Connect
+// script), which otherwise logs an SSR warning when Next evaluates this file
+// on the server. loadConnectAndInitialize injects it on first call instead.
+import { loadConnectAndInitialize, type StripeConnectInstance } from "@stripe/connect-js/pure";
 import { AlertTriangle, ExternalLink, Loader2, RefreshCw, Unplug } from "lucide-react";
 import { cn } from "@/lib/utils";
 
