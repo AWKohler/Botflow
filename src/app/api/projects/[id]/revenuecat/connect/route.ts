@@ -164,7 +164,9 @@ export async function POST(
     .where(eq(projects.id, projectId));
 
   // Scaffold the Convex files + env vars after the response is sent so the user
-  // isn't blocked on a cold sandbox. Non-fatal — best-effort.
+  // isn't blocked on a cold sandbox. Non-fatal — best-effort. Also refresh the
+  // Swift RevenueCatConfig so the sandbox reflects the real key immediately
+  // (builds re-materialize it anyway; this just keeps the file tree current).
   after(async () => {
     try {
       const result = await scaffoldRevenueCatIntoProject(projectId, {
@@ -175,6 +177,12 @@ export async function POST(
       console.log('[revenuecat/connect] scaffold complete', projectId, result);
     } catch (err) {
       console.error('[revenuecat/connect] scaffold threw:', err);
+    }
+    try {
+      const { materializeSwiftRevenueCatConfig } = await import('@/lib/sandbox-env');
+      await materializeSwiftRevenueCatConfig(projectId);
+    } catch (err) {
+      console.error('[revenuecat/connect] swift config materialize threw:', err);
     }
   });
 

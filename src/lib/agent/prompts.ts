@@ -1107,7 +1107,7 @@ const SWIFT_PROMPT_REVENUECAT: string[] = [
   "   - `status='backend-blocked'` → no Convex backend; relay the message (payments require one).",
   "   - `status='tier-blocked'` → Pro/Max only; relay the message verbatim.",
   "2. Add the RevenueCat SDK via Swift Package Manager in `project.yml` (packages: `https://github.com/RevenueCat/purchases-ios-spm`), depending on both `RevenueCat` and `RevenueCatUI`. Run `make generate` is NOT available here (builds are remote) — just edit `project.yml` and Sources; the remote build resolves packages.",
-  "3. Configure the SDK ONCE at app launch: `Purchases.configure(withAPIKey: <public appl_ key>, appUserID: <the app's auth user id>)`. The public SDK key is provided by the platform in the app's build config — read it from there, NEVER hardcode a key. The `appUserID` MUST be the user's stable id so webhook events join back to your Convex user.",
+  "3. Configure the SDK ONCE at app launch, reading the key from the platform-managed config file `/Sources/Core/RevenueCatConfig.swift` (the RevenueCat analog of ConvexConfig.swift — regenerated before every build, DO NOT edit it): `if RevenueCatConfig.isConfigured { Purchases.configure(withAPIKey: RevenueCatConfig.apiKey, appUserID: <the app's auth user id>) }`. ALWAYS guard with `RevenueCatConfig.isConfigured` — before the user finishes connecting, the file holds a placeholder and the app must still run (e.g. for .storekit simulator demos). NEVER hardcode an appl_ key. The `appUserID` MUST be the user's stable id so webhook events join back to your Convex user.",
   "4. Build the paywall with `RevenueCatUI`: `PaywallView` or the `.presentPaywallIfNeeded(requiredEntitlementIdentifier:)` modifier. The paywall is configured remotely in RevenueCat — you don't hand-build the pricing UI.",
   "5. Gate features on entitlements: `Purchases.shared.customerInfo().entitlements.active[\"<entitlement>\"]?.isActive == true`. Provide a Restore Purchases action (`Purchases.shared.restorePurchases()`).",
   "6. For local testing, a `.storekit` configuration file lets the streamed simulator demo the purchase flow with no Apple/RevenueCat setup. Note this clearly: a pure local `.storekit` run shows the UI but does NOT sync entitlements to RevenueCat's servers — that needs a sandbox tester on TestFlight/device.",
@@ -1116,7 +1116,7 @@ const SWIFT_PROMPT_REVENUECAT: string[] = [
   "",
   "**Hard rules:**",
   "- Do NOT hand-roll raw StoreKit purchase code (`Product.purchase()`, `Transaction`, receipt validation) — RevenueCat handles all of it. Use the RevenueCat SDK.",
-  "- Do NOT hardcode the RevenueCat API key — it is injected into the build config by the platform.",
+  "- Do NOT hardcode the RevenueCat API key, and do NOT edit `/Sources/Core/RevenueCatConfig.swift` — it is platform-generated before every build (your edits would be clobbered). Read `RevenueCatConfig.apiKey` and guard with `RevenueCatConfig.isConfigured`.",
   "- Entitlement reaction logic on the backend goes in `convex/billing.ts` (when the webhook scaffold is present), keyed on `event.data.app_user_id`.",
 ];
 
