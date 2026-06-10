@@ -16,12 +16,15 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
-// Per-OS companion downloads. Override the host via env so large binaries can be
-// served off-Vercel (GitHub Releases / Cloudflare R2) without code changes.
+// Per-OS companion downloads. Served from GitHub Releases (free, unlimited
+// bandwidth, zero Vercel egress/DDoS-bill exposure). `latest` always resolves to
+// the newest release asset. Override the host via env if needed.
+const COMPANION_DIST_BASE =
+  "https://github.com/AWKohler/botflow-companion-dist/releases/latest/download";
 const COMPANION_DOWNLOAD_MAC =
-  process.env.NEXT_PUBLIC_COMPANION_MAC_URL || "/downloads/BotflowCompanion.zip";
+  process.env.NEXT_PUBLIC_COMPANION_MAC_URL || `${COMPANION_DIST_BASE}/BotflowCompanion.zip`;
 const COMPANION_DOWNLOAD_WIN =
-  process.env.NEXT_PUBLIC_COMPANION_WIN_URL || "/downloads/BotflowCompanionSetup.exe";
+  process.env.NEXT_PUBLIC_COMPANION_WIN_URL || `${COMPANION_DIST_BASE}/BotflowCompanionSetup.exe`;
 
 const COMPANION_BASE_URL = "http://127.0.0.1:17321";
 
@@ -577,7 +580,7 @@ function CompanionSetupGuide({ error, onRetry }: { error: string | null; onRetry
         </div>
       </div>
 
-      <a href={url} download className="block">
+      <a href={url} target="_blank" rel="noopener noreferrer" className="block">
         <Button className="w-full gap-2 font-semibold">
           <Download size={15} />
           Download Botflow Companion ({osLabel})
