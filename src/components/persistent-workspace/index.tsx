@@ -87,44 +87,6 @@ export function PersistentWorkspace({
   // the simulator tools.
   const [previewStopped, setPreviewStopped] = useState<boolean>(true);
 
-  // ── Agent simulator requests ────────────────────────────────────────────
-  // The agent's startSimulator/stopSimulator tools publish a short-lived
-  // desired action to Redis (it can't own the stream — this browser does).
-  // Poll for it while the workspace is open and honor it. The GET consumes
-  // the action server-side, so it fires exactly once.
-  useEffect(() => {
-    if (platform !== "swift") return;
-    let cancelled = false;
-
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/projects/${projectId}/swift-preview/state`, {
-          cache: "no-store",
-        });
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as {
-          desired: { action: "start" | "stop"; requestedAt: number } | null;
-        };
-        if (cancelled || !data.desired) return;
-        if (data.desired.action === "start") {
-          setPreviewStopped(false);
-          setCurrentView("preview");
-        } else {
-          setPreviewStopped(true);
-        }
-      } catch {
-        // Network blip — next tick catches up.
-      }
-    };
-
-    void poll();
-    const timer = setInterval(poll, 2500);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [platform, projectId]);
-
   const initializedRef = useRef(false);
 
   // Project row (fetched client-side) — drives backend-aware UI. Null until loaded.
@@ -162,6 +124,48 @@ export function PersistentWorkspace({
   useEffect(() => {
     void refreshProject();
   }, [refreshProject]);
+
+  // ── Agent simulator requests ────────────────────────────────────────────
+  // The agent's startSimulator/stopSimulator tools publish a short-lived
+  // desired action to Redis (it can't own the stream — this browser does).
+  // Poll for it while the workspace is open and honor it. The GET consumes
+  // the action server-side, so it fires exactly once.
+  useEffect(() => {
+    if (platform !== "swift") return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/swift-preview/state`, {
+          cache: "no-store",
+        });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as {
+          desired: { action: "start" | "stop"; requestedAt: number } | null;
+        };
+        if (cancelled || !data.desired) return;
+        if (data.desired.action === "start") {
+          setPreviewStopped(false);
+          setCurrentView("preview");
+        } else {
+          setPreviewStopped(true);
+          // Pick up the screenshot the unmounting preview just uploaded.
+          for (const ms of [1000, 3000, 7000]) {
+            setTimeout(() => void refreshProject(), ms);
+          }
+        }
+      } catch {
+        // Network blip — next tick catches up.
+      }
+    };
+
+    void poll();
+    const timer = setInterval(poll, 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [platform, projectId, refreshProject]);
 
   // Deploy the Convex backend (zips /convex, pushes to the worker; auto-
   // provisions a platform backend on first call). `silent` is used by the
@@ -695,9 +699,13 @@ export function PersistentWorkspace({
                 onOpenFile={handleOpenFromIssues}
                 onStop={() => {
                   setPreviewStopped(true);
-                  // The Stop grab uploads a fresh screenshot — refetch so the
-                  // stopped placeholder shows it (small delay for the upload).
-                  setTimeout(() => void refreshProject(), 2500);
+                  // The Stop grab uploads a fresh screenshot — refetch the
+                  // project row a few times so the stopped placeholder picks it
+                  // up even on a slow upload (toBlob + POST can outlast one
+                  // fixed delay).
+                  for (const ms of [1000, 3000, 7000]) {
+                    setTimeout(() => void refreshProject(), ms);
+                  }
                 }}
                 onExpand={() => setCurrentView("preview")}
                 screenshots={{
