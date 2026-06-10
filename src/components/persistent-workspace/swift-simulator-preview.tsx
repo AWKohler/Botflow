@@ -1086,13 +1086,14 @@ export function SwiftSimulatorPreview({
             <img
               src={screenshotUrl}
               alt=""
-              className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover"
+              // object-contain mirrors the live canvas's max-w/h letterboxing,
+              // so the de-blur hands off to the stream without a size jump.
+              className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain"
               style={{
                 filter: hasFrame
                   ? "blur(0px) brightness(1)"
                   : "blur(7px) brightness(0.75)",
                 opacity: hasFrame ? 0 : 1,
-                transform: "scale(1.06)", // hide blur edge bleed
                 transition: "filter 700ms ease, opacity 700ms ease",
               }}
             />

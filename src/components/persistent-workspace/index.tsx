@@ -821,11 +821,10 @@ function StoppedPreviewPlaceholder({
             <img
               src={screenshotUrl}
               alt=""
-              className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover"
-              style={{
-                filter: "blur(7px) brightness(0.75)",
-                transform: "scale(1.06)", // hide blur edge bleed
-              }}
+              // object-contain mirrors the live canvas's max-w/h letterboxing,
+              // so the screenshot sits exactly where the stream will.
+              className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain"
+              style={{ filter: "blur(7px) brightness(0.75)" }}
             />
           ) : (
             <></>
