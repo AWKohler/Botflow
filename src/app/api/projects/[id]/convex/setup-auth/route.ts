@@ -48,20 +48,29 @@ export async function POST(
         { status: 400 },
       );
     }
-    if (project.platform !== "sandboxed-web") {
+    const isSwift = project.platform === "swift";
+    if (project.platform !== "sandboxed-web" && !isSwift) {
       return NextResponse.json(
-        { ok: false, error: "setupAuth is only available for sandboxed-web projects." },
+        { ok: false, error: "setupAuth is only available for sandboxed-web and swift projects." },
         { status: 400 },
       );
     }
 
-    // Resolve SITE_URL from the sandbox's stable preview domain
+    // Resolve SITE_URL. Web reads it from the sandbox's stable preview domain.
+    // Swift has no web preview origin — its "frontend" returns to a custom URL
+    // scheme — so SITE_URL only needs to be a valid URL (password sign-in never
+    // redirects). Use the deployment's own *.convex.site origin when known.
     let siteUrl = "https://placeholder.example.com";
-    try {
-      const sandbox = await getOrCreatePersistentSandbox(projectId);
-      siteUrl = sandbox.domain(5173);
-    } catch (err) {
-      console.warn("[setup-auth] could not resolve sandbox preview URL:", err);
+    if (isSwift) {
+      const convexUrl = project.convexDeployUrl ?? project.userConvexUrl ?? null;
+      if (convexUrl) siteUrl = convexUrl.replace(".convex.cloud", ".convex.site");
+    } else {
+      try {
+        const sandbox = await getOrCreatePersistentSandbox(projectId);
+        siteUrl = sandbox.domain(5173);
+      } catch (err) {
+        console.warn("[setup-auth] could not resolve sandbox preview URL:", err);
+      }
     }
 
     // For BYOC backends, use the user's Convex OAuth access token
@@ -81,7 +90,11 @@ export async function POST(
       }
     }
 
-    const result = await setupConvexAuth(projectId, { siteUrl, userConvexOAuthToken });
+    const result = await setupConvexAuth(projectId, {
+      siteUrl,
+      userConvexOAuthToken,
+      platform: isSwift ? "swift" : "web",
+    });
 
     if (!result.ok) {
       return NextResponse.json({ ok: false, error: result.error }, { status: 500 });

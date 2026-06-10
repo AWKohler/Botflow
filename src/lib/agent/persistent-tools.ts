@@ -426,6 +426,37 @@ export function getPersistentTools(
         });
       },
     }),
+    setupAuth: tool({
+      description:
+        "Add email + password sign-in (Convex Auth) to this Swift app. Call this ONCE when the user wants accounts / login / sign-up / per-user data.\n\n" +
+        "How it works: the app already contains the client side (an in-app-browser sign-in flow — BotflowAuthProvider, Keychain, AuthStore, SignInView). This tool configures @convex-dev/auth on the deployment, sets the signing keys server-side (you never see them), turns on the in-app-browser sign-in PAGE, and flips the app into authenticated mode automatically. There is NO native login form to build and NO Swift auth code to write.\n\n" +
+        "AFTER it returns ok:true:\n" +
+        "1. Write every file in the returned `files` array (convex/auth.ts, auth.config.ts, http.ts, schema.ts, users.ts). If the project already had a convex/schema.ts, MERGE your tables into the returned one (keep ...authTables).\n" +
+        "2. Install backend deps: `cd convex && pnpm add @convex-dev/auth @auth/core` (use bash).\n" +
+        "3. Run convexDeploy — sign-in is not live until you do.\n" +
+        "4. Protect per-user data with getAuthUserId in your queries/mutations (see the returned context). Do NOT edit Sources/Core/ConvexConfig.swift (platform-managed) and do NOT write a native login screen.\n\n" +
+        "Read the `context` field in the result for the full reference. Calling again just rotates the signing keys.",
+      inputSchema: z.object({}),
+      async execute() {
+        const url = `${appBaseUrl}/api/projects/${projectId}/convex/setup-auth`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(authHeaders ?? {}),
+          },
+        });
+        const text = await res.text();
+        try {
+          return JSON.parse(text);
+        } catch {
+          return {
+            ok: false,
+            error: `setup-auth returned non-JSON (HTTP ${res.status}): ${text.slice(0, 500)}`,
+          };
+        }
+      },
+    }),
     ...(REVENUECAT_ENABLED
       ? {
           initializeRevenueCatPayments: tool({

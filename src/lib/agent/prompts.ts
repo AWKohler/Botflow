@@ -1089,7 +1089,13 @@ const SWIFT_CONVEX_SECTION: string[] = [
   "- **Keep Swift models in sync with `convex/schema.ts` BY HAND.** There is no Swift codegen from the Convex schema (unlike the web `_generated` API). When you add a table/field, update both the schema and the matching `Decodable` struct.",
   "- Convex numbers need property wrappers on the Swift side: `@ConvexInt var n: Int`, `@ConvexFloat var x: Double`.",
   "- To deploy backend changes, use the `convexDeploy` tool — never hand-edit `convex/_generated/`.",
-  "- This template ships **un-authenticated**. Don't scaffold Convex Auth on the Swift side; if the user needs auth, explain it's a follow-up (Clerk/Auth0 via `ConvexClientWithAuth`).",
+  "",
+  "### Auth (email + password)",
+  "When the user wants sign-in / accounts / login / sign-up / per-user data, call the **`setupAuth`** tool. It uses Convex Auth (`@convex-dev/auth`) — the same backend the web template uses — and an **in-app browser** sign-in flow that already ships in this template (BotflowAuthProvider, Keychain, AuthStore, SignInView). You do NOT write a native login form or any Swift auth code.",
+  "- After `setupAuth` returns: write every file in its `files` array (merge `...authTables` into an existing `convex/schema.ts` if present), run `cd convex && pnpm add @convex-dev/auth @auth/core`, then `convexDeploy`. Sign-in is not live until you deploy.",
+  "- The tool flips the app into authenticated mode automatically (it sets `ConvexConfig.authEnabled`, which is **platform-managed — never edit**). `ContentView` then shows `SignInView` until the user signs in.",
+  "- Protect per-user data on the backend with `getAuthUserId(ctx)` (returns null when signed out — null-check, never throws). Read the current user from Swift via the `users:viewer` query.",
+  "- **Password only.** Do NOT add Google/OAuth or other providers — there is no Swift OAuth path yet. Read the tool's `context` result for the full reference.",
   "",
 ];
 

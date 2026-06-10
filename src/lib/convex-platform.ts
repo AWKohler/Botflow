@@ -154,9 +154,9 @@ export class ConvexPlatformClient {
    */
   async deleteProject(projectId: number): Promise<void> {
     const response = await fetch(
-      `${CONVEX_API_BASE}/projects/${projectId}`,
+      `${CONVEX_API_BASE}/projects/${projectId}/delete`,
       {
-        method: 'DELETE',
+        method: 'POST',
         headers: this.headers,
       }
     );
