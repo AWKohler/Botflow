@@ -1541,27 +1541,37 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           <button onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings" className="text-muted hover:text-fg">
             <Cog size={16} />
           </button>
-          <GaugeWithTooltip
-            label="Botflow credits"
-            lines={[`${Math.round(creditPct)}% of your weekly platform credits used.`]}
-          >
-            <CreditGauge pct={creditPct} size="sm" />
-          </GaugeWithTooltip>
-          {usesClaudePlan && claudePlanUsage && (
-            <GaugeWithTooltip
-              label="Claude plan usage"
-              lines={[
-                ...(claudePlanUsage.fiveHour !== null ? [`Session (5h): ${claudePlanUsage.fiveHour}% used`] : []),
-                ...(claudePlanUsage.sevenDay !== null ? [`Week (7d): ${claudePlanUsage.sevenDay}% used`] : []),
-                'Claude Code runs on your Claude subscription.',
-              ]}
-            >
-              <CreditGauge
-                pct={Math.max(claudePlanUsage.fiveHour ?? 0, claudePlanUsage.sevenDay ?? 0)}
-                size="sm"
-              />
-            </GaugeWithTooltip>
-          )}
+          {(() => {
+            // Shrink both gauges a touch when they sit side-by-side so they
+            // don't crowd each other.
+            const showClaudePlan = Boolean(usesClaudePlan && claudePlanUsage);
+            const gaugeSize = showClaudePlan ? 'xs' : 'sm';
+            return (
+              <>
+                <GaugeWithTooltip
+                  label="Botflow credits"
+                  lines={[`${Math.round(creditPct)}% of your weekly platform credits used.`]}
+                >
+                  <CreditGauge pct={creditPct} size={gaugeSize} />
+                </GaugeWithTooltip>
+                {showClaudePlan && claudePlanUsage && (
+                  <GaugeWithTooltip
+                    label="Claude plan usage"
+                    lines={[
+                      ...(claudePlanUsage.fiveHour !== null ? [`Session (5h): ${claudePlanUsage.fiveHour}% used`] : []),
+                      ...(claudePlanUsage.sevenDay !== null ? [`Week (7d): ${claudePlanUsage.sevenDay}% used`] : []),
+                      'Claude Code runs on your Claude subscription.',
+                    ]}
+                  >
+                    <CreditGauge
+                      pct={Math.max(claudePlanUsage.fiveHour ?? 0, claudePlanUsage.sevenDay ?? 0)}
+                      size={gaugeSize}
+                    />
+                  </GaugeWithTooltip>
+                )}
+              </>
+            );
+          })()}
         </div>
         <div className="flex items-center gap-2">
           <ModelSelector
