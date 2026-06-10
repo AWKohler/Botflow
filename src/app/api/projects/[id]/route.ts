@@ -52,7 +52,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       model !== 'claude-sonnet-4.5' && // backwards compat
       model !== 'claude-sonnet-4.6' && // backwards compat
       model !== 'claude-haiku-4.5' && // removed → mapped to sonnet
-      model !== 'claude-opus-4-7' &&
+      model !== 'claude-opus-4-7' && // backwards compat → resolves to 4-8
+      model !== 'claude-opus-4-8' &&
       model !== 'claude-fable-5' &&
       model !== 'claude-opus-4.6' && // backwards compat
       model !== 'claude-opus-4.7' && // backwards compat

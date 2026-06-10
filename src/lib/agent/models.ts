@@ -7,7 +7,7 @@ export type ModelId =
   | "gpt-5.4"
   | "gpt-5.5"
   | "claude-sonnet-4-6"
-  | "claude-opus-4-7"
+  | "claude-opus-4-8"
   | "claude-fable-5"
   | "gemini-3.1-pro-preview"
   | "fireworks-minimax-m2p7"
@@ -74,11 +74,11 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     criticalThreshold: 0.9,
     supportsImages: true,
   },
-  "claude-opus-4-7": {
-    id: "claude-opus-4-7",
+  "claude-opus-4-8": {
+    id: "claude-opus-4-8",
     provider: "anthropic",
-    apiModelId: "claude-opus-4-7",
-    displayName: "Claude Opus 4.7",
+    apiModelId: "claude-opus-4-8",
+    displayName: "Claude Opus 4.8",
     maxContextTokens: 200_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
@@ -150,7 +150,7 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
 export function resolveModelId(stored: string | null | undefined): ModelId {
   // Dot-notation renames (same model, new ID format)
   if (stored === "claude-sonnet-4.5" || stored === "claude-sonnet-4.6") return "claude-sonnet-4-6";
-  if (stored === "claude-opus-4.5" || stored === "claude-opus-4.6" || stored === "claude-opus-4.7" || stored === "claude-opus-4-1") return "claude-opus-4-7";
+  if (stored === "claude-opus-4.5" || stored === "claude-opus-4.6" || stored === "claude-opus-4.7" || stored === "claude-opus-4-7" || stored === "claude-opus-4-1") return "claude-opus-4-8";
   if (stored === "gpt-4.1" || stored === "gpt-5.2") return "gpt-5.3-codex";
   if (stored === "fireworks-glm-5") return "fireworks-glm-5p1";
   // Still-valid model: pass through

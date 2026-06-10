@@ -44,6 +44,7 @@ const MODEL_DISPLAY: Record<string, string> = {
   'claude-opus-4.7': 'Claude Opus 4.7',
   'claude-opus-4-1': 'Claude Opus 4.7',
   'claude-opus-4-7': 'Claude Opus 4.7',
+  'claude-opus-4-8': 'Claude Opus 4.8',
   'claude-fable-5': 'Claude Fable 5 (Mythos)',
   'gpt-5.3-codex': 'GPT-5.3',
   'gpt-5.4': 'GPT-5.4',
