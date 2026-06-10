@@ -277,6 +277,7 @@ export async function POST(req: Request) {
         "list_convex_tables",
         "read_convex_table",
         "write_convex_data",
+        "setup_auth",
       );
       if (STRIPE_CONNECT_ENABLED) {
         customTools.push(
@@ -300,6 +301,12 @@ export async function POST(req: Request) {
         "open_pull_request",
       );
     }
+  } else if (platform === "swift" && hasBackend) {
+    // Swift + Convex backend: the deploy/logs/auth tools are platform-agnostic
+    // server-side (the deploy pipeline zips /convex regardless of frontend
+    // language; setup_auth is platform-aware in the host route). Workspace
+    // control tools (dev server, browser log) are web-only and stay off.
+    customTools.push("convex_deploy", "get_convex_logs", "setup_auth");
   }
 
   const bridgeConfig = {

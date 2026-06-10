@@ -41,6 +41,23 @@ export function buildClaudeCodeAppendPrompt(input: BuildAppendPromptInput): stri
       "- `Sources/App/MyApp.swift` — `@main` entry point",
       "- `Sources/Models/`, `Sources/Views/`, `Sources/Core/` — code",
       "- `Resources/Assets.xcassets/` — images, app icon",
+      ...(hasBackend
+        ? [
+            "",
+            "## Convex backend",
+            "This project has a **Convex backend** — the same TypeScript backend web projects use, consumed from Swift via the **ConvexMobile** SDK. Backend code lives in `/vercel/sandbox/convex/` (`schema.ts` + function files).",
+            "- **Convex is the data layer; there is NO SwiftData.** Never add `@Model`, `ModelContainer`, or `import SwiftData` — the sync engine is the single source of truth.",
+            "- Swift side: `Convex.shared.subscribe(to: \"items:list\", yielding: [Item].self)` for live queries; `try await Convex.shared.mutation(\"items:add\", with: [...])` for writes. Models are plain `Decodable`/`Identifiable` structs kept in sync with `convex/schema.ts` BY HAND (no codegen). Convex numbers need `@ConvexInt` / `@ConvexFloat` wrappers.",
+            "- `Sources/Core/ConvexConfig.swift` is **PLATFORM-MANAGED — never edit** (Botflow injects the deployment URL and auth flag at build time).",
+            "- After ANY change under `/convex/`, run the **`convex_deploy`** MCP tool — changes are not live until deployed. Debug server-side failures with **`get_convex_logs`** (Convex hides thrown error details from the client).",
+            "",
+            "### Auth (email + password)",
+            "When the user wants sign-in / accounts / per-user data, call the **`setup_auth`** MCP tool ONCE. The Swift client side already ships in the template (in-app-browser sign-in: BotflowAuthProvider, Keychain, AuthStore, SignInView) — you do NOT write a native login form or any Swift auth code.",
+            "- After it returns: write every file in its `files` (merge existing schema tables into the returned `schema.ts`, keeping `...authTables`), run `cd convex && pnpm add @convex-dev/auth @auth/core`, then `convex_deploy`.",
+            "- The tool flips the app into authenticated mode automatically (`ConvexConfig.authEnabled` — platform-managed). Protect data with `getAuthUserId(ctx)` (returns null when signed out). Current user: the `users:viewer` query.",
+            "- **Password only.** Do not add Google/OAuth providers — there is no Swift OAuth path yet.",
+          ]
+        : []),
       "",
       "Always restate the user's request, plan minimally, edit, verify with `Grep`/`Read`. Don't add comments unless the *why* is non-obvious.",
     ].join("\n");
