@@ -171,6 +171,7 @@ export async function POST(req: Request) {
         logs?: string;
         error?: string;
         generatedFiles?: { path: string; content: string }[];
+        functionSpec?: import("@/lib/swift-convex-codegen").ConvexFunctionSpec;
       };
       try {
         workerJson = await workerResponse.json();
@@ -194,6 +195,18 @@ export async function POST(req: Request) {
         await writeGeneratedConvexFiles(binding.projectId, workerJson.generatedFiles);
       }
 
+      // Swift codegen: regenerate Sources/Core/ConvexAPI.swift from the
+      // deployed function manifest. Non-fatal; no-op for web projects.
+      let swiftApiRegenerated = false;
+      if (workerJson.functionSpec) {
+        const { writeSwiftConvexApi } = await import("@/lib/swift-convex-codegen");
+        swiftApiRegenerated = await writeSwiftConvexApi(
+          binding.projectId,
+          project,
+          workerJson.functionSpec,
+        );
+      }
+
       const result: DeployResult = {
         ok: true,
         output: workerJson.logs ?? "",
@@ -202,7 +215,11 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         ok: true,
-        content: `Convex deployment completed.\n\n${result.output}`.trim(),
+        content:
+          `Convex deployment completed.\n\n${result.output}`.trim() +
+          (swiftApiRegenerated
+            ? "\n\nRegenerated Sources/Core/ConvexAPI.swift from the deployed functions — reference Convex functions through ConvexAPI constants only."
+            : ""),
         generatedFilesCount: result.generatedFiles?.length ?? 0,
       });
     }

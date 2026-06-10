@@ -163,7 +163,13 @@ export async function POST(
     }
 
     // 5. Parse response from deployment worker
-    let result: { success?: boolean; logs?: string; error?: string; generatedFiles?: { path: string; content: string }[] };
+    let result: {
+      success?: boolean;
+      logs?: string;
+      error?: string;
+      generatedFiles?: { path: string; content: string }[];
+      functionSpec?: import('@/lib/swift-convex-codegen').ConvexFunctionSpec;
+    };
     try {
       result = await response.json();
     } catch {
@@ -187,10 +193,23 @@ export async function POST(
       );
     }
 
+    // 5b. Swift codegen: regenerate Sources/Core/ConvexAPI.swift from the
+    // deployed function manifest so Swift call sites reference compile-checked
+    // constants instead of raw strings. Non-fatal; no-op for web projects.
+    let swiftApiRegenerated = false;
+    if (result.functionSpec) {
+      const { writeSwiftConvexApi } = await import('@/lib/swift-convex-codegen');
+      swiftApiRegenerated = await writeSwiftConvexApi(projectId, project, result.functionSpec);
+    }
+
     // 6. Return success with logs and generated files
     return NextResponse.json({
       ok: true,
-      output: result.logs || '',
+      output:
+        (result.logs || '') +
+        (swiftApiRegenerated
+          ? '\nRegenerated Sources/Core/ConvexAPI.swift from the deployed functions — reference Convex functions through ConvexAPI constants only.\n'
+          : ''),
       generatedFiles: result.generatedFiles || [],
     });
   } catch (error) {
