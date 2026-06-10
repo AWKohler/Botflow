@@ -83,7 +83,11 @@ export function PersistentWorkspace({
   // doesn't silently spin a new simulator. Cleared when they click Play.
   // Per-project key so different projects' choices don't interfere.
   const stoppedKey = `swift-preview:stopped:${projectId}`;
-  const [previewStopped, setPreviewStoppedState] = useState(false);
+  // Tri-state: null until the persisted flag has been read. The simulator only
+  // mounts once this is known-false — if it defaulted to false, the preview
+  // would mount on first render, provision a backend session, then immediately
+  // unmount (and DELETE the session) when the effect below flips it to true.
+  const [previewStopped, setPreviewStoppedState] = useState<boolean | null>(null);
   // Read the persisted flag exactly once on mount (SSR-safe).
   useEffect(() => {
     try {
@@ -91,7 +95,8 @@ export function PersistentWorkspace({
         window.localStorage.getItem(stoppedKey) === "true",
       );
     } catch {
-      /* localStorage blocked — fine */
+      /* localStorage blocked — treat as not stopped */
+      setPreviewStoppedState(false);
     }
   }, [stoppedKey]);
   const setPreviewStopped = useCallback(
@@ -653,8 +658,12 @@ export function PersistentWorkspace({
 
             Unmounting only happens when previewStopped flips true, at which
             point the existing cleanup effect DELETEs the session.
+
+            previewStopped === false (not just falsy): while it's still null
+            the persisted Stop flag hasn't been read yet, and mounting early
+            would provision a session only to tear it down a tick later.
           */}
-          {platform === "swift" && !previewStopped && (
+          {platform === "swift" && previewStopped === false && (
             // Single render path. SwiftPipWindow stays at the same React tree
             // position; only its internal layout changes when `mode` flips
             // between "full" and "pip". That's what keeps the inner
