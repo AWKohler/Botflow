@@ -16,6 +16,7 @@ const noopRedis = {
   setex: async () => 'OK' as const,
   del: async () => 0,
   incr: async () => 0,
+  incrby: async () => 0,
   expire: async () => 1,
   // List ops used by workspace-control's browser-log ring buffer. Returning
   // empty / OK lets the feature degrade silently when Redis isn't configured

@@ -62,7 +62,8 @@ import {
   calculateCredits,
   getWeeklyCredits,
   getMonthlyCredits,
-  incrementWeeklyCredits,
+  reserveWeeklyCredits,
+  adjustWeeklyCredits,
   getWeeklyLimit,
   getMonthlyLimit,
 } from "@/lib/credits";
@@ -217,6 +218,13 @@ function getTools({ hasBackend }: { hasBackend: boolean } = { hasBackend: true }
 
 // Rough estimate of tools token overhead (computed once)
 const TOOLS_TOKEN_ESTIMATE = 800;
+
+// Per-turn output ceiling, applied ONLY to platform-paid traffic (server-key
+// model + no personal credentials). Requests on Claude/Codex OAuth or any BYOK
+// key are billed to the user's own provider and are left uncapped. Token usage
+// is metered/billed accurately elsewhere, so this is a light runaway-guard, not
+// a tight quota. Override via env without a redeploy if needed.
+const PLATFORM_MAX_OUTPUT_TOKENS = Number(process.env.PLATFORM_MAX_OUTPUT_TOKENS) || 32_000;
 
 // ============================================================================
 // Anthropic prompt caching helpers
@@ -668,6 +676,46 @@ export async function POST(req: Request) {
       );
     })();
 
+    // ── Convert UIMessages to ModelMessages ─────────────────────────────────
+    // Done before budget enforcement so the weekly reservation can size itself
+    // off the real input-token estimate.
+    let resolvedMessages = await convertToModelMessages(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      messages as any,
+      { tools },
+    );
+    const systemTokens = estimateTokens(systemPrompt);
+    const messagesTokens = estimateMessagesTokens(resolvedMessages);
+    const totalEstimatedTokens = systemTokens + messagesTokens + TOOLS_TOKEN_ESTIMATE;
+
+    // ── Atomic weekly-credit reservation bookkeeping ─────────────────────────
+    // `weeklyReserved` holds this turn's reserved (worst-case) credits; it is
+    // reconciled down to the real cost in onFinish, or released if the request
+    // aborts first. The reconcile is idempotent so onFinish and the abort
+    // handler can't double-apply.
+    let weeklyReserved = 0;
+    let creditReconciled = false;
+    const reconcileWeeklyCredits = async (actualCredits: number): Promise<void> => {
+      if (creditReconciled || weeklyReserved === 0) return;
+      creditReconciled = true;
+      const delta = actualCredits - weeklyReserved;
+      if (delta !== 0) {
+        await adjustWeeklyCredits(userId, delta).catch((err) => {
+          console.error("[agent] weekly_credit_reconcile_failed", err);
+        });
+      }
+    };
+    // Release the reservation if the client disconnects before onFinish runs.
+    req.signal.addEventListener("abort", () => { void reconcileWeeklyCredits(0); });
+
+    // ── Tier + credit budget enforcement (platform-paid models only) ─────────
+    // Weekly budget uses an ATOMIC reservation: reserve this turn's worst-case
+    // cost (all input uncached + the 32k output ceiling) via a single INCRBY,
+    // then reconcile to the real cost in onFinish. This closes the
+    // check-then-spend race — concurrent requests can no longer all clear the
+    // same pre-spend balance. Monthly is the slower aggregate guard; bursting it
+    // requires first clearing the weekly reservation, so weekly is the binding
+    // burst limiter.
     if (isServerKeyModel(selectedModel) && !isUsingPersonalCredentials) {
       const tier = await getUserTier(userId);
       const requiredTier = MODEL_TIER_REQUIREMENT[selectedModel] ?? 'free';
@@ -683,20 +731,7 @@ export async function POST(req: Request) {
         });
       }
 
-      // Check weekly credit limit
-      const weeklyLimit = getWeeklyLimit(tier);
-      const weeklyUsed = await getWeeklyCredits(userId);
-      if (weeklyUsed >= weeklyLimit) {
-        return limitReachedResponse({
-          limitType: 'weekly_credits',
-          current: weeklyUsed,
-          limit: weeklyLimit,
-          tier,
-          model: selectedModel,
-        });
-      }
-
-      // Check monthly credit limit
+      // Monthly credit limit (eventually-consistent aggregate from Neon)
       const monthlyLimit = getMonthlyLimit(tier);
       const monthlyUsed = await getMonthlyCredits(userId);
       if (monthlyUsed >= monthlyLimit) {
@@ -709,17 +744,28 @@ export async function POST(req: Request) {
         });
       }
 
+      // Weekly credit limit — atomic worst-case reservation
+      const weeklyLimit = getWeeklyLimit(tier);
+      weeklyReserved = calculateCredits({
+        model: selectedModel,
+        inputTokens: totalEstimatedTokens,
+        outputTokens: PLATFORM_MAX_OUTPUT_TOKENS,
+        cachedReadTokens: 0,
+        cacheWriteTokens: 0,
+      });
+      const reserved = await reserveWeeklyCredits(userId, weeklyReserved, weeklyLimit);
+      if (!reserved) {
+        weeklyReserved = 0; // reservation was rolled back inside the helper
+        const weeklyUsed = await getWeeklyCredits(userId);
+        return limitReachedResponse({
+          limitType: 'weekly_credits',
+          current: weeklyUsed,
+          limit: weeklyLimit,
+          tier,
+          model: selectedModel,
+        });
+      }
     }
-
-    // ── Convert UIMessages to ModelMessages ─────────────────────────────────
-    let resolvedMessages = await convertToModelMessages(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      messages as any,
-      { tools },
-    );
-    const systemTokens = estimateTokens(systemPrompt);
-    const messagesTokens = estimateMessagesTokens(resolvedMessages);
-    const totalEstimatedTokens = systemTokens + messagesTokens + TOOLS_TOKEN_ESTIMATE;
 
     if (needsCompaction(systemTokens, messagesTokens, TOOLS_TOKEN_ESTIMATE, selectedModel)) {
       agentLog.info("context_compaction_triggered", {
@@ -764,6 +810,18 @@ export async function POST(req: Request) {
     const CACHE_TTL_MS = 5 * 60 * 1000; // Fireworks cache max TTL
 
     const streamCall = async () => {
+
+      // ── Per-turn output ceiling (platform-paid traffic only) ─────────────────
+      // Cap output tokens only when the PLATFORM foots the bill — i.e. a
+      // server-key model with no personal credentials. On Claude/Codex OAuth or
+      // any BYOK key, isUsingPersonalCredentials is true (or the model isn't a
+      // server-key model), so this resolves to undefined and the AI SDK applies
+      // no cap. The value is request-level constant, so applying it uniformly to
+      // every provider branch below is correct for whichever branch executes.
+      const maxOutputTokens =
+        isServerKeyModel(selectedModel) && !isUsingPersonalCredentials
+          ? PLATFORM_MAX_OUTPUT_TOKENS
+          : undefined;
 
       // ── onFinish: record actual token usage ──────────────────────────────────
       // AI SDK v6 usage shape:
@@ -821,6 +879,7 @@ export async function POST(req: Request) {
         // Update last-call timestamp for next request's timing heuristic
         redis.setex(lastCallKey, 86_400, startTime).catch(() => {});
 
+        let actualCredits = 0;
         if (isServerKeyModel(selectedModel) && (tokensIn > 0 || tokensOut > 0)) {
           // Compute uncached input tokens.
           // In AI SDK v6, inputTokens is the TOTAL (includes cached).
@@ -829,21 +888,21 @@ export async function POST(req: Request) {
             ?? Math.max(0, tokensIn - cachedRead - cachedWrite);
 
           // Personal credentials (OAuth/BYOK) don't consume platform credits
-          const credits = isUsingPersonalCredentials ? 0 : calculateCredits({
+          actualCredits = isUsingPersonalCredentials ? 0 : calculateCredits({
             model: selectedModel,
             inputTokens: uncachedInput,
             outputTokens: tokensOut,
             cachedReadTokens: cachedRead,
             cacheWriteTokens: cachedWrite,
           });
-          await Promise.all([
-            recordTokenUsage(userId, selectedModel, tokensIn, tokensOut, credits, cachedRead, cachedWrite).catch(() => {}),
-            // Only increment weekly credits for server-key (platform-paid) usage
-            !isUsingPersonalCredentials
-              ? incrementWeeklyCredits(userId, credits).catch(() => {})
-              : Promise.resolve(),
-          ]);
+          // Record usage to Neon (monthly aggregate + audit trail).
+          await recordTokenUsage(userId, selectedModel, tokensIn, tokensOut, actualCredits, cachedRead, cachedWrite).catch(() => {});
         }
+        // Reconcile the atomic weekly reservation down to the real cost (or
+        // release it entirely if no usage was reported). Always runs for
+        // platform-paid traffic so a reservation can't be left stranded; a
+        // no-op when nothing was reserved (personal credentials).
+        await reconcileWeeklyCredits(actualCredits);
         const durationMs = Date.now() - startTime;
         agentLog.apiComplete({ model: selectedModel, durationMs });
       };
@@ -911,6 +970,7 @@ export async function POST(req: Request) {
               messages: resolvedMessages,
               tools,
               onFinish,
+              maxOutputTokens,
               providerOptions: {
                 openai: {
                   instructions: systemPrompt,
@@ -933,6 +993,7 @@ export async function POST(req: Request) {
             messages: resolvedMessages,
             tools,
             onFinish,
+            maxOutputTokens,
             providerOptions: {
               openai: {
                 instructions: systemPrompt,
@@ -955,6 +1016,7 @@ export async function POST(req: Request) {
             messages: resolvedMessages,
             tools,
             onFinish,
+            maxOutputTokens,
             providerOptions: {
               openai: {
                 instructions: systemPrompt,
@@ -995,6 +1057,7 @@ export async function POST(req: Request) {
           messages: resolvedMessages,
           tools,
           onFinish,
+          maxOutputTokens,
         });
         return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
       }
@@ -1035,6 +1098,7 @@ export async function POST(req: Request) {
           messages: resolvedMessages,
           tools,
           onFinish,
+          maxOutputTokens,
         });
         return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
       }
@@ -1064,6 +1128,7 @@ export async function POST(req: Request) {
           messages: resolvedMessages,
           tools,
           onFinish,
+          maxOutputTokens,
         });
         return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
       }
@@ -1093,6 +1158,7 @@ export async function POST(req: Request) {
             messages: buildAnthropicCachedMessages(systemPrompt, resolvedMessages),
             tools,
             onFinish,
+            maxOutputTokens,
           });
           return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
         }
@@ -1105,6 +1171,7 @@ export async function POST(req: Request) {
             messages: buildAnthropicCachedMessages(systemPrompt, resolvedMessages),
             tools,
             onFinish,
+            maxOutputTokens,
           });
           return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
         }
@@ -1125,6 +1192,7 @@ export async function POST(req: Request) {
         messages: buildAnthropicCachedMessages(systemPrompt, resolvedMessages),
         tools,
         onFinish,
+        maxOutputTokens,
       });
       return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
     };

@@ -263,6 +263,56 @@ export async function incrementWeeklyCredits(userId: string, credits: number): P
   }
 }
 
+/**
+ * Atomically reserve `amount` credits against the user's weekly budget.
+ *
+ * The INCRBY + limit comparison is a single atomic step, so concurrent requests
+ * can no longer all clear the same pre-spend balance (closes the check-then-spend
+ * TOCTOU race). If the reservation would exceed `limit` it is rolled back and
+ * `false` is returned. On success the caller MUST later reconcile the difference
+ * between this reservation and the real cost via `adjustWeeklyCredits` (typically
+ * in the stream's onFinish), and release it via `adjustWeeklyCredits(-amount)` if
+ * the request aborts before completing.
+ *
+ * Reservations are bounded by the existing WEEK_TTL, so a reservation that is
+ * never reconciled (e.g. process death mid-stream) self-expires rather than
+ * permanently inflating the counter.
+ */
+export async function reserveWeeklyCredits(
+  userId: string,
+  amount: number,
+  limit: number,
+): Promise<boolean> {
+  const key = weeklyRedisKey(userId);
+  if (amount <= 0) {
+    // Nothing to reserve — still enforce the limit against current usage.
+    const current = await getWeeklyCredits(userId);
+    return current < limit;
+  }
+  const total = await redis.incrby(key, amount);
+  if (total === amount) {
+    // First write this week — set TTL.
+    await redis.expire(key, WEEK_TTL);
+  }
+  if (total > limit) {
+    // Over budget — roll back our reservation and reject.
+    await redis.incrby(key, -amount).catch(() => {});
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Adjust the weekly credit counter by `delta` (may be negative). Used to
+ * reconcile a prior `reserveWeeklyCredits` down (or up) to the real cost, and to
+ * release a reservation on abort. Unlike `incrementWeeklyCredits` it does not
+ * touch the TTL, since the key already exists from the reservation.
+ */
+export async function adjustWeeklyCredits(userId: string, delta: number): Promise<void> {
+  if (delta === 0) return;
+  await redis.incrby(weeklyRedisKey(userId), delta);
+}
+
 // ─── Neon: monthly credits ────────────────────────────────────────────────────
 
 export function currentPeriod(): string {
