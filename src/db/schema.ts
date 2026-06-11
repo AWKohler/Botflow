@@ -127,6 +127,14 @@ export const projects = pgTable('projects', {
 }, (t) => ({
   stripeTestAccountIdIdx: index('projects_stripe_test_account_id_idx').on(t.stripeTestAccountId),
   stripeLiveAccountIdIdx: index('projects_stripe_live_account_id_idx').on(t.stripeLiveAccountId),
+  // These exist in the live DB but were previously missing from the schema.
+  // publicSlugUnique in particular enforces slug uniqueness — keep it defined
+  // here so it isn't dropped by a schema sync.
+  becameReapableAtIdx: index('projects_became_reapable_at_idx').on(t.becameReapableAt),
+  isPublicIdx: index('projects_is_public_idx').on(t.isPublic),
+  publicSlugUnique: uniqueIndex('projects_public_slug_unique').on(t.publicSlug),
+  reapStageIdx: index('projects_reap_stage_idx').on(t.reapStage),
+  starCountIdx: index('projects_star_count_idx').on(t.starCount),
 }));
 
 export type Project = typeof projects.$inferSelect;
