@@ -52,10 +52,10 @@ export function getLimitsForTier(tier: Tier): TierLimits {
     case 'free':
       return {
         tier: 'free',
-        maxProjects: 3,
+        maxProjects: envInt('MAX_PROJECTS_FREE', 3),
         maxAgentTurnsPerDay: 0, // no daily turn cap — credit budget handles it
         monthlyCreditBudget: envInt('CREDITS_FREE_MONTHLY', 500_000),
-        maxConvexProjects: 1,
+        maxConvexProjects: envInt('MAX_CONVEX_FREE', 0),
         maxCfPagesDeployments: 1,
         maxScreenshotsPerDay: 5,
         maxAgentDurationSecs: 120,
@@ -67,10 +67,10 @@ export function getLimitsForTier(tier: Tier): TierLimits {
     case 'pro':
       return {
         tier: 'pro',
-        maxProjects: 15,
+        maxProjects: envInt('MAX_PROJECTS_PRO', 20),
         maxAgentTurnsPerDay: 0,
         monthlyCreditBudget: envInt('CREDITS_PRO_MONTHLY', 10_000_000),
-        maxConvexProjects: 3,
+        maxConvexProjects: envInt('MAX_CONVEX_PRO', 8),
         maxCfPagesDeployments: 5,
         maxScreenshotsPerDay: 50,
         maxAgentDurationSecs: 240,
@@ -82,10 +82,10 @@ export function getLimitsForTier(tier: Tier): TierLimits {
     case 'max':
       return {
         tier: 'max',
-        maxProjects: Infinity,
+        maxProjects: envInt('MAX_PROJECTS_MAX', 30),
         maxAgentTurnsPerDay: 0,
         monthlyCreditBudget: envInt('CREDITS_MAX_MONTHLY', 50_000_000),
-        maxConvexProjects: 10,
+        maxConvexProjects: envInt('MAX_CONVEX_MAX', 20),
         maxCfPagesDeployments: 20,
         maxScreenshotsPerDay: Infinity,
         maxAgentDurationSecs: 300,

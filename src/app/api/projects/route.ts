@@ -51,13 +51,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
     }
 
-    // Enforce project count limit
-    const [limits, currentCount] = await Promise.all([
+    // Enforce project count limit (beta testers are exempt)
+    const [limits, currentCount, beta] = await Promise.all([
       getUserTierAndLimits(userId),
       countUserProjects(userId),
+      isBetaUser(userId),
     ]);
 
-    if (currentCount >= limits.maxProjects) {
+    if (!beta && currentCount >= limits.maxProjects) {
       return limitReachedResponse({
         limitType: 'project_count',
         current: currentCount,

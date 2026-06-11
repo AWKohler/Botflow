@@ -43,7 +43,7 @@ export const projects = pgTable('projects', {
   // User-managed Convex backend (BYO Convex)
   userConvexUrl: text('user_convex_url'),
   userConvexDeployKey: text('user_convex_deploy_key'),
-  backendType: text('backend_type').notNull().default('platform'), // 'platform' | 'user' | 'none'
+  backendType: text('backend_type').notNull().default('none'), // 'platform' | 'user' | 'none'
   // Cloudflare Pages deployment
   cloudflareProjectName: text('cloudflare_project_name'),
   cloudflareDeploymentUrl: text('cloudflare_deployment_url'),

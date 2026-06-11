@@ -125,7 +125,11 @@ export function isBackendType(value: string): value is BackendType {
 export function normalizeBackendType(
   value: string | null | undefined,
 ): BackendType {
-  return value === "user" || value === "none" ? value : "platform";
+  // Only an explicit "platform" maps to a managed backend. Anything missing or
+  // unrecognized falls back to "none" (no backend) so a project can never
+  // silently default into platform-managed Convex without an explicit choice.
+  if (value === "user" || value === "none" || value === "platform") return value;
+  return "none";
 }
 
 /**

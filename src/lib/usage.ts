@@ -36,7 +36,15 @@ export async function countUserProjects(userId: string): Promise<number> {
   return result[0]?.count ?? 0;
 }
 
-/** Count active Convex-provisioned projects for a user */
+/**
+ * Count active platform-managed Convex projects for a user.
+ *
+ * Only counts PLATFORM-provisioned backends (backendType = 'platform' with a
+ * convexProjectId). BYOC instances the user connected via their own Convex
+ * OAuth account (backendType = 'user') run on the user's Convex account, cost
+ * the platform nothing, and are intentionally excluded from the managed-Convex
+ * cap.
+ */
 export async function countUserConvexProjects(userId: string): Promise<number> {
   const db = getDb();
   const result = await db
@@ -46,6 +54,7 @@ export async function countUserConvexProjects(userId: string): Promise<number> {
       and(
         eq(projects.userId, userId),
         isNull(projects.deletedAt),
+        eq(projects.backendType, 'platform'),
         sql`${projects.convexProjectId} IS NOT NULL`
       )
     );

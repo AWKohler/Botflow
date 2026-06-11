@@ -4,7 +4,8 @@ import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { provisionConvexBackend } from '@/lib/convex-platform';
-import { getUserTierAndLimits } from '@/lib/tier';
+import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
+import { countUserConvexProjects } from '@/lib/usage';
 import { getUserCredentials, setUserCredentials, type UserCredentials } from '@/lib/user-credentials';
 import { normalizeProjectPlatform, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
 import { resolveModelId } from '@/lib/agent/models';
@@ -215,22 +216,41 @@ export async function GET(request: Request) {
       return NextResponse.redirect(errUrl);
     }
 
-    // Free users can't get a Botflow-managed Convex backend (unless the global
-    // override flag is set). Previously we'd silently insert a project with
-    // `backendType='platform'` and no Convex URL — broken state.
-    // Now we downgrade to 'none' so the workspace mounts the no-backend
-    // template and everything works end-to-end. The UI also gates this, but
-    // we re-check on the server in case the client lied.
-    if (backendType === 'platform' && supportsNoBackend) {
+    // Decide whether this project may provision a NEW platform-managed Convex
+    // backend, and enforce the per-tier managed-Convex cap at creation time
+    // (the other half of the cap; the deploy route enforces the rest):
+    //   - beta testers: exempt (always allowed)
+    //   - free: never (unless the global override flag is set)
+    //   - pro/max: allowed only while under maxConvexProjects
+    // When a platform backend isn't allowed we downgrade to 'none' so the
+    // workspace mounts the no-backend template — except for template forks
+    // (seeded Convex code would break) and platforms without a no-backend
+    // template (mobile/multiplatform ship Convex baked in), which instead bounce
+    // with an upsell. We re-check server-side in case the client lied.
+    if (backendType === 'platform') {
       const cloudConvexForAll = process.env.ALLOW_CLOUD_CONVEX_FOR_ALL === 'true';
-      const limits = await getUserTierAndLimits(userId);
-      if (!cloudConvexForAll && limits.tier === 'free') {
-        // Template forks of a Convex project can't silently drop the backend —
-        // that would break the seeded code. The modal already blocks this for
-        // free users; bounce back with an upsell instead of downgrading.
-        if (seedSlug) {
+      const [limits, beta] = await Promise.all([
+        getUserTierAndLimits(userId),
+        isBetaUser(userId),
+      ]);
+
+      let allowed: boolean;
+      if (beta) {
+        allowed = true;
+      } else if (limits.tier === 'free') {
+        allowed = cloudConvexForAll;
+      } else {
+        const currentConvex = await countUserConvexProjects(userId);
+        allowed = currentConvex < limits.maxConvexProjects;
+      }
+
+      if (!allowed) {
+        if (!supportsNoBackend || seedSlug) {
           const errUrl = new URL('/', request.url);
-          errUrl.searchParams.set('error', 'convex_requires_pro');
+          errUrl.searchParams.set(
+            'error',
+            limits.tier === 'free' ? 'convex_requires_pro' : 'convex_limit_reached',
+          );
           return NextResponse.redirect(errUrl);
         }
         backendType = 'none';

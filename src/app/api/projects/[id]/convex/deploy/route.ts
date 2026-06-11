@@ -4,7 +4,7 @@ import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { provisionConvexBackend, getConvexPlatformClient } from '@/lib/convex-platform';
-import { getUserTierAndLimits } from '@/lib/tier';
+import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
 import { countUserConvexProjects } from '@/lib/usage';
 import { limitReachedResponse } from '@/lib/plan-response';
 
@@ -57,13 +57,15 @@ export async function POST(
       // Auto-provision platform Convex backend if missing (handles projects created before
       // Convex integration or where provisioning silently failed at creation time).
       if (!project.convexDeployKey && !project.userConvexDeployKey) {
-        // Enforce per-user Convex project limit before provisioning a new one
+        // Enforce per-user managed-Convex limit before provisioning a new one
+        // (beta testers are exempt).
         if (!project.convexProjectId) {
-          const [limits, currentConvex] = await Promise.all([
+          const [limits, currentConvex, beta] = await Promise.all([
             getUserTierAndLimits(userId),
             countUserConvexProjects(userId),
+            isBetaUser(userId),
           ]);
-          if (currentConvex >= limits.maxConvexProjects) {
+          if (!beta && currentConvex >= limits.maxConvexProjects) {
             return limitReachedResponse({
               limitType: 'convex_project_count',
               current: currentConvex,
