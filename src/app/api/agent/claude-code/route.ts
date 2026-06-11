@@ -148,6 +148,15 @@ export async function POST(req: Request) {
   if (!Array.isArray(messages) || messages.length === 0) {
     return jsonError(400, "messages array required");
   }
+  // Replay guard: every legitimate Claude Code turn is initiated by a new
+  // user message, so the array must END with one. A trailing assistant
+  // message means an automatic client resubmit (e.g. useChat's
+  // sendAutomaticallyWhen) — since extractUserPrompt scans backward, honoring
+  // it would replay the user's PREVIOUS prompt as a brand-new turn, looping
+  // the agent (and burning the user's subscription) indefinitely.
+  if (messages[messages.length - 1]?.role !== "user") {
+    return jsonError(409, "Last message must be a user message");
+  }
   if (!projectId) {
     return jsonError(400, "projectId required");
   }

@@ -844,25 +844,26 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     },
     // v6: auto-resubmit when tool calls are complete (replaces maxSteps).
     //
-    // Wrap the default helper so we DON'T auto-resubmit when the only thing
-    // the last assistant turn did was call `endTurn` — that's our explicit
-    // "stop here" marker, not a real tool roundtrip. Without this guard the
-    // synthetic endTurn we emit at the end of every Claude Code turn (and
-    // the real one the Botflow agent calls when it's done) would trip the
-    // helper into firing a second POST, which the user sees as a duplicate
-    // assistant bubble.
+    // Wrap the default helper so we DON'T auto-resubmit once the turn has
+    // explicitly ended. A completed `endTurn` tool part — the real one the
+    // Botflow agent calls, or the synthetic one the Claude Code translator
+    // appends to EVERY turn — is our "stop here" marker, and it overrides
+    // whatever other tools ran in the same turn. The previous guard only
+    // suppressed resubmission when endTurn was the ONLY tool in the message,
+    // so any Claude Code turn that did real work (its bash/read/mcp parts all
+    // stream into the same single-step assistant message) tripped the helper
+    // into re-POSTing — and /api/agent/claude-code replays the last user
+    // prompt on every POST, so the turn looped until the user intervened.
     sendAutomaticallyWhen: ({ messages }) => {
       if (!lastAssistantMessageIsCompleteWithToolCalls({ messages })) return false;
       const last = messages[messages.length - 1];
       if (!last || last.role !== 'assistant') return false;
-      const toolNames: string[] = [];
       for (const part of last.parts ?? []) {
-        if (isToolUIPart(part)) toolNames.push(getToolName(part));
-      }
-      // If every tool in this turn is endTurn, the model (or our synthetic
-      // marker) has signalled the conversation is done. Don't resubmit.
-      if (toolNames.length > 0 && toolNames.every((n) => n === 'endTurn')) {
-        return false;
+        if (!isToolUIPart(part) || getToolName(part) !== 'endTurn') continue;
+        const state = (part as { state?: string }).state;
+        if (state === 'output-available' || state === 'output-error') {
+          return false;
+        }
       }
       return true;
     },
