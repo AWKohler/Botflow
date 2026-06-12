@@ -25,6 +25,11 @@ const COMPANION_DOWNLOAD_MAC =
   process.env.NEXT_PUBLIC_COMPANION_MAC_URL || `${COMPANION_DIST_BASE}/BotflowCompanion.zip`;
 const COMPANION_DOWNLOAD_WIN =
   process.env.NEXT_PUBLIC_COMPANION_WIN_URL || `${COMPANION_DIST_BASE}/BotflowCompanionSetup.exe`;
+// The `latest/download/<asset>` redirect 404s silently if a release renames or
+// drops an asset. The redirect itself has no CORS headers, but the REST API
+// does — so we check the latest release's asset list there (best-effort).
+const COMPANION_RELEASE_API =
+  "https://api.github.com/repos/AWKohler/botflow-companion-dist/releases/latest";
 
 const COMPANION_BASE_URL = "http://127.0.0.1:17321";
 
@@ -561,11 +566,48 @@ function GuideStep({ n, children }: { n: number; children: React.ReactNode }) {
 }
 
 function CompanionSetupGuide({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  const { toast } = useToast();
   const os = detectOS();
   const isWin = os === "windows";
   const isMac = os === "mac";
   const url = isWin ? COMPANION_DOWNLOAD_WIN : COMPANION_DOWNLOAD_MAC;
   const osLabel = isWin ? "Windows" : "macOS";
+
+  // null = unknown (API unreachable, rate-limited, etc.) — keep the link live.
+  // Only block the click when the API positively says the asset is missing.
+  const [assetAvailable, setAssetAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    // Env-overridden URLs aren't GitHub release assets; nothing to validate.
+    if (!url.startsWith(`${COMPANION_DIST_BASE}/`)) return;
+    const assetName = url.slice(COMPANION_DIST_BASE.length + 1);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(COMPANION_RELEASE_API);
+        if (!res.ok) return;
+        const release: { assets?: Array<{ name?: string }> } = await res.json();
+        if (!cancelled) {
+          setAssetAvailable(release.assets?.some((asset) => asset.name === assetName) ?? false);
+        }
+      } catch {
+        // Best-effort only — never block a working download on a failed check.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  const handleDownloadClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (assetAvailable === false) {
+      event.preventDefault();
+      toast({
+        title: "Companion download unavailable",
+        description: "Please try again later or contact support.",
+      });
+    }
+  };
 
   return (
     <div className="space-y-3">
@@ -580,7 +622,13 @@ function CompanionSetupGuide({ error, onRetry }: { error: string | null; onRetry
         </div>
       </div>
 
-      <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block"
+        onClick={handleDownloadClick}
+      >
         <Button className="w-full gap-2 font-semibold">
           <Download size={15} />
           Download Botflow Companion ({osLabel})
