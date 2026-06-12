@@ -122,17 +122,31 @@ function getLimiter(bucket: RateLimitBucket): Ratelimit {
 
 /**
  * Best-effort client IP. Next 15 removed `req.ip`, so we parse headers directly.
- * On Vercel `x-forwarded-for` is trustworthy (first comma-split token is the
- * real client). NOTE: behind an untrusted proxy XFF can be spoofed — trust here
- * depends on the deployment edge.
+ *
+ * Trust order matters for IP-keyed limits on unauthenticated routes: a client
+ * can put ANY value in `x-forwarded-for`, so taking its first token (as we used
+ * to) lets an attacker rotate a spoofed IP every request and evade the cap.
+ * Prefer headers the platform sets from the real TCP peer and overwrites on the
+ * way in — `x-vercel-forwarded-for` and `x-real-ip` on Vercel, `cf-connecting-ip`
+ * behind Cloudflare — and only fall back to raw XFF when none are present.
  */
 export function getClientIp(req: Request | NextRequest): string {
+  const trusted =
+    req.headers.get('x-vercel-forwarded-for') ||
+    req.headers.get('x-real-ip') ||
+    req.headers.get('cf-connecting-ip');
+  if (trusted) {
+    const first = trusted.split(',')[0]?.trim();
+    if (first) return first;
+  }
+  // Last resort only — spoofable. Used in local/dev or non-Vercel edges that
+  // don't set the trusted headers above.
   const xff = req.headers.get('x-forwarded-for');
   if (xff) {
     const first = xff.split(',')[0]?.trim();
     if (first) return first;
   }
-  return req.headers.get('x-real-ip') || req.headers.get('cf-connecting-ip') || '0.0.0.0';
+  return '0.0.0.0';
 }
 
 /**
