@@ -7,6 +7,7 @@ import { provisionConvexBackend, getConvexPlatformClient } from '@/lib/convex-pl
 import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
 import { countUserConvexProjects } from '@/lib/usage';
 import { limitReachedResponse } from '@/lib/plan-response';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 
 const FLY_WORKER_URL = process.env.FLY_WORKER_URL;
 const WORKER_AUTH_TOKEN = process.env.FLY_WORKER_AUTH_TOKEN ?? process.env.WORKER_AUTH_TOKEN ?? "";
@@ -21,6 +22,10 @@ export async function POST(
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Tight per-user cap — triggers a full Convex deploy via the Fly worker.
+    const blocked = await enforce(identifierFor(userId, request), 'deploy');
+    if (blocked) return blocked;
 
     const { id: projectId } = await params;
 

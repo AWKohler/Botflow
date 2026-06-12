@@ -10,17 +10,22 @@ import {
 } from "@/lib/vercel-sandbox";
 import { materializeFrontendEnv } from "@/lib/sandbox-env";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Heavy IO+compute: template extract / bundle seed + env materialization.
+  const blocked = await enforce(identifierFor(userId, req), "expensive");
+  if (blocked) return blocked;
 
   const { id } = await params;
   const db = getDb();

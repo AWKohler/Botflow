@@ -8,19 +8,24 @@ import { createDeviceBuild } from "@/lib/sim-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { recordSwiftDeviceBuild } from "@/lib/swift-device-build-store";
 import { tarSandboxProject } from "@/lib/vercel-sandbox";
+import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Strictest per-user cap — kicks off an expensive Swift on-device IPA build.
+  const blocked = await enforce(identifierFor(userId, req), "deploy");
+  if (blocked) return blocked;
 
   const { id: projectId } = await params;
   const db = getDb();

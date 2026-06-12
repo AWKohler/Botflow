@@ -9,6 +9,7 @@ import { getUserTierAndLimits } from '@/lib/tier';
 import { countUserCfPagesDeployments } from '@/lib/usage';
 import { limitReachedResponse } from '@/lib/plan-response';
 import { refreshAuthSiteUrl } from '@/lib/convex-auth-setup';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 
 function getCfConfig() {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -66,6 +67,9 @@ export async function POST(
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const blocked = await enforce(identifierFor(userId, request), 'deploy');
+    if (blocked) return blocked;
 
     const { id: projectId } = await params;
     const project = await getProjectWithAuth(userId, projectId);
@@ -320,6 +324,9 @@ export async function DELETE(
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const blocked = await enforce(identifierFor(userId, _request), 'deploy');
+    if (blocked) return blocked;
+
     const { id: projectId } = await params;
     const project = await getProjectWithAuth(userId, projectId);
     if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
@@ -363,6 +370,9 @@ export async function GET(
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const blocked = await enforce(identifierFor(userId, _request), 'read');
+    if (blocked) return blocked;
 
     const { id: projectId } = await params;
     const project = await getProjectWithAuth(userId, projectId);

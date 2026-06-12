@@ -22,6 +22,7 @@ import { getStripe, type StripeMode } from '@/lib/stripe';
 import { mirrorStripeProductsAcrossModes } from '@/lib/stripe-scaffold';
 import { ensureConnectWebhookEndpoint } from '@/lib/stripe-webhook-provisioning';
 import { STRIPE_CONNECT_ENABLED } from '@/lib/feature-flags';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 
@@ -65,6 +66,12 @@ export async function GET(req: NextRequest) {
       reason: 'missing-code-or-state',
     });
   }
+
+  // Not Clerk-gated — authenticates solely via the DB-backed state token, so we
+  // key by client IP to throttle state-grinding before the Stripe exchange and
+  // the heavy write/provisioning side effects below.
+  const blocked = await enforce(identifierFor(null, req), 'oauthExchange');
+  if (blocked) return blocked;
 
   const db = getDb();
   const [stateRow] = await db

@@ -3,12 +3,16 @@ import { getDb } from '@/db';
 import { projects, projectStars } from '@/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const blocked = await enforce(identifierFor(userId, req), 'write');
+    if (blocked) return blocked;
 
     const db = getDb();
     const [proj] = await db

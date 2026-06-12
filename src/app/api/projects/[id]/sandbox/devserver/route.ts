@@ -9,6 +9,7 @@ import {
 } from "@/lib/workspace-control";
 import { refreshAuthSiteUrl } from "@/lib/convex-auth-setup";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,11 @@ export async function POST(
 ) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Starting/restarting the dev server (optional pnpm install + boot) is heavy
+  // sandbox compute — cap to prevent restart thrashing.
+  const blocked = await enforce(identifierFor(userId, req), "expensive");
+  if (blocked) return blocked;
 
   const { id } = await params;
   const project = await authorizedProject(id, userId);
@@ -79,11 +85,14 @@ export async function POST(
 // DELETE: stop the dev server. Used by the workspace Stop button (future) and
 // by the `stopDevServer` agent tool.
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const blocked = await enforce(identifierFor(userId, req), "expensive");
+  if (blocked) return blocked;
 
   const { id } = await params;
   const project = await authorizedProject(id, userId);

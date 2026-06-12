@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -11,6 +12,9 @@ export async function GET(req: NextRequest) {
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const blocked = await enforce(identifierFor(userId, req), 'oauthStart');
+    if (blocked) return blocked;
 
     if (!CLIENT_ID) {
       return NextResponse.json({ error: 'GitHub OAuth not configured' }, { status: 500 });

@@ -12,6 +12,7 @@ import {
   recordSwiftPreviewSession,
 } from "@/lib/swift-preview-store";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,9 @@ export async function POST(
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const blocked = await enforce(identifierFor(userId, req), "deploy");
+  if (blocked) return blocked;
 
   const { id: projectId } = await params;
   const db = getDb();

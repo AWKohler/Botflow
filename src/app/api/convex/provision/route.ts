@@ -4,6 +4,7 @@ import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { getUserCredentials, setUserCredentials } from '@/lib/user-credentials';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -13,6 +14,10 @@ const CONVEX_CLI_API = 'https://api.convex.dev/api';
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Tight per-user cap — provisions real external Convex infrastructure via the Platform API.
+  const blocked = await enforce(identifierFor(userId, req), 'deploy');
+  if (blocked) return blocked;
 
   const { projectId, projectName } = await req.json() as { projectId: string; projectName: string };
   if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 });
