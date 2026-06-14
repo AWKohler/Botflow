@@ -154,7 +154,7 @@ export async function GET(request: Request) {
     modelParam === 'claude-opus-4.7' ? 'claude-opus-4-8' : // migrate legacy
     modelParam === 'claude-opus-4.6' ? 'claude-opus-4-8' : // migrate legacy
     modelParam === 'claude-opus-4.5' ? 'claude-opus-4-8' : // migrate legacy
-    modelParam === 'claude-fable-5' ? 'claude-fable-5' :
+    modelParam === 'claude-fable-5' ? 'fireworks-kimi-k2p6' : // rescinded by Anthropic — fall back to default
     modelParam === 'fireworks-minimax-m2p5' ? 'fireworks-minimax-m2p7' : // updated model
     modelParam === 'kimi-k2.5' ? 'fireworks-minimax-m2p7' : // removed model
     modelParam === 'kimi-k2-thinking-turbo' ? 'fireworks-minimax-m2p7' : // removed model

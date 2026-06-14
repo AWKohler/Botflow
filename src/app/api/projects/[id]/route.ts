@@ -4,6 +4,7 @@ import { projects, chatImages, projectAssets } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { deleteConvexBackend } from '@/lib/convex-platform';
+import { isModelDisabled, modelDisabledReason } from '@/lib/agent/models';
 import { UTApi } from 'uploadthing/server';
 
 const utapi = new UTApi();
@@ -66,6 +67,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       model !== 'gemini-3.1-pro-preview'
     ) {
       return NextResponse.json({ error: 'Invalid model' }, { status: 400 });
+    }
+    // Reject globally disabled models (e.g. rescinded by the provider) for all
+    // users and auth paths — can't switch a project onto an unusable model.
+    if (model && isModelDisabled(model)) {
+      return NextResponse.json({ error: modelDisabledReason(model) }, { status: 403 });
     }
     const updateData: Partial<typeof proj> = {
       updatedAt: new Date(),

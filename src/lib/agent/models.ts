@@ -31,6 +31,14 @@ export interface ModelConfig {
   criticalThreshold: number;
   /** Whether this model supports image/file inputs */
   supportsImages: boolean;
+  /**
+   * When true, the model is shown in the UI but cannot be selected or used.
+   * Enforced both in the selector (grayed/non-selectable) and server-side
+   * (request dispatch rejects it for ALL auth paths, including BYOK/OAuth).
+   */
+  disabled?: boolean;
+  /** Short reason surfaced to the user when a disabled model is encountered. */
+  disabledReason?: string;
 }
 
 export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
@@ -93,6 +101,10 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
+    // Temporarily rescinded by Anthropic — visible in the UI but unusable for
+    // every user (free/pro/max, BYOK, and OAuth) until re-enabled here.
+    disabled: true,
+    disabledReason: "Temporarily unavailable — rescinded by Anthropic.",
   },
   "gemini-3.1-pro-preview": {
     id: "gemini-3.1-pro-preview",
@@ -162,6 +174,25 @@ export function resolveModelId(stored: string | null | undefined): ModelId {
 /** Check if a model supports image/file inputs */
 export function modelSupportsImages(model: ModelId): boolean {
   return MODEL_CONFIGS[model]?.supportsImages ?? false;
+}
+
+/** Fallback message when a model is disabled but no explicit reason is set. */
+export const DEFAULT_DISABLED_MODEL_REASON = "This model is temporarily unavailable.";
+
+/**
+ * Whether a model is currently disabled (single source of truth: the `disabled`
+ * flag on its config). Both the selector UI and the server-side request guard
+ * derive from this so the two can never drift apart.
+ */
+export function isModelDisabled(model: string | null | undefined): boolean {
+  if (!model || !(model in MODEL_CONFIGS)) return false;
+  return MODEL_CONFIGS[model as ModelId].disabled === true;
+}
+
+/** Human-readable reason a model is disabled (empty string if it isn't). */
+export function modelDisabledReason(model: string | null | undefined): string {
+  if (!isModelDisabled(model)) return "";
+  return MODEL_CONFIGS[model as ModelId].disabledReason ?? DEFAULT_DISABLED_MODEL_REASON;
 }
 
 /** Check if a model uses the Anthropic provider */

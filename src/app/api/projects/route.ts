@@ -7,6 +7,7 @@ import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
 import { countUserProjects } from '@/lib/usage';
 import { limitReachedResponse } from '@/lib/plan-response';
 import { normalizeProjectPlatform, normalizeBackendType, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
+import { isModelDisabled, modelDisabledReason } from '@/lib/agent/models';
 
 export async function GET() {
   try {
@@ -49,6 +50,13 @@ export async function POST(request: NextRequest) {
 
     if (!name) {
       return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
+    }
+
+    // Reject globally disabled models (e.g. rescinded by the provider) before
+    // they can be persisted as a project's preferred model — applies to every
+    // user and auth path.
+    if (model && isModelDisabled(model)) {
+      return NextResponse.json({ error: modelDisabledReason(model) }, { status: 403 });
     }
 
     // Enforce project count limit (beta testers are exempt)

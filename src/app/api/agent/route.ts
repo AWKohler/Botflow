@@ -15,7 +15,7 @@ import { isSandboxPlatform } from "@/lib/project-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { getPersistentTools } from "@/lib/agent/persistent-tools";
 import { getSandboxedWebTools } from "@/lib/agent/sandboxed-web-tools";
-import { MODEL_CONFIGS, resolveModelId, type ModelId } from "@/lib/agent/models";
+import { MODEL_CONFIGS, resolveModelId, isModelDisabled, modelDisabledReason, type ModelId } from "@/lib/agent/models";
 import { agentLog, generateRequestId, setRequestId } from "@/lib/agent/logger";
 import { classifyError, formatErrorResponse } from "@/lib/agent/errors";
 import { USE_TOGETHER_KIMI } from "@/lib/feature-flags";
@@ -603,6 +603,22 @@ export async function POST(req: Request) {
           autonomy,
         };
       }
+    }
+
+    // ── Globally disabled model guard (applies to ALL auth paths) ────────────
+    // A model can be administratively disabled in the central registry (e.g.
+    // rescinded by the provider). This guard runs BEFORE any BYOK/OAuth/server-
+    // key branching, so no user can bypass the grayed-out selector by calling
+    // this endpoint directly with their own key.
+    if (isModelDisabled(selectedModel)) {
+      return new Response(
+        JSON.stringify({
+          error: modelDisabledReason(selectedModel),
+          errorType: "model_disabled",
+          model: selectedModel,
+        }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      );
     }
 
     // Load credentials from Clerk (Redis-cached)

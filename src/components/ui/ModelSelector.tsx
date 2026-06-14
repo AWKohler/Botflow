@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, Lock } from 'lucide-react';
-import { MODEL_CONFIGS, type ModelId } from '@/lib/agent/models';
+import { MODEL_CONFIGS, isModelDisabled, modelDisabledReason, type ModelId } from '@/lib/agent/models';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
 import type { LimitReachedPayload } from '@/components/ui/LimitModal';
@@ -120,6 +120,17 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
 
   const handleSelect = useCallback((modelId: ModelId) => {
     const config = MODEL_CONFIGS[modelId];
+
+    // Globally disabled model (e.g. rescinded by the provider) — never selectable
+    // for any user/tier/auth path. The option stays visible but inert.
+    if (isModelDisabled(modelId)) {
+      toast({
+        title: `${config.displayName} unavailable`,
+        description: modelDisabledReason(modelId),
+      });
+      return;
+    }
+
     const requiredTier = MODEL_SERVER_TIER[modelId] ?? 'free';
     const userTierRank = TIER_RANK[userTier] ?? 0;
     const requiredTierRank = TIER_RANK[requiredTier] ?? 0;
@@ -221,6 +232,8 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
             const requiredTierRank = TIER_RANK[requiredTier] ?? 0;
             const isTierLocked = requiredTierRank > userTierRank && !hasAccess;
             const isSelected = modelId === value;
+            const isDisabled = isModelDisabled(modelId);
+            const disabledReason = isDisabled ? modelDisabledReason(modelId) : '';
 
             const tierBadge = requiredTierRank > 0 ? TIER_LABELS[requiredTier] : null;
             // Kimi K2.6 costs more on Together AI ($1.20 input → x4 vs x3 on Fireworks).
@@ -233,10 +246,14 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                 key={modelId}
                 type="button"
                 onClick={() => handleSelect(modelId)}
+                disabled={isDisabled}
+                aria-disabled={isDisabled}
+                title={isDisabled ? disabledReason : undefined}
                 className={cn(
                   'flex w-full items-center gap-3 px-3 py-2.5 text-left transition',
                   isSelected ? 'bg-elevated' : 'hover:bg-elevated/60',
                   isTierLocked && 'opacity-50',
+                  isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent',
                 )}
               >
                 <div className="flex-1 min-w-0">
@@ -263,14 +280,23 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                     <span className="text-muted/50">·</span>
                     <span className="font-medium">{costLabel}</span>
                   </div>
+                  {isDisabled && (
+                    <div className="text-[11px] text-muted mt-0.5">{disabledReason}</div>
+                  )}
                 </div>
-                {(isCredentialMissing && !isTierLocked && !SERVER_KEY_MODELS.has(modelId)) && (
+                {isDisabled && (
+                  <div className="flex items-center gap-1 text-muted">
+                    <Lock className="h-3 w-3" />
+                    <span className="text-[10px]">Unavailable</span>
+                  </div>
+                )}
+                {(!isDisabled && isCredentialMissing && !isTierLocked && !SERVER_KEY_MODELS.has(modelId)) && (
                   <div className="flex items-center gap-1 text-muted">
                     <Lock className="h-3 w-3" />
                     <span className="text-[10px]">no key</span>
                   </div>
                 )}
-                {isTierLocked && (
+                {!isDisabled && isTierLocked && (
                   <div className="flex items-center gap-1 text-muted">
                     <Lock className="h-3 w-3" />
                     <span className="text-[10px]">{tierBadge}</span>
