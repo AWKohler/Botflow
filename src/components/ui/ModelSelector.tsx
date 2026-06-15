@@ -36,7 +36,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 /** Minimum tier required to use a model on server-side keys (must match backend MODEL_TIER_REQUIREMENT) */
 const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
-  'fireworks-minimax-m2p7': 'free',
+  'fireworks-minimax-m3': 'free',
   'fireworks-glm-5p1': 'free',
   'fireworks-kimi-k2p6': 'free',
   'gpt-5.3-codex': 'pro',       // Pro+ for server key; free requires BYOK/OAuth
@@ -53,7 +53,7 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
  * Selecting these skips the "missing API key" BYOK check.
  */
 const SERVER_KEY_MODELS = new Set<ModelId>([
-  'fireworks-minimax-m2p7',
+  'fireworks-minimax-m3',
   'fireworks-glm-5p1',
   'fireworks-kimi-k2p6',
   'gpt-5.3-codex',
@@ -67,7 +67,7 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
 
 /** Rounded per-model cost multiplier for user display */
 const MODEL_COST_LABEL: Record<ModelId, string> = {
-  'fireworks-minimax-m2p7': 'x1',
+  'fireworks-minimax-m3': 'x1',
   'fireworks-glm-5p1': 'x3',
   'fireworks-kimi-k2p6': 'x3',
   'gpt-5.3-codex': 'x4',
@@ -90,7 +90,7 @@ function formatContextSize(tokens: number): string {
 
 // Order: cheapest → most expensive (by credit multiplier)
 const MODEL_ORDER: ModelId[] = [
-  'fireworks-minimax-m2p7',  // x1
+  'fireworks-minimax-m3',  // x1
   'fireworks-glm-5p1',         // x3
   'fireworks-kimi-k2p6',     // x3
   'gpt-5.3-codex',           // x4

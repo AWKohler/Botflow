@@ -61,7 +61,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       model !== 'claude-opus-4.5' && // backwards compat
       model !== 'kimi-k2.5' && // removed → mapped to minimax
       model !== 'kimi-k2-thinking-turbo' && // removed → mapped to minimax
-      model !== 'fireworks-minimax-m2p7' &&
+      model !== 'fireworks-minimax-m2p7' && // backwards compat → resolves to m3
+      model !== 'fireworks-minimax-m3' &&
       model !== 'fireworks-glm-5p1' &&
       model !== 'fireworks-kimi-k2p6' &&
       model !== 'gemini-3.1-pro-preview'

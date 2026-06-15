@@ -32,7 +32,8 @@ function fmt(n: number): string {
 }
 
 const MODEL_DISPLAY: Record<string, string> = {
-  'fireworks-minimax-m2p7': 'MiniMax M2.7',
+  'fireworks-minimax-m3': 'MiniMax M3',
+  'fireworks-minimax-m2p7': 'MiniMax M2.7', // legacy usage records
   // 'fireworks-glm-5': 'GLM-5',
   'fireworks-glm-5p1': 'GLM-5.1',
   'fireworks-kimi-k2p6': 'Kimi K2.6',

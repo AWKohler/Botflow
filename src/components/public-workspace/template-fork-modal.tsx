@@ -83,7 +83,7 @@ export function TemplateForkModal({
     params.set("platform", "sandboxed-web");
     if (usesConvex) {
       params.set("backendType", backend);
-      params.set("model", "fireworks-minimax-m2p7"); // Minimax for the convexDeploy step
+      params.set("model", "fireworks-minimax-m3"); // Minimax for the convexDeploy step
       params.set("prompt", CONVEX_FORK_PROMPT);
     } else {
       params.set("backendType", "none");

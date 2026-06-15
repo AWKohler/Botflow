@@ -10,7 +10,7 @@ export type ModelId =
   | "claude-opus-4-8"
   | "claude-fable-5"
   | "gemini-3.1-pro-preview"
-  | "fireworks-minimax-m2p7"
+  | "fireworks-minimax-m3"
   | "fireworks-glm-5p1"
   | "fireworks-kimi-k2p6";
 
@@ -116,11 +116,11 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     criticalThreshold: 0.9,
     supportsImages: true,
   },
-  "fireworks-minimax-m2p7": {
-    id: "fireworks-minimax-m2p7",
+  "fireworks-minimax-m3": {
+    id: "fireworks-minimax-m3",
     provider: "fireworks",
-    apiModelId: "accounts/fireworks/models/minimax-m2p7",
-    displayName: "MiniMax-M2.7",
+    apiModelId: "accounts/fireworks/models/minimax-m3",
+    displayName: "MiniMax-M3",
     maxContextTokens: 196_600,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
@@ -165,6 +165,7 @@ export function resolveModelId(stored: string | null | undefined): ModelId {
   if (stored === "claude-opus-4.5" || stored === "claude-opus-4.6" || stored === "claude-opus-4.7" || stored === "claude-opus-4-7" || stored === "claude-opus-4-1") return "claude-opus-4-8";
   if (stored === "gpt-4.1" || stored === "gpt-5.2") return "gpt-5.3-codex";
   if (stored === "fireworks-glm-5") return "fireworks-glm-5p1";
+  if (stored === "fireworks-minimax-m2p7" || stored === "fireworks-minimax-m2p5") return "fireworks-minimax-m3";
   // Still-valid model: pass through
   if (stored && stored in MODEL_CONFIGS) return stored as ModelId;
   // Unknown or removed model: silently use default

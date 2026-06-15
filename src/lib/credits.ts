@@ -40,7 +40,7 @@ interface ModelPricing {
 const BASE_PRICE = 0.30; // MiniMax input $/MTok — our credit base unit
 
 export const MODEL_PRICING: Record<string, ModelPricing> = {
-  'fireworks-minimax-m2p7': {
+  'fireworks-minimax-m3': {
     input:       0.30 / BASE_PRICE,   // 1.0
     cachedInput: 0.06 / BASE_PRICE,   // 0.2
     output:      1.20 / BASE_PRICE,   // 4.0
@@ -141,7 +141,7 @@ const TOGETHER_KIMI_PRICING: ModelPricing = {
  * ($1.20 input → 4.0); the live value is resolved by kimiCostMultiplier().
  */
 export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = {
-  'fireworks-minimax-m2p7': 1,
+  'fireworks-minimax-m3': 1,
   'fireworks-glm-5p1': 3,
   'fireworks-kimi-k2p6': 3,
   'gpt-5.3-codex': 4,
@@ -180,7 +180,7 @@ export function calculateCredits(params: CreditCalculationInput): number {
   let pricing = MODEL_PRICING[model];
   if (!pricing) {
     // Fallback: treat as MiniMax pricing
-    pricing = MODEL_PRICING['fireworks-minimax-m2p7'];
+    pricing = MODEL_PRICING['fireworks-minimax-m3'];
   }
 
   // Kimi K2.6: charge Together AI's higher rates while traffic is rerouted there.
@@ -210,7 +210,7 @@ export function calculateCredits(params: CreditCalculationInput): number {
 
 /** @deprecated Use calculateCredits() instead */
 export function rawToCredits(tokens: number, model: ModelId): number {
-  const pricing = MODEL_PRICING[model] ?? MODEL_PRICING['fireworks-minimax-m2p7'];
+  const pricing = MODEL_PRICING[model] ?? MODEL_PRICING['fireworks-minimax-m3'];
   // Approximate: treat all tokens as uncached input (overestimates — prefer calculateCredits)
   return Math.ceil(tokens * pricing.input);
 }
