@@ -388,7 +388,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [initialized, setInitialized] = useState(false);
   const [actions, setActions] = useState<ToolCallData[]>([]);
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
-  const [model, setModel] = useState<ModelId>('fireworks-kimi-k2p6');
+  const [model, setModel] = useState<ModelId>('fireworks-kimi-k2p7');
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
   const [hasClaudeOAuth, setHasClaudeOAuth] = useState<boolean | null>(null);
@@ -396,7 +396,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
   const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
   const [hasGoogleKey, setHasGoogleKey] = useState<boolean | null>(null);
-  // Server flag (USE_TOGETHER_KIMI): Kimi K2.6 is served by Together AI, not Fireworks.
+  // Server flag (USE_TOGETHER_KIMI): Kimi K2.7 is served by Together AI, not Fireworks.
   const [useTogetherKimi, setUseTogetherKimi] = useState(false);
   // BYOK user's per-account preference for which agent runs Claude models.
   // Honored by the derivation only when the user has a genuine choice

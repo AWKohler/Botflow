@@ -154,17 +154,18 @@ export async function GET(request: Request) {
     modelParam === 'claude-opus-4.7' ? 'claude-opus-4-8' : // migrate legacy
     modelParam === 'claude-opus-4.6' ? 'claude-opus-4-8' : // migrate legacy
     modelParam === 'claude-opus-4.5' ? 'claude-opus-4-8' : // migrate legacy
-    modelParam === 'claude-fable-5' ? 'fireworks-kimi-k2p6' : // rescinded by Anthropic — fall back to default
+    modelParam === 'claude-fable-5' ? 'fireworks-kimi-k2p7' : // rescinded by Anthropic — fall back to default
     modelParam === 'fireworks-minimax-m2p5' ? 'fireworks-minimax-m3' : // updated model
     modelParam === 'fireworks-minimax-m2p7' ? 'fireworks-minimax-m3' : // updated model
     modelParam === 'kimi-k2.5' ? 'fireworks-minimax-m3' : // removed model
     modelParam === 'kimi-k2-thinking-turbo' ? 'fireworks-minimax-m3' : // removed model
     modelParam === 'fireworks-minimax-m3' ? 'fireworks-minimax-m3' :
     modelParam === 'fireworks-glm-5p1' ? 'fireworks-glm-5p1' :
-    modelParam === 'fireworks-kimi-k2p6' ? 'fireworks-kimi-k2p6' :
+    modelParam === 'fireworks-kimi-k2p6' ? 'fireworks-kimi-k2p7' : // updated model
+    modelParam === 'fireworks-kimi-k2p7' ? 'fireworks-kimi-k2p7' :
     modelParam === 'gemini-3.1-pro-preview' ? 'gemini-3.1-pro-preview' :
-    'fireworks-kimi-k2p6'
-  ) as 'gpt-5.3-codex' | 'gpt-5.4' | 'gpt-5.5' | 'claude-sonnet-4-6' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-glm-5p1' | 'fireworks-kimi-k2p6' | 'gemini-3.1-pro-preview';
+    'fireworks-kimi-k2p7'
+  ) as 'gpt-5.3-codex' | 'gpt-5.4' | 'gpt-5.5' | 'claude-sonnet-4-6' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-glm-5p1' | 'fireworks-kimi-k2p7' | 'gemini-3.1-pro-preview';
 
   if (!userId) {
     return redirectToSignIn({ returnBackUrl: request.url });

@@ -15,7 +15,6 @@ import { usageRecords } from '@/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import type { ModelId } from './agent/models';
 import type { Tier } from './tier';
-import { USE_TOGETHER_KIMI } from './feature-flags';
 
 // ─── Env-var helpers ──────────────────────────────────────────────────────────
 
@@ -55,9 +54,9 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     cachedInput: 0.26 / BASE_PRICE,   // 0.87
     output:      4.40 / BASE_PRICE,   // 14.67
   },
-  'fireworks-kimi-k2p6': {
+  'fireworks-kimi-k2p7': {
     input:       0.95 / BASE_PRICE,   // 3.17
-    cachedInput: 0.16 / BASE_PRICE,   // 0.53
+    cachedInput: 0.19 / BASE_PRICE,   // 0.63
     output:      4.00 / BASE_PRICE,   // 13.33
   },
   'gpt-5.3-codex': {
@@ -124,26 +123,18 @@ const GPT54_LONG_CONTEXT_PRICING: ModelPricing = {
 
 const GPT54_LONG_CONTEXT_THRESHOLD = 272_000;
 
-// Kimi K2.6 pricing on Together AI (used when USE_TOGETHER_KIMI is on).
-// Together is pricier than Fireworks ($1.20/$0.20/$4.50 vs $0.95/$0.16/$4.00),
-// so users are charged proportionally more credits while the flag is active.
-const TOGETHER_KIMI_PRICING: ModelPricing = {
-  input:       1.20 / BASE_PRICE,   // 4.0  (vs 3.17 on Fireworks)
-  cachedInput: 0.20 / BASE_PRICE,   // 0.67 (vs 0.53 on Fireworks)
-  output:      4.50 / BASE_PRICE,   // 15.0 (vs 13.33 on Fireworks)
-};
-
 /**
  * Rounded per-model cost multiplier for frontend display.
  * Shown in model selector dropdown to give users a sense of relative cost.
  *
- * Kimi K2.6 is 3 on Fireworks ($0.95 input → 3.17 ≈ 3) but 4 on Together AI
- * ($1.20 input → 4.0); the live value is resolved by kimiCostMultiplier().
+ * Kimi K2.7 is x3 ($0.95 input → 3.17 ≈ 3) on both Fireworks and Together AI —
+ * Together homologated its pricing to match Fireworks, so the provider no longer
+ * affects the cost.
  */
 export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = {
   'fireworks-minimax-m3': 1,
   'fireworks-glm-5p1': 3,
-  'fireworks-kimi-k2p6': 3,
+  'fireworks-kimi-k2p7': 3,
   'gpt-5.3-codex': 4,
   'gemini-3.1-pro-preview': 5,
   'claude-sonnet-4-6': 5,
@@ -152,15 +143,6 @@ export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = {
   'gpt-5.5': 12,
   'claude-fable-5': 20,
 };
-
-/**
- * Live display multiplier for Kimi K2.6 — 4 when traffic is routed to Together
- * AI, otherwise the static Fireworks value (3). The frontend passes the flag in
- * (it can't read the server-only env var directly).
- */
-export function kimiCostMultiplier(useTogetherKimi: boolean): number {
-  return useTogetherKimi ? 4 : MODEL_COST_MULTIPLIER['fireworks-kimi-k2p6'];
-}
 
 export interface CreditCalculationInput {
   model: ModelId;
@@ -181,11 +163,6 @@ export function calculateCredits(params: CreditCalculationInput): number {
   if (!pricing) {
     // Fallback: treat as MiniMax pricing
     pricing = MODEL_PRICING['fireworks-minimax-m3'];
-  }
-
-  // Kimi K2.6: charge Together AI's higher rates while traffic is rerouted there.
-  if (model === 'fireworks-kimi-k2p6' && USE_TOGETHER_KIMI) {
-    pricing = TOGETHER_KIMI_PRICING;
   }
 
   // GPT-5.4: use higher pricing tier if total input context exceeds 272K

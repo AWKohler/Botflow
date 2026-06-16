@@ -90,7 +90,8 @@ export default function Home() {
     "fireworks-minimax-m2p7", // legacy compat
     "fireworks-glm-5p1",
     "fireworks-glm-5", // legacy compat
-    "fireworks-kimi-k2p6",
+    "fireworks-kimi-k2p7",
+    "fireworks-kimi-k2p6", // legacy compat
     "gemini-3.1-pro-preview",
   ]);
 
@@ -98,7 +99,7 @@ export default function Home() {
   const serverKeyModels = new Set([
     "fireworks-minimax-m3",
     "fireworks-glm-5p1",
-    "fireworks-kimi-k2p6",
+    "fireworks-kimi-k2p7",
     "gpt-5.3-codex",
     "gpt-5.4",
     "claude-sonnet-4-6",

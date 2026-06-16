@@ -1416,7 +1416,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'fireworks-kimi-k2p6'"
+          "default": "'fireworks-kimi-k2p7'"
         },
         "thumbnail_url": {
           "name": "thumbnail_url",

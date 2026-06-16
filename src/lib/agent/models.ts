@@ -12,7 +12,7 @@ export type ModelId =
   | "gemini-3.1-pro-preview"
   | "fireworks-minimax-m3"
   | "fireworks-glm-5p1"
-  | "fireworks-kimi-k2p6";
+  | "fireworks-kimi-k2p7";
 
 export type Provider = "openai" | "anthropic" | "google" | "fireworks";
 
@@ -146,12 +146,12 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     criticalThreshold: 0.9,
     supportsImages: false,
   },
-  "fireworks-kimi-k2p6": {
-    id: "fireworks-kimi-k2p6",
+  "fireworks-kimi-k2p7": {
+    id: "fireworks-kimi-k2p7",
     provider: "fireworks",
-    apiModelId: "accounts/fireworks/models/kimi-k2p6",
-    displayName: "Kimi K2.6",
-    maxContextTokens: 262_100,
+    apiModelId: "accounts/fireworks/models/kimi-k2p7-code",
+    displayName: "Kimi K2.7",
+    maxContextTokens: 262_144,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
@@ -166,10 +166,11 @@ export function resolveModelId(stored: string | null | undefined): ModelId {
   if (stored === "gpt-4.1" || stored === "gpt-5.2") return "gpt-5.3-codex";
   if (stored === "fireworks-glm-5") return "fireworks-glm-5p1";
   if (stored === "fireworks-minimax-m2p7" || stored === "fireworks-minimax-m2p5") return "fireworks-minimax-m3";
+  if (stored === "fireworks-kimi-k2p6") return "fireworks-kimi-k2p7";
   // Still-valid model: pass through
   if (stored && stored in MODEL_CONFIGS) return stored as ModelId;
   // Unknown or removed model: silently use default
-  return "fireworks-kimi-k2p6";
+  return "fireworks-kimi-k2p7";
 }
 
 /** Check if a model supports image/file inputs */

@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
         | 'claude-fable-5'
         | 'fireworks-minimax-m3'
         | 'fireworks-glm-5p1'
-        | 'fireworks-kimi-k2p6'
+        | 'fireworks-kimi-k2p7'
         | 'gemini-3.1-pro-preview';
     };
 
@@ -120,11 +120,11 @@ export async function POST(request: NextRequest) {
             ? 'fireworks-minimax-m3'
             : model === 'fireworks-glm-5p1'
             ? 'fireworks-glm-5p1'
-            : model === 'fireworks-kimi-k2p6'
-            ? 'fireworks-kimi-k2p6'
+            : model === 'fireworks-kimi-k2p7'
+            ? 'fireworks-kimi-k2p7'
             : model === 'gemini-3.1-pro-preview'
             ? 'gemini-3.1-pro-preview'
-            : 'fireworks-kimi-k2p6',
+            : 'fireworks-kimi-k2p7',
       })
       .returning();
 

@@ -158,7 +158,7 @@ async function runWriter(args: {
 }): Promise<WriterResult> {
   const apiKey = process.env.FIREWORKS_API_KEY;
   if (!apiKey) {
-    throw new Error('FIREWORKS_API_KEY is not set — required to run Kimi K2.6');
+    throw new Error('FIREWORKS_API_KEY is not set — required to run Kimi K2.7');
   }
   const fireworks = createFireworks({ apiKey });
 
@@ -171,7 +171,7 @@ async function runWriter(args: {
   const userPrompt = buildWriterUserPrompt(args.feedSummary) + recentBit;
 
   const result = await generateText({
-    model: fireworks('accounts/fireworks/models/kimi-k2p6'),
+    model: fireworks('accounts/fireworks/models/kimi-k2p7-code'),
     system: WRITER_SYSTEM_PROMPT,
     prompt: userPrompt,
     tools: {

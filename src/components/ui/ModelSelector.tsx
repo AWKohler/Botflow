@@ -17,7 +17,7 @@ export interface ModelSelectorProps {
   onTierLocked?: (payload: LimitReachedPayload) => void;
   size?: 'sm' | 'md';
   className?: string;
-  /** When true, Kimi K2.6 is served by Together AI (USE_TOGETHER_KIMI flag),
+  /** When true, Kimi K2.7 is served by Together AI (USE_TOGETHER_KIMI flag),
    *  so its provider badge reads "Together" instead of "Fireworks". */
   useTogetherKimi?: boolean;
   /** Optional content rendered inside the trigger pill, left of the model
@@ -38,7 +38,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
   'fireworks-minimax-m3': 'free',
   'fireworks-glm-5p1': 'free',
-  'fireworks-kimi-k2p6': 'free',
+  'fireworks-kimi-k2p7': 'free',
   'gpt-5.3-codex': 'pro',       // Pro+ for server key; free requires BYOK/OAuth
   'gpt-5.4': 'pro',             // Pro+
   'gpt-5.5': 'pro',             // Pro+
@@ -55,7 +55,7 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
 const SERVER_KEY_MODELS = new Set<ModelId>([
   'fireworks-minimax-m3',
   'fireworks-glm-5p1',
-  'fireworks-kimi-k2p6',
+  'fireworks-kimi-k2p7',
   'gpt-5.3-codex',
   'gpt-5.4',
   'gpt-5.5',
@@ -69,7 +69,7 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
 const MODEL_COST_LABEL: Record<ModelId, string> = {
   'fireworks-minimax-m3': 'x1',
   'fireworks-glm-5p1': 'x3',
-  'fireworks-kimi-k2p6': 'x3',
+  'fireworks-kimi-k2p7': 'x3',
   'gpt-5.3-codex': 'x4',
   'gemini-3.1-pro-preview': 'x5',
   'claude-sonnet-4-6': 'x5',
@@ -92,7 +92,7 @@ function formatContextSize(tokens: number): string {
 const MODEL_ORDER: ModelId[] = [
   'fireworks-minimax-m3',  // x1
   'fireworks-glm-5p1',         // x3
-  'fireworks-kimi-k2p6',     // x3
+  'fireworks-kimi-k2p7',     // x3
   'gpt-5.3-codex',           // x4
   'gemini-3.1-pro-preview',  // x5
   'claude-sonnet-4-6',       // x5
@@ -110,7 +110,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
   /** Provider label for the dropdown badge — reflects the live Kimi→Together redirect. */
   const providerLabel = useCallback(
     (modelId: ModelId) => {
-      if (modelId === 'fireworks-kimi-k2p6' && useTogetherKimi) return PROVIDER_LABELS.together;
+      if (modelId === 'fireworks-kimi-k2p7' && useTogetherKimi) return PROVIDER_LABELS.together;
       return PROVIDER_LABELS[MODEL_CONFIGS[modelId].provider];
     },
     [useTogetherKimi],
@@ -236,10 +236,8 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
             const disabledReason = isDisabled ? modelDisabledReason(modelId) : '';
 
             const tierBadge = requiredTierRank > 0 ? TIER_LABELS[requiredTier] : null;
-            // Kimi K2.6 costs more on Together AI ($1.20 input → x4 vs x3 on Fireworks).
-            const costLabel = modelId === 'fireworks-kimi-k2p6' && useTogetherKimi
-              ? 'x4'
-              : MODEL_COST_LABEL[modelId];
+            // Kimi K2.7 is x3 on both providers — Together homologated to Fireworks pricing.
+            const costLabel = MODEL_COST_LABEL[modelId];
 
             return (
               <button
