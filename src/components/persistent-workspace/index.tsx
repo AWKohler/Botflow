@@ -15,6 +15,7 @@ import { FileSearch } from "./file-search";
 import { SwiftSimulatorPreview } from "./swift-simulator-preview";
 import { SwiftPipWindow } from "./swift-pip-window";
 import { IPhoneDeviceRunner } from "./iphone-device-runner";
+import { PublishToAppStore } from "./publish-to-app-store";
 import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
 import { RevenueCatTab } from "./revenuecat-tab";
 import { REVENUECAT_ENABLED } from "@/lib/feature-flags";
@@ -88,6 +89,10 @@ export function PersistentWorkspace({
   const [previewStopped, setPreviewStopped] = useState<boolean>(true);
 
   const initializedRef = useRef(false);
+
+  // "Publish to App Store" wizard (Swift projects only). The component stays
+  // mounted while the workspace lives so wizard state survives close/reopen.
+  const [publishOpen, setPublishOpen] = useState(false);
 
   // Project row (fetched client-side) — drives backend-aware UI. Null until loaded.
   const [project, setProject] = useState<ProjectRow | null>(null);
@@ -488,8 +493,12 @@ export function PersistentWorkspace({
               variant="default"
               size="sm"
               className="font-bold text-sm text-white"
-              onClick={() => toast({ title: "Coming soon", description: "Publishing for persistent projects isn't available yet." })}
-              title="Publish (coming soon)"
+              onClick={() =>
+                platform === "swift"
+                  ? setPublishOpen(true)
+                  : toast({ title: "Coming soon", description: "Publishing for persistent projects isn't available yet." })
+              }
+              title={platform === "swift" ? "Publish to App Store" : "Publish (coming soon)"}
             >
               <Globe size={14} className="mr-1.5" />
               Publish
@@ -717,6 +726,18 @@ export function PersistentWorkspace({
           )}
         </div>
       </div>
+
+      {/* Publish to App Store wizard — Swift projects only. Always mounted (not
+          gated on publishOpen) so an in-flight publish build keeps its state
+          across close/reopen; polling pauses while closed and resumes on open. */}
+      {platform === "swift" && (
+        <PublishToAppStore
+          projectId={projectId}
+          projectName={project?.name ?? ""}
+          open={publishOpen}
+          onClose={() => setPublishOpen(false)}
+        />
+      )}
     </div>
   );
 }
