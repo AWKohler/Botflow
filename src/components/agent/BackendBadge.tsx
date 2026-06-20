@@ -66,6 +66,42 @@ function backendLabel(backend: AgentBackend): string {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
+ * Glyph + hover tooltip — meant to be fused INTO the model-selector pill so
+ * the agent identity and the model read as a single body. The glyph carries no
+ * border/background of its own (the pill provides those). Hovering reveals a
+ * tooltip describing the backend powering the experience.
+ * ────────────────────────────────────────────────────────────────────── */
+
+const BACKEND_DETAIL: Record<AgentBackend, string> = {
+  "claude-code":
+    "Anthropic's agentic coding harness, running the model directly inside your project sandbox.",
+  botflow:
+    "Botflow's native agent — the harness powering every model outside of Claude Code.",
+};
+
+export function BackendGlyphInfo({ backend }: { backend: AgentBackend }) {
+  return (
+    <span className="group/glyph relative inline-flex items-center">
+      <BackendGlyph backend={backend} size={14} />
+      {/* Tooltip — anchored to the glyph, drops just below the pill.
+          pointer-events-none so it never swallows the pill's click. */}
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-0 top-full z-50 mt-2 hidden w-60 rounded-lg border border-border bg-surface p-2.5 text-left shadow-xl group-hover/glyph:block"
+      >
+        <span className="flex items-center gap-1.5">
+          <BackendGlyph backend={backend} size={13} />
+          <span className="text-xs font-medium text-fg leading-none">{backendLabel(backend)}</span>
+        </span>
+        <span className="mt-1.5 block text-[11px] leading-snug text-muted">
+          {BACKEND_DETAIL[backend]}
+        </span>
+      </span>
+    </span>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
  * Top-of-panel badge
  * ────────────────────────────────────────────────────────────────────── */
 
