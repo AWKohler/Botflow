@@ -9,6 +9,7 @@
  */
 
 import OpenAI from "openai";
+import sharp from "sharp";
 import { getUserTier } from "@/lib/tier";
 import {
   adjustWeeklyCredits,
@@ -20,12 +21,20 @@ import {
 import { recordTokenUsage } from "@/lib/usage";
 import { sandboxBash, sandboxWriteBinaryFile, sandboxWriteFile } from "@/lib/vercel-sandbox";
 
-// Raw OpenAI cost for a gpt-image-2 high-quality 1024² image is ≈ $0.17, which
-// at the platform credit unit (~$0.30 / 1M credits) is ≈ 560k credits — more
-// than a free user's whole weekly budget (500k). We deliberately price the icon
-// BELOW raw cost so it stays an accessible value-add (~2/week on free, a small
-// dent on pro/max). Tune here (or gate to paid) as the business sees fit.
-export const ICON_GENERATION_CREDITS = 250_000;
+// Charged at-cost, like the rest of the credit system. Credit unit = one
+// Minimax-M3 input token = $0.30 / 1M = $3e-7 (credits.ts: minimax input
+// multiplier 0.30/0.30 = 1).
+//
+// We use gpt-image-2 MEDIUM quality for icons — 'high' is overkill for a bold,
+// simple graphic and ~4x the price. Pure text→image (no input image):
+//   medium 1024² output  = $0.053  → $0.053 / $3e-7 = 176,667 credits
+//   prompt (text input)  = prefix (~95 tok) + max user prompt (160 chars,
+//                          worst-case ~160 tok) ≈ 255 tok × $5/1M = $0.0013
+//                          → ~4,300 credits
+//   worst case ≈ 181k → 185,000 credits.
+// This fits the free weekly budget (500k), so free users get ~2/week. Bump the
+// quality below to 'high' (~710k) for max fidelity, or 'low' (~20k) for cheap.
+export const ICON_GENERATION_CREDITS = 185_000;
 
 // Forced-short to keep cost/latency down and steer the model toward a single
 // clear subject rather than a scene.
@@ -109,7 +118,8 @@ export async function generateAppIcon(opts: {
       model: "gpt-image-2",
       prompt: ICON_PROMPT_PREFIX + userPrompt,
       size: "1024x1024",
-      quality: "high",
+      // 'medium' is the sweet spot for a bold, simple icon (see ICON_GENERATION_CREDITS).
+      quality: "medium",
       n: 1,
     });
     const b64 = result.data?.[0]?.b64_json;
@@ -128,28 +138,9 @@ export async function generateAppIcon(opts: {
     };
   }
 
-  // ── Write into the project's AppIcon.appiconset (build + preview use it) ──
-  // The image is already paid for, so a sandbox write failure is non-fatal — we
-  // still return the icon for preview and let the user retry.
-  let writtenTo: string | null = null;
-  try {
-    const dirRes = await sandboxBash(
-      opts.projectId,
-      `find . -type d -name AppIcon.appiconset 2>/dev/null | head -1`,
-      { timeoutMs: 15_000 },
-    );
-    const rel =
-      (dirRes.stdout || "").trim().replace(/^\.\//, "") ||
-      "Resources/Assets.xcassets/AppIcon.appiconset";
-    await sandboxWriteBinaryFile(opts.projectId, `${rel}/AppIcon.png`, pngBuffer);
-    await sandboxWriteFile(opts.projectId, `${rel}/Contents.json`, ICON_CONTENTS_JSON);
-    writtenTo = rel;
-  } catch (e) {
-    console.error(
-      "[app-store-readiness/icon] sandbox write failed:",
-      e instanceof Error ? e.message : e,
-    );
-  }
+  // The image is already paid for, so a write failure is non-fatal — we still
+  // return the icon for preview and let the user retry.
+  const writtenTo = await writeIconToAssetCatalog(opts.projectId, pngBuffer);
 
   // ── Record the charge (monthly DB; the weekly reservation = the real cost) ──
   await recordTokenUsage(opts.userId, "gpt-image-2", 0, 0, ICON_GENERATION_CREDITS).catch(() => {});
@@ -158,6 +149,76 @@ export async function generateAppIcon(opts: {
     ok: true,
     iconDataUrl: `data:image/png;base64,${pngBuffer.toString("base64")}`,
     creditsCharged: ICON_GENERATION_CREDITS,
+    writtenTo,
+  };
+}
+
+/**
+ * Write a 1024px PNG into the project's AppIcon.appiconset (defaulting the path
+ * if the project has none). Returns the project-relative dir, or null on
+ * failure. Because it lands in the project SOURCE, the icon persists across
+ * sessions and is included in every subsequent publish build.
+ */
+export async function writeIconToAssetCatalog(
+  projectId: string,
+  pngBuffer: Buffer,
+): Promise<string | null> {
+  try {
+    const dirRes = await sandboxBash(
+      projectId,
+      `find . -type d -name AppIcon.appiconset 2>/dev/null | head -1`,
+      { timeoutMs: 15_000 },
+    );
+    const rel =
+      (dirRes.stdout || "").trim().replace(/^\.\//, "") ||
+      "Resources/Assets.xcassets/AppIcon.appiconset";
+    await sandboxWriteBinaryFile(projectId, `${rel}/AppIcon.png`, pngBuffer);
+    await sandboxWriteFile(projectId, `${rel}/Contents.json`, ICON_CONTENTS_JSON);
+    return rel;
+  } catch (e) {
+    console.error(
+      "[app-store-readiness/icon] sandbox write failed:",
+      e instanceof Error ? e.message : e,
+    );
+    return null;
+  }
+}
+
+// Generous cap on an uploaded source image (pre-normalization).
+export const MAX_ICON_UPLOAD_BYTES = 12 * 1024 * 1024;
+
+/**
+ * Set the app icon from a USER-UPLOADED image — no model, no credits. Normalizes
+ * to a 1024×1024 OPAQUE PNG (the App Store rejects alpha channels and off-size
+ * icons) before writing it into the asset catalog, so a slightly-off upload
+ * still produces a valid icon.
+ */
+export async function setUploadedAppIcon(opts: {
+  projectId: string;
+  imageBuffer: Buffer;
+}): Promise<
+  | { ok: true; iconDataUrl: string; writtenTo: string | null }
+  | { ok: false; status: number; error: string }
+> {
+  let png: Buffer;
+  try {
+    png = await sharp(opts.imageBuffer)
+      .resize(1024, 1024, { fit: "cover" })
+      // Composite over white to drop any alpha channel — App Store icons must be
+      // fully opaque. A no-op for images that are already opaque.
+      .flatten({ background: { r: 255, g: 255, b: 255 } })
+      .png()
+      .toBuffer();
+  } catch {
+    return { ok: false, status: 400, error: "That doesn't look like a valid image. Upload a PNG or JPEG." };
+  }
+  const writtenTo = await writeIconToAssetCatalog(opts.projectId, png);
+  if (!writtenTo) {
+    return { ok: false, status: 500, error: "Couldn't write the icon into your project." };
+  }
+  return {
+    ok: true,
+    iconDataUrl: `data:image/png;base64,${png.toString("base64")}`,
     writtenTo,
   };
 }

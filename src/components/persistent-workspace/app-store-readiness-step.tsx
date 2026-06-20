@@ -151,7 +151,9 @@ export function AppStoreReadinessStep({
   const [iconDataUrl, setIconDataUrl] = useState<string | null>(null);
   const [iconCredits, setIconCredits] = useState<number | null>(null);
   const [iconGenerating, setIconGenerating] = useState(false);
+  const [iconUploading, setIconUploading] = useState(false);
   const [iconError, setIconError] = useState<string | null>(null);
+  const iconFileRef = useRef<HTMLInputElement | null>(null);
 
   // ── Credits: a single friendly "out of credits" banner, set by whichever
   //    action hit a 402. Cleared when any action is retried. ──
@@ -309,6 +311,46 @@ export function AppStoreReadinessStep({
       setIconGenerating(false);
     }
   }, [iconPrompt, iconGenerating, projectId, toast]);
+
+  // ── Upload your own icon (no model, no credits — normalized server-side). ──
+  const uploadIcon = useCallback(
+    async (file: File | undefined) => {
+      if (!file || iconUploading) return;
+      setIconUploading(true);
+      setIconError(null);
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch(`/api/projects/${projectId}/app-store-readiness/icon-upload`, {
+          method: "POST",
+          body: form,
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          iconDataUrl?: string;
+          writtenTo?: string | null;
+          error?: string;
+        };
+        if (res.ok && data.iconDataUrl) {
+          setIconDataUrl(data.iconDataUrl);
+          setIconCredits(null); // uploads are free
+          toast({
+            title: "Icon set",
+            description: data.writtenTo
+              ? "Saved into your app — the next build will use it."
+              : "Uploaded, but couldn't write it into the project.",
+          });
+        } else {
+          setIconError(data.error || `Couldn't set the icon (HTTP ${res.status}).`);
+        }
+      } catch {
+        setIconError("Network error uploading the icon.");
+      } finally {
+        setIconUploading(false);
+        if (iconFileRef.current) iconFileRef.current.value = "";
+      }
+    },
+    [iconUploading, projectId, toast],
+  );
 
   // ── Push approved metadata to App Store Connect. ──
   const pushMetadata = useCallback(async () => {
@@ -475,6 +517,34 @@ export function AppStoreReadinessStep({
               <>
                 <Sparkles size={13} />
                 {iconDataUrl ? "Regenerate icon" : "Generate icon"}
+              </>
+            )}
+          </Button>
+
+          <input
+            ref={iconFileRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={(e) => void uploadIcon(e.target.files?.[0])}
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            className="gap-2"
+            disabled={iconUploading || iconGenerating}
+            onClick={() => iconFileRef.current?.click()}
+            title="Use your own icon (we resize to 1024px + flatten transparency)"
+          >
+            {iconUploading ? (
+              <>
+                <Loader2 size={13} className="animate-spin" />
+                Uploading…
+              </>
+            ) : (
+              <>
+                <UploadCloud size={13} />
+                Upload your own
               </>
             )}
           </Button>
