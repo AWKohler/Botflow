@@ -11,6 +11,41 @@ key (`.p8`)**.
 
 ---
 
+## Real ASC flow findings (2026-06)
+
+Walked the actual App Store Connect API-key creation flow with a live paid account.
+These are the steps the in-app copy must reflect — each is something a real user hits:
+
+1. **The "Request Access" gate (first-time only).** With an *active paid* membership,
+   the very first visit to **Users and Access → Integrations → App Store Connect API**
+   does **not** show a "+" to create a key. It shows *"Permission is required to access
+   the App Store Connect API"* with a **"Request Access"** button. The **Account Holder**
+   must click it and accept a terms checkbox; only then does the page flip to show
+   **Team Keys** + a **"Generate API Key"** button. This is the #1 reason a paid user
+   thinks our instructions are wrong — they look for a "+" that isn't there yet.
+2. **Team Keys vs Individual Keys.** After access is granted there are two tabs. Create
+   the key under **Team Keys** (the default tab) via "Generate API Key" / "+". Individual
+   Keys are scoped to one user and are *not* what we want.
+3. **Issuer ID location.** The Issuer ID appears **once at the top of the Keys page**
+   (with a Copy button), **above** the table. It is per-team, shared by every key — it is
+   **not** shown per-key. Users hunt for it next to each row and don't find it.
+4. **Key ID + role.** Each key row shows its **Key ID**. The Generate dialog asks for a
+   **Name** (max 30 chars) and an **Access role**; the role list is Admin / App Manager /
+   Developer / Finance / Sales and Reports / Customer Support / Marketing. We recommend
+   **App Manager** (sufficient for upload + TestFlight, less than Admin).
+5. **Download-once + browser "Keep" gotcha.** Downloading the `.p8` shows a confirm:
+   *"API keys can be downloaded only once."* After download the Download link disappears.
+   Separately, Chromium browsers (Chrome/Brave/Edge) may flag the uncommon `.p8` file type
+   as potentially dangerous and hold the download pending a **"Keep"** click. If the
+   download seems stuck or the browser warns, click **Keep** — the `.p8` is safe.
+6. **Team ID location + gotcha.** The optional Team ID lives at
+   **developer.apple.com/account → Membership details → "Team ID"** (a 10-char code like
+   `ABCDE12345`). It is **different** from the code embedded in the Apple Developer Program
+   License Agreement PDF's filename — users frequently grab that one by mistake. We
+   auto-detect the Team ID from the key when the field is left blank.
+
+---
+
 ## The key reframe: this is a NEW distribution target, not an extension
 
 There are already **two** Swift runtimes wired end-to-end:
@@ -113,14 +148,30 @@ the feature is low-risk.
 
 ---
 
-## App Store Connect API calls we must make (Node, in the publish route or controller)
+## App Store Connect API calls (web-verified 2026-06-10)
 
-Mint ES256 JWT from the `.p8`, then:
-- **First publish:** ensure bundle ID registered (Developer API `bundleIds`) and create
-  the app record (`POST /v1/apps`). Reuse the `io.botflow.<slug>-<hash>` convention.
-- **Build number:** query latest processed build for the app, auto-increment.
-- **Status:** poll build processing/TestFlight state to drive the wizard's final step.
-  (Actual store-review submission can stay manual in App Store Connect for v1.)
+Two facts checked against Apple docs/WWDC25 — both changed the plan:
+
+1. **App-record creation is NOT possible with a `.p8` key.** The official ASC API has
+   no create-app endpoint; fastlane's `App.create` works only with Apple ID login —
+   which is exactly why Rork demands the user's Apple ID password. Our flow instead
+   has a **one-time guided manual step**: wizard deep-links to App Store Connect →
+   "New App" with every value to paste (name, bundle id — registered by us via
+   `POST /v1/bundleIds` or `-allowProvisioningUpdates` — SKU, locale), then
+   **auto-detects** completion by polling `GET /v1/apps?filter[bundleId]=…`. Once per
+   app, never again.
+2. **Upload via the new BuildUpload REST API (WWDC25), not altool.** `altool
+   --upload-app` is deprecated (and `--upload-package` has Xcode 26 quirks — fastlane
+   #29698/#29743). The ASC API now supports direct build upload: POST `buildUploads`
+   → POST `buildUploadFiles` → chunked PUT to provided URLs → PATCH `uploaded: true`.
+   Host-agent is Node, so this is plain TypeScript with the `.p8` JWT — no CLI tool,
+   structured errors. Keep `altool --upload-package` as a documented fallback.
+   Webhooks exist for processing-state push; v1 polls instead.
+
+Mint ES256 JWT from the `.p8` (`node:crypto`, no deps), then per publish:
+- **Botflow:** ensure bundle ID registered; look up app record (guide creation if
+  missing); compute next build number from latest builds; poll processing status.
+- **Host-agent:** archive → export → BuildUpload REST upload.
 
 ---
 
