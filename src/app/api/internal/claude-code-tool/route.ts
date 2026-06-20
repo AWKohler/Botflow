@@ -130,16 +130,23 @@ export async function POST(req: Request) {
       // Build the zip from the project's sandbox FS.
       let zipBlob = await buildConvexDeployZip(binding.projectId);
       if (!zipBlob) {
-        // Sandbox may have expired and been re-created empty. Try auto-seeding.
+        // Sandbox may have expired and been re-created empty. Try auto-seeding
+        // with the PROJECT'S template (a swift project must reseed swiftConvex,
+        // never viteConvex) and the platform-correct config injection — Swift
+        // gets ConvexConfig.swift, web gets .env. Mirrors deployConvexFromSandbox.
         try {
-          const { seedSandboxIfEmpty } = await import("@/lib/vercel-sandbox");
-          const { materializeFrontendEnv } = await import("@/lib/sandbox-env");
-          const seeded = await seedSandboxIfEmpty(binding.projectId, "viteConvex");
-          if (seeded) {
-            // Regenerate .env from the DB (frontend vars + VITE_CONVEX_URL) so a
-            // re-created sandbox keeps the user's configured frontend vars.
-            await materializeFrontendEnv(binding.projectId).catch(() => undefined);
-            zipBlob = await buildConvexDeployZip(binding.projectId);
+          const { seedSandboxIfEmpty, pickSandboxTemplate } = await import("@/lib/vercel-sandbox");
+          const template = pickSandboxTemplate(project);
+          if (template) {
+            const seeded = await seedSandboxIfEmpty(binding.projectId, template);
+            if (seeded) {
+              const { materializeFrontendEnv, materializeSwiftConvexConfig } =
+                await import("@/lib/sandbox-env");
+              const materialize =
+                template === "swiftConvex" ? materializeSwiftConvexConfig : materializeFrontendEnv;
+              await materialize(binding.projectId).catch(() => undefined);
+              zipBlob = await buildConvexDeployZip(binding.projectId);
+            }
           }
         } catch (reseedErr) {
           console.warn("[claude-code-tool] auto-reseed failed:", reseedErr);
@@ -175,6 +182,7 @@ export async function POST(req: Request) {
         logs?: string;
         error?: string;
         generatedFiles?: { path: string; content: string }[];
+        functionSpec?: import("@/lib/swift-convex-codegen").ConvexFunctionSpec;
       };
       try {
         workerJson = await workerResponse.json();
@@ -198,6 +206,18 @@ export async function POST(req: Request) {
         await writeGeneratedConvexFiles(binding.projectId, workerJson.generatedFiles);
       }
 
+      // Swift codegen: regenerate Sources/Core/ConvexAPI.swift from the
+      // deployed function manifest. Non-fatal; no-op for web projects.
+      let swiftApiRegenerated = false;
+      if (workerJson.functionSpec) {
+        const { writeSwiftConvexApi } = await import("@/lib/swift-convex-codegen");
+        swiftApiRegenerated = await writeSwiftConvexApi(
+          binding.projectId,
+          project,
+          workerJson.functionSpec,
+        );
+      }
+
       const result: DeployResult = {
         ok: true,
         output: workerJson.logs ?? "",
@@ -206,7 +226,11 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         ok: true,
-        content: `Convex deployment completed.\n\n${result.output}`.trim(),
+        content:
+          `Convex deployment completed.\n\n${result.output}`.trim() +
+          (swiftApiRegenerated
+            ? "\n\nRegenerated Sources/Core/ConvexAPI.swift from the deployed functions — reference Convex functions through ConvexAPI constants only."
+            : ""),
         generatedFilesCount: result.generatedFiles?.length ?? 0,
       });
     }
@@ -768,20 +792,29 @@ export async function POST(req: Request) {
           content: "This project has no backend — Convex Auth is not available.",
         });
       }
-      if (project.platform !== "sandboxed-web") {
+      const isSwiftAuth = project.platform === "swift";
+      if (project.platform !== "sandboxed-web" && !isSwiftAuth) {
         return NextResponse.json({
           ok: false,
-          content: "setupAuth is only available for sandboxed-web projects.",
+          content: "setupAuth is only available for sandboxed-web and swift projects.",
         });
       }
 
-      // Resolve SITE_URL from the sandbox's stable preview domain
+      // Resolve SITE_URL. Web uses the sandbox's stable preview domain. Swift
+      // has no web preview origin (the app returns to a custom URL scheme), so
+      // SITE_URL only needs to be a valid URL — use the deployment's own
+      // *.convex.site origin when known. Mirrors the public setup-auth route.
       let siteUrl = "https://placeholder.example.com";
-      try {
-        const sandbox = await getOrCreatePersistentSandbox(binding.projectId);
-        siteUrl = sandbox.domain(5173);
-      } catch {
-        // Non-fatal — placeholder is acceptable
+      if (isSwiftAuth) {
+        const convexUrl = project.convexDeployUrl ?? project.userConvexUrl ?? null;
+        if (convexUrl) siteUrl = convexUrl.replace(".convex.cloud", ".convex.site");
+      } else {
+        try {
+          const sandbox = await getOrCreatePersistentSandbox(binding.projectId);
+          siteUrl = sandbox.domain(5173);
+        } catch {
+          // Non-fatal — placeholder is acceptable
+        }
       }
 
       let userConvexOAuthToken: string | null = null;
@@ -799,7 +832,11 @@ export async function POST(req: Request) {
 
       let authResult;
       try {
-        authResult = await setupConvexAuth(binding.projectId, { siteUrl, userConvexOAuthToken });
+        authResult = await setupConvexAuth(binding.projectId, {
+          siteUrl,
+          userConvexOAuthToken,
+          platform: isSwiftAuth ? "swift" : "web",
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error("[claude-code-tool/setup_auth] threw:", err);
@@ -809,11 +846,16 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, content: authResult.error });
       }
 
+      // Everything must ride inside `content` — the bridge's MCP handler only
+      // surfaces result.content to the model (sibling fields like `files` are
+      // silently dropped). content is an object; the bridge JSON.stringifies it.
       return NextResponse.json({
         ok: true,
-        content: authResult.context,
-        files: authResult.files,
-        packagesToInstall: authResult.packagesToInstall,
+        content: {
+          files: authResult.files,
+          packagesToInstall: authResult.packagesToInstall,
+          context: authResult.context,
+        },
       });
     }
 

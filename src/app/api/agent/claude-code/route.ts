@@ -288,6 +288,7 @@ export async function POST(req: Request) {
         "list_convex_tables",
         "read_convex_table",
         "write_convex_data",
+        "setup_auth",
       );
       if (STRIPE_CONNECT_ENABLED) {
         customTools.push(
@@ -311,6 +312,7 @@ export async function POST(req: Request) {
         "open_pull_request",
       );
     }
+    
   } else if (platform === "swift") {
     // Simulator control — the sim never runs while the agent works (no HMR;
     // compiling is expensive). The agent opens it once its work is done.
@@ -322,6 +324,12 @@ export async function POST(req: Request) {
       "ask_question",
       "request_env_var",
     );
+    if (hasBackend) {
+      // Swift + Convex backend: the deploy/logs/auth tools are platform-
+      // agnostic server-side (the deploy pipeline zips /convex regardless of
+      // frontend language; setup_auth is platform-aware in the host route).
+      customTools.push("convex_deploy", "get_convex_logs", "setup_auth");
+    }
   }
 
   const bridgeConfig = {

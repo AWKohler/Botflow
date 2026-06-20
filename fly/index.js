@@ -34,6 +34,23 @@ function run(cmd, args, { cwd, env, logBuffer }) {
   });
 }
 
+// Like run(), but captures stdout separately (for commands whose stdout IS the
+// result, e.g. `convex function-spec`). stderr still goes to the log buffer.
+function runCapture(cmd, args, { cwd, env, logBuffer }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { cwd, env });
+    const out = [];
+
+    child.stdout.on("data", (d) => out.push(d.toString()));
+    child.stderr.on("data", (d) => logBuffer.push(d.toString()));
+
+    child.on("close", (code) => {
+      if (code === 0) resolve(out.join(""));
+      else reject(new Error(`${cmd} exited with code ${code}`));
+    });
+  });
+}
+
 // Recursively read all files in a directory
 function readDirRecursive(dir, baseDir = dir) {
   const files = [];
@@ -131,6 +148,27 @@ const server = http.createServer(async (req, res) => {
       logBuffer.push(`Collected ${generatedFiles.length} generated file(s)\n`);
     }
 
+    // Capture the deployed function manifest (names, types, visibility).
+    // The platform uses it for client codegen (e.g. Swift function-name
+    // constants). Non-fatal: a spec failure must never fail the deploy.
+    let functionSpec = null;
+    try {
+      const specJson = await runCapture("convex", ["function-spec"], {
+        cwd: jobDir,
+        env: { ...process.env, CONVEX_DEPLOY_KEY: deployKey },
+        logBuffer,
+      });
+      functionSpec = JSON.parse(specJson);
+      const count = Array.isArray(functionSpec?.functions)
+        ? functionSpec.functions.length
+        : 0;
+      logBuffer.push(`Collected function spec (${count} function(s))\n`);
+    } catch (specErr) {
+      logBuffer.push(
+        `⚠️ function-spec failed (non-fatal): ${specErr.message || specErr}\n`
+      );
+    }
+
     // Return JSON response with logs and generated files
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     res.end(
@@ -141,6 +179,7 @@ const server = http.createServer(async (req, res) => {
           path: f.path,
           content: f.content,
         })),
+        ...(functionSpec ? { functionSpec } : {}),
       })
     );
   } catch (err) {

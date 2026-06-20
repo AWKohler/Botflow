@@ -213,6 +213,21 @@ function buildCustomTools(customTools) {
     );
   }
 
+  if (customTools.includes("setup_auth")) {
+    tools.push(
+      tool(
+        "setup_auth",
+        "Provision Convex Auth (email + password sign-in) on this project. Call this ONCE when the user wants accounts / login / sign-up / per-user data. " +
+        "It generates RSA signing keys server-side and sets them on the Convex deployment (you never see them), then returns JSON with 'files' (boilerplate to write verbatim), 'packagesToInstall', and 'context' (the full reference — READ IT; it is platform-specific). " +
+        "After it returns: write every file in 'files' (merge your existing schema tables into the returned schema.ts, keeping ...authTables), install the packages in /convex's package scope, then run convex_deploy — auth is not live until deployed. " +
+        "Calling again just rotates the signing keys.",
+        {},
+        makeHostToolHandler("setup_auth"),
+        { annotations: { destructiveHint: true } },
+      ),
+    );
+  }
+
   if (customTools.includes("list_convex_tables")) {
     tools.push(
       tool(
