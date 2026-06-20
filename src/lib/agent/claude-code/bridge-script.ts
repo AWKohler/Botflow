@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "21";
+export const BRIDGE_SCRIPT_VERSION = "22";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -28,12 +28,18 @@ export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
  * Config shape:
  *   {
  *     prompt: string,
+ *     images?: { media_type: string, data: string }[],  // base64 image blocks
  *     sessionId?: string,
  *     model?: string,
  *     cwd?: string,
  *     appendSystemPrompt?: string,
  *     customTools?: string[],         // names of MCP tools to enable
  *   }
+ *
+ * When images is present we drive query() in streaming-input mode (an async
+ * iterable of one user message carrying [text?, ...image blocks]) instead of a
+ * plain string prompt — a string can't carry images. The generator yields once
+ * and completes, so the SDK runs a single turn just like string mode.
  *
  * Env vars (set by the host):
  *   BOTFLOW_CONFIG_PATH   — path to the config JSON file (required)
@@ -603,7 +609,7 @@ async function main() {
 
   emit({ type: "ready" });
 
-  const { prompt, sessionId, model, cwd, appendSystemPrompt, customTools } = config;
+  const { prompt, images, sessionId, model, cwd, appendSystemPrompt, customTools } = config;
 
   const tools = buildCustomTools(customTools);
   const mcpServer = tools.length > 0 ? createSdkMcpServer({ name: "botflow", tools }) : null;
@@ -666,6 +672,41 @@ async function main() {
     includePartialMessages: false,
   };
 
+  // Build the prompt for query(). With no images we pass the plain string
+  // (single-shot "print" mode). With images we MUST use streaming-input mode:
+  // a string prompt can't carry image blocks. We yield exactly one user message
+  // whose content is [text?, ...image blocks], then let the generator complete
+  // — the SDK runs one turn and the async iterator ends after the result
+  // message, same as string mode.
+  let queryPrompt = prompt;
+  if (Array.isArray(images) && images.length > 0) {
+    const content = [];
+    if (typeof prompt === "string" && prompt.length > 0) {
+      content.push({ type: "text", text: prompt });
+    }
+    for (const img of images) {
+      if (img && typeof img.data === "string" && img.data.length > 0) {
+        content.push({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: typeof img.media_type === "string" ? img.media_type : "image/jpeg",
+            data: img.data,
+          },
+        });
+      }
+    }
+    if (content.length > 0) {
+      queryPrompt = (async function* () {
+        yield {
+          type: "user",
+          message: { role: "user", content: content },
+          parent_tool_use_id: null,
+        };
+      })();
+    }
+  }
+
   let lastSessionId = null;
 
   // ---------------------------------------------------------------------------
@@ -699,7 +740,7 @@ async function main() {
   }
 
   try {
-    for await (const message of query({ prompt, options })) {
+    for await (const message of query({ prompt: queryPrompt, options })) {
       if (message && message.session_id && message.session_id !== lastSessionId) {
         lastSessionId = message.session_id;
         emit({ type: "session_started", sessionId: message.session_id });
