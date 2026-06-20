@@ -75,16 +75,22 @@ export function DeviceFrame({
     : g.screen;
 
   const outerRef = useRef<HTMLDivElement | null>(null);
-  const [scale, setScale] = useState(0.2);
+  // `null` until the container has been measured. The device is kept invisible
+  // until then (see `visibility` below) so it never paints at a guessed scale
+  // and visibly "flashes" to its real size on the first ResizeObserver tick.
+  const [scale, setScale] = useState<number | null>(null);
   useEffect(() => {
     const outer = outerRef.current;
     if (!outer) return;
-    const ro = new ResizeObserver(() => {
+    const measure = (): void => {
       const h = outer.clientHeight;
       const w = outer.clientWidth;
+      if (!h || !w) return; // not laid out yet — wait for a real measurement
       const base = Math.min(h / box.h, w / box.w);
       setScale(Math.max(0.05, Math.min(base * 0.92, 2)));
-    });
+    };
+    measure(); // measure once up front so the first visible paint is correct
+    const ro = new ResizeObserver(measure);
     ro.observe(outer);
     return () => ro.disconnect();
   }, [box.w, box.h]);
@@ -99,9 +105,10 @@ export function DeviceFrame({
           position: "relative",
           width: box.w,
           height: box.h,
-          transform: `scale(${scale})`,
+          transform: `scale(${scale ?? 1})`,
           transformOrigin: "center center",
           flexShrink: 0,
+          visibility: scale == null ? "hidden" : "visible",
         }}
       >
         {/* Screen content (canvas) — clipped to the rounded screen rect. */}

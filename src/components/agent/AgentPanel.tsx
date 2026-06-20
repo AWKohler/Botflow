@@ -2143,7 +2143,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         {/* Inset bottom — Token counter. Shows real Claude Code usage when
             available; falls back to our char/4 estimate for Botflow. */}
         {(displayedTokens > 0 || isCompacting) && (
-          <div className="flex items-center gap-2 px-4 py-2 border-t border-border">
+          <div
+            className="flex items-center gap-2 px-4 py-2 border-t border-border cursor-help"
+            title="Context window used vs. total — how much of the model's memory this conversation is using. Older messages are auto-summarized as it fills up."
+          >
             <div className="flex-1 h-1 rounded-full bg-soft overflow-hidden">
               <div
                 className={cn(
