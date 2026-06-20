@@ -54,6 +54,19 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
   const [hasCodexOAuth, setHasCodexOAuth] = useState(false);
   const [hasConvexOAuth, setHasConvexOAuth] = useState(false);
   const [convexConnecting, setConvexConnecting] = useState(false);
+
+  // Apple Developer (App Store Connect API key) state
+  const [appleConnected, setAppleConnected] = useState(false);
+  const [appleKeyIdMasked, setAppleKeyIdMasked] = useState<string | null>(null);
+  const [appleTeamId, setAppleTeamId] = useState<string | null>(null);
+  const [appleP8, setAppleP8] = useState('');
+  const [appleP8FileName, setAppleP8FileName] = useState('');
+  const [appleKeyIdInput, setAppleKeyIdInput] = useState('');
+  const [appleIssuerIdInput, setAppleIssuerIdInput] = useState('');
+  const [appleTeamIdInput, setAppleTeamIdInput] = useState('');
+  const [appleSaving, setAppleSaving] = useState(false);
+  const [appleDisconnecting, setAppleDisconnecting] = useState(false);
+  const [appleError, setAppleError] = useState('');
   // Per-user default agent backend for Anthropic models (BYOK choice only).
   // OAuth users are locked to claude-code regardless of this.
   const [preferredAnthropicBackend, setPreferredAnthropicBackend] = useState<'botflow' | 'claude-code'>('botflow');
@@ -133,6 +146,34 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
         // ignore
       } finally {
         if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open]);
+
+  // Apple Developer connection status (separate route — masked, never the .p8)
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setAppleP8('');
+    setAppleP8FileName('');
+    setAppleKeyIdInput('');
+    setAppleIssuerIdInput('');
+    setAppleTeamIdInput('');
+    setAppleError('');
+    (async () => {
+      try {
+        const res = await fetch('/api/user/apple-credentials');
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) {
+            setAppleConnected(Boolean(data?.connected));
+            setAppleKeyIdMasked(data?.keyId ?? null);
+            setAppleTeamId(data?.teamId ?? null);
+          }
+        }
+      } catch {
+        // ignore
       }
     })();
     return () => { cancelled = true; };
@@ -355,6 +396,75 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
     }
   };
 
+  // ── Apple Developer (App Store Connect API key) ──────────────────────────
+
+  const handleAppleP8File = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      setAppleP8(text);
+      setAppleP8FileName(file.name);
+      setAppleError('');
+    } catch {
+      setAppleError('Could not read the .p8 file.');
+    }
+  };
+
+  const saveAppleCredentials = async () => {
+    if (!appleP8 || !appleKeyIdInput.trim() || !appleIssuerIdInput.trim()) return;
+    setAppleSaving(true);
+    setAppleError('');
+    try {
+      const res = await fetch('/api/user/apple-credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          issuerId: appleIssuerIdInput.trim(),
+          keyId: appleKeyIdInput.trim(),
+          p8: appleP8,
+          ...(appleTeamIdInput.trim() ? { teamId: appleTeamIdInput.trim() } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data?.connected) {
+        setAppleConnected(true);
+        setAppleKeyIdMasked(data.keyId ?? null);
+        setAppleTeamId(data.teamId ?? null);
+        setAppleP8('');
+        setAppleP8FileName('');
+        setAppleKeyIdInput('');
+        setAppleIssuerIdInput('');
+        setAppleTeamIdInput('');
+        toast({ title: 'Apple Developer connected', description: 'Your App Store Connect key was verified and saved.' });
+      } else {
+        setAppleError(data?.error ?? 'Could not save Apple credentials.');
+      }
+    } catch {
+      setAppleError('Unexpected error saving Apple credentials.');
+    } finally {
+      setAppleSaving(false);
+    }
+  };
+
+  const disconnectApple = async () => {
+    setAppleDisconnecting(true);
+    try {
+      const res = await fetch('/api/user/apple-credentials', { method: 'DELETE' });
+      if (res.ok) {
+        setAppleConnected(false);
+        setAppleKeyIdMasked(null);
+        setAppleTeamId(null);
+        toast({ title: 'Disconnected', description: 'Apple Developer key removed.' });
+      } else {
+        toast({ title: 'Error', description: 'Failed to disconnect.' });
+      }
+    } catch {
+      toast({ title: 'Error', description: 'Failed to disconnect.' });
+    } finally {
+      setAppleDisconnecting(false);
+    }
+  };
+
   if (!open) return null;
 
   const handleClose = () => {
@@ -528,6 +638,166 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                         >
                           Disconnect
                         </button>
+                      )}
+                    </div>
+
+                    {/* ── Apple Developer (App Store Connect) section ── */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h3 className="text-sm font-semibold text-fg">Apple Developer</h3>
+                          <p className="text-xs text-muted mt-0.5">
+                            Connect an App Store Connect API key to publish Swift apps
+                            to TestFlight and the App Store.
+                          </p>
+                        </div>
+                        {appleConnected && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-medium text-green-600 border border-green-500/30 whitespace-nowrap">
+                            <CheckCircle2 className="h-3 w-3" /> Connected
+                          </span>
+                        )}
+                      </div>
+
+                      {appleConnected ? (
+                        <div className="flex items-center gap-3">
+                          <div className="text-xs text-muted">
+                            <span className="font-medium text-fg">Key {appleKeyIdMasked}</span>
+                            {appleTeamId && <span className="ml-2">Team {appleTeamId}</span>}
+                          </div>
+                          <button
+                            onClick={disconnectApple}
+                            disabled={appleDisconnecting}
+                            className="ml-auto inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/15 px-3.5 py-2 text-sm font-medium text-red-500 hover:bg-red-500/25 disabled:opacity-50 transition"
+                          >
+                            {appleDisconnecting ? (
+                              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Disconnecting&hellip;</>
+                            ) : 'Disconnect'}
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-border bg-surface p-4 space-y-3">
+                          {/* Free Apple IDs never see the Integrations page — lead
+                              with the paid-membership requirement or the link below
+                              dead-ends for anyone not enrolled. */}
+                          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+                            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-400" />
+                            <p className="text-xs leading-5 text-muted">
+                              <span className="font-semibold text-fg">
+                                Requires a paid Apple Developer account (US$99/year).
+                              </span>{' '}
+                              With a free Apple ID, the Integrations page where keys are
+                              created won&apos;t exist in App Store Connect at all.
+                              Activation can take up to 48 hours after enrolling.{' '}
+                              <a
+                                href="https://developer.apple.com/programs/enroll/"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 underline text-fg hover:text-fg"
+                              >
+                                Enroll <ExternalLink className="h-3 w-3" />
+                              </a>
+                            </p>
+                          </div>
+                          <p className="text-xs leading-5 text-muted">
+                            Once enrolled, open{' '}
+                            <a
+                              href="https://appstoreconnect.apple.com/access/integrations/api"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 underline text-fg hover:text-fg"
+                            >
+                              App Store Connect → Users and Access → Integrations
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                            . First time, if it shows{' '}
+                            <span className="font-medium text-fg">&ldquo;Request Access&rdquo;</span>{' '}
+                            instead of a key list, click it and accept the terms (Account
+                            Holder only). Then on the{' '}
+                            <span className="font-medium text-fg">Team Keys</span> tab generate
+                            a key with the <span className="font-medium text-fg">App Manager</span>{' '}
+                            role and download the .p8 right away (offered once). Copy the{' '}
+                            <span className="font-medium text-fg">Issuer ID</span> from the top
+                            of the page (shared by all keys) and the key&apos;s{' '}
+                            <span className="font-medium text-fg">Key ID</span> from its row. If
+                            the .p8 download seems stuck or your browser warns, click{' '}
+                            <span className="font-medium text-fg">Keep</span> — it&apos;s safe.
+                          </p>
+                          <div>
+                            <label className="block text-xs font-medium text-fg mb-1.5">Private key (.p8)</label>
+                            <label className="flex items-center gap-2 rounded-lg border border-dashed border-border bg-bg px-3 py-2 text-sm text-muted cursor-pointer hover:bg-elevated transition">
+                              <input
+                                type="file"
+                                accept=".p8,application/x-pem-file,text/plain"
+                                className="hidden"
+                                onChange={e => handleAppleP8File(e.target.files?.[0])}
+                              />
+                              {appleP8FileName ? (
+                                <span className="text-fg font-medium">{appleP8FileName}</span>
+                              ) : (
+                                <span>Choose your AuthKey_XXXXXXXXXX.p8 file…</span>
+                              )}
+                            </label>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-xs font-medium text-fg mb-1.5">Key ID</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. 2X9R4HXF34"
+                                value={appleKeyIdInput}
+                                onChange={e => setAppleKeyIdInput(e.target.value)}
+                                className="w-full rounded-lg border border-border bg-bg text-fg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-fg mb-1.5">Issuer ID</label>
+                              <input
+                                type="text"
+                                placeholder="69a6de7e-…"
+                                value={appleIssuerIdInput}
+                                onChange={e => setAppleIssuerIdInput(e.target.value)}
+                                className="w-full rounded-lg border border-border bg-bg text-fg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-fg mb-1.5">
+                              Team ID <span className="font-normal text-muted">(optional — we auto-detect it if you leave this blank)</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. A1B2C3D4E5"
+                              value={appleTeamIdInput}
+                              onChange={e => setAppleTeamIdInput(e.target.value)}
+                              className="w-full rounded-lg border border-border bg-bg text-fg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border"
+                            />
+                            <p className="mt-1 text-[11px] leading-4 text-muted">
+                              To set it manually:{' '}
+                              <a
+                                href="https://developer.apple.com/account"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline hover:text-fg"
+                              >
+                                developer.apple.com/account
+                              </a>{' '}
+                              → Membership details → Team ID — the 10-char code, not the number
+                              in the License Agreement PDF&apos;s filename.
+                            </p>
+                          </div>
+                          {appleError && (
+                            <p className="text-xs text-red-600 font-medium">{appleError}</p>
+                          )}
+                          <button
+                            onClick={saveAppleCredentials}
+                            disabled={!appleP8 || !appleKeyIdInput.trim() || !appleIssuerIdInput.trim() || appleSaving}
+                            className="inline-flex items-center gap-2 rounded-lg bg-fg px-3.5 py-2 text-sm font-medium text-bg shadow hover:opacity-90 disabled:opacity-40 transition"
+                          >
+                            {appleSaving ? (
+                              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Verifying&hellip;</>
+                            ) : 'Save'}
+                          </button>
+                        </div>
                       )}
                     </div>
 
