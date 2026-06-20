@@ -213,6 +213,104 @@ export async function downloadDeviceBuildIpa(buildId: string): Promise<{
   };
 }
 
+// --- App Store / TestFlight publish builds ---------------------------------
+
+export type AppStoreBuildState =
+  | "queued"
+  | "building"
+  | "exporting"
+  | "uploading"
+  | "succeeded"
+  | "failed";
+
+export interface AppStoreBuildSummary {
+  buildId: string;
+  // 'succeeded' means Apple accepted the upload — it may still be PROCESSING
+  // server-side at Apple; the publish status route enriches with that.
+  state: AppStoreBuildState;
+  createdAt: number;
+  updatedAt: number;
+  hostId: string | null;
+  scheme?: string;
+  bundleId?: string;
+  marketingVersion?: string;
+  buildNumber?: string;
+  durationMs?: number;
+  diagnostics: Array<{
+    severity: "error" | "warning";
+    file: string | null;
+    line: number | null;
+    column: number | null;
+    message: string;
+    snippet: string[] | null;
+  }>;
+  logs: DeviceBuildLogLine[];
+  error?: string;
+}
+
+export interface SubmitAppStoreBuildParams {
+  teamId: string;
+  keyId: string;
+  issuerId: string;
+  /** Base64 of the .p8 PEM (header-safe transport encoding). */
+  p8Base64: string;
+  /** ASC `apps` resource id for the existing app record. */
+  ascAppId: string;
+  bundleId: string;
+  marketingVersion: string;
+  buildNumber: string;
+  scheme?: string;
+}
+
+export async function submitAppStoreBuild(
+  tarball: Buffer,
+  params: SubmitAppStoreBuildParams,
+): Promise<AppStoreBuildSummary> {
+  const { http } = controllerBase();
+  const headers: Record<string, string> = {
+    "content-type": "application/octet-stream",
+    "content-length": String(tarball.length),
+    "x-platform-token": platformToken(),
+    "x-team-id": params.teamId,
+    "x-asc-key-id": params.keyId,
+    "x-asc-issuer-id": params.issuerId,
+    "x-asc-p8": params.p8Base64,
+    "x-asc-app-id": params.ascAppId,
+    "x-bundle-id": params.bundleId,
+    "x-marketing-version": params.marketingVersion,
+    "x-build-number": params.buildNumber,
+  };
+  if (params.scheme) headers["x-build-scheme"] = params.scheme;
+
+  const res = await fetch(`${http}/api/app-store-builds`, {
+    method: "POST",
+    headers,
+    body: tarball as unknown as BodyInit,
+  });
+  if (!res.ok) {
+    throw new Error(
+      `submitAppStoreBuild failed (${res.status}): ${await jsonOrText(res)}`,
+    );
+  }
+  return (await res.json()) as AppStoreBuildSummary;
+}
+
+export async function getAppStoreBuildStatus(
+  buildId: string,
+): Promise<AppStoreBuildSummary> {
+  const { http } = controllerBase();
+  const res = await fetch(`${http}/api/app-store-builds/${buildId}`, {
+    headers: { "x-platform-token": platformToken() },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(
+      `getAppStoreBuildStatus failed (${res.status}): ${await jsonOrText(res)}`,
+    );
+  }
+  return (await res.json()) as AppStoreBuildSummary;
+}
+
 /**
  * Build the browser-facing WSS URL for a given session. Used by the
  * swift-preview/start route to hand the client a URL it can hit directly.
