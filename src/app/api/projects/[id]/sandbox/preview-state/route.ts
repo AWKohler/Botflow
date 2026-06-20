@@ -25,6 +25,7 @@ import { projects } from "@/db/schema";
 import {
   getDevServerState,
   getPreviewRefreshAt,
+  verifyDevServerReachable,
 } from "@/lib/workspace-control";
 
 export const runtime = "nodejs";
@@ -44,10 +45,15 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const [refreshAt, devServer] = await Promise.all([
+  const [refreshAt, cachedState] = await Promise.all([
     getPreviewRefreshAt(project.id),
     getDevServerState(project.id),
   ]);
+
+  // If the sandbox stopped listening (Vercel would serve its 502 page), this
+  // flips the published state to stopped so the client unmounts the iframe
+  // instead of ever rendering the error page. Throttled internally.
+  const devServer = await verifyDevServerReachable(project.id, cachedState);
 
   return NextResponse.json({ refreshAt, devServer });
 }

@@ -7,6 +7,7 @@ import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
 import { countUserProjects } from '@/lib/usage';
 import { limitReachedResponse } from '@/lib/plan-response';
 import { normalizeProjectPlatform, normalizeBackendType, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
+import { isModelDisabled, modelDisabledReason } from '@/lib/agent/models';
 
 export async function GET() {
   try {
@@ -39,10 +40,11 @@ export async function POST(request: NextRequest) {
         | 'gpt-5.4'
         | 'gpt-5.5'
         | 'claude-sonnet-4-6'
-        | 'claude-opus-4-7'
-        | 'fireworks-minimax-m2p7'
+        | 'claude-opus-4-8'
+        | 'claude-fable-5'
+        | 'fireworks-minimax-m3'
         | 'fireworks-glm-5p1'
-        | 'fireworks-kimi-k2p6'
+        | 'fireworks-kimi-k2p7'
         | 'gemini-3.1-pro-preview';
     };
 
@@ -50,13 +52,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
     }
 
-    // Enforce project count limit
-    const [limits, currentCount] = await Promise.all([
+    // Reject globally disabled models (e.g. rescinded by the provider) before
+    // they can be persisted as a project's preferred model — applies to every
+    // user and auth path.
+    if (model && isModelDisabled(model)) {
+      return NextResponse.json({ error: modelDisabledReason(model) }, { status: 403 });
+    }
+
+    // Enforce project count limit (beta testers are exempt)
+    const [limits, currentCount, beta] = await Promise.all([
       getUserTierAndLimits(userId),
       countUserProjects(userId),
+      isBetaUser(userId),
     ]);
 
-    if (currentCount >= limits.maxProjects) {
+    if (!beta && currentCount >= limits.maxProjects) {
       return limitReachedResponse({
         limitType: 'project_count',
         current: currentCount,
@@ -102,17 +112,19 @@ export async function POST(request: NextRequest) {
             ? 'gpt-5.5'
           : model === 'claude-sonnet-4-6'
             ? 'claude-sonnet-4-6'
-            : model === 'claude-opus-4-7'
-            ? 'claude-opus-4-7'
-            : model === 'fireworks-minimax-m2p7'
-            ? 'fireworks-minimax-m2p7'
+            : model === 'claude-opus-4-8'
+            ? 'claude-opus-4-8'
+            : model === 'claude-fable-5'
+            ? 'claude-fable-5'
+            : model === 'fireworks-minimax-m3'
+            ? 'fireworks-minimax-m3'
             : model === 'fireworks-glm-5p1'
             ? 'fireworks-glm-5p1'
-            : model === 'fireworks-kimi-k2p6'
-            ? 'fireworks-kimi-k2p6'
+            : model === 'fireworks-kimi-k2p7'
+            ? 'fireworks-kimi-k2p7'
             : model === 'gemini-3.1-pro-preview'
             ? 'gemini-3.1-pro-preview'
-            : 'fireworks-kimi-k2p6',
+            : 'fireworks-kimi-k2p7',
       })
       .returning();
 

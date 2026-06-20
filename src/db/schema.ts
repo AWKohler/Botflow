@@ -12,14 +12,20 @@ export const projects = pgTable('projects', {
   // mint a new uuid here so the new agent reads a clean slate (older messages
   // stay in the DB under their old segment_id for UI display).
   currentSegmentId: uuid('current_segment_id'),
-  // Preferred model for this project: 'gpt-5.3-codex' | 'gpt-5.4' | 'gpt-5.5' | 'claude-sonnet-4-6' | 'claude-opus-4-7' | 'fireworks-minimax-m2p7' | 'fireworks-glm-5p1' | 'fireworks-kimi-k2p6' | 'gemini-3.1-pro-preview'
-  model: text('model').notNull().default('fireworks-kimi-k2p6'),
+  // Preferred model for this project: 'gpt-5.3-codex' | 'gpt-5.4' | 'gpt-5.5' | 'claude-sonnet-4-6' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-glm-5p1' | 'fireworks-kimi-k2p7' | 'gemini-3.1-pro-preview'
+  model: text('model').notNull().default('fireworks-kimi-k2p7'),
   // Snapshot URLs for project thumbnails and HTML captures
   thumbnailUrl: text('thumbnail_url'),
   htmlSnapshotUrl: text('html_snapshot_url'),
   // UploadThing file keys for deletion (format: "fileKey" from uploadthing)
   thumbnailKey: text('thumbnail_key'),
   htmlSnapshotKey: text('html_snapshot_key'),
+  // Swift simulator screenshots — the "last seen" frame per device family,
+  // shown blurred in the stopped preview state. One file kept per device.
+  swiftScreenshotIphoneUrl: text('swift_screenshot_iphone_url'),
+  swiftScreenshotIphoneKey: text('swift_screenshot_iphone_key'),
+  swiftScreenshotIpadUrl: text('swift_screenshot_ipad_url'),
+  swiftScreenshotIpadKey: text('swift_screenshot_ipad_key'),
   // Convex backend integration (for web and multiplatform projects)
   convexProjectId: text('convex_project_id'),       // Convex platform project ID
   convexDeploymentId: text('convex_deployment_id'), // Deployment name (e.g., "happy-otter-123")
@@ -37,7 +43,7 @@ export const projects = pgTable('projects', {
   // User-managed Convex backend (BYO Convex)
   userConvexUrl: text('user_convex_url'),
   userConvexDeployKey: text('user_convex_deploy_key'),
-  backendType: text('backend_type').notNull().default('platform'), // 'platform' | 'user' | 'none'
+  backendType: text('backend_type').notNull().default('none'), // 'platform' | 'user' | 'none'
   // Cloudflare Pages deployment
   cloudflareProjectName: text('cloudflare_project_name'),
   cloudflareDeploymentUrl: text('cloudflare_deployment_url'),
@@ -121,6 +127,14 @@ export const projects = pgTable('projects', {
 }, (t) => ({
   stripeTestAccountIdIdx: index('projects_stripe_test_account_id_idx').on(t.stripeTestAccountId),
   stripeLiveAccountIdIdx: index('projects_stripe_live_account_id_idx').on(t.stripeLiveAccountId),
+  // These exist in the live DB but were previously missing from the schema.
+  // publicSlugUnique in particular enforces slug uniqueness — keep it defined
+  // here so it isn't dropped by a schema sync.
+  becameReapableAtIdx: index('projects_became_reapable_at_idx').on(t.becameReapableAt),
+  isPublicIdx: index('projects_is_public_idx').on(t.isPublic),
+  publicSlugUnique: uniqueIndex('projects_public_slug_unique').on(t.publicSlug),
+  reapStageIdx: index('projects_reap_stage_idx').on(t.reapStage),
+  starCountIdx: index('projects_star_count_idx').on(t.starCount),
 }));
 
 export type Project = typeof projects.$inferSelect;
@@ -337,6 +351,34 @@ export const oauthProviderRequests = pgTable('oauth_provider_requests', {
 
 export type OAuthProviderRequest = typeof oauthProviderRequests.$inferSelect;
 export type NewOAuthProviderRequest = typeof oauthProviderRequests.$inferInsert;
+
+// Env-var entry requests — created by the agent's requestEnvVar tool call;
+// resolved when the user enters the value in the workspace modal. The agent
+// picks the variable NAME and target; only the VALUE comes from the user, and
+// it never flows back through the agent (it's written straight to the Vite
+// .env / Convex deployment server-side).
+export const envVarRequests = pgTable('env_var_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull(),
+  /** 'client' → frontend Vite .env (project_env_vars). 'server' → Convex deployment env. */
+  target: text('target').notNull(),
+  /** Variable name chosen by the agent, shown read-only in the modal. */
+  key: text('key').notNull(),
+  /** Optional agent-authored explanation rendered in the modal. */
+  message: text('message'),
+  /** Whether the value should be stored/displayed as a secret (client target only). */
+  isSecret: boolean('is_secret').notNull().default(false),
+  /** 'pending' → modal is open. 'completed' → value saved. 'dismissed' → user cancelled. */
+  status: text('status').notNull().default('pending'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  projectIdIdx: index('env_var_requests_project_id_idx').on(t.projectId),
+}));
+
+export type EnvVarRequest = typeof envVarRequests.$inferSelect;
+export type NewEnvVarRequest = typeof envVarRequests.$inferInsert;
 
 // In-chat questions surfaced by the agent (via the askQuestion tool) and
 // resolved by the user clicking an option in the agent panel. Used as the

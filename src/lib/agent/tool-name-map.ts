@@ -123,6 +123,20 @@ export const CLAUDE_CODE_TO_BOTFLOW: Record<string, ToolRewrite | null> = {
   },
   refreshPreview: passthrough("refreshPreview"),
 
+  // ── Simulator control (Swift) ────────────────────────────────────────
+  start_simulator: {
+    to: "startSimulator",
+    mapInput: identityInput,
+  },
+  stop_simulator: {
+    to: "stopSimulator",
+    mapInput: identityInput,
+  },
+  get_simulator_status: {
+    to: "getSimulatorStatus",
+    mapInput: identityInput,
+  },
+
   // ── Convex MCP tools ─────────────────────────────────────────────────
   convex_deploy: {
     to: "convexDeploy",
@@ -193,6 +207,9 @@ export const BOTFLOW_TO_CLAUDE_CODE: Record<string, ToolRewrite | null> = {
   convexDeploy:        { to: "convex_deploy", mapInput: identityInput },
   setupAuth:           { to: "setup_auth", mapInput: identityInput },
   setupOAuthProvider:  { to: "setup_oauth_provider", mapInput: identityInput },
+  startSimulator:      { to: "start_simulator", mapInput: identityInput },
+  stopSimulator:       { to: "stop_simulator", mapInput: identityInput },
+  getSimulatorStatus:  { to: "get_simulator_status", mapInput: identityInput },
 };
 
 /**
@@ -219,6 +236,9 @@ export const BOTFLOW_NATIVE_TOOLS = new Set<string>([
   "convexDeploy",
   "setupAuth",
   "setupOAuthProvider",
+  "startSimulator",
+  "stopSimulator",
+  "getSimulatorStatus",
 ]);
 
 /** ID validation per Anthropic's tool_use_id constraint. */

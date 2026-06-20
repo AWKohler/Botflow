@@ -692,8 +692,11 @@ export async function sandboxGrep(
   flags.push("-e", pattern, searchPath);
 
   let stdout = "";
-  const rg = await sandboxRun(projectId, "rg", flags);
-  if (rg.exitCode === 0 || rg.exitCode === 1) {
+  // When `rg` isn't installed in the sandbox image, the sandbox API rejects
+  // the spawn with a 400 (APIError) instead of returning an exit code — treat
+  // that the same as a non-0/1 exit and fall back to grep.
+  const rg = await sandboxRun(projectId, "rg", flags).catch(() => null);
+  if (rg && (rg.exitCode === 0 || rg.exitCode === 1)) {
     stdout = rg.stdout;
   } else {
     // ripgrep not available — fall back to grep -rn

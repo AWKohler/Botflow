@@ -18,7 +18,7 @@ import { IPhoneDeviceRunner } from "./iphone-device-runner";
 import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
 import { RevenueCatTab } from "./revenuecat-tab";
 import { REVENUECAT_ENABLED } from "@/lib/feature-flags";
-import { PanelLeft, Play, Save, Loader2, Database, Rocket, Smartphone, Tablet, RotateCw, ArrowUpRight } from "lucide-react";
+import { PanelLeft, Play, Save, Loader2, Database, Rocket, Smartphone, Tablet, RotateCw, ArrowUpRight, Globe } from "lucide-react";
 import type { ProjectPlatform } from "@/lib/project-platform";
 import { DeviceFrame, type DeviceModelUI, type OrientationUI } from "./device-frame";
 import {
@@ -45,6 +45,8 @@ type ProjectRow = {
   convexDeployUrl: string | null;
   userConvexUrl: string | null;
   revenuecatStatus?: string;
+  swiftScreenshotIphoneUrl?: string | null;
+  swiftScreenshotIpadUrl?: string | null;
 };
 
 interface PersistentWorkspaceProps {
@@ -77,35 +79,13 @@ export function PersistentWorkspace({
   const [revealLine, setRevealLine] = useState<number | null>(null);
   const [revealNonce, setRevealNonce] = useState(0);
 
-  // ── Preview Stop/Play persistence ──────────────────────────────────────────
-  // When the user explicitly clicks Stop, we DELETE the session AND remember
-  // they did, so reloading the page (or just re-mounting the workspace)
-  // doesn't silently spin a new simulator. Cleared when they click Play.
-  // Per-project key so different projects' choices don't interfere.
-  const stoppedKey = `swift-preview:stopped:${projectId}`;
-  const [previewStopped, setPreviewStoppedState] = useState(false);
-  // Read the persisted flag exactly once on mount (SSR-safe).
-  useEffect(() => {
-    try {
-      setPreviewStoppedState(
-        window.localStorage.getItem(stoppedKey) === "true",
-      );
-    } catch {
-      /* localStorage blocked — fine */
-    }
-  }, [stoppedKey]);
-  const setPreviewStopped = useCallback(
-    (next: boolean): void => {
-      setPreviewStoppedState(next);
-      try {
-        if (next) window.localStorage.setItem(stoppedKey, "true");
-        else window.localStorage.removeItem(stoppedKey);
-      } catch {
-        /* localStorage blocked — state still applies for this tab */
-      }
-    },
-    [stoppedKey],
-  );
+  // ── Preview Stop/Play ───────────────────────────────────────────────────
+  // The simulator NEVER starts on its own — compiling and simulator slots are
+  // expensive and Swift has no HMR, so there's nothing to keep warm. Every
+  // mount (new project, re-open, refresh) starts stopped; the session only
+  // provisions when the user presses Play or the agent requests a start via
+  // the simulator tools.
+  const [previewStopped, setPreviewStopped] = useState<boolean>(true);
 
   const initializedRef = useRef(false);
 
@@ -144,6 +124,48 @@ export function PersistentWorkspace({
   useEffect(() => {
     void refreshProject();
   }, [refreshProject]);
+
+  // ── Agent simulator requests ────────────────────────────────────────────
+  // The agent's startSimulator/stopSimulator tools publish a short-lived
+  // desired action to Redis (it can't own the stream — this browser does).
+  // Poll for it while the workspace is open and honor it. The GET consumes
+  // the action server-side, so it fires exactly once.
+  useEffect(() => {
+    if (platform !== "swift") return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/swift-preview/state`, {
+          cache: "no-store",
+        });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as {
+          desired: { action: "start" | "stop"; requestedAt: number } | null;
+        };
+        if (cancelled || !data.desired) return;
+        if (data.desired.action === "start") {
+          setPreviewStopped(false);
+          setCurrentView("preview");
+        } else {
+          setPreviewStopped(true);
+          // Pick up the screenshot the unmounting preview just uploaded.
+          for (const ms of [1000, 3000, 7000]) {
+            setTimeout(() => void refreshProject(), ms);
+          }
+        }
+      } catch {
+        // Network blip — next tick catches up.
+      }
+    };
+
+    void poll();
+    const timer = setInterval(poll, 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [platform, projectId, refreshProject]);
 
   // Deploy the Convex backend (zips /convex, pushes to the worker; auto-
   // provisions a platform backend on first call). `silent` is used by the
@@ -465,10 +487,11 @@ export function PersistentWorkspace({
             <Button
               variant="default"
               size="sm"
-              className="font-bold text-sm"
+              className="font-bold text-sm text-white"
               onClick={() => toast({ title: "Coming soon", description: "Publishing for persistent projects isn't available yet." })}
               title="Publish (coming soon)"
             >
+              <Globe size={14} className="mr-1.5" />
               Publish
             </Button>
           </div>
@@ -621,7 +644,13 @@ export function PersistentWorkspace({
           >
             {platform === "swift" ? (
               previewStopped ? (
-                <StoppedPreviewPlaceholder onPlay={() => setPreviewStopped(false)} />
+                <StoppedPreviewPlaceholder
+                  onPlay={() => setPreviewStopped(false)}
+                  screenshots={{
+                    iphone: project?.swiftScreenshotIphoneUrl ?? null,
+                    ipad: project?.swiftScreenshotIpadUrl ?? null,
+                  }}
+                />
               ) : (
                 // Empty slot — preview is in the persistent mount below.
                 <div className="absolute inset-0 pb-2.5 pr-2.5" />
@@ -668,8 +697,21 @@ export function PersistentWorkspace({
                 projectId={projectId}
                 mode={currentView === "preview" ? "full" : "pip"}
                 onOpenFile={handleOpenFromIssues}
-                onStop={() => setPreviewStopped(true)}
+                onStop={() => {
+                  setPreviewStopped(true);
+                  // The Stop grab uploads a fresh screenshot — refetch the
+                  // project row a few times so the stopped placeholder picks it
+                  // up even on a slow upload (toBlob + POST can outlast one
+                  // fixed delay).
+                  for (const ms of [1000, 3000, 7000]) {
+                    setTimeout(() => void refreshProject(), ms);
+                  }
+                }}
                 onExpand={() => setCurrentView("preview")}
+                screenshots={{
+                  iphone: project?.swiftScreenshotIphoneUrl ?? null,
+                  ipad: project?.swiftScreenshotIpadUrl ?? null,
+                }}
               />
             </SwiftPipWindow>
           )}
@@ -686,9 +728,20 @@ export function PersistentWorkspace({
  * session provisions. The selection is persisted (and read back by the live
  * preview on start), so the preview always comes up on the last-used device.
  */
-function StoppedPreviewPlaceholder({ onPlay }: { onPlay: () => void }) {
+function StoppedPreviewPlaceholder({
+  onPlay,
+  screenshots,
+}: {
+  onPlay: () => void;
+  /** Last-seen simulator screenshots per device family. When present for the
+   *  picked device, rendered blurred inside the bezel (instead of the black
+   *  switched-off screen) to make Play feel like "resume". */
+  screenshots?: { iphone?: string | null; ipad?: string | null };
+}) {
   const [device, setDevice] = useState<DeviceModelUI>(loadDevicePref);
   const [orientation, setOrientation] = useState<OrientationUI>(loadOrientationPref);
+  const screenshotUrl =
+    device === "iPad-Pro" ? screenshots?.ipad : screenshots?.iphone;
 
   const pickDevice = (d: DeviceModelUI): void => {
     if (d === device) return;
@@ -763,7 +816,19 @@ function StoppedPreviewPlaceholder({ onPlay }: { onPlay: () => void }) {
             </button>
           }
         >
-          <></>
+          {screenshotUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={screenshotUrl}
+              alt=""
+              // object-contain mirrors the live canvas's max-w/h letterboxing,
+              // so the screenshot sits exactly where the stream will.
+              className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain"
+              style={{ filter: "blur(7px) brightness(0.75)" }}
+            />
+          ) : (
+            <></>
+          )}
         </DeviceFrame>
       </div>
     </div>

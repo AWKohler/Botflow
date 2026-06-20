@@ -15,7 +15,6 @@ import { usageRecords } from '@/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import type { ModelId } from './agent/models';
 import type { Tier } from './tier';
-import { USE_TOGETHER_KIMI } from './feature-flags';
 
 // ─── Env-var helpers ──────────────────────────────────────────────────────────
 
@@ -40,7 +39,7 @@ interface ModelPricing {
 const BASE_PRICE = 0.30; // MiniMax input $/MTok — our credit base unit
 
 export const MODEL_PRICING: Record<string, ModelPricing> = {
-  'fireworks-minimax-m2p7': {
+  'fireworks-minimax-m3': {
     input:       0.30 / BASE_PRICE,   // 1.0
     cachedInput: 0.06 / BASE_PRICE,   // 0.2
     output:      1.20 / BASE_PRICE,   // 4.0
@@ -55,9 +54,9 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     cachedInput: 0.26 / BASE_PRICE,   // 0.87
     output:      4.40 / BASE_PRICE,   // 14.67
   },
-  'fireworks-kimi-k2p6': {
+  'fireworks-kimi-k2p7': {
     input:       0.95 / BASE_PRICE,   // 3.17
-    cachedInput: 0.16 / BASE_PRICE,   // 0.53
+    cachedInput: 0.19 / BASE_PRICE,   // 0.63
     output:      4.00 / BASE_PRICE,   // 13.33
   },
   'gpt-5.3-codex': {
@@ -82,11 +81,19 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     output:      15.00 / BASE_PRICE,  // 50.0
     cacheWrite:  3.75 / BASE_PRICE,   // 12.5 (5-min ephemeral cache write)
   },
-  'claude-opus-4-7': {
+  'claude-opus-4-8': {
     input:       5.00 / BASE_PRICE,   // 16.67
     cachedInput: 0.50 / BASE_PRICE,   // 1.67 (cache hit/refresh)
     output:      25.00 / BASE_PRICE,  // 83.33
     cacheWrite:  6.25 / BASE_PRICE,   // 20.83 (5-min ephemeral cache write)
+  },
+  // Claude Fable 5 ("Mythos") — exactly 2× Opus 4.8 on every axis. Zero-markup
+  // pass-through, same as every other model: rate = $/MTok ÷ 0.30.
+  'claude-fable-5': {
+    input:      10.00 / BASE_PRICE,   // 33.33
+    cachedInput: 1.00 / BASE_PRICE,   //  3.33 (cache hit/refresh)
+    output:     50.00 / BASE_PRICE,   // 166.67
+    cacheWrite: 12.50 / BASE_PRICE,   // 41.67 (5-min ephemeral cache write)
   },
   // Gemini 3.1 Pro pricing at ≤200K context — the >200K tier handled in calculateCredits()
   'gemini-3.1-pro-preview': {
@@ -116,42 +123,26 @@ const GPT54_LONG_CONTEXT_PRICING: ModelPricing = {
 
 const GPT54_LONG_CONTEXT_THRESHOLD = 272_000;
 
-// Kimi K2.6 pricing on Together AI (used when USE_TOGETHER_KIMI is on).
-// Together is pricier than Fireworks ($1.20/$0.20/$4.50 vs $0.95/$0.16/$4.00),
-// so users are charged proportionally more credits while the flag is active.
-const TOGETHER_KIMI_PRICING: ModelPricing = {
-  input:       1.20 / BASE_PRICE,   // 4.0  (vs 3.17 on Fireworks)
-  cachedInput: 0.20 / BASE_PRICE,   // 0.67 (vs 0.53 on Fireworks)
-  output:      4.50 / BASE_PRICE,   // 15.0 (vs 13.33 on Fireworks)
-};
-
 /**
  * Rounded per-model cost multiplier for frontend display.
  * Shown in model selector dropdown to give users a sense of relative cost.
  *
- * Kimi K2.6 is 3 on Fireworks ($0.95 input → 3.17 ≈ 3) but 4 on Together AI
- * ($1.20 input → 4.0); the live value is resolved by kimiCostMultiplier().
+ * Kimi K2.7 is x3 ($0.95 input → 3.17 ≈ 3) on both Fireworks and Together AI —
+ * Together homologated its pricing to match Fireworks, so the provider no longer
+ * affects the cost.
  */
 export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = {
-  'fireworks-minimax-m2p7': 1,
+  'fireworks-minimax-m3': 1,
   'fireworks-glm-5p1': 3,
-  'fireworks-kimi-k2p6': 3,
+  'fireworks-kimi-k2p7': 3,
   'gpt-5.3-codex': 4,
   'gemini-3.1-pro-preview': 5,
   'claude-sonnet-4-6': 5,
   'gpt-5.4': 6,
-  'claude-opus-4-7': 10,
+  'claude-opus-4-8': 10,
   'gpt-5.5': 12,
+  'claude-fable-5': 20,
 };
-
-/**
- * Live display multiplier for Kimi K2.6 — 4 when traffic is routed to Together
- * AI, otherwise the static Fireworks value (3). The frontend passes the flag in
- * (it can't read the server-only env var directly).
- */
-export function kimiCostMultiplier(useTogetherKimi: boolean): number {
-  return useTogetherKimi ? 4 : MODEL_COST_MULTIPLIER['fireworks-kimi-k2p6'];
-}
 
 export interface CreditCalculationInput {
   model: ModelId;
@@ -171,12 +162,7 @@ export function calculateCredits(params: CreditCalculationInput): number {
   let pricing = MODEL_PRICING[model];
   if (!pricing) {
     // Fallback: treat as MiniMax pricing
-    pricing = MODEL_PRICING['fireworks-minimax-m2p7'];
-  }
-
-  // Kimi K2.6: charge Together AI's higher rates while traffic is rerouted there.
-  if (model === 'fireworks-kimi-k2p6' && USE_TOGETHER_KIMI) {
-    pricing = TOGETHER_KIMI_PRICING;
+    pricing = MODEL_PRICING['fireworks-minimax-m3'];
   }
 
   // GPT-5.4: use higher pricing tier if total input context exceeds 272K
@@ -201,7 +187,7 @@ export function calculateCredits(params: CreditCalculationInput): number {
 
 /** @deprecated Use calculateCredits() instead */
 export function rawToCredits(tokens: number, model: ModelId): number {
-  const pricing = MODEL_PRICING[model] ?? MODEL_PRICING['fireworks-minimax-m2p7'];
+  const pricing = MODEL_PRICING[model] ?? MODEL_PRICING['fireworks-minimax-m3'];
   // Approximate: treat all tokens as uncached input (overestimates — prefer calculateCredits)
   return Math.ceil(tokens * pricing.input);
 }
@@ -252,6 +238,56 @@ export async function incrementWeeklyCredits(userId: string, credits: number): P
     // First write this week — set TTL
     await redis.expire(key, WEEK_TTL);
   }
+}
+
+/**
+ * Atomically reserve `amount` credits against the user's weekly budget.
+ *
+ * The INCRBY + limit comparison is a single atomic step, so concurrent requests
+ * can no longer all clear the same pre-spend balance (closes the check-then-spend
+ * TOCTOU race). If the reservation would exceed `limit` it is rolled back and
+ * `false` is returned. On success the caller MUST later reconcile the difference
+ * between this reservation and the real cost via `adjustWeeklyCredits` (typically
+ * in the stream's onFinish), and release it via `adjustWeeklyCredits(-amount)` if
+ * the request aborts before completing.
+ *
+ * Reservations are bounded by the existing WEEK_TTL, so a reservation that is
+ * never reconciled (e.g. process death mid-stream) self-expires rather than
+ * permanently inflating the counter.
+ */
+export async function reserveWeeklyCredits(
+  userId: string,
+  amount: number,
+  limit: number,
+): Promise<boolean> {
+  const key = weeklyRedisKey(userId);
+  if (amount <= 0) {
+    // Nothing to reserve — still enforce the limit against current usage.
+    const current = await getWeeklyCredits(userId);
+    return current < limit;
+  }
+  const total = await redis.incrby(key, amount);
+  if (total === amount) {
+    // First write this week — set TTL.
+    await redis.expire(key, WEEK_TTL);
+  }
+  if (total > limit) {
+    // Over budget — roll back our reservation and reject.
+    await redis.incrby(key, -amount).catch(() => {});
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Adjust the weekly credit counter by `delta` (may be negative). Used to
+ * reconcile a prior `reserveWeeklyCredits` down (or up) to the real cost, and to
+ * release a reservation on abort. Unlike `incrementWeeklyCredits` it does not
+ * touch the TTL, since the key already exists from the reservation.
+ */
+export async function adjustWeeklyCredits(userId: string, delta: number): Promise<void> {
+  if (delta === 0) return;
+  await redis.incrby(weeklyRedisKey(userId), delta);
 }
 
 // ─── Neon: monthly credits ────────────────────────────────────────────────────

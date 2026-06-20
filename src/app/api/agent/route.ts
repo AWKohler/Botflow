@@ -15,13 +15,13 @@ import { isSandboxPlatform } from "@/lib/project-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { getPersistentTools } from "@/lib/agent/persistent-tools";
 import { getSandboxedWebTools } from "@/lib/agent/sandboxed-web-tools";
-import { MODEL_CONFIGS, resolveModelId, type ModelId } from "@/lib/agent/models";
+import { MODEL_CONFIGS, resolveModelId, isModelDisabled, modelDisabledReason, type ModelId } from "@/lib/agent/models";
 import { agentLog, generateRequestId, setRequestId } from "@/lib/agent/logger";
 import { classifyError, formatErrorResponse } from "@/lib/agent/errors";
 import { USE_TOGETHER_KIMI } from "@/lib/feature-flags";
 
-/** Together AI's OpenAI-compatible Kimi K2.6 model identifier. */
-const TOGETHER_KIMI_MODEL = "moonshotai/Kimi-K2.6";
+/** Together AI's OpenAI-compatible Kimi K2.7-Code model identifier. */
+const TOGETHER_KIMI_MODEL = "moonshotai/Kimi-K2.7-Code";
 /** Together AI's OpenAI-compatible base URL. */
 const TOGETHER_BASE_URL = "https://api.together.xyz/v1";
 
@@ -62,7 +62,8 @@ import {
   calculateCredits,
   getWeeklyCredits,
   getMonthlyCredits,
-  incrementWeeklyCredits,
+  reserveWeeklyCredits,
+  adjustWeeklyCredits,
   getWeeklyLimit,
   getMonthlyLimit,
 } from "@/lib/credits";
@@ -217,6 +218,13 @@ function getTools({ hasBackend }: { hasBackend: boolean } = { hasBackend: true }
 
 // Rough estimate of tools token overhead (computed once)
 const TOOLS_TOKEN_ESTIMATE = 800;
+
+// Per-turn output ceiling, applied ONLY to platform-paid traffic (server-key
+// model + no personal credentials). Requests on Claude/Codex OAuth or any BYOK
+// key are billed to the user's own provider and are left uncapped. Token usage
+// is metered/billed accurately elsewhere, so this is a light runaway-guard, not
+// a tight quota. Override via env without a redeploy if needed.
+const PLATFORM_MAX_OUTPUT_TOKENS = Number(process.env.PLATFORM_MAX_OUTPUT_TOKENS) || 32_000;
 
 // ============================================================================
 // Anthropic prompt caching helpers
@@ -503,14 +511,15 @@ async function injectOpenAICacheRetention(input: RequestInfo | URL, init?: Reque
 
 /** Server key models: models the app pays for on behalf of paid users */
 const SERVER_KEY_MODELS = new Set<ModelId>([
-  'fireworks-minimax-m2p7', // free tier
+  'fireworks-minimax-m3', // free tier
   'fireworks-glm-5p1',         // free tier
-  'fireworks-kimi-k2p6',     // free tier
+  'fireworks-kimi-k2p7',     // free tier
   'gpt-5.3-codex',           // pro+
   'gpt-5.4',                 // pro+
   'gpt-5.5',                 // pro+
   'claude-sonnet-4-6',       // pro+
-  'claude-opus-4-7',         // pro+
+  'claude-opus-4-8',         // pro+
+  'claude-fable-5',          // max-only
   'gemini-3.1-pro-preview',  // pro+
 ]);
 
@@ -546,7 +555,7 @@ export async function POST(req: Request) {
     const db = getDb();
 
     // Determine selected model for project and ensure ownership
-    let selectedModel: ModelId = "fireworks-kimi-k2p6";
+    let selectedModel: ModelId = "fireworks-kimi-k2p7";
     // Default to true so non-project agent requests still get the full toolset.
     let hasBackend = true;
     let convexUrl: string | undefined;
@@ -596,6 +605,22 @@ export async function POST(req: Request) {
       }
     }
 
+    // ── Globally disabled model guard (applies to ALL auth paths) ────────────
+    // A model can be administratively disabled in the central registry (e.g.
+    // rescinded by the provider). This guard runs BEFORE any BYOK/OAuth/server-
+    // key branching, so no user can bypass the grayed-out selector by calling
+    // this endpoint directly with their own key.
+    if (isModelDisabled(selectedModel)) {
+      return new Response(
+        JSON.stringify({
+          error: modelDisabledReason(selectedModel),
+          errorType: "model_disabled",
+          model: selectedModel,
+        }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
     // Load credentials from Clerk (Redis-cached)
     const creds = await getUserCredentials(userId);
 
@@ -636,6 +661,7 @@ export async function POST(req: Request) {
       tools = getPersistentTools(projectId, {
         hasBackend,
         appBaseUrl: new URL(req.url).origin,
+        ...(platform ? { platform } : {}),
         ...(cookie ? { authHeaders: { cookie } } : {}),
       });
     } else {
@@ -648,12 +674,12 @@ export async function POST(req: Request) {
       if (selectedModel === 'gpt-5.3-codex' || selectedModel === 'gpt-5.4' || selectedModel === 'gpt-5.5') {
         return Boolean(creds.codexOAuthAccessToken || creds.openaiApiKey);
       }
-      if (selectedModel === 'fireworks-kimi-k2p6' && USE_TOGETHER_KIMI) {
+      if (selectedModel === 'fireworks-kimi-k2p7' && USE_TOGETHER_KIMI) {
         // Kimi traffic is redirected to Together AI — BYOK means a personal
         // Together key and no server-side TOGETHER_API_KEY.
         return Boolean(creds.togetherApiKey) && !process.env.TOGETHER_API_KEY;
       }
-      if (selectedModel === 'fireworks-minimax-m2p7' || selectedModel === 'fireworks-glm-5p1' || selectedModel === 'fireworks-kimi-k2p6') {
+      if (selectedModel === 'fireworks-minimax-m3' || selectedModel === 'fireworks-glm-5p1' || selectedModel === 'fireworks-kimi-k2p7') {
         return Boolean(creds.fireworksApiKey) && !process.env.FIREWORKS_API_KEY;
       }
       if (selectedModel === 'gemini-3.1-pro-preview') {
@@ -666,6 +692,46 @@ export async function POST(req: Request) {
       );
     })();
 
+    // ── Convert UIMessages to ModelMessages ─────────────────────────────────
+    // Done before budget enforcement so the weekly reservation can size itself
+    // off the real input-token estimate.
+    let resolvedMessages = await convertToModelMessages(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      messages as any,
+      { tools },
+    );
+    const systemTokens = estimateTokens(systemPrompt);
+    const messagesTokens = estimateMessagesTokens(resolvedMessages);
+    const totalEstimatedTokens = systemTokens + messagesTokens + TOOLS_TOKEN_ESTIMATE;
+
+    // ── Atomic weekly-credit reservation bookkeeping ─────────────────────────
+    // `weeklyReserved` holds this turn's reserved (worst-case) credits; it is
+    // reconciled down to the real cost in onFinish, or released if the request
+    // aborts first. The reconcile is idempotent so onFinish and the abort
+    // handler can't double-apply.
+    let weeklyReserved = 0;
+    let creditReconciled = false;
+    const reconcileWeeklyCredits = async (actualCredits: number): Promise<void> => {
+      if (creditReconciled || weeklyReserved === 0) return;
+      creditReconciled = true;
+      const delta = actualCredits - weeklyReserved;
+      if (delta !== 0) {
+        await adjustWeeklyCredits(userId, delta).catch((err) => {
+          console.error("[agent] weekly_credit_reconcile_failed", err);
+        });
+      }
+    };
+    // Release the reservation if the client disconnects before onFinish runs.
+    req.signal.addEventListener("abort", () => { void reconcileWeeklyCredits(0); });
+
+    // ── Tier + credit budget enforcement (platform-paid models only) ─────────
+    // Weekly budget uses an ATOMIC reservation: reserve this turn's worst-case
+    // cost (all input uncached + the 32k output ceiling) via a single INCRBY,
+    // then reconcile to the real cost in onFinish. This closes the
+    // check-then-spend race — concurrent requests can no longer all clear the
+    // same pre-spend balance. Monthly is the slower aggregate guard; bursting it
+    // requires first clearing the weekly reservation, so weekly is the binding
+    // burst limiter.
     if (isServerKeyModel(selectedModel) && !isUsingPersonalCredentials) {
       const tier = await getUserTier(userId);
       const requiredTier = MODEL_TIER_REQUIREMENT[selectedModel] ?? 'free';
@@ -681,20 +747,7 @@ export async function POST(req: Request) {
         });
       }
 
-      // Check weekly credit limit
-      const weeklyLimit = getWeeklyLimit(tier);
-      const weeklyUsed = await getWeeklyCredits(userId);
-      if (weeklyUsed >= weeklyLimit) {
-        return limitReachedResponse({
-          limitType: 'weekly_credits',
-          current: weeklyUsed,
-          limit: weeklyLimit,
-          tier,
-          model: selectedModel,
-        });
-      }
-
-      // Check monthly credit limit
+      // Monthly credit limit (eventually-consistent aggregate from Neon)
       const monthlyLimit = getMonthlyLimit(tier);
       const monthlyUsed = await getMonthlyCredits(userId);
       if (monthlyUsed >= monthlyLimit) {
@@ -707,17 +760,28 @@ export async function POST(req: Request) {
         });
       }
 
+      // Weekly credit limit — atomic worst-case reservation
+      const weeklyLimit = getWeeklyLimit(tier);
+      weeklyReserved = calculateCredits({
+        model: selectedModel,
+        inputTokens: totalEstimatedTokens,
+        outputTokens: PLATFORM_MAX_OUTPUT_TOKENS,
+        cachedReadTokens: 0,
+        cacheWriteTokens: 0,
+      });
+      const reserved = await reserveWeeklyCredits(userId, weeklyReserved, weeklyLimit);
+      if (!reserved) {
+        weeklyReserved = 0; // reservation was rolled back inside the helper
+        const weeklyUsed = await getWeeklyCredits(userId);
+        return limitReachedResponse({
+          limitType: 'weekly_credits',
+          current: weeklyUsed,
+          limit: weeklyLimit,
+          tier,
+          model: selectedModel,
+        });
+      }
     }
-
-    // ── Convert UIMessages to ModelMessages ─────────────────────────────────
-    let resolvedMessages = await convertToModelMessages(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      messages as any,
-      { tools },
-    );
-    const systemTokens = estimateTokens(systemPrompt);
-    const messagesTokens = estimateMessagesTokens(resolvedMessages);
-    const totalEstimatedTokens = systemTokens + messagesTokens + TOOLS_TOKEN_ESTIMATE;
 
     if (needsCompaction(systemTokens, messagesTokens, TOOLS_TOKEN_ESTIMATE, selectedModel)) {
       agentLog.info("context_compaction_triggered", {
@@ -763,6 +827,18 @@ export async function POST(req: Request) {
 
     const streamCall = async () => {
 
+      // ── Per-turn output ceiling (platform-paid traffic only) ─────────────────
+      // Cap output tokens only when the PLATFORM foots the bill — i.e. a
+      // server-key model with no personal credentials. On Claude/Codex OAuth or
+      // any BYOK key, isUsingPersonalCredentials is true (or the model isn't a
+      // server-key model), so this resolves to undefined and the AI SDK applies
+      // no cap. The value is request-level constant, so applying it uniformly to
+      // every provider branch below is correct for whichever branch executes.
+      const maxOutputTokens =
+        isServerKeyModel(selectedModel) && !isUsingPersonalCredentials
+          ? PLATFORM_MAX_OUTPUT_TOKENS
+          : undefined;
+
       // ── onFinish: record actual token usage ──────────────────────────────────
       // AI SDK v6 usage shape:
       //   inputTokens: total input (includes cached)
@@ -798,7 +874,7 @@ export async function POST(req: Request) {
         }
 
         // Fireworks fallback: providerMetadata or response header
-        if (cachedRead === 0 && (selectedModel === 'fireworks-minimax-m2p7' || selectedModel === 'fireworks-glm-5p1' || selectedModel === 'fireworks-kimi-k2p6')) {
+        if (cachedRead === 0 && (selectedModel === 'fireworks-minimax-m3' || selectedModel === 'fireworks-glm-5p1' || selectedModel === 'fireworks-kimi-k2p7')) {
           const metaCache = event.providerMetadata?.fireworks?.cachedPromptTokens as number | undefined;
           if (metaCache !== undefined && metaCache > 0) {
             cachedRead = metaCache;
@@ -819,6 +895,7 @@ export async function POST(req: Request) {
         // Update last-call timestamp for next request's timing heuristic
         redis.setex(lastCallKey, 86_400, startTime).catch(() => {});
 
+        let actualCredits = 0;
         if (isServerKeyModel(selectedModel) && (tokensIn > 0 || tokensOut > 0)) {
           // Compute uncached input tokens.
           // In AI SDK v6, inputTokens is the TOTAL (includes cached).
@@ -827,21 +904,21 @@ export async function POST(req: Request) {
             ?? Math.max(0, tokensIn - cachedRead - cachedWrite);
 
           // Personal credentials (OAuth/BYOK) don't consume platform credits
-          const credits = isUsingPersonalCredentials ? 0 : calculateCredits({
+          actualCredits = isUsingPersonalCredentials ? 0 : calculateCredits({
             model: selectedModel,
             inputTokens: uncachedInput,
             outputTokens: tokensOut,
             cachedReadTokens: cachedRead,
             cacheWriteTokens: cachedWrite,
           });
-          await Promise.all([
-            recordTokenUsage(userId, selectedModel, tokensIn, tokensOut, credits, cachedRead, cachedWrite).catch(() => {}),
-            // Only increment weekly credits for server-key (platform-paid) usage
-            !isUsingPersonalCredentials
-              ? incrementWeeklyCredits(userId, credits).catch(() => {})
-              : Promise.resolve(),
-          ]);
+          // Record usage to Neon (monthly aggregate + audit trail).
+          await recordTokenUsage(userId, selectedModel, tokensIn, tokensOut, actualCredits, cachedRead, cachedWrite).catch(() => {});
         }
+        // Reconcile the atomic weekly reservation down to the real cost (or
+        // release it entirely if no usage was reported). Always runs for
+        // platform-paid traffic so a reservation can't be left stranded; a
+        // no-op when nothing was reserved (personal credentials).
+        await reconcileWeeklyCredits(actualCredits);
         const durationMs = Date.now() - startTime;
         agentLog.apiComplete({ model: selectedModel, durationMs });
       };
@@ -909,6 +986,7 @@ export async function POST(req: Request) {
               messages: resolvedMessages,
               tools,
               onFinish,
+              maxOutputTokens,
               providerOptions: {
                 openai: {
                   instructions: systemPrompt,
@@ -931,6 +1009,7 @@ export async function POST(req: Request) {
             messages: resolvedMessages,
             tools,
             onFinish,
+            maxOutputTokens,
             providerOptions: {
               openai: {
                 instructions: systemPrompt,
@@ -953,6 +1032,7 @@ export async function POST(req: Request) {
             messages: resolvedMessages,
             tools,
             onFinish,
+            maxOutputTokens,
             providerOptions: {
               openai: {
                 instructions: systemPrompt,
@@ -993,15 +1073,16 @@ export async function POST(req: Request) {
           messages: resolvedMessages,
           tools,
           onFinish,
+          maxOutputTokens,
         });
         return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
       }
 
-      // ── Kimi K2.6 via Together AI (feature-flagged redirect off Fireworks) ──
+      // ── Kimi K2.7 via Together AI (feature-flagged redirect off Fireworks) ──
       // When USE_TOGETHER_KIMI is on, Kimi traffic goes to Together AI's
       // OpenAI-compatible endpoint instead of Fireworks. The model id stays
-      // `fireworks-kimi-k2p6` everywhere else; only the provider changes here.
-      if (selectedModel === "fireworks-kimi-k2p6" && USE_TOGETHER_KIMI) {
+      // `fireworks-kimi-k2p7` everywhere else; only the provider changes here.
+      if (selectedModel === "fireworks-kimi-k2p7" && USE_TOGETHER_KIMI) {
         // Priority: server-side TOGETHER_API_KEY (server-key model) → BYOK key
         const serverTogetherKey = process.env.TOGETHER_API_KEY;
         const apiKey = isServerKeyModel(selectedModel) && serverTogetherKey
@@ -1033,11 +1114,12 @@ export async function POST(req: Request) {
           messages: resolvedMessages,
           tools,
           onFinish,
+          maxOutputTokens,
         });
         return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
       }
 
-      if (selectedModel === "fireworks-minimax-m2p7" || selectedModel === "fireworks-glm-5p1" || selectedModel === "fireworks-kimi-k2p6") {
+      if (selectedModel === "fireworks-minimax-m3" || selectedModel === "fireworks-glm-5p1" || selectedModel === "fireworks-kimi-k2p7") {
         // Check for server-side Fireworks key first (for server-key models)
         const serverFireworksKey = process.env.FIREWORKS_API_KEY;
         const apiKey = isServerKeyModel(selectedModel) && serverFireworksKey
@@ -1062,6 +1144,7 @@ export async function POST(req: Request) {
           messages: resolvedMessages,
           tools,
           onFinish,
+          maxOutputTokens,
         });
         return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
       }
@@ -1091,6 +1174,7 @@ export async function POST(req: Request) {
             messages: buildAnthropicCachedMessages(systemPrompt, resolvedMessages),
             tools,
             onFinish,
+            maxOutputTokens,
           });
           return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
         }
@@ -1103,6 +1187,7 @@ export async function POST(req: Request) {
             messages: buildAnthropicCachedMessages(systemPrompt, resolvedMessages),
             tools,
             onFinish,
+            maxOutputTokens,
           });
           return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
         }
@@ -1123,6 +1208,7 @@ export async function POST(req: Request) {
         messages: buildAnthropicCachedMessages(systemPrompt, resolvedMessages),
         tools,
         onFinish,
+        maxOutputTokens,
       });
       return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
     };

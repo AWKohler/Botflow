@@ -12,10 +12,6 @@
   ],
   "crons": [
     {
-      "path": "/api/cron/blog-writer",
-      "schedule": "0 */12 * * *"
-    },
-    {
       "path": "/api/cron/sandbox-reaper",
       "schedule": "30 9 * * *"
     }

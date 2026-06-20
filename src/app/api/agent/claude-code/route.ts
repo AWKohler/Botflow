@@ -148,6 +148,15 @@ export async function POST(req: Request) {
   if (!Array.isArray(messages) || messages.length === 0) {
     return jsonError(400, "messages array required");
   }
+  // Replay guard: every legitimate Claude Code turn is initiated by a new
+  // user message, so the array must END with one. A trailing assistant
+  // message means an automatic client resubmit (e.g. useChat's
+  // sendAutomaticallyWhen) — since extractUserPrompt scans backward, honoring
+  // it would replay the user's PREVIOUS prompt as a brand-new turn, looping
+  // the agent (and burning the user's subscription) indefinitely.
+  if (messages[messages.length - 1]?.role !== "user") {
+    return jsonError(409, "Last message must be a user message");
+  }
   if (!projectId) {
     return jsonError(400, "projectId required");
   }
@@ -269,6 +278,8 @@ export async function POST(req: Request) {
       "refreshPreview",
       // In-chat question primitive — always available on sandboxed-web.
       "ask_question",
+      // Env-var entry modal — agent picks the name, user types the value.
+      "request_env_var",
     );
     if (hasBackend) {
       customTools.push(
@@ -301,12 +312,24 @@ export async function POST(req: Request) {
         "open_pull_request",
       );
     }
-  } else if (platform === "swift" && hasBackend) {
-    // Swift + Convex backend: the deploy/logs/auth tools are platform-agnostic
-    // server-side (the deploy pipeline zips /convex regardless of frontend
-    // language; setup_auth is platform-aware in the host route). Workspace
-    // control tools (dev server, browser log) are web-only and stay off.
-    customTools.push("convex_deploy", "get_convex_logs", "setup_auth");
+    
+  } else if (platform === "swift") {
+    // Simulator control — the sim never runs while the agent works (no HMR;
+    // compiling is expensive). The agent opens it once its work is done.
+    customTools.push(
+      "start_simulator",
+      "stop_simulator",
+      "get_simulator_status",
+      // In-chat question + env-var primitives are platform-agnostic.
+      "ask_question",
+      "request_env_var",
+    );
+    if (hasBackend) {
+      // Swift + Convex backend: the deploy/logs/auth tools are platform-
+      // agnostic server-side (the deploy pipeline zips /convex regardless of
+      // frontend language; setup_auth is platform-aware in the host route).
+      customTools.push("convex_deploy", "get_convex_logs", "setup_auth");
+    }
   }
 
   const bridgeConfig = {

@@ -3,9 +3,10 @@
   <img src="public/botflow_black.svg" alt="Botflow" height="60">
 </picture>
 
-# OpenVibeCode
+# Botflow.io
 
 OpenVibeCode is an open source AI-powered web IDE for creating, editing, and shipping projects from a browser workspace.
+
 
 ## Screenshots
 

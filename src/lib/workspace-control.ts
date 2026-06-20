@@ -78,6 +78,67 @@ export async function getDevServerState(projectId: string): Promise<DevServerSta
   }
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * Dev server reachability — never let the user see Vercel's 502 page
+ * ────────────────────────────────────────────────────────────────────── */
+
+const PROBE_MIN_INTERVAL_SECONDS = 5;
+
+function devServerProbeStampKey(projectId: string): string {
+  return `devserver-probe:${projectId}`;
+}
+
+/**
+ * If Redis claims the dev server is running, verify the public preview URL is
+ * actually reachable. When the sandbox stops listening (the dreaded
+ * `502 SANDBOX_NOT_LISTENING`), flip the published state to stopped so the
+ * workspace unmounts the iframe before the user ever sees Vercel's error page.
+ *
+ * Throttled via a Redis stamp so the workspace's 2s preview-state poll doesn't
+ * turn into a probe-per-poll. Returns the (possibly corrected) state.
+ */
+export async function verifyDevServerReachable(
+  projectId: string,
+  state: DevServerState | null,
+): Promise<DevServerState | null> {
+  if (!state || !state.running || !state.previewUrl) return state;
+
+  try {
+    const redis = getRedis();
+    // NX+EX: only one caller wins the probe slot per interval window.
+    const claimed = await redis.set(devServerProbeStampKey(projectId), "1", {
+      nx: true,
+      ex: PROBE_MIN_INTERVAL_SECONDS,
+    });
+    if (!claimed) return state;
+  } catch {
+    return state; // Redis hiccup — don't probe unthrottled.
+  }
+
+  try {
+    const probe = await fetch(state.previewUrl, {
+      method: "GET",
+      redirect: "manual",
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (probe.status >= 500) {
+      const stopped: DevServerState = {
+        running: false,
+        previewUrl: null,
+        port: null,
+        updatedAt: Date.now(),
+      };
+      await publishDevServerState(projectId, stopped);
+      return stopped;
+    }
+  } catch {
+    // Network/timeout — could be a transient blip on our side; don't kill a
+    // possibly-healthy preview over it. A genuine dead sandbox answers fast
+    // with a 502, which the branch above catches.
+  }
+  return state;
+}
+
 export interface BrowserLogEntry {
   timestamp: number;
   level: "log" | "warn" | "error";

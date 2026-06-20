@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, Lock } from 'lucide-react';
-import { MODEL_CONFIGS, type ModelId } from '@/lib/agent/models';
+import { MODEL_CONFIGS, isModelDisabled, modelDisabledReason, type ModelId } from '@/lib/agent/models';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
 import type { LimitReachedPayload } from '@/components/ui/LimitModal';
@@ -17,7 +17,7 @@ export interface ModelSelectorProps {
   onTierLocked?: (payload: LimitReachedPayload) => void;
   size?: 'sm' | 'md';
   className?: string;
-  /** When true, Kimi K2.6 is served by Together AI (USE_TOGETHER_KIMI flag),
+  /** When true, Kimi K2.7 is served by Together AI (USE_TOGETHER_KIMI flag),
    *  so its provider badge reads "Together" instead of "Fireworks". */
   useTogetherKimi?: boolean;
   /** Optional content rendered inside the trigger pill, left of the model
@@ -36,14 +36,15 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 /** Minimum tier required to use a model on server-side keys (must match backend MODEL_TIER_REQUIREMENT) */
 const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
-  'fireworks-minimax-m2p7': 'free',
+  'fireworks-minimax-m3': 'free',
   'fireworks-glm-5p1': 'free',
-  'fireworks-kimi-k2p6': 'free',
+  'fireworks-kimi-k2p7': 'free',
   'gpt-5.3-codex': 'pro',       // Pro+ for server key; free requires BYOK/OAuth
   'gpt-5.4': 'pro',             // Pro+
   'gpt-5.5': 'pro',             // Pro+
   'claude-sonnet-4-6': 'pro',   // Pro+
-  'claude-opus-4-7': 'pro',     // Pro+
+  'claude-opus-4-8': 'pro',     // Pro+
+  'claude-fable-5': 'max',      // Max-only
   'gemini-3.1-pro-preview': 'pro', // Pro+ for server key; free requires BYOK
 };
 
@@ -52,28 +53,30 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
  * Selecting these skips the "missing API key" BYOK check.
  */
 const SERVER_KEY_MODELS = new Set<ModelId>([
-  'fireworks-minimax-m2p7',
+  'fireworks-minimax-m3',
   'fireworks-glm-5p1',
-  'fireworks-kimi-k2p6',
+  'fireworks-kimi-k2p7',
   'gpt-5.3-codex',
   'gpt-5.4',
   'gpt-5.5',
   'claude-sonnet-4-6',
-  'claude-opus-4-7',
+  'claude-opus-4-8',
+  'claude-fable-5',
   'gemini-3.1-pro-preview',
 ]);
 
 /** Rounded per-model cost multiplier for user display */
 const MODEL_COST_LABEL: Record<ModelId, string> = {
-  'fireworks-minimax-m2p7': 'x1',
+  'fireworks-minimax-m3': 'x1',
   'fireworks-glm-5p1': 'x3',
-  'fireworks-kimi-k2p6': 'x3',
+  'fireworks-kimi-k2p7': 'x3',
   'gpt-5.3-codex': 'x4',
   'gemini-3.1-pro-preview': 'x5',
   'claude-sonnet-4-6': 'x5',
   'gpt-5.4': 'x6',
-  'claude-opus-4-7': 'x10',
+  'claude-opus-4-8': 'x10',
   'gpt-5.5': 'x12',
+  'claude-fable-5': 'x20',
 };
 
 const TIER_RANK: Record<string, number> = { free: 0, pro: 1, max: 2 };
@@ -87,15 +90,16 @@ function formatContextSize(tokens: number): string {
 
 // Order: cheapest → most expensive (by credit multiplier)
 const MODEL_ORDER: ModelId[] = [
-  'fireworks-minimax-m2p7',  // x1
+  'fireworks-minimax-m3',  // x1
   'fireworks-glm-5p1',         // x3
-  'fireworks-kimi-k2p6',     // x3
+  'fireworks-kimi-k2p7',     // x3
   'gpt-5.3-codex',           // x4
   'gemini-3.1-pro-preview',  // x5
   'claude-sonnet-4-6',       // x5
   'gpt-5.4',                 // x6
-  'claude-opus-4-7',         // x10
+  'claude-opus-4-8',         // x10
   'gpt-5.5',                 // x12
+  'claude-fable-5',          // x20 — most expensive (Max-only)
 ];
 
 export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', className, useTogetherKimi = false, leading }: ModelSelectorProps) {
@@ -106,7 +110,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
   /** Provider label for the dropdown badge — reflects the live Kimi→Together redirect. */
   const providerLabel = useCallback(
     (modelId: ModelId) => {
-      if (modelId === 'fireworks-kimi-k2p6' && useTogetherKimi) return PROVIDER_LABELS.together;
+      if (modelId === 'fireworks-kimi-k2p7' && useTogetherKimi) return PROVIDER_LABELS.together;
       return PROVIDER_LABELS[MODEL_CONFIGS[modelId].provider];
     },
     [useTogetherKimi],
@@ -116,6 +120,17 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
 
   const handleSelect = useCallback((modelId: ModelId) => {
     const config = MODEL_CONFIGS[modelId];
+
+    // Globally disabled model (e.g. rescinded by the provider) — never selectable
+    // for any user/tier/auth path. The option stays visible but inert.
+    if (isModelDisabled(modelId)) {
+      toast({
+        title: `${config.displayName} unavailable`,
+        description: modelDisabledReason(modelId),
+      });
+      return;
+    }
+
     const requiredTier = MODEL_SERVER_TIER[modelId] ?? 'free';
     const userTierRank = TIER_RANK[userTier] ?? 0;
     const requiredTierRank = TIER_RANK[requiredTier] ?? 0;
@@ -217,22 +232,26 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
             const requiredTierRank = TIER_RANK[requiredTier] ?? 0;
             const isTierLocked = requiredTierRank > userTierRank && !hasAccess;
             const isSelected = modelId === value;
+            const isDisabled = isModelDisabled(modelId);
+            const disabledReason = isDisabled ? modelDisabledReason(modelId) : '';
 
             const tierBadge = requiredTierRank > 0 ? TIER_LABELS[requiredTier] : null;
-            // Kimi K2.6 costs more on Together AI ($1.20 input → x4 vs x3 on Fireworks).
-            const costLabel = modelId === 'fireworks-kimi-k2p6' && useTogetherKimi
-              ? 'x4'
-              : MODEL_COST_LABEL[modelId];
+            // Kimi K2.7 is x3 on both providers — Together homologated to Fireworks pricing.
+            const costLabel = MODEL_COST_LABEL[modelId];
 
             return (
               <button
                 key={modelId}
                 type="button"
                 onClick={() => handleSelect(modelId)}
+                disabled={isDisabled}
+                aria-disabled={isDisabled}
+                title={isDisabled ? disabledReason : undefined}
                 className={cn(
                   'flex w-full items-center gap-3 px-3 py-2.5 text-left transition',
                   isSelected ? 'bg-elevated' : 'hover:bg-elevated/60',
                   isTierLocked && 'opacity-50',
+                  isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent',
                 )}
               >
                 <div className="flex-1 min-w-0">
@@ -259,14 +278,23 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                     <span className="text-muted/50">·</span>
                     <span className="font-medium">{costLabel}</span>
                   </div>
+                  {isDisabled && (
+                    <div className="text-[11px] text-muted mt-0.5">{disabledReason}</div>
+                  )}
                 </div>
-                {(isCredentialMissing && !isTierLocked && !SERVER_KEY_MODELS.has(modelId)) && (
+                {isDisabled && (
+                  <div className="flex items-center gap-1 text-muted">
+                    <Lock className="h-3 w-3" />
+                    <span className="text-[10px]">Unavailable</span>
+                  </div>
+                )}
+                {(!isDisabled && isCredentialMissing && !isTierLocked && !SERVER_KEY_MODELS.has(modelId)) && (
                   <div className="flex items-center gap-1 text-muted">
                     <Lock className="h-3 w-3" />
                     <span className="text-[10px]">no key</span>
                   </div>
                 )}
-                {isTierLocked && (
+                {!isDisabled && isTierLocked && (
                   <div className="flex items-center gap-1 text-muted">
                     <Lock className="h-3 w-3" />
                     <span className="text-[10px]">{tierBadge}</span>

@@ -23,6 +23,13 @@ import {
   type DeployResult,
 } from "@/lib/sandbox-convex-deploy";
 import { setupConvexAuth, refreshAuthSiteUrl } from "@/lib/convex-auth-setup";
+import {
+  createEnvVarRequest,
+  envVarOutcomeMessage,
+  pollEnvVarRequest,
+  validateEnvVarRequest,
+  type EnvVarTarget,
+} from "@/lib/agent/env-var-requests";
 import { makeStripeLookupKey } from "@/lib/stripe-scaffold";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
@@ -34,6 +41,10 @@ import {
   startSandboxDevServer,
   stopSandboxDevServer,
 } from "@/lib/workspace-control";
+import {
+  getSimulatorStatus,
+  requestSimulatorAction,
+} from "@/lib/swift-sim-control";
 import {
   abortMerge,
   commitAll,
@@ -226,6 +237,40 @@ export async function POST(req: Request) {
     // ── Workspace control: dev server lifecycle + browser/dev logs ──────
     // All six tools call into the same server-side primitives the Botflow
     // sandboxed-web agent uses, so the two agent paths stay in lockstep.
+    // ── Simulator control (Swift) ────────────────────────────────────────
+    // Desired-state only: the user's open workspace owns the stream session
+    // and polls /swift-preview/state to honor these requests.
+    case "start_simulator": {
+      if (project.platform !== "swift") {
+        return NextResponse.json({ ok: false, content: "start_simulator is only available on Swift projects." });
+      }
+      await requestSimulatorAction(binding.projectId, "start");
+      return NextResponse.json({
+        ok: true,
+        content:
+          "Simulator start requested. The user's workspace will build the project and begin streaming within a few seconds (if their tab is open).",
+      });
+    }
+
+    case "stop_simulator": {
+      if (project.platform !== "swift") {
+        return NextResponse.json({ ok: false, content: "stop_simulator is only available on Swift projects." });
+      }
+      await requestSimulatorAction(binding.projectId, "stop");
+      return NextResponse.json({ ok: true, content: "Simulator stop requested." });
+    }
+
+    case "get_simulator_status": {
+      if (project.platform !== "swift") {
+        return NextResponse.json({ ok: false, content: "get_simulator_status is only available on Swift projects." });
+      }
+      const status = await getSimulatorStatus(binding.projectId);
+      return NextResponse.json({
+        ok: true,
+        content: JSON.stringify(status),
+      });
+    }
+
     case "startDevServer": {
       const result = await startSandboxDevServer(binding.projectId, {
         port: 5173,
@@ -942,6 +987,40 @@ REQUIRED NEXT STEPS:
           "Timed out waiting for Google OAuth credentials (5 minutes). " +
           "Call setup_oauth_provider again when the user is ready.",
       });
+    }
+
+    case "request_env_var": {
+      // Mirror of the Botflow requestEnvVar tool: open the env-var modal in
+      // the workspace, block until the user saves or dismisses, report the
+      // outcome. The value itself never flows through here.
+      const target = body.input?.target;
+      const key = body.input?.key;
+      const invalid = validateEnvVarRequest({ target, key });
+      if (invalid) {
+        return NextResponse.json({ ok: false, content: invalid });
+      }
+      if (target === "server" && project.backendType === "none") {
+        return NextResponse.json({
+          ok: false,
+          content:
+            "This project has no Convex backend, so server env vars can't be set. Use target 'client' instead.",
+        });
+      }
+
+      const requestId = await createEnvVarRequest({
+        projectId: binding.projectId,
+        userId: binding.userId,
+        target: target as EnvVarTarget,
+        key: key as string,
+        message: typeof body.input?.message === "string" ? body.input.message : null,
+        isSecret: body.input?.isSecret === true,
+      });
+      const outcome = await pollEnvVarRequest({
+        requestId,
+        projectId: binding.projectId,
+      });
+      const result = envVarOutcomeMessage(outcome, key as string, target as EnvVarTarget);
+      return NextResponse.json({ ok: result.ok, content: result.content });
     }
 
     case "ask_question": {

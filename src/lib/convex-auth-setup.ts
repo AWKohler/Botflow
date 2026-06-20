@@ -11,7 +11,6 @@ import { generateKeyPairSync, createPublicKey } from "crypto";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { provisionConvexBackend } from "./convex-platform";
 
 export interface ConvexAuthFile {
   path: string;
@@ -762,24 +761,20 @@ export async function setupConvexAuth(
       };
     }
   } else {
-    // Platform backend — auto-provision if not yet created
+    // Platform backend. This function configures Convex Auth on an EXISTING
+    // platform deployment — it never provisions one. Managed-Convex provisioning
+    // lives only in the project-creation flow and the explicit deploy route,
+    // where the per-tier managed-Convex cap is enforced. If the project has no
+    // platform deployment yet, fail loudly rather than silently spinning one up
+    // here (which would bypass that cap).
     deployUrl = project.convexDeployUrl ?? null;
     deployKey = project.convexDeployKey ?? null;
 
     if (!project.convexDeploymentId || !deployKey) {
-      const convexProjectName = `ide-${project.id.slice(0, 8)}`;
-      const convex = await provisionConvexBackend(convexProjectName);
-      await db.update(projects)
-        .set({
-          convexProjectId: convex.projectId,
-          convexDeploymentId: convex.deploymentId,
-          convexDeployUrl: convex.deployUrl,
-          convexDeployKey: convex.deployKey,
-          updatedAt: new Date(),
-        })
-        .where(eq(projects.id, projectId));
-      deployUrl = convex.deployUrl;
-      deployKey = convex.deployKey;
+      return {
+        ok: false,
+        error: "This project has no Convex deployment. Provision a backend first before setting up Convex Auth.",
+      };
     }
 
     if (!deployUrl) {

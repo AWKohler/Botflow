@@ -175,6 +175,30 @@ function SubagentCard({ steps, label }: { steps: SubagentStep[]; label?: string 
 // ============================================================================
 // Token display formatter
 // ============================================================================
+/** Hover wrapper for the header gauges — shows a small labelled tooltip so
+ *  the user knows which usage each ring measures. */
+function GaugeWithTooltip({
+  label,
+  lines,
+  children,
+}: {
+  label: string;
+  lines: string[];
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative group inline-flex">
+      {children}
+      <div className="pointer-events-none absolute left-0 top-full mt-1.5 z-50 hidden group-hover:block w-max max-w-[240px] rounded-lg border border-border bg-elevated px-3 py-2 shadow-xl">
+        <div className="text-[11px] font-medium text-fg">{label}</div>
+        {lines.map((line, i) => (
+          <div key={i} className="text-[11px] text-muted leading-relaxed">{line}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function formatTokenCount(tokens: number): string {
   if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`;
   return String(tokens);
@@ -364,7 +388,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [initialized, setInitialized] = useState(false);
   const [actions, setActions] = useState<ToolCallData[]>([]);
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
-  const [model, setModel] = useState<ModelId>('fireworks-kimi-k2p6');
+  const [model, setModel] = useState<ModelId>('fireworks-kimi-k2p7');
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
   const [hasClaudeOAuth, setHasClaudeOAuth] = useState<boolean | null>(null);
@@ -372,7 +396,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
   const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
   const [hasGoogleKey, setHasGoogleKey] = useState<boolean | null>(null);
-  // Server flag (USE_TOGETHER_KIMI): Kimi K2.6 is served by Together AI, not Fireworks.
+  // Server flag (USE_TOGETHER_KIMI): Kimi K2.7 is served by Together AI, not Fireworks.
   const [useTogetherKimi, setUseTogetherKimi] = useState(false);
   // BYOK user's per-account preference for which agent runs Claude models.
   // Honored by the derivation only when the user has a genuine choice
@@ -407,12 +431,34 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // --- Credit gauge state ---
   const [creditPct, setCreditPct] = useState(0);
 
+  // --- Claude plan usage gauge (OAuth subscription only) ---
+  // Mirrors Claude Code's /usage numbers: session (5h) and week (7d)
+  // utilization of the user's Claude subscription. Only fetched/shown when
+  // the turn actually runs on Claude Code via OAuth.
+  const [claudePlanUsage, setClaudePlanUsage] = useState<{
+    fiveHour: number | null;
+    sevenDay: number | null;
+  } | null>(null);
+
   const fetchCredits = useCallback(() => {
     fetch('/api/usage/credits')
       .then(r => r.ok ? r.json() : null)
       .then((d: { pct?: number; tier?: string } | null) => {
         if (d?.pct !== undefined) setCreditPct(d.pct);
         if (d?.tier === 'pro' || d?.tier === 'max') setUserTier(d.tier as 'pro' | 'max');
+      })
+      .catch(() => {});
+  }, []);
+
+  const fetchClaudePlanUsage = useCallback(() => {
+    fetch('/api/usage/claude-plan')
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { available?: boolean; fiveHour?: number | null; sevenDay?: number | null } | null) => {
+        if (d?.available) {
+          setClaudePlanUsage({ fiveHour: d.fiveHour ?? null, sevenDay: d.sevenDay ?? null });
+        } else {
+          setClaudePlanUsage(null);
+        }
       })
       .catch(() => {});
   }, []);
@@ -531,6 +577,22 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     [model, platform, hasClaudeOAuth, hasAnthropicKey, preferredAnthropicBackend, userTier],
   );
   const agentBackend = derivedBackend.backend;
+
+  // Claude Code running on the user's Claude subscription (OAuth) — the only
+  // case where turns consume their Claude plan instead of platform credits
+  // alone, so the only case where the plan-usage gauge is shown.
+  const usesClaudePlan = derivedBackend.reason === 'oauth_claude_code';
+
+  useEffect(() => {
+    if (!usesClaudePlan) {
+      setClaudePlanUsage(null);
+      return;
+    }
+    fetchClaudePlanUsage();
+    const handler = () => fetchClaudePlanUsage();
+    window.addEventListener('agent-turn-finished', handler);
+    return () => window.removeEventListener('agent-turn-finished', handler);
+  }, [usesClaudePlan, fetchClaudePlanUsage]);
 
   // --- Chat segment tracking ---
   // Each message belongs to a segment_id; switching agents mints a new one.
@@ -782,25 +844,26 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     },
     // v6: auto-resubmit when tool calls are complete (replaces maxSteps).
     //
-    // Wrap the default helper so we DON'T auto-resubmit when the only thing
-    // the last assistant turn did was call `endTurn` — that's our explicit
-    // "stop here" marker, not a real tool roundtrip. Without this guard the
-    // synthetic endTurn we emit at the end of every Claude Code turn (and
-    // the real one the Botflow agent calls when it's done) would trip the
-    // helper into firing a second POST, which the user sees as a duplicate
-    // assistant bubble.
+    // Wrap the default helper so we DON'T auto-resubmit once the turn has
+    // explicitly ended. A completed `endTurn` tool part — the real one the
+    // Botflow agent calls, or the synthetic one the Claude Code translator
+    // appends to EVERY turn — is our "stop here" marker, and it overrides
+    // whatever other tools ran in the same turn. The previous guard only
+    // suppressed resubmission when endTurn was the ONLY tool in the message,
+    // so any Claude Code turn that did real work (its bash/read/mcp parts all
+    // stream into the same single-step assistant message) tripped the helper
+    // into re-POSTing — and /api/agent/claude-code replays the last user
+    // prompt on every POST, so the turn looped until the user intervened.
     sendAutomaticallyWhen: ({ messages }) => {
       if (!lastAssistantMessageIsCompleteWithToolCalls({ messages })) return false;
       const last = messages[messages.length - 1];
       if (!last || last.role !== 'assistant') return false;
-      const toolNames: string[] = [];
       for (const part of last.parts ?? []) {
-        if (isToolUIPart(part)) toolNames.push(getToolName(part));
-      }
-      // If every tool in this turn is endTurn, the model (or our synthetic
-      // marker) has signalled the conversation is done. Don't resubmit.
-      if (toolNames.length > 0 && toolNames.every((n) => n === 'endTurn')) {
-        return false;
+        if (!isToolUIPart(part) || getToolName(part) !== 'endTurn') continue;
+        const state = (part as { state?: string }).state;
+        if (state === 'output-available' || state === 'output-error') {
+          return false;
+        }
       }
       return true;
     },
@@ -846,12 +909,29 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
 
   const isAgentWorking = isBusy;
 
+  // --- First-turn detection ---
+  // True while the agent is working on the very first message of a brand-new
+  // project (exactly one user message when the turn starts). The workspace
+  // uses this to veil the preview during the initial build — and ONLY then;
+  // follow-up turns never blur.
+  const [isFirstTurn, setIsFirstTurn] = useState(false);
+  const prevBusyForFirstTurnRef = useRef(false);
+  useEffect(() => {
+    if (isBusy && !prevBusyForFirstTurnRef.current) {
+      const userCount = messagesRef.current.filter((m) => m.role === 'user').length;
+      setIsFirstTurn(userCount <= 1);
+    } else if (!isBusy) {
+      setIsFirstTurn(false);
+    }
+    prevBusyForFirstTurnRef.current = isBusy;
+  }, [isBusy]);
+
   // Emit custom event when busy state changes (workspace listens for preview loading state)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('agent-busy-change', { detail: { isBusy } }));
+      window.dispatchEvent(new CustomEvent('agent-busy-change', { detail: { isBusy, isFirstTurn } }));
     }
-  }, [isBusy]);
+  }, [isBusy, isFirstTurn]);
 
   // --- "Agent may not have finished" warning ---
   // Only show when busy state truly settles to false (debounced) and endTurn wasn't called
@@ -1205,7 +1285,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     const hasImages = pendingImages.length > 0;
     if (!hasText && !hasImages) return;
 
-    const usingAnthropic = model === 'claude-sonnet-4-6' || model === 'claude-opus-4-7';
+    const usingAnthropic = model === 'claude-sonnet-4-6' || model === 'claude-opus-4-8' || model === 'claude-fable-5';
     const hasAnthropicCreds = hasAnthropicKey || (ANTHROPIC_OAUTH_ENABLED && hasClaudeOAuth);
     const hasOpenAICreds = hasCodexOAuth || hasOpenAIKey;
     // Pro/Max users can use OpenAI and Anthropic models via platform server keys — only
@@ -1479,7 +1559,37 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           <button onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings" className="text-muted hover:text-fg">
             <Cog size={16} />
           </button>
-          <CreditGauge pct={creditPct} size="sm" />
+          {(() => {
+            // Shrink both gauges a touch when they sit side-by-side so they
+            // don't crowd each other.
+            const showClaudePlan = Boolean(usesClaudePlan && claudePlanUsage);
+            const gaugeSize = showClaudePlan ? 'xs' : 'sm';
+            return (
+              <>
+                <GaugeWithTooltip
+                  label="Botflow credits"
+                  lines={[`${Math.round(creditPct)}% of your weekly platform credits used.`]}
+                >
+                  <CreditGauge pct={creditPct} size={gaugeSize} />
+                </GaugeWithTooltip>
+                {showClaudePlan && claudePlanUsage && (
+                  <GaugeWithTooltip
+                    label="Claude plan usage"
+                    lines={[
+                      ...(claudePlanUsage.fiveHour !== null ? [`Session (5h): ${claudePlanUsage.fiveHour}% used`] : []),
+                      ...(claudePlanUsage.sevenDay !== null ? [`Week (7d): ${claudePlanUsage.sevenDay}% used`] : []),
+                      'Claude Code runs on your Claude subscription.',
+                    ]}
+                  >
+                    <CreditGauge
+                      pct={Math.max(claudePlanUsage.fiveHour ?? 0, claudePlanUsage.sevenDay ?? 0)}
+                      size={gaugeSize}
+                    />
+                  </GaugeWithTooltip>
+                )}
+              </>
+            );
+          })()}
         </div>
         <div className="flex items-center gap-2">
           <ModelSelector
@@ -1706,6 +1816,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                             toolName === 'askQuestion'
                             || toolName === 'ask_question'
                             || toolName === 'mcp__botflow__ask_question'
+                            || toolName === 'AskUserQuestion'
                           ) {
                             const tc = part as { toolCallId?: string; state?: string; input?: { questions?: QuestionConfig[] }; output?: unknown };
                             const qs = (tc.input?.questions ?? []) as QuestionConfig[];
@@ -1714,6 +1825,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                             const isDone = tc.state === 'output-available';
                             // Derive a collapsed-summary answer payload from the tool output
                             const summaryAnswer: QuestionAnswerPayload | undefined = (() => {
+                              // A tool error here means the question was dismissed or timed
+                              // out (Claude Code's native AskUserQuestion resolves the
+                              // dismiss path as a denied/errored call).
+                              if (tc.state === 'output-error') return { kind: 'skip' };
                               if (!isDone) return undefined;
                               const o = tc.output as { answered?: boolean; selectedIds?: string[]; selectedLabels?: string[]; customText?: string | null; dismissed?: boolean } | null;
                               if (!o) return undefined;

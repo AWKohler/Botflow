@@ -52,10 +52,10 @@ export function getLimitsForTier(tier: Tier): TierLimits {
     case 'free':
       return {
         tier: 'free',
-        maxProjects: 3,
+        maxProjects: envInt('MAX_PROJECTS_FREE', 3),
         maxAgentTurnsPerDay: 0, // no daily turn cap — credit budget handles it
         monthlyCreditBudget: envInt('CREDITS_FREE_MONTHLY', 500_000),
-        maxConvexProjects: 1,
+        maxConvexProjects: envInt('MAX_CONVEX_FREE', 0),
         maxCfPagesDeployments: 1,
         maxScreenshotsPerDay: 5,
         maxAgentDurationSecs: 120,
@@ -67,10 +67,10 @@ export function getLimitsForTier(tier: Tier): TierLimits {
     case 'pro':
       return {
         tier: 'pro',
-        maxProjects: 15,
+        maxProjects: envInt('MAX_PROJECTS_PRO', 20),
         maxAgentTurnsPerDay: 0,
         monthlyCreditBudget: envInt('CREDITS_PRO_MONTHLY', 10_000_000),
-        maxConvexProjects: 3,
+        maxConvexProjects: envInt('MAX_CONVEX_PRO', 8),
         maxCfPagesDeployments: 5,
         maxScreenshotsPerDay: 50,
         maxAgentDurationSecs: 240,
@@ -82,10 +82,10 @@ export function getLimitsForTier(tier: Tier): TierLimits {
     case 'max':
       return {
         tier: 'max',
-        maxProjects: Infinity,
+        maxProjects: envInt('MAX_PROJECTS_MAX', 30),
         maxAgentTurnsPerDay: 0,
         monthlyCreditBudget: envInt('CREDITS_MAX_MONTHLY', 50_000_000),
-        maxConvexProjects: 10,
+        maxConvexProjects: envInt('MAX_CONVEX_MAX', 20),
         maxCfPagesDeployments: 20,
         maxScreenshotsPerDay: Infinity,
         maxAgentDurationSecs: 300,
@@ -215,14 +215,15 @@ export async function invalidateBetaCache(userId: string): Promise<void> {
 
 /** Which tier is required to use a model on server-side keys */
 export const MODEL_TIER_REQUIREMENT: Record<string, Tier> = {
-  'fireworks-minimax-m2p7': 'free',
+  'fireworks-minimax-m3': 'free',
   'fireworks-glm-5p1': 'free',
-  'fireworks-kimi-k2p6': 'free',
+  'fireworks-kimi-k2p7': 'free',
   'gpt-5.3-codex': 'pro',            // Pro+ for server key; free requires BYOK/OAuth
   'gpt-5.4': 'pro',                  // Pro+ for server key
   'gpt-5.5': 'pro',                  // Pro+ for server key
   'claude-sonnet-4-6': 'pro',        // Pro+ for server key
-  'claude-opus-4-7': 'pro',          // Pro+ for server key
+  'claude-opus-4-8': 'pro',          // Pro+ for server key
+  'claude-fable-5': 'max',           // Max-only on server key; free/pro require BYOK/OAuth
   'gemini-3.1-pro-preview': 'pro',   // Pro+ for server key; free requires BYOK
 };
 

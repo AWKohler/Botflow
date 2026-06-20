@@ -13,9 +13,11 @@ import {
   RotateCcw,
   ChevronDown,
   Play,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VisualEditorPanel } from "@/components/workspace/VisualEditorPanel";
+import { renderHtmlThumbnail } from "@/lib/html-thumbnail";
 import { PreviewInfo } from "@/lib/preview-store";
 import {
   isWebLikePlatform,
@@ -41,6 +43,10 @@ interface PreviewProps {
   expUrl?: string | null;
   htmlSnapshotUrl?: string | null;
   isAgentWorking?: boolean;
+  /** True while the agent is working on the very FIRST message of a brand-new
+   *  project. Drives the loading carousel / blur veil over the live preview.
+   *  Follow-up messages never blur. */
+  isInitialBuild?: boolean;
   /** Fetch page HTML via WebContainer (bypasses CORS) */
   onFetchHtml?: (url: string) => Promise<string>;
   /** Visual editor: when true, clicking an element in the preview selects it. */
@@ -631,6 +637,7 @@ export function Preview({
   expUrl,
   htmlSnapshotUrl,
   isAgentWorking,
+  isInitialBuild,
   onFetchHtml,
   editMode = false,
   onElementSelected,
@@ -652,6 +659,15 @@ export function Preview({
   const [showSnapshot, setShowSnapshot] = useState(true);
   const [snapshotHtml, setSnapshotHtml] = useState<string | null>(null);
   const [isRealPreviewLoaded, setIsRealPreviewLoaded] = useState(false);
+  // De-blur staging: once the real preview has loaded behind the snapshot,
+  // we flip to "clearing" (CSS transition animates the blur/opacity away),
+  // then unmount the overlay entirely.
+  const [veilClearing, setVeilClearing] = useState(false);
+  // Initial-build veil (first prompt of a new project): blur over the live
+  // preview with the loading carousel on top. The X lets the user peek.
+  const [initialVeilDismissed, setInitialVeilDismissed] = useState(false);
+  const [initialVeilClearing, setInitialVeilClearing] = useState(false);
+  const [showInitialVeil, setShowInitialVeil] = useState(true);
   // Multiplatform: toggle between web and mobile preview modes
   const [multiPreviewMode, setMultiPreviewMode] = useState<"web" | "mobile">("web");
 
@@ -750,20 +766,133 @@ export function Preview({
     }
   }, [htmlSnapshotUrl, snapshotHtml]);
 
-  // Hide snapshot only when real preview has loaded
+  // Hide the snapshot only when the real preview has loaded — and do it in two
+  // stages: ~400ms settle (avoids a white flash while the app paints), then a
+  // 700ms de-blur transition, then unmount.
   useEffect(() => {
-    if (isDevServerRunning && isRealPreviewLoaded) {
+    if (!(isDevServerRunning && isRealPreviewLoaded && showSnapshot)) return;
+    const settle = setTimeout(() => setVeilClearing(true), 400);
+    const done = setTimeout(() => {
       setShowSnapshot(false);
-    }
-  }, [isDevServerRunning, isRealPreviewLoaded]);
+      setVeilClearing(false);
+    }, 400 + 750);
+    return () => {
+      clearTimeout(settle);
+      clearTimeout(done);
+    };
+  }, [isDevServerRunning, isRealPreviewLoaded, showSnapshot]);
 
   // Show snapshot again when dev server stops
   useEffect(() => {
     if (!isDevServerRunning) {
       setShowSnapshot(true);
+      setVeilClearing(false);
       setIsRealPreviewLoaded(false);
     }
   }, [isDevServerRunning]);
+
+  // ── Initial-build veil lifecycle ─────────────────────────────────────
+  // While the agent works on the project's first message, the live preview is
+  // veiled. When that first turn ends, animate the veil away (same de-blur).
+  useEffect(() => {
+    if (isInitialBuild) {
+      setShowInitialVeil(true);
+      setInitialVeilClearing(false);
+      return;
+    }
+    if (!showInitialVeil) return;
+    setInitialVeilClearing(true);
+    const done = setTimeout(() => {
+      setShowInitialVeil(false);
+      setInitialVeilClearing(false);
+    }, 750);
+    return () => clearTimeout(done);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInitialBuild]);
+
+  // ── Snapshot capture (sandboxed-web only) ────────────────────────────
+  // Ask the injected runtime inside the live iframe for a serialized render of
+  // the DOM (BF_SNAPSHOT_REQUEST → BF_SNAPSHOT_RESULT), then persist it (plus
+  // an html2canvas thumbnail) via POST /api/projects/:id/snapshot. Triggers:
+  //   1. ~8s after the real preview loads (fresh "last seen" state).
+  //   2. When the agent finishes a turn while the server runs (it likely
+  //      changed the app).
+  // Uploads are throttled to one per 30s.
+  const lastSnapshotUploadAtRef = useRef(0);
+  const snapshotUploadInFlightRef = useRef(false);
+  const prevAgentWorkingRef = useRef(Boolean(isAgentWorking));
+
+  const requestSnapshotGrab = useCallback(() => {
+    if (platform !== "sandboxed-web" || !projectId) return;
+    if (!iframeRef.current?.contentWindow) return;
+    if (snapshotUploadInFlightRef.current) return;
+    if (Date.now() - lastSnapshotUploadAtRef.current < 30_000) return;
+    iframeRef.current.contentWindow.postMessage(
+      { type: "BF_SNAPSHOT_REQUEST", id: Date.now() },
+      "*",
+    );
+  }, [platform, projectId]);
+
+  useEffect(() => {
+    if (platform !== "sandboxed-web" || !projectId) return;
+
+    async function handleResult(event: MessageEvent) {
+      if (
+        !event.origin.endsWith(".vercel.run") &&
+        !event.origin.startsWith("http://localhost")
+      ) return;
+      const data = event.data as { type?: string; html?: string | null } | null;
+      if (!data || data.type !== "BF_SNAPSHOT_RESULT") return;
+      if (typeof data.html !== "string" || !data.html.trim()) return;
+      if (snapshotUploadInFlightRef.current) return;
+      if (Date.now() - lastSnapshotUploadAtRef.current < 30_000) return;
+
+      snapshotUploadInFlightRef.current = true;
+      try {
+        const html = data.html;
+        const thumbnailDataUrl = await renderHtmlThumbnail(html);
+        const res = await fetch(`/api/projects/${projectId}/snapshot`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            html,
+            ...(thumbnailDataUrl ? { thumbnailDataUrl } : {}),
+          }),
+        });
+        if (res.ok) {
+          lastSnapshotUploadAtRef.current = Date.now();
+          // Keep the in-memory copy fresh so the next stopped state shows
+          // what the user just saw, not a stale fetch of the old URL.
+          setSnapshotHtml(html);
+        }
+      } catch (err) {
+        console.warn("[snapshot] upload failed:", err);
+      } finally {
+        snapshotUploadInFlightRef.current = false;
+      }
+    }
+
+    window.addEventListener("message", handleResult);
+    return () => window.removeEventListener("message", handleResult);
+  }, [platform, projectId]);
+
+  // Trigger 1: after the real preview loads.
+  useEffect(() => {
+    if (!isRealPreviewLoaded || !isDevServerRunning) return;
+    const t = setTimeout(() => requestSnapshotGrab(), 8_000);
+    return () => clearTimeout(t);
+  }, [isRealPreviewLoaded, isDevServerRunning, requestSnapshotGrab]);
+
+  // Trigger 2: agent finished a turn while the server is running.
+  useEffect(() => {
+    const was = prevAgentWorkingRef.current;
+    prevAgentWorkingRef.current = Boolean(isAgentWorking);
+    if (was && !isAgentWorking && isDevServerRunning && isRealPreviewLoaded) {
+      // Give HMR a moment to apply the agent's last edits.
+      const t = setTimeout(() => requestSnapshotGrab(), 2_000);
+      return () => clearTimeout(t);
+    }
+  }, [isAgentWorking, isDevServerRunning, isRealPreviewLoaded, requestSnapshotGrab]);
 
   const reloadPreview = useCallback(() => {
     if (iframeRef.current && iframeRef.current.src) {
@@ -867,8 +996,9 @@ export function Preview({
   }, [effectiveDevice, effectiveLandscape]);
 
   if (!activePreview) {
-    // Show HTML snapshot if available
-    if (htmlSnapshotUrl && showSnapshot && snapshotHtml) {
+    // Show HTML snapshot if available. snapshotHtml can come from the stored
+    // UploadThing URL (prop) or from a grab taken earlier in this session.
+    if (snapshotHtml) {
       // Mobile platform - show snapshot in iPhone mockup
       if (platform === "mobile" || (platform === "multiplatform" && multiPreviewMode === "mobile")) {
         return (
@@ -1057,7 +1187,10 @@ export function Preview({
         );
       }
 
-      // Web platform - show full-screen snapshot
+      // Web platform — the last-seen app, frozen under a heavy blur veil. The
+      // play button starts the dev server; the veil stays up while it boots
+      // and de-blurs once the real preview loads (handled in the running
+      // branch below).
       return (
         <div className="h-full flex flex-col bg-surface rounded-xl border border-border relative overflow-hidden">
           {/* HTML Snapshot Content */}
@@ -1068,58 +1201,9 @@ export function Preview({
               title="Project Snapshot"
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             />
-            {/* Grayed overlay with play button */}
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center">
-              <button
-                onClick={onToggleDevServer}
-                disabled={Boolean(isInstalling) || Boolean(isStartingServer)}
-                className={cn(
-                  "group relative flex items-center justify-center w-24 h-24 rounded-full transition-all duration-300",
-                  "bg-white/90 hover:bg-white hover:scale-110 shadow-2xl",
-                  (isInstalling || isStartingServer) && "cursor-not-allowed",
-                )}
-              >
-                {isInstalling || isStartingServer ? (
-                  <span className="inline-flex h-10 w-10 rounded-full border-4 border-green-600 border-t-transparent animate-spin" />
-                ) : (
-                  <Play
-                    size={40}
-                    className="text-green-600 fill-green-600 ml-1"
-                  />
-                )}
-              </button>
-            </div>
-          </div>
-          {/* Status text */}
-          <div className="absolute bottom-6 left-0 right-0 text-center">
-            <p className="text-white text-sm font-medium drop-shadow-lg">
-              {isInstalling
-                ? "Installing dependencies..."
-                : isStartingServer
-                  ? "Starting server..."
-                  : "Click to start dev server"}
-            </p>
-          </div>
-        </div>
-      );
-    }
-
-    // Show HTML snapshot if available (even when dev server is stopped)
-    // Otherwise show default "No Preview Yet" message
-    if (htmlSnapshotUrl && snapshotHtml) {
-      // Web platform - show full-screen snapshot
-      return (
-        <div className="h-full flex flex-col bg-surface rounded-xl border border-border relative overflow-hidden">
-          {/* HTML Snapshot Content */}
-          <div className="flex-1 relative">
-            <iframe
-              srcDoc={snapshotHtml || ''}
-              className="w-full h-full border-none"
-              title="Project Snapshot"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-            />
-            {/* Grayed overlay with play button */}
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center">
+            {/* Blur veil with play button — emphasizes "switched off" while
+                keeping the app recognizable underneath */}
+            <div className="absolute inset-0 bg-black/20 backdrop-blur-[7px] flex items-center justify-center">
               <button
                 onClick={onToggleDevServer}
                 disabled={Boolean(isInstalling) || Boolean(isStartingServer)}
@@ -1155,7 +1239,7 @@ export function Preview({
     }
 
     // Agent is working on the first prompt - show engaging loading carousel
-    if (isAgentWorking) {
+    if (isAgentWorking || isInitialBuild) {
       return (
         <div className="h-full flex items-center justify-center bg-surface text-muted rounded-xl border border-border">
           <AgentLoadingCarousel />
@@ -1711,16 +1795,65 @@ export function Preview({
             />
           </div>
 
-          {/* Snapshot overlay - shows until real preview loads */}
-          {showSnapshot && htmlSnapshotUrl && snapshotHtml && (
-            <div className="absolute inset-0 flex items-center justify-center bg-surface">
-              <div className="w-full h-full relative">
+          {/* Snapshot overlay — covers the loading dev server, then de-blurs
+              away once the real preview has painted (the "lazy switch"). */}
+          {showSnapshot && snapshotHtml && (
+            <div
+              className="absolute inset-0 flex items-center justify-center pointer-events-none"
+              style={{
+                opacity: veilClearing ? 0 : 1,
+                transition: "opacity 700ms ease",
+              }}
+            >
+              <div className="w-full h-full relative bg-surface">
                 <iframe
                   srcDoc={snapshotHtml || ''}
                   className="w-full h-full border-none"
                   title="Project Snapshot"
                   sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                 />
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    backgroundColor: veilClearing ? "rgba(0,0,0,0)" : "rgba(0,0,0,0.2)",
+                    backdropFilter: veilClearing ? "blur(0px)" : "blur(7px)",
+                    WebkitBackdropFilter: veilClearing ? "blur(0px)" : "blur(7px)",
+                    transition:
+                      "backdrop-filter 700ms ease, -webkit-backdrop-filter 700ms ease, background-color 700ms ease",
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Initial-build veil — only while the agent works on the project's
+              FIRST message. Blur over the live preview + loading carousel, so
+              in-progress errors never flash at the user. The X reveals the raw
+              preview for the curious. */}
+          {showInitialVeil && !initialVeilDismissed && isDevServerRunning && (
+            <div
+              className="absolute inset-0 z-10 flex items-center justify-center"
+              style={{
+                opacity: initialVeilClearing ? 0 : 1,
+                backdropFilter: initialVeilClearing ? "blur(0px)" : "blur(8px)",
+                WebkitBackdropFilter: initialVeilClearing ? "blur(0px)" : "blur(8px)",
+                backgroundColor: initialVeilClearing
+                  ? "rgba(0,0,0,0)"
+                  : "rgba(0,0,0,0.25)",
+                transition:
+                  "backdrop-filter 700ms ease, -webkit-backdrop-filter 700ms ease, background-color 700ms ease, opacity 700ms ease",
+                pointerEvents: initialVeilClearing ? "none" : "auto",
+              }}
+            >
+              <button
+                onClick={() => setInitialVeilDismissed(true)}
+                className="absolute top-3 right-3 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white/80 hover:bg-black/60 hover:text-white transition-colors"
+                title="Watch the agent work"
+              >
+                <X size={15} />
+              </button>
+              <div className="text-white [&_p]:!text-white [&_.text-muted]:!text-white/70 [&_.text-fg]:!text-white">
+                <AgentLoadingCarousel />
               </div>
             </div>
           )}

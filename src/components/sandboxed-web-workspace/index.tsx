@@ -52,6 +52,7 @@ import {
   ArrowUpRight,
   ExternalLink,
   MousePointer2,
+  RefreshCw,
 } from "lucide-react";
 import type { PreviewInfo } from "@/lib/preview-store";
 import { cn } from "@/lib/utils";
@@ -63,6 +64,7 @@ import {
 import { FileSearch } from "@/components/persistent-workspace/file-search";
 import { GoogleOAuthModal } from "@/components/workspace/google-oauth-modal";
 import { StripeConnectModal } from "@/components/workspace/stripe-connect-modal";
+import { EnvVarModal } from "@/components/workspace/env-var-modal";
 import { StripeTab, StripeModeToggle } from "@/components/sandboxed-web-workspace/stripe-tab";
 import { SandboxGitHubPanel } from "./github-panel";
 import { SandboxPublishPanel } from "./publish-panel";
@@ -119,6 +121,13 @@ export function SandboxedWebWorkspace({
   const [editMode, setEditMode] = useState(false);
   const [isDevServerRunning, setIsDevServerRunning] = useState(false);
   const [isStartingServer, setIsStartingServer] = useState(false);
+  /** Last-seen HTML snapshot (UploadThing) — rendered blurred while the dev
+   *  server is off. */
+  const [htmlSnapshotUrl, setHtmlSnapshotUrl] = useState<string | null>(null);
+  /** Mirrors AgentPanel's debounced busy state via the agent-busy-change event. */
+  const [isAgentWorking, setIsAgentWorking] = useState(false);
+  /** True only while the agent works on the project's FIRST message. */
+  const [isInitialBuild, setIsInitialBuild] = useState(false);
 
   // ── Project metadata ─────────────────────────────────────────────────
   const [backendType, setBackendType] = useState<BackendType>(
@@ -138,6 +147,14 @@ export function SandboxedWebWorkspace({
     id: string;
     mode: "test" | "live";
     authorizeUrl: string;
+  } | null>(null);
+  /** Pending env-var entry request surfaced by the agent's requestEnvVar tool. */
+  const [pendingEnvVarRequest, setPendingEnvVarRequest] = useState<{
+    id: string;
+    target: "client" | "server";
+    key: string;
+    message: string | null;
+    isSecret: boolean;
   } | null>(null);
   /** Project's Stripe state — populated from /api/projects/[id]. */
   const [stripeEnabled, setStripeEnabled] = useState(false);
@@ -202,6 +219,7 @@ export function SandboxedWebWorkspace({
         if (proj?.stripePaymentMode === "live" || proj?.stripePaymentMode === "test") {
           setStripePaymentMode(proj.stripePaymentMode);
         }
+        if (typeof proj?.htmlSnapshotUrl === "string") setHtmlSnapshotUrl(proj.htmlSnapshotUrl);
       } catch (e) {
         console.warn("Failed to load project metadata", e);
       }
@@ -665,6 +683,46 @@ export function SandboxedWebWorkspace({
     };
   }, [projectId, hasBackend, sandboxStatus]);
 
+  // ── Env-var request polling ──────────────────────────────────────────
+  // When the agent calls requestEnvVar, it creates a pending request in the
+  // DB. We poll for it and show the EnvVarModal when one is found. Not gated
+  // on hasBackend — client (Vite) env vars work on frontend-only projects.
+  useEffect(() => {
+    if (sandboxStatus !== "ready") return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/env/request`, {
+          cache: "no-store",
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json() as {
+          ok: boolean;
+          pending: {
+            id: string;
+            target: "client" | "server";
+            key: string;
+            message: string | null;
+            isSecret: boolean;
+          } | null;
+        };
+        if (!cancelled && data.ok) {
+          setPendingEnvVarRequest(data.pending);
+        }
+      } catch {
+        // Network blip — retry on next tick
+      }
+    };
+
+    void poll();
+    const timer = setInterval(poll, 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [projectId, sandboxStatus]);
+
   // ── Agent-stop → dismiss pending OAuth request ────────────────────────
   // When the user clicks X while setupOAuthProvider is polling, we need to:
   //  1. Close the modal immediately.
@@ -686,6 +744,14 @@ export function SandboxedWebWorkspace({
       setPendingStripeRequest((current) => {
         if (current) {
           fetch(`/api/projects/${projectId}/stripe/connect-request`, {
+            method: "DELETE",
+          }).catch(() => {});
+        }
+        return null;
+      });
+      setPendingEnvVarRequest((current) => {
+        if (current) {
+          fetch(`/api/projects/${projectId}/env/request`, {
             method: "DELETE",
           }).catch(() => {});
         }
@@ -851,6 +917,22 @@ export function SandboxedWebWorkspace({
     };
   }, [projectId, hasBackend, sandboxStatus]);
 
+  // ── Agent working state (from AgentPanel's custom event) ─────────────
+  // isInitialBuild latches on while the agent's FIRST turn runs and releases
+  // when it ends — the preview veils itself only during that window.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as
+        | { isBusy?: boolean; isFirstTurn?: boolean }
+        | undefined;
+      if (!detail) return;
+      setIsAgentWorking(Boolean(detail.isBusy));
+      setIsInitialBuild(Boolean(detail.isBusy && detail.isFirstTurn));
+    };
+    window.addEventListener("agent-busy-change", handler);
+    return () => window.removeEventListener("agent-busy-change", handler);
+  }, []);
+
   // ── Dev server ───────────────────────────────────────────────────────
   const handleStartDevServer = useCallback(async () => {
     if (isStartingServer) return;
@@ -939,6 +1021,18 @@ export function SandboxedWebWorkspace({
           mode={pendingStripeRequest.mode}
           authorizeUrl={pendingStripeRequest.authorizeUrl}
           onClose={() => setPendingStripeRequest(null)}
+        />
+      )}
+      {/* Env-var entry modal — shown when agent calls requestEnvVar */}
+      {pendingEnvVarRequest && (
+        <EnvVarModal
+          requestId={pendingEnvVarRequest.id}
+          projectId={projectId}
+          target={pendingEnvVarRequest.target}
+          envKey={pendingEnvVarRequest.key}
+          message={pendingEnvVarRequest.message}
+          isSecret={pendingEnvVarRequest.isSecret}
+          onClose={() => setPendingEnvVarRequest(null)}
         />
       )}
       {checkoutHandoffUrl && (
@@ -1194,13 +1288,36 @@ export function SandboxedWebWorkspace({
                   {previewDevice === "responsive" && <AppWindow size={16} />}
                   {previewDevice === "figma" && <Frame size={16} />}
                 </button>
-                <span className="text-muted text-sm select-none">/</span>
                 <input
                   className="flex-1 bg-transparent outline-none text-sm text-fg placeholder:text-muted"
                   value={previewPath}
                   onChange={(e) => setPreviewPath(e.target.value)}
                   placeholder="/"
                 />
+                <button
+                  onClick={() => {
+                    const baseUrl = previews[activePreviewIndex]?.baseUrl;
+                    if (!baseUrl) return;
+                    const path = previewPath.startsWith("/")
+                      ? previewPath
+                      : "/" + previewPath;
+                    window.open(
+                      `/preview-popup?url=${encodeURIComponent(baseUrl + path)}`,
+                      "_blank",
+                    );
+                  }}
+                  className="text-muted hover:text-fg"
+                  title="Open preview in new tab"
+                >
+                  <ArrowUpRight size={16} />
+                </button>
+                <button
+                  onClick={() => setPreviewReloadKey((k) => k + 1)}
+                  className="text-muted hover:text-fg"
+                  title="Refresh preview"
+                >
+                  <RefreshCw size={15} />
+                </button>
               </div>
             )}
             <UserButton />
@@ -1394,6 +1511,9 @@ export function SandboxedWebWorkspace({
               onToggleDevServer={handleStartDevServer}
               platform="sandboxed-web"
               projectId={projectId}
+              htmlSnapshotUrl={htmlSnapshotUrl}
+              isAgentWorking={isAgentWorking}
+              isInitialBuild={isInitialBuild}
               editMode={editMode}
               onElementSelected={(sel) => {
                 if (sel) {

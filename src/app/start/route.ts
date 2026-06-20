@@ -4,7 +4,8 @@ import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { provisionConvexBackend } from '@/lib/convex-platform';
-import { getUserTierAndLimits } from '@/lib/tier';
+import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
+import { countUserConvexProjects } from '@/lib/usage';
 import { getUserCredentials, setUserCredentials, type UserCredentials } from '@/lib/user-credentials';
 import { normalizeProjectPlatform, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
 import { resolveModelId } from '@/lib/agent/models';
@@ -148,19 +149,23 @@ export async function GET(request: Request) {
     modelParam === 'claude-sonnet-4.6' ? 'claude-sonnet-4-6' :
     modelParam === 'claude-sonnet-4.5' ? 'claude-sonnet-4-6' : // migrate legacy
     modelParam === 'claude-haiku-4.5' ? 'claude-sonnet-4-6' : // removed model
-    modelParam === 'claude-opus-4-7' ? 'claude-opus-4-7' :
-    modelParam === 'claude-opus-4.7' ? 'claude-opus-4-7' :
-    modelParam === 'claude-opus-4.6' ? 'claude-opus-4-7' : // migrate legacy
-    modelParam === 'claude-opus-4.5' ? 'claude-opus-4-7' : // migrate legacy
-    modelParam === 'fireworks-minimax-m2p5' ? 'fireworks-minimax-m2p7' : // updated model
-    modelParam === 'kimi-k2.5' ? 'fireworks-minimax-m2p7' : // removed model
-    modelParam === 'kimi-k2-thinking-turbo' ? 'fireworks-minimax-m2p7' : // removed model
-    modelParam === 'fireworks-minimax-m2p7' ? 'fireworks-minimax-m2p7' :
+    modelParam === 'claude-opus-4-8' ? 'claude-opus-4-8' :
+    modelParam === 'claude-opus-4-7' ? 'claude-opus-4-8' : // migrate legacy
+    modelParam === 'claude-opus-4.7' ? 'claude-opus-4-8' : // migrate legacy
+    modelParam === 'claude-opus-4.6' ? 'claude-opus-4-8' : // migrate legacy
+    modelParam === 'claude-opus-4.5' ? 'claude-opus-4-8' : // migrate legacy
+    modelParam === 'claude-fable-5' ? 'fireworks-kimi-k2p7' : // rescinded by Anthropic — fall back to default
+    modelParam === 'fireworks-minimax-m2p5' ? 'fireworks-minimax-m3' : // updated model
+    modelParam === 'fireworks-minimax-m2p7' ? 'fireworks-minimax-m3' : // updated model
+    modelParam === 'kimi-k2.5' ? 'fireworks-minimax-m3' : // removed model
+    modelParam === 'kimi-k2-thinking-turbo' ? 'fireworks-minimax-m3' : // removed model
+    modelParam === 'fireworks-minimax-m3' ? 'fireworks-minimax-m3' :
     modelParam === 'fireworks-glm-5p1' ? 'fireworks-glm-5p1' :
-    modelParam === 'fireworks-kimi-k2p6' ? 'fireworks-kimi-k2p6' :
+    modelParam === 'fireworks-kimi-k2p6' ? 'fireworks-kimi-k2p7' : // updated model
+    modelParam === 'fireworks-kimi-k2p7' ? 'fireworks-kimi-k2p7' :
     modelParam === 'gemini-3.1-pro-preview' ? 'gemini-3.1-pro-preview' :
-    'fireworks-kimi-k2p6'
-  ) as 'gpt-5.3-codex' | 'gpt-5.4' | 'gpt-5.5' | 'claude-sonnet-4-6' | 'claude-opus-4-7' | 'fireworks-minimax-m2p7' | 'fireworks-glm-5p1' | 'fireworks-kimi-k2p6' | 'gemini-3.1-pro-preview';
+    'fireworks-kimi-k2p7'
+  ) as 'gpt-5.3-codex' | 'gpt-5.4' | 'gpt-5.5' | 'claude-sonnet-4-6' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-glm-5p1' | 'fireworks-kimi-k2p7' | 'gemini-3.1-pro-preview';
 
   if (!userId) {
     return redirectToSignIn({ returnBackUrl: request.url });
@@ -213,22 +218,41 @@ export async function GET(request: Request) {
       return NextResponse.redirect(errUrl);
     }
 
-    // Free users can't get a Botflow-managed Convex backend (unless the global
-    // override flag is set). Previously we'd silently insert a project with
-    // `backendType='platform'` and no Convex URL — broken state.
-    // Now we downgrade to 'none' so the workspace mounts the no-backend
-    // template and everything works end-to-end. The UI also gates this, but
-    // we re-check on the server in case the client lied.
-    if (backendType === 'platform' && supportsNoBackend) {
+    // Decide whether this project may provision a NEW platform-managed Convex
+    // backend, and enforce the per-tier managed-Convex cap at creation time
+    // (the other half of the cap; the deploy route enforces the rest):
+    //   - beta testers: exempt (always allowed)
+    //   - free: never (unless the global override flag is set)
+    //   - pro/max: allowed only while under maxConvexProjects
+    // When a platform backend isn't allowed we downgrade to 'none' so the
+    // workspace mounts the no-backend template — except for template forks
+    // (seeded Convex code would break) and platforms without a no-backend
+    // template (mobile/multiplatform ship Convex baked in), which instead bounce
+    // with an upsell. We re-check server-side in case the client lied.
+    if (backendType === 'platform') {
       const cloudConvexForAll = process.env.ALLOW_CLOUD_CONVEX_FOR_ALL === 'true';
-      const limits = await getUserTierAndLimits(userId);
-      if (!cloudConvexForAll && limits.tier === 'free') {
-        // Template forks of a Convex project can't silently drop the backend —
-        // that would break the seeded code. The modal already blocks this for
-        // free users; bounce back with an upsell instead of downgrading.
-        if (seedSlug) {
+      const [limits, beta] = await Promise.all([
+        getUserTierAndLimits(userId),
+        isBetaUser(userId),
+      ]);
+
+      let allowed: boolean;
+      if (beta) {
+        allowed = true;
+      } else if (limits.tier === 'free') {
+        allowed = cloudConvexForAll;
+      } else {
+        const currentConvex = await countUserConvexProjects(userId);
+        allowed = currentConvex < limits.maxConvexProjects;
+      }
+
+      if (!allowed) {
+        if (!supportsNoBackend || seedSlug) {
           const errUrl = new URL('/', request.url);
-          errUrl.searchParams.set('error', 'convex_requires_pro');
+          errUrl.searchParams.set(
+            'error',
+            limits.tier === 'free' ? 'convex_requires_pro' : 'convex_limit_reached',
+          );
           return NextResponse.redirect(errUrl);
         }
         backendType = 'none';

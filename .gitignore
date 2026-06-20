@@ -54,3 +54,6 @@ next-env.d.ts
 
 # Claude Code local worktrees (per-agent scratch copies of the repo)
 .claude/worktrees/
+
+# local one-off data backup (do not commit)
+.supabase_links_backup.json

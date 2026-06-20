@@ -1341,7 +1341,7 @@ export default function LandingV2() {
   const isBetaUser = (user?.publicMetadata as { isBeta?: boolean } | undefined)?.isBeta === true;
   const [prompt, setPrompt] = useState('');
   const [platform, setPlatform] = useState<ProjectPlatform>('sandboxed-web');
-  const [model, setModel] = useState<ModelId>('fireworks-kimi-k2p6');
+  const [model, setModel] = useState<ModelId>('fireworks-kimi-k2p7');
   const { toast } = useToast();
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
@@ -1370,8 +1370,8 @@ export default function LandingV2() {
   const PENDING_PARAMS_KEY = 'huggable_pending_start_params';
   const PENDING_NAME_KEY = 'huggable_pending_project_name';
   const serverKeyModels = useMemo(() => new Set([
-    'fireworks-minimax-m2p7', 'fireworks-glm-5', 'fireworks-kimi-k2p6',
-    'gpt-5.3-codex', 'gpt-5.4', 'gpt-5.5', 'claude-sonnet-4.6', 'claude-opus-4.7',
+    'fireworks-minimax-m3', 'fireworks-glm-5', 'fireworks-kimi-k2p7',
+    'gpt-5.3-codex', 'gpt-5.4', 'gpt-5.5', 'claude-sonnet-4.6', 'claude-opus-4.7', 'claude-opus-4-8',
   ]), []);
   const landingSignInModalAppearance = {
     elements: {

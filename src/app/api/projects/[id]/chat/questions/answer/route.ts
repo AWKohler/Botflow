@@ -17,7 +17,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { chatQuestions, projects } from "@/db/schema";
 
@@ -57,11 +57,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ? and(eq(chatQuestions.projectId, id), eq(chatQuestions.toolCallId, body.toolCallId))
       : and(eq(chatQuestions.projectId, id), eq(chatQuestions.id, body.questionId!));
 
+    // Resolve the target row. The Claude Code paths (MCP ask_question and the
+    // native AskUserQuestion bridged through canUseTool) key their row by a
+    // synthetic server-side toolCallId the client never sees — the stream
+    // carries the SDK's tool_use id instead — so when the exact lookup misses
+    // we fall back to the project's most recent pending question.
+    let [target] = await db
+      .select({ id: chatQuestions.id })
+      .from(chatQuestions)
+      .where(whereClause)
+      .limit(1);
+    if (!target) {
+      [target] = await db
+        .select({ id: chatQuestions.id })
+        .from(chatQuestions)
+        .where(and(eq(chatQuestions.projectId, id), eq(chatQuestions.status, "pending")))
+        .orderBy(desc(chatQuestions.createdAt))
+        .limit(1);
+    }
+    if (!target) return NextResponse.json({ error: "Question not found" }, { status: 404 });
+    const targetClause = eq(chatQuestions.id, target.id);
+
     if (body.dismissed) {
       const [updated] = await db
         .update(chatQuestions)
         .set({ status: "dismissed", updatedAt: new Date() })
-        .where(whereClause)
+        .where(targetClause)
         .returning();
       if (!updated) return NextResponse.json({ error: "Question not found" }, { status: 404 });
       return NextResponse.json({ ok: true, status: "dismissed" });
@@ -79,7 +100,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         answer: answer as unknown as object,
         updatedAt: new Date(),
       })
-      .where(whereClause)
+      .where(targetClause)
       .returning();
     if (!updated) return NextResponse.json({ error: "Question not found" }, { status: 404 });
     return NextResponse.json({ ok: true, status: "answered" });

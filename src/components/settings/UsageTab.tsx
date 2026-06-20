@@ -32,10 +32,13 @@ function fmt(n: number): string {
 }
 
 const MODEL_DISPLAY: Record<string, string> = {
-  'fireworks-minimax-m2p7': 'MiniMax M2.7',
+  'fireworks-minimax-m3': 'MiniMax M3',
+  'fireworks-minimax-m2p7': 'MiniMax M2.7', // legacy usage records
   // 'fireworks-glm-5': 'GLM-5',
   'fireworks-glm-5p1': 'GLM-5.1',
-  'fireworks-kimi-k2p6': 'Kimi K2.6',
+  'fireworks-kimi-k2p7': 'Kimi K2.7',
+  'fireworks-kimi-k2p6': 'Kimi K2.6', // historical usage records
+
   'claude-sonnet-4.5': 'Claude Sonnet 4',
   'claude-sonnet-4.6': 'Claude Sonnet 4',
   'claude-sonnet-4-6': 'Claude Sonnet 4',
@@ -44,6 +47,8 @@ const MODEL_DISPLAY: Record<string, string> = {
   'claude-opus-4.7': 'Claude Opus 4.7',
   'claude-opus-4-1': 'Claude Opus 4.7',
   'claude-opus-4-7': 'Claude Opus 4.7',
+  'claude-opus-4-8': 'Claude Opus 4.8',
+  'claude-fable-5': 'Claude Fable 5 (Mythos)',
   'gpt-5.3-codex': 'GPT-5.3',
   'gpt-5.4': 'GPT-5.4',
   'gpt-5.5': 'GPT-5.5',

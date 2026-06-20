@@ -4,6 +4,7 @@ import { projects, chatImages, projectAssets } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { deleteConvexBackend } from '@/lib/convex-platform';
+import { isModelDisabled, modelDisabledReason } from '@/lib/agent/models';
 import { UTApi } from 'uploadthing/server';
 
 const utapi = new UTApi();
@@ -52,18 +53,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       model !== 'claude-sonnet-4.5' && // backwards compat
       model !== 'claude-sonnet-4.6' && // backwards compat
       model !== 'claude-haiku-4.5' && // removed → mapped to sonnet
-      model !== 'claude-opus-4-7' &&
+      model !== 'claude-opus-4-7' && // backwards compat → resolves to 4-8
+      model !== 'claude-opus-4-8' &&
+      model !== 'claude-fable-5' &&
       model !== 'claude-opus-4.6' && // backwards compat
       model !== 'claude-opus-4.7' && // backwards compat
       model !== 'claude-opus-4.5' && // backwards compat
       model !== 'kimi-k2.5' && // removed → mapped to minimax
       model !== 'kimi-k2-thinking-turbo' && // removed → mapped to minimax
-      model !== 'fireworks-minimax-m2p7' &&
+      model !== 'fireworks-minimax-m2p7' && // backwards compat → resolves to m3
+      model !== 'fireworks-minimax-m3' &&
       model !== 'fireworks-glm-5p1' &&
-      model !== 'fireworks-kimi-k2p6' &&
+      model !== 'fireworks-kimi-k2p7' &&
+      model !== 'fireworks-kimi-k2p6' && // backwards compat → resolved to k2p7
       model !== 'gemini-3.1-pro-preview'
     ) {
       return NextResponse.json({ error: 'Invalid model' }, { status: 400 });
+    }
+    // Reject globally disabled models (e.g. rescinded by the provider) for all
+    // users and auth paths — can't switch a project onto an unusable model.
+    if (model && isModelDisabled(model)) {
+      return NextResponse.json({ error: modelDisabledReason(model) }, { status: 403 });
     }
     const updateData: Partial<typeof proj> = {
       updatedAt: new Date(),
@@ -147,7 +157,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
     // Delete thumbnail and html snapshot from UploadThing
     try {
-      const keysToDelete = [proj.thumbnailKey, proj.htmlSnapshotKey].filter(Boolean) as string[];
+      const keysToDelete = [
+        proj.thumbnailKey,
+        proj.htmlSnapshotKey,
+        proj.swiftScreenshotIphoneKey,
+        proj.swiftScreenshotIpadKey,
+      ].filter(Boolean) as string[];
       if (keysToDelete.length > 0) {
         await utapi.deleteFiles(keysToDelete);
       }
