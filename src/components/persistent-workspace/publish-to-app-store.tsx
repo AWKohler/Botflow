@@ -52,10 +52,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+import { AppStoreReadinessStep } from "./app-store-readiness-step";
 
 // ── Types matching the swift-publish server contracts ───────────────────────
 
-type WizardStep = 1 | 2 | 3;
+type WizardStep = 1 | 2 | 3 | 4;
 
 interface AppleCredsState {
   loaded: boolean;
@@ -163,7 +164,8 @@ function suggestSku(bundleId: string, appName: string): string {
 const WIZARD_STEPS: Array<{ n: WizardStep; label: string }> = [
   { n: 1, label: "App Info" },
   { n: 2, label: "Apple Developer" },
-  { n: 3, label: "Submit" },
+  { n: 3, label: "App Store Readiness" },
+  { n: 4, label: "Submit" },
 ];
 
 // Vertical tracker: Queued → Building → Exporting → Uploading →
@@ -391,9 +393,9 @@ export function PublishToAppStore({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  // ── Step 3: poll app-status every 5s until the app record is found ──
+  // ── Submit step: poll app-status every 5s until the app record is found ──
   useEffect(() => {
-    if (!open || step !== 3) return;
+    if (!open || step !== 4) return;
     if (appStatus.found) return;
     if (build) return; // a build implies the record existed at submit time
     if (!bundleId) return;
@@ -725,9 +727,9 @@ export function PublishToAppStore({
     if (target > step) return; // forward only via the flow buttons
     if (buildLive) return; // don't navigate away mid-build / mid-processing
     if (target === 2) step2ManualRef.current = true;
-    // Leaving Step 3 after a settled build starts a fresh pass — clear the old
-    // build so returning to Step 3 shows the submit gate, not stale progress.
-    if (step === 3 && buildSettled) {
+    // Leaving the Submit step after a settled build starts a fresh pass — clear
+    // the old build so returning shows the submit gate, not stale progress.
+    if (step === 4 && buildSettled) {
       setBuild(null);
       setSubmitError(null);
       setLogOpen(false);
@@ -838,6 +840,15 @@ export function PublishToAppStore({
           )}
 
           {step === 3 && (
+            <AppStoreReadinessStep
+              projectId={projectId}
+              appName={appName}
+              bundleId={bundleId}
+              marketingVersion={marketingVersion}
+            />
+          )}
+
+          {step === 4 && (
             <Step3Submit
               appName={appName}
               bundleId={bundleId}
