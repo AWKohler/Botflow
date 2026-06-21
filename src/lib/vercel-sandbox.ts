@@ -617,6 +617,21 @@ export async function sandboxWriteFile(
   }]);
 }
 
+/** Write raw bytes into the sandbox (e.g. a generated PNG icon). */
+export async function sandboxWriteBinaryFile(
+  projectId: string,
+  projectRelativePath: string,
+  content: Buffer,
+): Promise<void> {
+  const sandbox = await getOrCreatePersistentSandbox(projectId);
+  const abs = toAbsPath(projectRelativePath);
+  const dir = abs.substring(0, abs.lastIndexOf("/"));
+  if (dir && dir !== SANDBOX_ROOT) {
+    await sandbox.runCommand("mkdir", ["-p", dir]);
+  }
+  await sandbox.writeFiles([{ path: abs, content }]);
+}
+
 export async function sandboxListFiles(
   projectId: string,
   projectRelativePath: string,
