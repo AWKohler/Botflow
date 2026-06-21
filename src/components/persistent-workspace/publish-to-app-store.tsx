@@ -745,7 +745,15 @@ export function PublishToAppStore({
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={() => {
+          // Don't let an accidental click-outside dismiss the wizard while a
+          // paid readiness op is in flight (it would discard a charged result).
+          // The explicit ✕ stays available as a deliberate escape.
+          if (!readinessBusy) onClose();
+        }}
+      />
       <div
         className="relative flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl"
         onClick={(e) => e.stopPropagation()}
