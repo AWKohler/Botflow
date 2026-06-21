@@ -67,9 +67,6 @@ export async function draftAppStoreMetadata(opts: {
 
   // ── Budget: monthly cap + atomic weekly reservation (estimate) ───────────
   const tier = await getUserTier(opts.userId);
-  if ((await getMonthlyCredits(opts.userId)) >= getMonthlyLimit(tier)) {
-    return { ok: false, status: 402, error: "You've reached your monthly credit limit.", insufficientCredits: true };
-  }
   const estimate = calculateCredits({
     model: MINIMAX_CREDIT_MODEL,
     inputTokens: 8_000,
@@ -77,6 +74,11 @@ export async function draftAppStoreMetadata(opts: {
     cachedReadTokens: 0,
     cacheWriteTokens: 0,
   });
+  // Pre-check the full estimate against the monthly cap (not just whether the
+  // user is already at it) so a near-cap user can't incur a full draft.
+  if ((await getMonthlyCredits(opts.userId)) + estimate > getMonthlyLimit(tier)) {
+    return { ok: false, status: 402, error: "You've reached your monthly credit limit.", insufficientCredits: true };
+  }
   if (!(await reserveWeeklyCredits(opts.userId, estimate, getWeeklyLimit(tier)))) {
     return { ok: false, status: 402, error: "Not enough weekly credits left to draft metadata.", insufficientCredits: true };
   }
@@ -128,7 +130,14 @@ export async function draftAppStoreMetadata(opts: {
       keywords: clamp(out.keywords, LIMITS.keywords),
     };
   } catch (e) {
-    await adjustWeeklyCredits(opts.userId, -estimate).catch(() => {});
+    await adjustWeeklyCredits(opts.userId, -estimate).catch((err) =>
+      console.error(
+        "[app-store-readiness/metadata] REFUND FAILED — user owed",
+        estimate,
+        "credits:",
+        err instanceof Error ? err.message : err,
+      ),
+    );
     console.error("[app-store-readiness/metadata] draft failed:", e instanceof Error ? e.message : e);
     return { ok: false, status: 502, error: "Couldn't draft metadata. Try again." };
   }

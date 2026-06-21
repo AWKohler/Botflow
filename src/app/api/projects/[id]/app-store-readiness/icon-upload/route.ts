@@ -41,6 +41,13 @@ export async function POST(
     );
   }
 
+  // Coarse DoS guard: refuse an oversized body before buffering it. The precise
+  // per-file check still runs below (multipart framing inflates this slightly).
+  const declaredLen = Number(req.headers.get("content-length") ?? 0);
+  if (declaredLen > MAX_ICON_UPLOAD_BYTES + 1_000_000) {
+    return NextResponse.json({ error: "That image is too large (max 12 MB)." }, { status: 413 });
+  }
+
   let file: File | null = null;
   try {
     const form = await req.formData();

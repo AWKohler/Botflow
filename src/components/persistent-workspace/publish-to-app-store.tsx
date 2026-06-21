@@ -877,16 +877,16 @@ export function PublishToAppStore({
         {/* Footer */}
         <div className="flex shrink-0 items-center justify-between border-t border-border bg-surface/60 px-5 py-3">
           <div className="min-w-0 text-[11px] text-muted">
-            {step === 3 && buildPhase === "valid" ? (
+            {step === 4 && buildPhase === "valid" ? (
               <span className="text-green-500">In TestFlight</span>
-            ) : step === 3 && (buildPhase === "rejected" || buildPhase === "failed") ? (
+            ) : step === 4 && (buildPhase === "rejected" || buildPhase === "failed") ? (
               <span className="text-red-400">Publish failed</span>
-            ) : step === 3 && buildPhase === "processing" ? (
+            ) : step === 4 && buildPhase === "processing" ? (
               <span className="flex items-center gap-1.5">
                 <Loader2 size={11} className="animate-spin" />
                 Apple is processing — keep this tab open
               </span>
-            ) : step === 3 && buildPhase === "running" ? (
+            ) : step === 4 && buildPhase === "running" ? (
               <span className="flex items-center gap-1.5">
                 <Loader2 size={11} className="animate-spin" />
                 Build in progress — keep this tab open
@@ -927,7 +927,17 @@ export function PublishToAppStore({
                 <ChevronRight size={13} />
               </Button>
             )}
-            {step === 3 && buildSettled && (
+            {step === 3 && (
+              <Button
+                size="sm"
+                className="gap-1.5 font-semibold"
+                onClick={() => setStep(4)}
+              >
+                Continue
+                <ChevronRight size={13} />
+              </Button>
+            )}
+            {step === 4 && buildSettled && (
               <Button size="sm" className="font-semibold" onClick={onClose}>
                 Done
               </Button>

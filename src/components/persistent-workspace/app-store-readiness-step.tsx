@@ -153,6 +153,8 @@ export function AppStoreReadinessStep({
   const [iconGenerating, setIconGenerating] = useState(false);
   const [iconUploading, setIconUploading] = useState(false);
   const [iconError, setIconError] = useState<string | null>(null);
+  // Whether the last-set icon actually landed in the project (writtenTo != null).
+  const [iconWritten, setIconWritten] = useState(false);
   const iconFileRef = useRef<HTMLInputElement | null>(null);
 
   // ── Credits: a single friendly "out of credits" banner, set by whichever
@@ -197,13 +199,63 @@ export function AppStoreReadinessStep({
     [],
   );
 
-  // ── Run readiness check: preflight + metadata draft, concurrently. ──
+  // Latest metadata, readable inside callbacks without widening their deps —
+  // lets us skip the PAID re-draft when the user already has a listing.
+  const metadataRef = useRef(metadata);
+  useEffect(() => {
+    metadataRef.current = metadata;
+  }, [metadata]);
+
+  // Draft the store listing via the paid model endpoint. Skips the charge when
+  // metadata already exists (persisted or edited) unless `force` — re-running
+  // the checklist must never silently re-bill. The "Redraft" action forces it.
+  const draftMetadata = useCallback(
+    async (force: boolean) => {
+      if (!force && hasMeta(metadataRef.current)) return;
+      setMetaDrafting(true);
+      setMetaError(null);
+      setOutOfCredits(false);
+      try {
+        const res = await fetch(
+          `/api/projects/${projectId}/app-store-readiness/metadata`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ appName: appName.trim() || undefined }),
+          },
+        );
+        const data = (await res.json().catch(() => ({}))) as {
+          metadata?: DraftedMetadata;
+          creditsCharged?: number;
+          error?: string;
+          insufficientCredits?: boolean;
+        };
+        if (res.ok && data.metadata) {
+          // Forced redraft replaces; an opportunistic draft only fills when the
+          // listing is empty so it never clobbers edits the user already made.
+          setMetadata((cur) =>
+            force || !hasMeta(cur) ? clampMeta(data.metadata) : cur,
+          );
+          setMetaCredits(data.creditsCharged ?? null);
+        } else if (res.status === 402 || data.insufficientCredits) {
+          setOutOfCredits(true);
+        } else {
+          setMetaError(data.error || `Couldn't draft metadata (HTTP ${res.status}).`);
+        }
+      } catch {
+        setMetaError("Network error drafting metadata.");
+      } finally {
+        setMetaDrafting(false);
+      }
+    },
+    [projectId, appName],
+  );
+
+  // ── Run readiness check: preflight + (first-time) metadata draft, concurrently. ──
   const runReadinessCheck = useCallback(async () => {
     if (checking || metaDrafting) return;
     setChecking(true);
-    setMetaDrafting(true);
     setPreflightError(null);
-    setMetaError(null);
     setOutOfCredits(false);
 
     const preflight = (async () => {
@@ -229,48 +281,15 @@ export function AppStoreReadinessStep({
       }
     })();
 
-    const draft = (async () => {
-      try {
-        const res = await fetch(
-          `/api/projects/${projectId}/app-store-readiness/metadata`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ appName: appName.trim() || undefined }),
-          },
-        );
-        const data = (await res.json().catch(() => ({}))) as {
-          metadata?: DraftedMetadata;
-          creditsCharged?: number;
-          error?: string;
-          insufficientCredits?: boolean;
-        };
-        if (res.ok && data.metadata) {
-          // Don't clobber edits the user already made/persisted: only fill a
-          // field from the draft when it's currently empty.
-          setMetadata((cur) =>
-            hasMeta(cur) ? cur : clampMeta(data.metadata),
-          );
-          setMetaCredits(data.creditsCharged ?? null);
-        } else if (res.status === 402 || data.insufficientCredits) {
-          setOutOfCredits(true);
-        } else {
-          setMetaError(data.error || `Couldn't draft metadata (HTTP ${res.status}).`);
-        }
-      } catch {
-        setMetaError("Network error drafting metadata.");
-      } finally {
-        setMetaDrafting(false);
-      }
-    })();
-
-    await Promise.all([preflight, draft]);
-  }, [checking, metaDrafting, projectId, appName]);
+    // draftMetadata owns its own spinner and skips the charge when a listing
+    // already exists, so re-running the checklist only re-runs preflight.
+    await Promise.all([preflight, draftMetadata(false)]);
+  }, [checking, metaDrafting, projectId, draftMetadata]);
 
   // ── Generate icon. ──
   const generateIcon = useCallback(async () => {
     const prompt = iconPrompt.trim();
-    if (!prompt || iconGenerating) return;
+    if (!prompt || iconGenerating || iconUploading) return;
     if (prompt.length > ICON_PROMPT_MAX) {
       setIconError(`Keep the prompt under ${ICON_PROMPT_MAX} characters.`);
       return;
@@ -294,6 +313,7 @@ export function AppStoreReadinessStep({
       if (res.ok && data.iconDataUrl) {
         setIconDataUrl(data.iconDataUrl);
         setIconCredits(data.creditsCharged ?? null);
+        setIconWritten(Boolean(data.writtenTo));
         toast({
           title: "Icon generated",
           description: data.writtenTo
@@ -310,12 +330,12 @@ export function AppStoreReadinessStep({
     } finally {
       setIconGenerating(false);
     }
-  }, [iconPrompt, iconGenerating, projectId, toast]);
+  }, [iconPrompt, iconGenerating, iconUploading, projectId, toast]);
 
   // ── Upload your own icon (no model, no credits — normalized server-side). ──
   const uploadIcon = useCallback(
     async (file: File | undefined) => {
-      if (!file || iconUploading) return;
+      if (!file || iconUploading || iconGenerating) return;
       setIconUploading(true);
       setIconError(null);
       try {
@@ -333,6 +353,7 @@ export function AppStoreReadinessStep({
         if (res.ok && data.iconDataUrl) {
           setIconDataUrl(data.iconDataUrl);
           setIconCredits(null); // uploads are free
+          setIconWritten(Boolean(data.writtenTo));
           toast({
             title: "Icon set",
             description: data.writtenTo
@@ -349,7 +370,7 @@ export function AppStoreReadinessStep({
         if (iconFileRef.current) iconFileRef.current.value = "";
       }
     },
-    [iconUploading, projectId, toast],
+    [iconUploading, iconGenerating, projectId, toast],
   );
 
   // ── Push approved metadata to App Store Connect. ──
@@ -505,7 +526,7 @@ export function AppStoreReadinessStep({
             size="sm"
             variant="outline"
             className="gap-2 font-semibold"
-            disabled={!iconPrompt.trim() || iconGenerating}
+            disabled={!iconPrompt.trim() || iconGenerating || iconUploading}
             onClick={() => void generateIcon()}
           >
             {iconGenerating ? (
@@ -558,10 +579,17 @@ export function AppStoreReadinessStep({
                 className="h-14 w-14 rounded-[14px] border border-border object-cover shadow-sm"
               />
               <div className="text-[11px] leading-4 text-muted">
-                <div className="flex items-center gap-1 text-green-500">
-                  <CheckCircle2 size={12} className="shrink-0" />
-                  Saved into your app
-                </div>
+                {iconWritten ? (
+                  <div className="flex items-center gap-1 text-green-500">
+                    <CheckCircle2 size={12} className="shrink-0" />
+                    Saved into your app
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 text-amber-400">
+                    <AlertTriangle size={12} className="shrink-0" />
+                    Generated, but not saved — try again
+                  </div>
+                )}
                 {iconCredits != null && (
                   <div className="mt-0.5">{iconCredits} credits</div>
                 )}
@@ -585,6 +613,25 @@ export function AppStoreReadinessStep({
           <h3 className="text-sm font-semibold text-fg">Store listing</h3>
           {metaCredits != null && (
             <span className="ml-auto text-[10px] text-muted">{metaCredits} credits</span>
+          )}
+          {metaReady && (
+            <button
+              type="button"
+              onClick={() => void draftMetadata(true)}
+              disabled={metaDrafting}
+              className={cn(
+                "inline-flex items-center gap-1 text-[11px] font-medium text-accent transition hover:text-accent/80 disabled:opacity-50",
+                metaCredits == null && "ml-auto",
+              )}
+              title="Generate a fresh AI draft — uses credits and replaces the current listing"
+            >
+              {metaDrafting ? (
+                <Loader2 size={11} className="animate-spin" />
+              ) : (
+                <Sparkles size={11} />
+              )}
+              Redraft
+            </button>
           )}
         </div>
 

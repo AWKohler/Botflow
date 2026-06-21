@@ -64,10 +64,18 @@ export async function POST(
   for (const key of ["name", "subtitle", "description", "keywords"] as const) {
     const v = str(body[key]);
     if (!v) continue;
-    if (v.length > FIELD_MAX[key]) {
-      return NextResponse.json({ error: `${key} exceeds ${FIELD_MAX[key]} characters.` }, { status: 400 });
+    // Apple measures keywords in UTF-8 bytes; the rest in characters. A
+    // non-ASCII keyword string can pass a char check yet be rejected by Apple.
+    const len = key === "keywords" ? Buffer.byteLength(v, "utf8") : v.length;
+    const unit = key === "keywords" ? "bytes" : "characters";
+    if (len > FIELD_MAX[key]) {
+      return NextResponse.json({ error: `${key} exceeds ${FIELD_MAX[key]} ${unit}.` }, { status: 400 });
     }
     meta[key] = v;
+  }
+  // Apple requires the display name to be at least two characters.
+  if (meta.name !== undefined && meta.name.length < 2) {
+    return NextResponse.json({ error: "name must be at least 2 characters." }, { status: 400 });
   }
   if (Object.keys(meta).length === 0) {
     return NextResponse.json({ error: "Nothing to push — provide at least one field." }, { status: 400 });
@@ -95,6 +103,14 @@ export async function POST(
       );
     }
     const result = await pushAppStoreMetadata(ascAuth, app.ascAppId, meta, marketingVersion);
+    // Nothing landed → surface it as a failure, not a green success. (Partial
+    // success keeps 200 and the UI renders the per-field warnings.)
+    if (result.pushed.length === 0) {
+      return NextResponse.json(
+        { error: result.warnings[0] || "Couldn't push metadata to App Store Connect.", ...result },
+        { status: 502 },
+      );
+    }
     return NextResponse.json(result);
   } catch (error) {
     console.error(

@@ -66,12 +66,15 @@ function escapeForGrep(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-async function scan(projectId: string, script: string): Promise<string> {
+// Run a read-only scan in the sandbox. Distinguishes a genuinely empty result
+// from a scan FAILURE so absence-based checks (no dynamic code, no data
+// collection) never turn a sandbox error into a false "pass".
+async function scan(projectId: string, script: string): Promise<{ ok: boolean; out: string }> {
   try {
     const res = await sandboxBash(projectId, script, { timeoutMs: 30_000 });
-    return res.stdout ?? "";
+    return { ok: true, out: res.stdout ?? "" };
   } catch {
-    return "";
+    return { ok: false, out: "" };
   }
 }
 
@@ -83,18 +86,42 @@ export async function runPreflightChecks(
 
   // project.yml is the XcodeGen spec — the source of truth for the generated
   // Info.plist (compliance, usage strings, device family) in our templates.
-  const projectYml = await scan(
+  const projectYmlScan = await scan(
     projectId,
     `f=$(find . -maxdepth 3 -name project.yml 2>/dev/null | head -1); [ -n "$f" ] && cat "$f" || true`,
   );
+  const projectYml = projectYmlScan.out;
+  if (!projectYmlScan.ok) {
+    // Everything below that reads project.yml is unreliable when we couldn't
+    // read it — say so rather than silently passing/failing those checks.
+    items.push({
+      id: "config",
+      label: "Project configuration",
+      status: "warn",
+      detail:
+        "Couldn't read your project config (project.yml), so the compliance and permission-string checks below may be incomplete.",
+      fix: "Re-run the readiness check; if it keeps failing, reopen the project so its sandbox is available.",
+    });
+  }
 
   // ── 1. Export compliance ──────────────────────────────────────────────────
-  if (/ITSAppUsesNonExemptEncryption/.test(projectYml)) {
+  // Pass ONLY when explicitly set to NO — a present-but-YES value means the app
+  // *does* use non-exempt encryption and still needs compliance documentation.
+  if (/ITSAppUsesNonExemptEncryption\s*:\s*["']?(?:NO|false)["']?/i.test(projectYml)) {
     items.push({
       id: "compliance",
       label: "Export compliance",
       status: "pass",
-      detail: "ITSAppUsesNonExemptEncryption is set — no 'Missing Compliance' gate on TestFlight.",
+      detail: "ITSAppUsesNonExemptEncryption is set to NO — no 'Missing Compliance' gate on TestFlight.",
+    });
+  } else if (/ITSAppUsesNonExemptEncryption/.test(projectYml)) {
+    items.push({
+      id: "compliance",
+      label: "Export compliance",
+      status: "warn",
+      detail:
+        "ITSAppUsesNonExemptEncryption is present but not NO — TestFlight will still ask you to document your encryption use.",
+      fix: 'Set `ITSAppUsesNonExemptEncryption: NO` in project.yml unless your app uses non-standard (non-HTTPS) encryption.',
     });
   } else {
     items.push({
@@ -112,7 +139,7 @@ export async function runPreflightChecks(
     projectId,
     `grep -rEoh '${allApis.map(escapeForGrep).join("|")}' Sources 2>/dev/null | sort -u || true`,
   );
-  const usedApis = new Set(apiHits.split("\n").map((s) => s.trim()).filter(Boolean));
+  const usedApis = new Set(apiHits.out.split("\n").map((s) => s.trim()).filter(Boolean));
   for (const rule of PERMISSION_RULES) {
     if (!rule.apis.some((a) => usedApis.has(a))) continue;
     const hasKey = projectYml.includes(rule.key);
@@ -130,12 +157,21 @@ export async function runPreflightChecks(
   }
 
   // ── 3. Guideline 2.5.2 — no downloaded/executed code ──────────────────────
-  const dynHitsRaw = await scan(
+  const dynScan = await scan(
     projectId,
     `grep -rEn '${DYNAMIC_CODE_PATTERNS.map((p) => escapeForGrep(p.pattern)).join("|")}' Sources 2>/dev/null | head -20 || true`,
   );
-  const dynHits = dynHitsRaw.split("\n").map((s) => s.trim()).filter(Boolean);
-  if (dynHits.length === 0) {
+  const dynHits = dynScan.out.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (!dynScan.ok) {
+    items.push({
+      id: "guideline-2.5.2",
+      label: "Dynamic code (Guideline 2.5.2)",
+      status: "warn",
+      detail:
+        "Couldn't scan your sources for runtime code-loading — re-run to verify. Apple rejects apps that download or run code.",
+      fix: "Re-run the readiness check.",
+    });
+  } else if (dynHits.length === 0) {
     items.push({
       id: "guideline-2.5.2",
       label: "Dynamic code (Guideline 2.5.2)",
@@ -160,7 +196,7 @@ export async function runPreflightChecks(
     projectId,
     `find . -path '*AppIcon.appiconset/*' \\( -name '*.png' -o -name '*.jpg' \\) 2>/dev/null | head -1`,
   );
-  if (iconHit.trim()) {
+  if (iconHit.out.trim()) {
     items.push({ id: "icon", label: "App icon", status: "pass", detail: "A 1024px app icon is present in the asset catalog." });
   } else {
     items.push({
@@ -201,25 +237,34 @@ export async function runPreflightChecks(
   }
 
   // ── 6. Privacy policy (advisory) ──────────────────────────────────────────
-  const collectsData = await scan(
+  const privacyScan = await scan(
     projectId,
     `grep -rEl 'URLSession|Analytics|Firebase|Mixpanel|Amplitude' Sources 2>/dev/null | head -1`,
   );
   items.push(
-    collectsData.trim()
+    !privacyScan.ok
       ? {
           id: "privacy",
           label: "Privacy policy",
           status: "warn",
-          detail: "Your app makes network calls / may collect data. Apple requires a privacy policy URL for data-collecting apps.",
+          detail:
+            "Couldn't scan your sources for data collection — if your app collects any user data, add a privacy policy URL in App Store Connect.",
           fix: "Add a privacy policy URL in App Store Connect → App Information, and complete the Privacy questionnaire.",
         }
-      : {
-          id: "privacy",
-          label: "Privacy policy",
-          status: "pass",
-          detail: "No obvious data collection detected. (Still add a privacy policy if you collect any user data.)",
-        },
+      : privacyScan.out.trim()
+        ? {
+            id: "privacy",
+            label: "Privacy policy",
+            status: "warn",
+            detail: "Your app makes network calls / may collect data. Apple requires a privacy policy URL for data-collecting apps.",
+            fix: "Add a privacy policy URL in App Store Connect → App Information, and complete the Privacy questionnaire.",
+          }
+        : {
+            id: "privacy",
+            label: "Privacy policy",
+            status: "pass",
+            detail: "No obvious data collection detected. (Still add a privacy policy if you collect any user data.)",
+          },
   );
 
   const summary = items.reduce(

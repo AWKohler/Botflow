@@ -14,7 +14,7 @@
 import { ascFetch, mintAscToken } from "@/lib/asc-jwt";
 import type { AscAuth } from "@/lib/asc-publish";
 
-const LOCALE = "en-US";
+const DEFAULT_LOCALE = "en-US";
 
 interface AscResource {
   id: string;
@@ -62,6 +62,22 @@ async function postResource(auth: AscAuth, path: string, body: unknown): Promise
   return j.data;
 }
 
+// The app's primary App Store language — the localization our default listing
+// edits should target. Falls back to en-US if it can't be read, so a missing
+// permission never blocks the push.
+async function primaryLocale(auth: AscAuth, ascAppId: string): Promise<string> {
+  try {
+    const res = await ascFetch(token(auth), `/v1/apps/${ascAppId}?fields[apps]=primaryLocale`);
+    if (res.ok) {
+      const j = (await res.json()) as { data?: { attributes?: { primaryLocale?: string } } };
+      return j.data?.attributes?.primaryLocale || DEFAULT_LOCALE;
+    }
+  } catch {
+    /* fall back to default */
+  }
+  return DEFAULT_LOCALE;
+}
+
 function appStoreState(r: AscResource): string {
   return String(r.attributes?.appStoreState ?? r.attributes?.state ?? "");
 }
@@ -96,6 +112,7 @@ export async function pushAppStoreMetadata(
 ): Promise<PushResult> {
   const pushed: string[] = [];
   const warnings: string[] = [];
+  const locale = await primaryLocale(auth, ascAppId);
 
   // ── 1. Name + subtitle → appInfoLocalizations ────────────────────────────
   if (meta.name || meta.subtitle) {
@@ -106,7 +123,7 @@ export async function pushAppStoreMetadata(
       if (!editable) throw new Error("no editable App Info found");
 
       const locs = await getList(auth, `/v1/appInfos/${editable.id}/appInfoLocalizations?limit=50`);
-      const loc = locs.data?.find((l) => l.attributes?.locale === LOCALE);
+      const loc = locs.data?.find((l) => l.attributes?.locale === locale);
       const attrs: Record<string, unknown> = {};
       if (meta.name) attrs.name = meta.name;
       if (meta.subtitle) attrs.subtitle = meta.subtitle;
@@ -117,7 +134,7 @@ export async function pushAppStoreMetadata(
         await postResource(auth, `/v1/appInfoLocalizations`, {
           data: {
             type: "appInfoLocalizations",
-            attributes: { locale: LOCALE, ...attrs },
+            attributes: { locale, ...attrs },
             relationships: { appInfo: { data: { type: "appInfos", id: editable.id } } },
           },
         });
@@ -132,12 +149,21 @@ export async function pushAppStoreMetadata(
   // ── 2. Description + keywords → appStoreVersionLocalizations ──────────────
   if (meta.description || meta.keywords) {
     try {
-      const versions = await getList(auth, `/v1/apps/${ascAppId}/appStoreVersions?limit=10`);
+      const versions = await getList(
+        auth,
+        `/v1/apps/${ascAppId}/appStoreVersions?filter[platform]=IOS&limit=50`,
+      );
+      // iOS-only (filtered above); never touch a live version.
+      const nonLive = (versions.data ?? []).filter((v) => !LIVE_STATES.has(appStoreState(v)));
+      // Prefer the exact marketing version we're publishing, then any known
+      // editable state, then any remaining non-live iOS version; create only
+      // when that exact version doesn't exist yet.
       let version =
-        versions.data?.find((v) => EDITABLE_VERSION_STATES.has(appStoreState(v))) ??
-        versions.data?.find((v) => !LIVE_STATES.has(appStoreState(v)));
+        nonLive.find((v) => v.attributes?.versionString === marketingVersion) ??
+        nonLive.find((v) => EDITABLE_VERSION_STATES.has(appStoreState(v))) ??
+        nonLive[0];
       if (!version) {
-        // First submission and no editable version yet — create one.
+        // First submission and no editable iOS version yet — create one.
         version = await postResource(auth, `/v1/appStoreVersions`, {
           data: {
             type: "appStoreVersions",
@@ -151,7 +177,7 @@ export async function pushAppStoreMetadata(
         auth,
         `/v1/appStoreVersions/${version.id}/appStoreVersionLocalizations?limit=50`,
       );
-      const loc = locs.data?.find((l) => l.attributes?.locale === LOCALE);
+      const loc = locs.data?.find((l) => l.attributes?.locale === locale);
       const attrs: Record<string, unknown> = {};
       if (meta.description) attrs.description = meta.description;
       if (meta.keywords) attrs.keywords = meta.keywords;
@@ -168,7 +194,7 @@ export async function pushAppStoreMetadata(
         await postResource(auth, `/v1/appStoreVersionLocalizations`, {
           data: {
             type: "appStoreVersionLocalizations",
-            attributes: { locale: LOCALE, ...attrs },
+            attributes: { locale, ...attrs },
             relationships: {
               appStoreVersion: { data: { type: "appStoreVersions", id: version.id } },
             },

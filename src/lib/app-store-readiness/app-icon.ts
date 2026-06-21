@@ -61,6 +61,21 @@ const ICON_CONTENTS_JSON =
     2,
   ) + "\n";
 
+// Cap decoded pixels to defang decompression-bomb uploads (a tiny PNG can
+// expand to gigapixels). 40 MP (~6300²) is far above any real icon source.
+const MAX_ICON_INPUT_PIXELS = 40_000_000;
+
+// Normalize ANY source image into the exact asset Apple accepts: a 1024×1024
+// fully-opaque PNG. Flatten over white drops alpha (the App Store rejects
+// transparency in the marketing icon); cover-resize fixes off-size sources.
+async function normalizeIconPng(input: Buffer): Promise<Buffer> {
+  return sharp(input, { limitInputPixels: MAX_ICON_INPUT_PIXELS })
+    .resize(1024, 1024, { fit: "cover" })
+    .flatten({ background: { r: 255, g: 255, b: 255 } })
+    .png()
+    .toBuffer();
+}
+
 export type IconResult =
   | { ok: true; iconDataUrl: string; creditsCharged: number; writtenTo: string | null }
   | { ok: false; status: number; error: string; insufficientCredits?: boolean };
@@ -88,7 +103,10 @@ export async function generateAppIcon(opts: {
 
   // ── Budget: monthly cap + atomic weekly reservation ──────────────────────
   const tier = await getUserTier(opts.userId);
-  if ((await getMonthlyCredits(opts.userId)) >= getMonthlyLimit(tier)) {
+  // Pre-check the FULL estimated cost against the monthly cap — not merely
+  // whether the user is already at it — so someone a credit under the cap can't
+  // still incur a whole icon's worth of credits.
+  if ((await getMonthlyCredits(opts.userId)) + ICON_GENERATION_CREDITS > getMonthlyLimit(tier)) {
     return {
       ok: false,
       status: 402,
@@ -120,13 +138,25 @@ export async function generateAppIcon(opts: {
       size: "1024x1024",
       // 'medium' is the sweet spot for a bold, simple icon (see ICON_GENERATION_CREDITS).
       quality: "medium",
+      // Apple rejects any alpha in the marketing icon — ask for an opaque render…
+      background: "opaque",
       n: 1,
     });
     const b64 = result.data?.[0]?.b64_json;
     if (!b64) throw new Error("no image data returned");
-    pngBuffer = Buffer.from(b64, "base64");
+    // …and flatten defensively in case the model still emits transparency.
+    pngBuffer = await normalizeIconPng(Buffer.from(b64, "base64"));
   } catch (e) {
-    await adjustWeeklyCredits(opts.userId, -ICON_GENERATION_CREDITS).catch(() => {});
+    await adjustWeeklyCredits(opts.userId, -ICON_GENERATION_CREDITS).catch((err) =>
+      // The image failed AND the refund failed — log loudly; the user is owed
+      // these credits back. (Durable retry is an app-wide credit concern.)
+      console.error(
+        "[app-store-readiness/icon] REFUND FAILED — user owed",
+        ICON_GENERATION_CREDITS,
+        "credits:",
+        err instanceof Error ? err.message : err,
+      ),
+    );
     console.error(
       "[app-store-readiness/icon] generate failed:",
       e instanceof Error ? e.message : e,
@@ -202,13 +232,7 @@ export async function setUploadedAppIcon(opts: {
 > {
   let png: Buffer;
   try {
-    png = await sharp(opts.imageBuffer)
-      .resize(1024, 1024, { fit: "cover" })
-      // Composite over white to drop any alpha channel — App Store icons must be
-      // fully opaque. A no-op for images that are already opaque.
-      .flatten({ background: { r: 255, g: 255, b: 255 } })
-      .png()
-      .toBuffer();
+    png = await normalizeIconPng(opts.imageBuffer);
   } catch {
     return { ok: false, status: 400, error: "That doesn't look like a valid image. Upload a PNG or JPEG." };
   }
