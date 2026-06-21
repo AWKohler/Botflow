@@ -615,6 +615,76 @@ export function SwiftSimulatorPreview({
     return () => clearTimeout(t);
   }, [hasFrame]);
 
+  // ── Agent-panel screenshot bridge ────────────────────────────────────────
+  // The AgentPanel shows a "screenshot the simulator" button but can't reach
+  // this canvas directly. We coordinate over window events (scoped by
+  // projectId): broadcast whether a frame is grabbable so the button can
+  // enable/grey itself, and on request hand the current canvas back as a JPEG
+  // blob for the panel to attach like an uploaded image.
+  const simShotAvailable = pill.kind === "live" && hasFrame;
+  const availableRef = useRef(false);
+  availableRef.current = simShotAvailable;
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("swift-sim-availability", {
+        detail: { projectId, available: simShotAvailable },
+      }),
+    );
+  }, [projectId, simShotAvailable]);
+
+  useEffect(() => {
+    const onQuery = (e: Event) => {
+      const d = (e as CustomEvent<{ projectId: string }>).detail;
+      if (!d || d.projectId !== projectId) return;
+      window.dispatchEvent(
+        new CustomEvent("swift-sim-availability", {
+          detail: { projectId, available: availableRef.current },
+        }),
+      );
+    };
+    const onCapture = (e: Event) => {
+      const d = (e as CustomEvent<{ projectId: string; requestId: string }>).detail;
+      if (!d || d.projectId !== projectId) return;
+      const respond = (detail: { blob?: Blob; error?: string }) =>
+        window.dispatchEvent(
+          new CustomEvent("swift-sim-capture-response", {
+            detail: {
+              projectId,
+              requestId: d.requestId,
+              deviceModel: deviceModelRef.current,
+              ...detail,
+            },
+          }),
+        );
+      const canvas = canvasRef.current;
+      if (!canvas || !hasFrameRef.current) {
+        respond({ error: "The simulator isn't streaming a frame yet." });
+        return;
+      }
+      try {
+        canvas.toBlob(
+          (blob) => respond(blob ? { blob } : { error: "Couldn't read the simulator screen." }),
+          "image/jpeg",
+          0.9,
+        );
+      } catch {
+        respond({ error: "Couldn't read the simulator screen." });
+      }
+    };
+    window.addEventListener("swift-sim-availability-query", onQuery);
+    window.addEventListener("swift-sim-capture-request", onCapture);
+    return () => {
+      window.removeEventListener("swift-sim-availability-query", onQuery);
+      window.removeEventListener("swift-sim-capture-request", onCapture);
+      // Unmounting (Stop / tab close) — tell the panel the grab is gone so its
+      // button greys out.
+      window.dispatchEvent(
+        new CustomEvent("swift-sim-availability", { detail: { projectId, available: false } }),
+      );
+    };
+  }, [projectId]);
+
   const drawFrame = useCallback((b64: string) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
