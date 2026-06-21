@@ -153,17 +153,19 @@ export async function pushAppStoreMetadata(
         auth,
         `/v1/apps/${ascAppId}/appStoreVersions?filter[platform]=IOS&limit=50`,
       );
-      // iOS-only (filtered above); never touch a live version.
-      const nonLive = (versions.data ?? []).filter((v) => !LIVE_STATES.has(appStoreState(v)));
-      // Prefer the exact marketing version we're publishing, then any known
-      // editable state, then any remaining non-live iOS version; create only
-      // when that exact version doesn't exist yet.
-      let version =
-        nonLive.find((v) => v.attributes?.versionString === marketingVersion) ??
-        nonLive.find((v) => EDITABLE_VERSION_STATES.has(appStoreState(v))) ??
-        nonLive[0];
+      // iOS-only (filtered above). Only ever edit the EXACT version we're
+      // publishing, and only when it's in an editable state — never write this
+      // release's metadata onto a different or non-editable (live / in-review)
+      // version.
+      let version = (versions.data ?? []).find(
+        (v) =>
+          v.attributes?.versionString === marketingVersion &&
+          EDITABLE_VERSION_STATES.has(appStoreState(v)),
+      );
       if (!version) {
-        // First submission and no editable iOS version yet — create one.
+        // No editable iOS version for THIS marketing version yet — create it.
+        // If Apple already has a different editable version, this surfaces as a
+        // warning (caught below) rather than silently editing the wrong one.
         version = await postResource(auth, `/v1/appStoreVersions`, {
           data: {
             type: "appStoreVersions",

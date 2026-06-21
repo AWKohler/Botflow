@@ -80,6 +80,9 @@ interface AppStoreReadinessStepProps {
   appName: string;
   bundleId: string;
   marketingVersion: string;
+  /** Reports when a billable op (draft/icon) is in flight, so the wizard can
+   *  block navigation that would unmount us and discard a paid-for result. */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 // ── Field limits (Apple's) ────────────────────────────────────────────────────
@@ -123,6 +126,7 @@ export function AppStoreReadinessStep({
   appName,
   bundleId,
   marketingVersion,
+  onBusyChange,
 }: AppStoreReadinessStepProps) {
   const { toast } = useToast();
   const storageKey = `app-store-readiness:${projectId}`;
@@ -205,6 +209,13 @@ export function AppStoreReadinessStep({
   useEffect(() => {
     metadataRef.current = metadata;
   }, [metadata]);
+
+  // Tell the wizard when a billable op (paid draft / icon generation) is in
+  // flight so it can block navigation — leaving mid-flight unmounts us and
+  // discards a result the user was charged for.
+  useEffect(() => {
+    onBusyChange?.(metaDrafting || iconGenerating);
+  }, [metaDrafting, iconGenerating, onBusyChange]);
 
   // Draft the store listing via the paid model endpoint. Skips the charge when
   // metadata already exists (persisted or edited) unless `force` — re-running

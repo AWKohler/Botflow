@@ -73,8 +73,9 @@ export async function POST(
     }
     meta[key] = v;
   }
-  // Apple requires the display name to be at least two characters.
-  if (meta.name !== undefined && meta.name.length < 2) {
+  // Apple requires the display name to be at least two characters. Count code
+  // points so a single astral character (e.g. an emoji) isn't read as two.
+  if (meta.name !== undefined && [...meta.name].length < 2) {
     return NextResponse.json({ error: "name must be at least 2 characters." }, { status: 400 });
   }
   if (Object.keys(meta).length === 0) {

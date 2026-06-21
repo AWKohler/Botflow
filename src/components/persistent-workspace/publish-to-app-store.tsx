@@ -261,6 +261,9 @@ export function PublishToAppStore({
   const storageKey = `swift-publish:${projectId}`;
 
   const [step, setStep] = useState<WizardStep>(1);
+  // True while the readiness step has a billable op (draft/icon) in flight —
+  // locks navigation so we don't unmount it and discard a paid-for result.
+  const [readinessBusy, setReadinessBusy] = useState(false);
   // Set when the user explicitly navigates back to Step 2 — suppresses the
   // "already connected → auto-advance" jump so they can actually look at it.
   const step2ManualRef = useRef(false);
@@ -726,6 +729,7 @@ export function PublishToAppStore({
     if (target === step) return;
     if (target > step) return; // forward only via the flow buttons
     if (buildLive) return; // don't navigate away mid-build / mid-processing
+    if (readinessBusy) return; // don't unmount readiness mid paid op (lost charge)
     if (target === 2) step2ManualRef.current = true;
     // Leaving the Submit step after a settled build starts a fresh pass — clear
     // the old build so returning shows the submit gate, not stale progress.
@@ -767,7 +771,7 @@ export function PublishToAppStore({
           {WIZARD_STEPS.map((s, i) => {
             const done = s.n < step;
             const current = s.n === step;
-            const clickable = s.n < step && !buildLive;
+            const clickable = s.n < step && !buildLive && !readinessBusy;
             return (
               <div key={s.n} className="flex min-w-0 items-center gap-2">
                 {i > 0 && <div className="h-px w-6 shrink-0 bg-border sm:w-10" />}
@@ -845,6 +849,7 @@ export function PublishToAppStore({
               appName={appName}
               bundleId={bundleId}
               marketingVersion={marketingVersion}
+              onBusyChange={setReadinessBusy}
             />
           )}
 
@@ -903,7 +908,7 @@ export function PublishToAppStore({
                 variant="outline"
                 size="sm"
                 onClick={() => goToStep((step - 1) as WizardStep)}
-                disabled={buildLive}
+                disabled={buildLive || readinessBusy}
               >
                 Back
               </Button>
@@ -932,6 +937,8 @@ export function PublishToAppStore({
                 size="sm"
                 className="gap-1.5 font-semibold"
                 onClick={() => setStep(4)}
+                disabled={readinessBusy}
+                title={readinessBusy ? "Finishing a paid step — one moment…" : undefined}
               >
                 Continue
                 <ChevronRight size={13} />

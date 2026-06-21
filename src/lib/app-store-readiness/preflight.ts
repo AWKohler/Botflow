@@ -72,7 +72,11 @@ function escapeForGrep(s: string): string {
 async function scan(projectId: string, script: string): Promise<{ ok: boolean; out: string }> {
   try {
     const res = await sandboxBash(projectId, script, { timeoutMs: 30_000 });
-    return { ok: true, out: res.stdout ?? "" };
+    // A nonzero exit means the scan itself failed (e.g. a missing Sources dir,
+    // signalled with `|| exit 3` below) — callers must not read an empty result
+    // as a passing "nothing found". Scripts neutralize grep's "no match" (1)
+    // with `|| true`, so a surviving nonzero code is a genuine failure.
+    return { ok: res.exitCode === 0, out: res.stdout ?? "" };
   } catch {
     return { ok: false, out: "" };
   }
@@ -107,7 +111,7 @@ export async function runPreflightChecks(
   // ── 1. Export compliance ──────────────────────────────────────────────────
   // Pass ONLY when explicitly set to NO — a present-but-YES value means the app
   // *does* use non-exempt encryption and still needs compliance documentation.
-  if (/ITSAppUsesNonExemptEncryption\s*:\s*["']?(?:NO|false)["']?/i.test(projectYml)) {
+  if (/^\s*ITSAppUsesNonExemptEncryption\s*:\s*["']?(?:NO|false)\b/im.test(projectYml)) {
     items.push({
       id: "compliance",
       label: "Export compliance",
@@ -159,7 +163,7 @@ export async function runPreflightChecks(
   // ── 3. Guideline 2.5.2 — no downloaded/executed code ──────────────────────
   const dynScan = await scan(
     projectId,
-    `grep -rEn '${DYNAMIC_CODE_PATTERNS.map((p) => escapeForGrep(p.pattern)).join("|")}' Sources 2>/dev/null | head -20 || true`,
+    `test -d Sources || exit 3; grep -rEn '${DYNAMIC_CODE_PATTERNS.map((p) => escapeForGrep(p.pattern)).join("|")}' Sources 2>/dev/null | head -20 || true`,
   );
   const dynHits = dynScan.out.split("\n").map((s) => s.trim()).filter(Boolean);
   if (!dynScan.ok) {
@@ -239,7 +243,7 @@ export async function runPreflightChecks(
   // ── 6. Privacy policy (advisory) ──────────────────────────────────────────
   const privacyScan = await scan(
     projectId,
-    `grep -rEl 'URLSession|Analytics|Firebase|Mixpanel|Amplitude' Sources 2>/dev/null | head -1`,
+    `test -d Sources || exit 3; grep -rEl 'URLSession|Analytics|Firebase|Mixpanel|Amplitude' Sources 2>/dev/null | head -1`,
   );
   items.push(
     !privacyScan.ok
