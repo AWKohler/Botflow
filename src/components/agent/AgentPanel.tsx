@@ -1007,8 +1007,15 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         const tc = part as { toolCallId?: string; state?: string; input?: unknown; output?: unknown };
         const toolCallId = tc.toolCallId ?? '';
         const state = tc.state ?? '';
-        if (toolName === 'endTurn' && state === 'output-available') {
-          endTurnFound = true;
+        // endTurn is a control-flow signal, not a visible action — skip it in
+        // EVERY state so it never lands in Live Actions. Previously only the
+        // final 'output-available' state was skipped; the earlier
+        // 'input-available' event pushed endTurn with status 'invoked' (spinner)
+        // and the later 'output-available' event hit this `continue` without
+        // ever clearing it. endTurn is fire-and-forget, so nothing updates that
+        // entry afterwards and the spinner runs forever.
+        if (toolName === 'endTurn') {
+          if (state === 'output-available') endTurnFound = true;
           continue;
         }
         const key = `${toolCallId}:${state}`;

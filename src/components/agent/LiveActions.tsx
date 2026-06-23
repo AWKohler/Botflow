@@ -11,7 +11,11 @@ type Props = {
   className?: string;
 };
 
-export function LiveActions({ actions, onClear, className }: Props) {
+export function LiveActions({ actions: allActions, onClear, className }: Props) {
+  // endTurn is a control-flow signal the agent calls to mark "done", not a
+  // user-visible action. Never render it — defends against any stray 'invoked'
+  // endTurn entry (which would otherwise spin forever, since it's fire-and-forget).
+  const actions = useMemo(() => allActions.filter((a) => a.toolName !== 'endTurn'), [allActions]);
   const fileActions = actions.filter((a) => Boolean(a.fileChange));
   const totals = useMemo(() => (
     fileActions.reduce(
