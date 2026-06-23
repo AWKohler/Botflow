@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+
+// Measure before the browser paints (on the client) so the device never paints
+// at a stale scale and visibly "flashes" to its real size — e.g. when switching
+// iPad → iPhone, where the previous device's scale would otherwise be applied to
+// the new, much taller bezel for one frame. Falls back to useEffect on the
+// server to avoid React's "useLayoutEffect does nothing on the server" warning.
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 export type DeviceModelUI = "iPhone-16-Pro" | "iPad-Pro";
 export type OrientationUI = "portrait" | "landscape";
@@ -79,7 +86,7 @@ export function DeviceFrame({
   // until then (see `visibility` below) so it never paints at a guessed scale
   // and visibly "flashes" to its real size on the first ResizeObserver tick.
   const [scale, setScale] = useState<number | null>(null);
-  useEffect(() => {
+  useIsoLayoutEffect(() => {
     const outer = outerRef.current;
     if (!outer) return;
     const measure = (): void => {

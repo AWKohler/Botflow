@@ -207,7 +207,10 @@ export function SwiftPipWindow({ projectId, mode, children }: SwiftPipWindowProp
         "flex flex-col",
         isPip
           ? "fixed z-50 overflow-hidden rounded-xl border border-border bg-surface shadow-2xl"
-          : "absolute inset-0 pb-2.5 pr-2.5 z-10",
+          // Full mode owns NO padding — the inner SwiftSimulatorPreview supplies
+          // the `pb-2.5 pr-2.5` gap so it isn't double-applied (this wrapper puts
+          // children in a flow `flex-1` div, which respects padding).
+          : "absolute inset-0 z-10",
       )}
       style={
         isPip
