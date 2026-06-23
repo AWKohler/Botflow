@@ -216,7 +216,7 @@ export async function invalidateBetaCache(userId: string): Promise<void> {
 /** Which tier is required to use a model on server-side keys */
 export const MODEL_TIER_REQUIREMENT: Record<string, Tier> = {
   'fireworks-minimax-m3': 'free',
-  'fireworks-glm-5p1': 'free',
+  'fireworks-glm-5p2': 'free',
   'fireworks-kimi-k2p7': 'free',
   'gpt-5.3-codex': 'pro',            // Pro+ for server key; free requires BYOK/OAuth
   'gpt-5.4': 'pro',                  // Pro+ for server key

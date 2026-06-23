@@ -35,7 +35,8 @@ const MODEL_DISPLAY: Record<string, string> = {
   'fireworks-minimax-m3': 'MiniMax M3',
   'fireworks-minimax-m2p7': 'MiniMax M2.7', // legacy usage records
   // 'fireworks-glm-5': 'GLM-5',
-  'fireworks-glm-5p1': 'GLM-5.1',
+  'fireworks-glm-5p2': 'GLM-5.2',
+  'fireworks-glm-5p1': 'GLM-5.1', // historical usage records
   'fireworks-kimi-k2p7': 'Kimi K2.7',
   'fireworks-kimi-k2p6': 'Kimi K2.6', // historical usage records
 
