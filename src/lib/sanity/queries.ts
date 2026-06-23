@@ -1,3 +1,5 @@
+import { BLOG_NOINDEX_BEFORE } from './blog-seo';
+
 const POST_FIELDS_BASE = /* groq */ `
   _id,
   title,
@@ -56,6 +58,7 @@ export const featuredPostsQuery = /* groq */ `
 export const postBySlugQuery = /* groq */ `
   *[_type == "blog" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
     ${POST_FIELDS_BASE},
+    _createdAt,
     body[]{
       ...,
       _type == "image" => {
@@ -88,6 +91,20 @@ export const postBySlugQuery = /* groq */ `
 
 export const postSlugsQuery = /* groq */ `
   *[_type == "blog" && defined(slug.current) && !(_id in path("drafts.**"))]{
+    "slug": slug.current,
+    publishedAt,
+    "updatedAt": coalesce(updatedAt, _updatedAt)
+  }
+`;
+
+// Slugs eligible for the sitemap: indexable posts only. Mirrors the rule in
+// isBlogPostNoIndexed() — exclude posts explicitly marked noIndex, and exclude
+// pre-cutover autoblog posts unless explicitly force-indexed (seo.noIndex==false).
+export const indexablePostSlugsQuery = /* groq */ `
+  *[_type == "blog" && defined(slug.current) && !(_id in path("drafts.**"))
+    && seo.noIndex != true
+    && (seo.noIndex == false || _createdAt >= "${BLOG_NOINDEX_BEFORE}")
+  ]{
     "slug": slug.current,
     publishedAt,
     "updatedAt": coalesce(updatedAt, _updatedAt)

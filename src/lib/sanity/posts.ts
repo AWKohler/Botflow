@@ -1,6 +1,7 @@
 import { sanityFetch } from './fetch';
 import {
   allPostsQuery,
+  indexablePostSlugsQuery,
   postBySlugQuery,
   postSlugsQuery,
   relatedPostsQuery,
@@ -95,6 +96,16 @@ export async function getPostSlugs(): Promise<BlogPostSlug[]> {
   return (
     (await sanityFetch<BlogPostSlug[]>({
       query: postSlugsQuery,
+      revalidate: 300,
+    })) ?? []
+  );
+}
+
+/** Slugs that should appear in the sitemap — indexable posts only. */
+export async function getIndexablePostSlugs(): Promise<BlogPostSlug[]> {
+  return (
+    (await sanityFetch<BlogPostSlug[]>({
+      query: indexablePostSlugsQuery,
       revalidate: 300,
     })) ?? []
   );
