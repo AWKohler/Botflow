@@ -219,7 +219,11 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
       {open && (
         <div
           className={cn(
-            'absolute z-50 mt-1 min-w-[280px] max-h-[320px] overflow-y-auto modern-scrollbar rounded-xl border border-border bg-surface shadow-lg',
+            // Opens upward (bottom-full) so a long list never spills below the
+            // trigger — the model selector lives in a bottom toolbar (landing
+            // prompt box / agent input), where a downward menu would be clipped
+            // by the hero's overflow-hidden or overlapped by the next section.
+            'absolute bottom-full z-50 mb-1 min-w-[280px] max-h-[320px] overflow-y-auto modern-scrollbar rounded-xl border border-border bg-surface shadow-lg',
             isSm ? 'right-0' : 'left-0',
           )}
         >
