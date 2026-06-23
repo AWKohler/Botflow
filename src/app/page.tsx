@@ -1362,6 +1362,16 @@ export default function LandingV2() {
   const convexSelectorRef = useRef<HTMLDivElement>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsDefaultTab, setSettingsDefaultTab] = useState<'usage' | 'connections' | 'subscription'>('usage');
+  // Provider sign-in pills: signed-in users jump to the Connections settings tab
+  // (to link Claude/ChatGPT); signed-out users are sent to login first.
+  const handleProviderAuthClick = useCallback(() => {
+    if (isSignedIn) {
+      setSettingsDefaultTab('connections');
+      setShowSettings(true);
+    } else {
+      router.push('/sign-in');
+    }
+  }, [isSignedIn, router]);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [projectStep, setProjectStep] = useState<null | 'convex' | 'name'>(null);
   const [projectQuotaLeft, setProjectQuotaLeft] = useState<number | null>(null);
@@ -2185,21 +2195,23 @@ export default function LandingV2() {
               <div className="mt-4 flex flex-col items-center gap-3">
                 <div className="flex flex-col min-[390px]:flex-row items-center justify-center gap-2">
                   {process.env.NEXT_PUBLIC_ANTHROPIC_OAUTH_ENABLED === 'true' && (
-                    <Link
-                      href="/sign-up"
-                      className="inline-flex items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
+                    <button
+                      type="button"
+                      onClick={handleProviderAuthClick}
+                      className="inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
                     >
                       <Anthropic className="h-4 w-4 shrink-0" />
                       Sign in with Claude
-                    </Link>
+                    </button>
                   )}
-                  <Link
-                    href="/sign-up"
-                    className="inline-flex items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
+                  <button
+                    type="button"
+                    onClick={handleProviderAuthClick}
+                    className="inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
                   >
                     <OpenAI className="h-4 w-4 shrink-0" />
                     Sign in with ChatGPT
-                  </Link>
+                  </button>
                 </div>
 
 
