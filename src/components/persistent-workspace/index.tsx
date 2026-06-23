@@ -359,6 +359,19 @@ export function PersistentWorkspace({
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedFile, hasUnsavedChanges, handleSaveFile]);
 
+  // Warn before leaving (tab close / refresh / external navigation) when the
+  // open file has unsaved edits, so work isn't lost. The listener is only armed
+  // while changes are pending, so there's no prompt during normal navigation.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent): void => {
+      e.preventDefault();
+      e.returnValue = ""; // Chrome requires returnValue to be set to show the prompt
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   return (
     <div className="h-screen flex bolt-bg text-fg">
       {/* Agent sidebar */}
@@ -783,7 +796,7 @@ function StoppedPreviewPlaceholder({
   };
 
   return (
-    <div className="absolute inset-0 flex flex-col gap-2 p-2.5 pb-2.5 pr-2.5">
+    <div className="absolute inset-0 flex flex-col gap-2 pb-2.5 pr-2.5">
       {/* Picker bar — choose the device/orientation before starting. */}
       <div className="flex h-9 flex-shrink-0 items-center rounded-xl border border-border bg-elevated/60 px-3">
         <span className="text-[11px] text-muted">
