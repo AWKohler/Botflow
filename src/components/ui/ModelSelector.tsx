@@ -37,7 +37,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 /** Minimum tier required to use a model on server-side keys (must match backend MODEL_TIER_REQUIREMENT) */
 const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
   'fireworks-minimax-m3': 'free',
-  'fireworks-glm-5p1': 'free',
+  'fireworks-glm-5p2': 'free',
   'fireworks-kimi-k2p7': 'free',
   'gpt-5.3-codex': 'pro',       // Pro+ for server key; free requires BYOK/OAuth
   'gpt-5.4': 'pro',             // Pro+
@@ -54,7 +54,7 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
  */
 const SERVER_KEY_MODELS = new Set<ModelId>([
   'fireworks-minimax-m3',
-  'fireworks-glm-5p1',
+  'fireworks-glm-5p2',
   'fireworks-kimi-k2p7',
   'gpt-5.3-codex',
   'gpt-5.4',
@@ -68,7 +68,7 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
 /** Rounded per-model cost multiplier for user display */
 const MODEL_COST_LABEL: Record<ModelId, string> = {
   'fireworks-minimax-m3': 'x1',
-  'fireworks-glm-5p1': 'x3',
+  'fireworks-glm-5p2': 'x3',
   'fireworks-kimi-k2p7': 'x3',
   'gpt-5.3-codex': 'x4',
   'gemini-3.1-pro-preview': 'x5',
@@ -91,7 +91,7 @@ function formatContextSize(tokens: number): string {
 // Order: cheapest → most expensive (by credit multiplier)
 const MODEL_ORDER: ModelId[] = [
   'fireworks-minimax-m3',  // x1
-  'fireworks-glm-5p1',         // x3
+  'fireworks-glm-5p2',         // x3
   'fireworks-kimi-k2p7',     // x3
   'gpt-5.3-codex',           // x4
   'gemini-3.1-pro-preview',  // x5
@@ -202,7 +202,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
           'inline-flex items-center gap-1.5 border transition min-w-0',
           isSm
             ? 'bg-elevated border-border rounded-md px-2 py-1 text-xs text-muted max-w-[180px]'
-            : 'pointer-events-auto rounded-full border-border bg-elevated px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm shadow-soft hover:border-transparent hover:bg-accent/15 max-w-[120px] sm:max-w-[200px]',
+            : 'pointer-events-auto rounded-full border-border bg-elevated px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm hover:border-transparent hover:bg-accent/15 max-w-[120px] sm:max-w-[200px]',
         )}
       >
         {leading != null && (
@@ -219,7 +219,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
       {open && (
         <div
           className={cn(
-            'absolute z-50 mt-1 min-w-[280px] rounded-xl border border-border bg-surface shadow-lg overflow-hidden',
+            'absolute z-50 mt-1 min-w-[280px] max-h-[320px] overflow-y-auto modern-scrollbar rounded-xl border border-border bg-surface shadow-lg',
             isSm ? 'right-0' : 'left-0',
           )}
         >

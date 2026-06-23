@@ -11,7 +11,7 @@ export type ModelId =
   | "claude-fable-5"
   | "gemini-3.1-pro-preview"
   | "fireworks-minimax-m3"
-  | "fireworks-glm-5p1"
+  | "fireworks-glm-5p2"
   | "fireworks-kimi-k2p7";
 
 export type Provider = "openai" | "anthropic" | "google" | "fireworks";
@@ -126,21 +126,21 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     criticalThreshold: 0.9,
     supportsImages: false,
   },
-  // "fireworks-glm-5": {
-  //   id: "fireworks-glm-5",
+  // "fireworks-glm-5p1": {
+  //   id: "fireworks-glm-5p1",
   //   provider: "fireworks",
-  //   apiModelId: "accounts/fireworks/models/glm-5",
-  //   displayName: "GLM-5",
+  //   apiModelId: "accounts/fireworks/models/glm-5p1",
+  //   displayName: "GLM-5.1",
   //   maxContextTokens: 202_800,
   //   warnThreshold: 0.7,
   //   criticalThreshold: 0.9,
   //   supportsImages: false,
   // },
-  "fireworks-glm-5p1": {
-    id: "fireworks-glm-5p1",
+  "fireworks-glm-5p2": {
+    id: "fireworks-glm-5p2",
     provider: "fireworks",
-    apiModelId: "accounts/fireworks/models/glm-5p1",
-    displayName: "GLM-5.1",
+    apiModelId: "accounts/fireworks/models/glm-5p2",
+    displayName: "GLM-5.2",
     maxContextTokens: 202_800,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
@@ -164,7 +164,7 @@ export function resolveModelId(stored: string | null | undefined): ModelId {
   if (stored === "claude-sonnet-4.5" || stored === "claude-sonnet-4.6") return "claude-sonnet-4-6";
   if (stored === "claude-opus-4.5" || stored === "claude-opus-4.6" || stored === "claude-opus-4.7" || stored === "claude-opus-4-7" || stored === "claude-opus-4-1") return "claude-opus-4-8";
   if (stored === "gpt-4.1" || stored === "gpt-5.2") return "gpt-5.3-codex";
-  if (stored === "fireworks-glm-5") return "fireworks-glm-5p1";
+  if (stored === "fireworks-glm-5" || stored === "fireworks-glm-5p1") return "fireworks-glm-5p2";
   if (stored === "fireworks-minimax-m2p7" || stored === "fireworks-minimax-m2p5") return "fireworks-minimax-m3";
   if (stored === "fireworks-kimi-k2p6") return "fireworks-kimi-k2p7";
   // Still-valid model: pass through

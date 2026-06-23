@@ -3,7 +3,7 @@ type Props = React.SVGProps<SVGSVGElement>;
 export function OpenAI(props: Props) {
   return (
     <svg
-      viewBox="0 0 721 721"
+      viewBox="118.557 117.798 484.139 484.139"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       {...props}

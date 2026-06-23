@@ -186,6 +186,60 @@ export function EditorialGrid() {
 }
 
 // ============================================================================
+// Margin hatch — diagonal stripe ornament for the page/section/nav margins
+// ============================================================================
+
+// 6×6 diagonal stripe tile (public/stripe.svg) used as a MASK, repeated at 6px,
+// then filled with the themed --margin-stripe color. The mask keeps the exact
+// tile shape from the reference design while letting the color vary per theme:
+// warm/faint #23201A on dark (the reference tone), soft on-palette gray on light.
+const MARGIN_TILE_STYLE = {
+  backgroundColor: 'var(--margin-stripe)',
+  maskImage: 'url(/stripe.svg)',
+  maskRepeat: 'repeat',
+  maskPosition: 'left top',
+  maskSize: '6px auto',
+  WebkitMaskImage: 'url(/stripe.svg)',
+  WebkitMaskRepeat: 'repeat',
+  WebkitMaskPosition: 'left top',
+  WebkitMaskSize: '6px auto',
+};
+
+// Fills the nearest position:relative ancestor's left/right margin gutters (the
+// px-4/sm:px-6 page margin, matched exactly by w-4 / sm:w-6) with the stripe
+// tile, aligned to the EditorialGrid boundary lines. Drop into a relative
+// section/header to turn the hatch on for that band. pointer-events-none and
+// confined to the empty gutter, so it never overlaps the centered content.
+export function MarginHatch() {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none select-none absolute inset-0 overflow-hidden"
+    >
+      <div className="absolute inset-y-0 left-0 w-4 sm:w-6" style={MARGIN_TILE_STYLE} />
+      <div className="absolute inset-y-0 right-0 w-4 sm:w-6" style={MARGIN_TILE_STYLE} />
+    </div>
+  );
+}
+
+// Paints the left/right margin gutters with the base --sand-bg. Drop into a
+// relative section that has a sand-surface background so its margins stay
+// sand-bg — the surface color then reads as an inset panel framed by the
+// editorial gutters, matching the sand-bg gutters of the other sections. Same
+// geometry as MarginHatch (w-4 / sm:w-6 = the px-4/sm:px-6 page gutter).
+export function MarginBg() {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none select-none absolute inset-0 overflow-hidden"
+    >
+      <div className="absolute inset-y-0 left-0 w-4 sm:w-6 bg-[var(--sand-bg)]" />
+      <div className="absolute inset-y-0 right-0 w-4 sm:w-6 bg-[var(--sand-bg)]" />
+    </div>
+  );
+}
+
+// ============================================================================
 // Shared nav (matches landing-v2)
 // ============================================================================
 
@@ -196,16 +250,30 @@ export function LandingNav() {
   return (
     <>
       <header className="sticky top-0 z-50 backdrop-blur-lg bg-[var(--sand-bg)]/80">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3">
+        <MarginHatch />
+        <div className="mx-auto max-w-7xl px-6 sm:px-10 py-4">
           <div className="flex items-center justify-between md:grid md:grid-cols-3">
-            <Link className="flex items-center gap-2.5" href="/">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+            <Link className="flex items-center gap-5" href="/">
+              {/* --- Old glyph + wordmark lockup (kept for now — trying the serif logo) ---
               <img src="/brand/botflow-glyph.svg" alt="" className="h-8 w-8" />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/brand/botflow-wordmark.svg"
                 alt="Botflow"
                 className="h-5 w-auto botflow-wordmark-invert"
+              />
+              --- */}
+              {/* Botflow.io lockup (includes the glyph) — black PNG on light, white PNG on dark */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/brand/botflow_logo_black.png"
+                alt="Botflow"
+                className="h-7 w-auto block dark:hidden"
+              />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/brand/botflow_logo_white.png"
+                alt="Botflow"
+                className="h-7 w-auto hidden dark:block"
               />
             </Link>
 

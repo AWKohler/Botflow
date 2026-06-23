@@ -987,7 +987,6 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react';
-import Script from 'next/script';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { SignedIn, SignedOut, SignInButton, useUser } from '@clerk/nextjs';
@@ -1001,7 +1000,7 @@ import {
   Bot,
   Layers,
   Plus,
-  Laptop,
+  Lock,
   ImagePlus,
   X as IconX,
   KeyRound,
@@ -1020,16 +1019,14 @@ import { WorkspaceMockup } from '@/components/landing/WorkspaceMockup';
 import { CardSpotlight } from '@/components/landing/CardSpotlight';
 import { ModelCloud } from '@/components/landing/ModelCloud';
 import { MobileFeatureGrid } from '@/components/landing/MobileFeatureGrid';
-import { LandingNav } from '@/components/landing/shared';
+import { LandingNav, MarginHatch, MarginBg } from '@/components/landing/shared';
 import { LandingShowcase } from '@/components/showcase/LandingShowcase';
 import { Convex } from '@/components/icons/convex';
 import { Anthropic } from '@/components/icons/anthropic';
 import { OpenAI } from '@/components/icons/openai';
+import { Swift } from '@/components/icons/swift';
 import { Instrument_Serif } from 'next/font/google';
 import {
-  getNextProjectPlatform,
-  getProjectPlatformLabel,
-  getProjectPlatformShortLabel,
   isSwiftPlatformEnabled,
   normalizeProjectPlatform,
   type ProjectPlatform,
@@ -1292,6 +1289,8 @@ const steps = [
 // Fixed overlay: 12-column grid, border-color lines at 1px gaps, fades top/bottom
 // ============================================================================
 
+// Fixed overlay drawing the two continuous margin boundary lines that run the
+// full height of the page (left + right content edges), faded at top/bottom.
 function EditorialGrid() {
   return (
     <div
@@ -1339,8 +1338,14 @@ export default function LandingV2() {
   // client user object — no extra fetch. Gates the Swift platform toggle below;
   // the projects API enforces the same rule server-side.
   const isBetaUser = (user?.publicMetadata as { isBeta?: boolean } | undefined)?.isBeta === true;
+  const SWIFT_ORANGE = '#f46a13';
+  const hasSwiftAccess = isSwiftPlatformEnabled() && isBetaUser;
   const [prompt, setPrompt] = useState('');
   const [platform, setPlatform] = useState<ProjectPlatform>('sandboxed-web');
+  // Accent that frames the prompt box for the selected platform: neutral sand
+  // for Web (1px), Swift orange and thicker (2px) when Swift is selected.
+  const promptFrameColor = platform === 'swift' ? SWIFT_ORANGE : 'var(--sand-border)';
+  const promptFrameWidth = platform === 'swift' ? 2 : 1;
   const [model, setModel] = useState<ModelId>('fireworks-kimi-k2p7');
   const { toast } = useToast();
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
@@ -1370,7 +1375,7 @@ export default function LandingV2() {
   const PENDING_PARAMS_KEY = 'huggable_pending_start_params';
   const PENDING_NAME_KEY = 'huggable_pending_project_name';
   const serverKeyModels = useMemo(() => new Set([
-    'fireworks-minimax-m3', 'fireworks-glm-5', 'fireworks-kimi-k2p7',
+    'fireworks-minimax-m3', 'fireworks-glm-5p2', 'fireworks-kimi-k2p7',
     'gpt-5.3-codex', 'gpt-5.4', 'gpt-5.5', 'claude-sonnet-4.6', 'claude-opus-4.7', 'claude-opus-4-8',
   ]), []);
   const landingSignInModalAppearance = {
@@ -1406,7 +1411,7 @@ export default function LandingV2() {
       setPrompt(e.target.value);
       const el = e.target;
       el.style.height = 'auto';
-      el.style.height = Math.min(el.scrollHeight, 300) + 'px';
+      el.style.height = Math.min(el.scrollHeight, 160) + 'px';
     },
     [],
   );
@@ -1758,7 +1763,11 @@ export default function LandingV2() {
     '@type': 'Organization',
     name: 'Botflow',
     url: 'https://botflow.io',
-    logo: 'https://botflow.io/botflow_white.svg',
+    logo: 'https://botflow.io/brand/botflow-glyph.svg',
+    description:
+      'Botflow is an AI app builder that turns a chat prompt into a deployed full-stack web app.',
+    // Add your social/profile URLs here so Google can disambiguate the Botflow
+    // entity from other "Botflow" brands and tie them to this site (knowledge panel).
     sameAs: [],
   };
 
@@ -1769,20 +1778,44 @@ export default function LandingV2() {
     url: 'https://botflow.io',
     description:
       'Create full-stack web apps by chatting with AI. Botflow runs a real Node.js environment in your browser.',
-    potentialAction: {
-      '@type': 'SearchAction',
-      target: { '@type': 'EntryPoint', urlTemplate: 'https://botflow.io/explore?q={search_term_string}' },
-      'query-input': 'required name=search_term_string',
+  };
+
+  const softwareAppJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Botflow',
+    applicationCategory: 'DeveloperApplication',
+    operatingSystem: 'Web',
+    url: 'https://botflow.io',
+    description:
+      "Describe what you want and Botflow's AI writes the code, provisions the backend, and deploys it — a real full-stack web app, from one conversation.",
+    offers: {
+      '@type': 'Offer',
+      price: '0',
+      priceCurrency: 'USD',
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: 'Botflow',
+      url: 'https://botflow.io',
     },
   };
 
   return (
     <>
-    <Script id="org-jsonld" type="application/ld+json" strategy="afterInteractive"
+    {/* JSON-LD rendered as plain <script> so it ships in the initial server HTML
+        (next/script + afterInteractive only injected it client-side). */}
+    <script
+      type="application/ld+json"
       dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
     />
-    <Script id="website-jsonld" type="application/ld+json" strategy="afterInteractive"
+    <script
+      type="application/ld+json"
       dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
+    />
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareAppJsonLd) }}
     />
     <div className="antialiased text-[var(--sand-text)] bg-[var(--sand-bg)] min-h-screen">
       <EditorialGrid />
@@ -1791,7 +1824,10 @@ export default function LandingV2() {
       {/* ================================================================ */}
       {/* HERO                                                             */}
       {/* ================================================================ */}
-      <section className="relative overflow-hidden hero-grid">
+      <section
+        className="relative overflow-hidden"
+        /* hero-grid — ornamental background grid commented out */
+      >
 
         <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-16 sm:pt-24 pb-8 sm:pb-12">
           <div className="max-w-3xl mx-auto text-center">
@@ -1805,16 +1841,16 @@ export default function LandingV2() {
               <h1
                 className={cn(
                   serif.className,
-                  'text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight leading-[1.05]',
+                  'text-4xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight leading-[1.05]',
                 )}
               >
-                From idea to{' '}
+                Build{' '}
                 <span className="relative inline-block">
-                  <span style={{ color: 'var(--sand-accent)' }}>production</span>
+                  <span>full-stack apps</span>
                   <span
-                    className="absolute -bottom-1 left-0 right-0 h-[3px] rounded-full origin-center"
+                    className="absolute bottom-2 left-0 right-0 h-[3px] rounded-full origin-center scale-x-95 ml-5"
                     style={{
-                      background: 'var(--sand-accent)',
+                      background: 'var(--sand-font)',
                       opacity: 0.5,
                       animation: `lineGrowX 0.8s ${EASE_SNAP} 0.5s both`,
                     }}
@@ -1822,27 +1858,109 @@ export default function LandingV2() {
                   />
                 </span>
                 <br />
-                in one conversation
+                by chatting with AI
               </h1>
             </Reveal>
 
             {/* Subheading */}
             <Reveal delay={150}>
-              <p className="mt-6 text-lg sm:text-xl text-[var(--sand-text-muted)] max-w-2xl mx-auto leading-relaxed">
-                Create apps and websites by chatting with AI.
+              <p className="mt-6 text-lg sm:text-xl text-[var(--sand-text-muted)] max-w-3xl mx-auto leading-relaxed">
+                From idea to production in one conversation — no setup, no deploys, just ship.
               </p>
             </Reveal>
 
             {/* Prompt box */}
             <Reveal delay={250} className="relative z-40">
               <div className="w-full mt-8">
-                <div className="flex flex-col rounded-2xl sm:rounded-3xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] backdrop-blur-sm shadow-[0_2px_0_rgba(0,0,0,0.02),0_20px_60px_-20px_rgba(0,0,0,0.18)]">
+                {/* Platform tabs — sit on top of the prompt box; the selected
+                    tab's accent color frames the box. Web is the default; Swift
+                    is gated to beta users (shows a lock until unlocked, then
+                    lights up in Swift orange #f46a13). */}
+                <div
+                  className="flex items-end gap-1 pl-4 sm:pl-6 relative z-10"
+                  style={{ marginBottom: -promptFrameWidth }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setPlatform('sandboxed-web')}
+                    title="Build a web app"
+                    className={cn(
+                      'relative inline-flex items-center gap-1.5 rounded-t-xl px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-medium transition',
+                      platform !== 'swift'
+                        ? 'bg-[var(--sand-elevated)] text-[var(--sand-text)]'
+                        : 'bg-[var(--sand-surface)] text-[var(--sand-text-muted)] hover:text-[var(--sand-text)]',
+                    )}
+                    style={
+                      platform !== 'swift'
+                        ? {
+                            borderColor: promptFrameColor,
+                            borderTopWidth: promptFrameWidth,
+                            borderLeftWidth: promptFrameWidth,
+                            borderRightWidth: promptFrameWidth,
+                            borderBottomWidth: 0,
+                          }
+                        : { borderColor: promptFrameColor, borderBottomWidth: promptFrameWidth }
+                    }
+                  >
+                    <Globe className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    Web
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (hasSwiftAccess) {
+                        setPlatform('swift');
+                      } else {
+                        toast({
+                          title: 'Swift is in private beta',
+                          description:
+                            'Native Swift apps are rolling out to beta users — access is coming soon.',
+                        });
+                      }
+                    }}
+                    aria-disabled={!hasSwiftAccess}
+                    title={hasSwiftAccess ? 'Build a native Swift app' : 'Swift is in private beta'}
+                    className={cn(
+                      'relative inline-flex items-center gap-1.5 rounded-t-xl px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-medium transition',
+                      platform === 'swift'
+                        ? 'bg-[var(--sand-elevated)]'
+                        : 'bg-[var(--sand-surface)]',
+                      platform !== 'swift' && !hasSwiftAccess && 'text-[var(--sand-text-muted)]',
+                    )}
+                    style={
+                      platform === 'swift'
+                        ? {
+                            borderColor: SWIFT_ORANGE,
+                            borderTopWidth: promptFrameWidth,
+                            borderLeftWidth: promptFrameWidth,
+                            borderRightWidth: promptFrameWidth,
+                            borderBottomWidth: 0,
+                            color: SWIFT_ORANGE,
+                          }
+                        : {
+                            borderColor: promptFrameColor,
+                            borderBottomWidth: promptFrameWidth,
+                            ...(hasSwiftAccess ? { color: SWIFT_ORANGE } : {}),
+                          }
+                    }
+                  >
+                    <Swift className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    Swift
+                    {!hasSwiftAccess && (
+                      <Lock className="h-3 w-3 sm:h-3.5 sm:w-3.5 opacity-90" />
+                    )}
+                  </button>
+                </div>
+                <div
+                  className="flex flex-col rounded-2xl sm:rounded-3xl border bg-[var(--sand-elevated)] shadow-[0_2px_0_rgba(0,0,0,0.02),0_20px_60px_-20px_rgba(0,0,0,0.18)]"
+                  style={{ borderColor: promptFrameColor, borderWidth: promptFrameWidth }}
+                >
                   <textarea
                     ref={textareaRef}
                     placeholder="Ask Botflow to create a web app that..."
                     className="w-full bg-transparent px-4 sm:px-5 pt-3 sm:pt-4 pb-2 text-sm sm:text-lg text-[var(--sand-text)] placeholder-[var(--sand-text-muted)] outline-none resize-none overflow-y-auto modern-scrollbar text-left"
                     aria-label="Generation prompt"
-                    style={{ minHeight: 96, maxHeight: 300 }}
+                    style={{ minHeight: 96, maxHeight: 160 }}
                     maxLength={30000}
                     value={prompt}
                     onChange={handlePromptChange}
@@ -1912,22 +2030,6 @@ export default function LandingV2() {
                             </div>
                           )}
                         </div>
-                        {isSwiftPlatformEnabled() && isBetaUser && (
-                          <button
-                            type="button"
-                            onClick={() => setPlatform(getNextProjectPlatform(platform))}
-                            className="shrink-0 inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm hover:border-transparent hover:bg-[var(--sand-accent)]/15 transition"
-                            title="Toggle platform"
-                          >
-                            <Laptop className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                            <span className="hidden sm:inline">
-                              {getProjectPlatformLabel(platform)}
-                            </span>
-                            <span className="sm:hidden">
-                              {getProjectPlatformShortLabel(platform)}
-                            </span>
-                          </button>
-                        )}
                         <ModelSelector
                           value={model}
                           onChange={setModel}
@@ -1957,7 +2059,8 @@ export default function LandingV2() {
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src="/convex-color.svg" className="h-3.5 w-3.5" alt="" />
                               ) : convexBackendType === 'user' ? (
-                                <KeyRound className="h-3.5 w-3.5" />
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src="/convex-white.svg" className="h-3.5 w-3.5" alt="" />
                               ) : (
                                 <Slash className="h-3.5 w-3.5" />
                               )}
@@ -2023,7 +2126,8 @@ export default function LandingV2() {
                                     convexBackendType === 'user' ? 'bg-[var(--sand-elevated)]' : 'hover:bg-[var(--sand-elevated)]',
                                   )}
                                 >
-                                  <KeyRound className="h-4 w-4 mt-0.5 shrink-0 text-[var(--sand-text)]" />
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src="/convex-white.svg" className="h-4 w-4 mt-0.5 shrink-0" alt="" />
                                   <div>
                                     <div className="font-medium text-[var(--sand-text)]">Bring Your Own Convex</div>
                                     <div className="text-xs text-[var(--sand-text-muted)] mt-0.5">Will require authentication</div>
@@ -2080,33 +2184,22 @@ export default function LandingV2() {
             <Reveal delay={350}>
               <div className="mt-4 flex flex-col items-center gap-3">
                 <div className="flex flex-col min-[390px]:flex-row items-center justify-center gap-2">
-                  <SignedOut>
-                    {process.env.NEXT_PUBLIC_ANTHROPIC_OAUTH_ENABLED === 'true' && (
-                      <Link
-                        href="/sign-up"
-                        className="inline-flex items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
-                      >
-                        <Anthropic className="h-4 w-4 shrink-0" />
-                        Sign in with Claude
-                      </Link>
-                    )}
+                  {process.env.NEXT_PUBLIC_ANTHROPIC_OAUTH_ENABLED === 'true' && (
                     <Link
                       href="/sign-up"
                       className="inline-flex items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
                     >
-                      <OpenAI className="h-4 w-4 shrink-0" />
-                      Sign in with ChatGPT
+                      <Anthropic className="h-4 w-4 shrink-0" />
+                      Sign in with Claude
                     </Link>
-                  </SignedOut>
-                  <SignedIn>
-                    <Link
-                      href="/projects"
-                      className="inline-flex items-center gap-2 rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3.5 py-1.5 text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
-                    >
-                      Go to dashboard
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </Link>
-                  </SignedIn>
+                  )}
+                  <Link
+                    href="/sign-up"
+                    className="inline-flex items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
+                  >
+                    <OpenAI className="h-4 w-4 shrink-0" />
+                    Sign in with ChatGPT
+                  </Link>
                 </div>
 
 
@@ -2132,18 +2225,18 @@ export default function LandingV2() {
 
         {/* HERO MOCKUP — hidden on mobile, not enough room to render well */}
         <Reveal delay={450} className="hidden md:block">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 pb-16 sm:pb-24">
+          <div className="mx-auto max-w-7xl px-6 sm:px-8 pb-16 sm:pb-24">
             <WorkspaceMockup
               messages={[
                 {
                   role: 'user',
                   content:
-                    'Build me a dark-themed landing page for Botflow Compute, an AI cloud platform. Include a navbar, a hero section with a GPU chip image that reveals a heatmap on hover, and a footer.',
+                    'Build me Flowsync — a finance dashboard SaaS landing page. Dark, premium feel with a 3D hero visual, multi-currency account cards, a recent transactions feed, and a smart forecasting section.',
                 },
                 {
                   role: 'assistant',
                   content:
-                    "I'll create a dark-themed landing page for Botflow Compute, with 3js designs.",
+                    "I'll build the Flowsync landing page: a Three.js hero, USD/EUR account cards, a live transactions feed, and an AI forecasting panel.",
                   toolCalls: [
                     { name: 'writeFile', done: true },
                     { name: 'writeFile', done: true },
@@ -2156,15 +2249,15 @@ export default function LandingV2() {
                 {
                   role: 'assistant',
                   content:
-                    'Botflow Compute is live, complete with a GPU heatmap effect in the hero section.',
+                    'Flowsync is live — the 3D hero animates on load, and the dashboard shows account balances with a recent activity log.',
                 },
                 {
                   role: 'user',
-                  content: 'Add a dashboard where uses can make compute reservations.',
+                  content: "Add a testimonials section with finance leaders, and a ‘Book a Free Demo’ CTA.",
                 },
                 {
                   role: 'assistant',
-                  content: 'Adding a dashboard where uses can make compute reservations, in a beautiful interface.',
+                  content: "Adding a ‘Loved by finance teams’ testimonials grid and a Book a Free Demo call-to-action.",
                   toolCalls: [
                     { name: 'readFile', done: true },
                     { name: 'writeFile', done: true },
@@ -2172,10 +2265,11 @@ export default function LandingV2() {
                   ],
                 },
               ]}
-              previewSrc="https://bf-demo-app.pages.dev/"
+              previewSrc="https://bf-28ba0c04.pages.dev"
               creditPct={47}
               agentWorking={true}
               defaultView="preview"
+              modelName="Claude Opus 4.8"
               className="shadow-[0_8px_60px_-12px_rgba(0,0,0,0.25)]"
             />
           </div>
@@ -2187,6 +2281,7 @@ export default function LandingV2() {
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative">
+        <MarginHatch />
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
           <Reveal>
             <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
@@ -2257,6 +2352,7 @@ export default function LandingV2() {
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative bg-[var(--sand-surface)]">
+        <MarginBg />
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
           <Reveal>
             <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
@@ -2290,7 +2386,7 @@ export default function LandingV2() {
                       serif.className,
                       'relative z-10 block text-7xl sm:text-8xl font-normal leading-none select-none',
                     )}
-                    style={{ color: 'var(--sand-accent)', opacity: 0.2 }}
+                    style={{ color: 'var(--sand-accent)', opacity: 0.32 }}
                   >
                     {s.num}
                   </span>
@@ -2449,6 +2545,7 @@ export default function LandingV2() {
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative">
+        <MarginHatch />
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             {/* <Reveal className='max-md:px-4'> */}
@@ -2484,6 +2581,7 @@ export default function LandingV2() {
         <>
           <LineDivider />
           <section className="relative bg-[var(--sand-surface)]">
+            <MarginBg />
             <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
               <Reveal>
                 <div className="text-center max-w-4xl mx-auto">
@@ -2509,6 +2607,7 @@ export default function LandingV2() {
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative">
+        <MarginHatch />
         <div className="pointer-events-none absolute inset-0 -z-10 landing-gradient opacity-60" />
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-28 sm:py-36">
           <Reveal>
@@ -2519,8 +2618,7 @@ export default function LandingV2() {
                   'text-4xl sm:text-5xl md:text-6xl tracking-tight',
                 )}
               >
-                Ready to build{' '}
-                <span style={{ color: 'var(--sand-accent)' }}>something</span>?
+                Ready to build?
               </h2>
               <p className="mt-4 text-lg text-[var(--sand-text-muted)]">
                 Start for free. No credit card required.
@@ -2544,7 +2642,7 @@ export default function LandingV2() {
       {/* ================================================================ */}
       <LineDivider />
       <footer>
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-8">
+        <div className="mx-auto max-w-7xl px-6 sm:px-10 py-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2.5">
               {/* eslint-disable-next-line @next/next/no-img-element */}
