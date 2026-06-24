@@ -24,6 +24,11 @@ export interface ModelSelectorProps {
    *  name and separated by a divider — e.g. the agent backend glyph, so the
    *  agent identity and the model read as one body. */
   leading?: ReactNode;
+  /** Which way the dropdown opens. 'up' (bottom-full) for bottom toolbars like
+   *  the landing prompt box, where a downward menu is clipped by the hero's
+   *  overflow-hidden; 'down' (default) for top toolbars like the agent panel,
+   *  where opening upward would run off the top of the panel. */
+  openDirection?: 'up' | 'down';
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -102,7 +107,7 @@ const MODEL_ORDER: ModelId[] = [
   'claude-fable-5',          // x20 — most expensive (Max-only)
 ];
 
-export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', className, useTogetherKimi = false, leading }: ModelSelectorProps) {
+export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', className, useTogetherKimi = false, leading, openDirection = 'down' }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -219,11 +224,12 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
       {open && (
         <div
           className={cn(
-            // Opens upward (bottom-full) so a long list never spills below the
-            // trigger — the model selector lives in a bottom toolbar (landing
-            // prompt box / agent input), where a downward menu would be clipped
-            // by the hero's overflow-hidden or overlapped by the next section.
-            'absolute bottom-full z-50 mb-1 min-w-[280px] max-h-[320px] overflow-y-auto modern-scrollbar rounded-xl border border-border bg-surface shadow-lg',
+            'absolute z-50 min-w-[280px] max-h-[320px] overflow-y-auto modern-scrollbar rounded-xl border border-border bg-surface shadow-lg',
+            // 'up' opens above the trigger (bottom toolbars like the landing
+            // prompt box, where a downward menu is clipped by the hero's
+            // overflow-hidden); 'down' opens below (top toolbars like the agent
+            // panel, where opening upward would run off the top of the panel).
+            openDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1',
             isSm ? 'right-0' : 'left-0',
           )}
         >

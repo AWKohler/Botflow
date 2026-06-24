@@ -2046,6 +2046,7 @@ export default function LandingV2() {
                           providerAccess={providerAccess}
                           userTier={userTier}
                           size="md"
+                          openDirection="up"
                           onTierLocked={() => {
                             toast({
                               title: 'Plan required',
