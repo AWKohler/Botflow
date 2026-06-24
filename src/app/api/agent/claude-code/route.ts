@@ -32,6 +32,7 @@ import { swiftRuntimeForbidden } from "@/lib/swift-access";
 
 import { isClaudeCodeFlagEnabled } from "@/lib/agent/claude-code/feature-flag";
 import { STRIPE_CONNECT_ENABLED } from "@/lib/feature-flags";
+import { OAUTH_PROVIDER_IDS } from "@/lib/oauth-providers/registry";
 import { deriveAgentBackend } from "@/lib/agent/derive-backend";
 import {
   ensureClaudeInstalled,
@@ -377,6 +378,7 @@ export async function POST(req: Request) {
         "read_convex_table",
         "write_convex_data",
         "setup_auth",
+        "setup_oauth_provider",
       );
       if (STRIPE_CONNECT_ENABLED) {
         customTools.push(
@@ -428,6 +430,9 @@ export async function POST(req: Request) {
     cwd: "/vercel/sandbox",
     appendSystemPrompt,
     ...(customTools.length ? { customTools } : {}),
+    ...(customTools.includes("setup_oauth_provider")
+      ? { oauthProviderIds: OAUTH_PROVIDER_IDS }
+      : {}),
   };
 
   const turnId = Math.random().toString(36).slice(2, 10);

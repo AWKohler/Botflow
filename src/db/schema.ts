@@ -337,7 +337,7 @@ export const oauthProviderRequests = pgTable('oauth_provider_requests', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull(),
-  /** Which OAuth provider to configure. Currently only 'google'. */
+  /** Auth.js provider id: 'google' | 'github' | 'microsoft-entra-id' | 'apple'. */
   provider: text('provider').notNull(),
   /** 'pending' → modal is open. 'completed' → credentials saved. 'dismissed' → user cancelled. */
   status: text('status').notNull().default('pending'),
@@ -351,6 +351,37 @@ export const oauthProviderRequests = pgTable('oauth_provider_requests', {
 
 export type OAuthProviderRequest = typeof oauthProviderRequests.$inferSelect;
 export type NewOAuthProviderRequest = typeof oauthProviderRequests.$inferInsert;
+
+// Configured OAuth sign-in providers per generated app (Google, GitHub,
+// Microsoft Entra ID, Apple). The actual client secret lives ONLY on the
+// project's Convex deployment env (set via deploy key, never stored here) — this
+// table tracks which providers are enabled so the UI can list/manage them.
+// Apple is the exception: its client secret is an ES256 JWT that expires every
+// ≤6 months, so we persist the signing inputs (encrypted via src/lib/secrets.ts)
+// to auto-rotate it. See src/lib/oauth-providers/.
+export const projectOAuthProviders = pgTable('project_oauth_providers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  /** Auth.js provider id: 'google' | 'github' | 'microsoft-entra-id' | 'apple'. */
+  provider: text('provider').notNull(),
+  status: text('status').notNull().default('enabled'), // 'enabled' | 'disabled'
+  /** The /api/auth/callback/<provider> URL registered with the provider. */
+  redirectUri: text('redirect_uri'),
+  // ─── Sign in with Apple — encrypted signing inputs for secret rotation ───
+  appleTeamId: text('apple_team_id'),
+  appleKeyId: text('apple_key_id'),
+  appleServicesId: text('apple_services_id'),
+  applePrivateKeyP8: text('apple_private_key_p8'), // encrypted via src/lib/secrets.ts
+  secretExpiresAt: bigint('secret_expires_at', { mode: 'number' }), // unix seconds (Apple)
+  configuredAt: timestamp('configured_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  projectIdIdx: index('project_oauth_providers_project_id_idx').on(t.projectId),
+  projectProviderUnique: uniqueIndex('project_oauth_providers_project_provider_unique').on(t.projectId, t.provider),
+}));
+
+export type ProjectOAuthProvider = typeof projectOAuthProviders.$inferSelect;
+export type NewProjectOAuthProvider = typeof projectOAuthProviders.$inferInsert;
 
 // Env-var entry requests — created by the agent's requestEnvVar tool call;
 // resolved when the user enters the value in the workspace modal. The agent

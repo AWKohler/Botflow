@@ -14,6 +14,10 @@
     {
       "path": "/api/cron/sandbox-reaper",
       "schedule": "30 9 * * *"
+    },
+    {
+      "path": "/api/cron/rotate-apple-secrets",
+      "schedule": "0 8 * * *"
     }
   ]
 }
