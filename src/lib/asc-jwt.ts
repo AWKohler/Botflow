@@ -61,20 +61,21 @@ function parseP8(p8: string): KeyObject {
   return key;
 }
 
-/** Mint a short-lived ES256 JWT for the App Store Connect API. */
-export function mintAscToken(opts: { issuerId: string; keyId: string; p8: string }): string {
+/**
+ * Sign an ES256 JWT from an Apple .p8 (P-256) private key. The signature is the
+ * raw 64-byte R||S concatenation (`ieee-p1363`) JWT ES256 requires — not the DER
+ * encoding node emits by default. Shared by the App Store Connect token minter
+ * and Sign in with Apple client-secret generation; those differ only in the
+ * claim set, so callers pass their own payload.
+ */
+export function signEs256Jwt(opts: {
+  p8: string;
+  keyId: string;
+  payload: Record<string, unknown>;
+}): string {
   const key = parseP8(opts.p8);
-  const now = Math.floor(Date.now() / 1000);
-
   const header = { alg: 'ES256', kid: opts.keyId, typ: 'JWT' };
-  const payload = {
-    iss: opts.issuerId,
-    iat: now - 10, // small backdate to tolerate clock skew
-    exp: now + TOKEN_TTL_SECONDS,
-    aud: 'appstoreconnect-v1',
-  };
-
-  const signingInput = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(payload))}`;
+  const signingInput = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(opts.payload))}`;
 
   // ieee-p1363 → raw R||S (64 bytes), as JWT ES256 requires (not DER).
   const signature = createSign('SHA256')
@@ -82,6 +83,21 @@ export function mintAscToken(opts: { issuerId: string; keyId: string; p8: string
     .sign({ key, dsaEncoding: 'ieee-p1363' });
 
   return `${signingInput}.${base64url(signature)}`;
+}
+
+/** Mint a short-lived ES256 JWT for the App Store Connect API. */
+export function mintAscToken(opts: { issuerId: string; keyId: string; p8: string }): string {
+  const now = Math.floor(Date.now() / 1000);
+  return signEs256Jwt({
+    p8: opts.p8,
+    keyId: opts.keyId,
+    payload: {
+      iss: opts.issuerId,
+      iat: now - 10, // small backdate to tolerate clock skew
+      exp: now + TOKEN_TTL_SECONDS,
+      aud: 'appstoreconnect-v1',
+    },
+  });
 }
 
 /** Fetch against the ASC API: prefixes the base URL, sets auth + JSON headers. */

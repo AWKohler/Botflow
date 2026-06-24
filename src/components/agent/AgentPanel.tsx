@@ -2209,7 +2209,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                     setShowCompletionWarning(false);
                     setMessageQueue([]);
                     // Signal workspace to dismiss any pending tool-driven modals
-                    // (e.g. GoogleOAuthModal from setupOAuthProvider) and tell
+                    // (e.g. OAuthProviderModal from setupOAuthProvider) and tell
                     // the server-side polling loops to terminate early.
                     window.dispatchEvent(new CustomEvent('agent-user-stopped'));
                   }}

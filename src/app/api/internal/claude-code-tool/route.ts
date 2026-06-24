@@ -879,15 +879,18 @@ export async function POST(req: Request) {
       // via a server-side URL call. Instead, we duplicate the minimal logic here.
       const { getDb: getDbLocal } = await import("@/db");
       const { oauthProviderRequests: oauthTable } = await import("@/db/schema");
-      const { eq: eqLocal, and: andLocal, desc: descLocal } = await import("drizzle-orm");
+      const { eq: eqLocal, and: andLocal } = await import("drizzle-orm");
 
       const dbLocal = getDbLocal();
 
       const inputProvider = (body.input?.provider as string | undefined) ?? "google";
-      if (inputProvider !== "google") {
+      const { isSupportedOAuthProvider, getOAuthProvider } = await import(
+        "@/lib/oauth-providers/registry"
+      );
+      if (!isSupportedOAuthProvider(inputProvider)) {
         return NextResponse.json({
           ok: false,
-          content: `Unsupported OAuth provider: ${inputProvider}. Only 'google' is supported.`,
+          content: `Unsupported OAuth provider: ${inputProvider}.`,
         });
       }
 
@@ -940,41 +943,49 @@ export async function POST(req: Request) {
         if (!statusRow) break; // Shouldn't happen — bail gracefully
 
         if (statusRow.status === "completed") {
+          const def = getOAuthProvider(inputProvider)!;
+          const imp = def.authImport.default
+            ? `import ${def.authImport.symbol} from "${def.authImport.from}";`
+            : `import { ${def.authImport.symbol} } from "${def.authImport.from}";`;
+          const appleNote =
+            inputProvider === "apple"
+              ? "\n\nAPPLE NOTE: name/email arrive ONLY on the first sign-in — capture them then. Apple can't be tested on localhost; use the deployed preview."
+              : "";
           return NextResponse.json({
             ok: true,
-            content: `=== GOOGLE OAUTH CREDENTIALS SAVED ===
+            content: `=== ${def.displayName.toUpperCase()} OAUTH CREDENTIALS SAVED ===
 
-AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET are now set on your Convex deployment.
+${def.envVars.join(", ")} now set on your Convex deployment.
 
 REQUIRED NEXT STEPS:
 
-1. Update convex/auth.ts — add the Google provider:
+1. Update convex/auth.ts — add the provider (pass NO arguments; extra config is
+   read from env automatically):
 
    import { convexAuth } from "@convex-dev/auth/server";
    import { Password } from "@convex-dev/auth/providers/Password";
-   import Google from "@auth/core/providers/google";
+   ${imp}
 
    export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-     providers: [Password, Google],
+     providers: [Password, ${def.providerExpr}],
+     // keep the existing callbacks.redirect block intact
    });
 
 2. Run convex_deploy to push the updated auth config.
 
-3. Add a Google sign-in button to the UI:
-
-   const { signIn } = useAuthActions();
-   <button onClick={() => void signIn("google")}>Sign in with Google</button>
-
-   Clicking the button redirects to Google's consent screen.
-   On return, Convex Auth creates or merges the user account automatically.`,
+3. Add a sign-in button using startOAuthSignIn(signIn, "${inputProvider}") from
+   @/lib/botflowAuth (NOT signIn directly) so it works from the preview iframe,
+   and call resumePendingOAuthSignIn(signIn) once at app mount. On return, Convex
+   Auth creates or merges the user account automatically.${appleNote}`,
           });
         }
 
         if (statusRow.status === "dismissed") {
+          const name = getOAuthProvider(inputProvider)?.displayName ?? inputProvider;
           return NextResponse.json({
             ok: false,
             content:
-              "User dismissed the Google OAuth modal without saving credentials. " +
+              `User dismissed the ${name} OAuth modal without saving credentials. ` +
               "Do not retry automatically. Continue with other work.",
           });
         }
@@ -984,7 +995,7 @@ REQUIRED NEXT STEPS:
       return NextResponse.json({
         ok: false,
         content:
-          "Timed out waiting for Google OAuth credentials (5 minutes). " +
+          `Timed out waiting for ${getOAuthProvider(inputProvider)?.displayName ?? inputProvider} OAuth credentials (5 minutes). ` +
           "Call setup_oauth_provider again when the user is ready.",
       });
     }

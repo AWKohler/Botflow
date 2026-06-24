@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "22";
+export const BRIDGE_SCRIPT_VERSION = "23";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -185,7 +185,7 @@ async function handleNativeAskUserQuestion(input) {
   return { behavior: "allow", updatedInput: { questions: rawQuestions, answers } };
 }
 
-function buildCustomTools(customTools) {
+function buildCustomTools(customTools, oauthProviderIds) {
   if (!Array.isArray(customTools) || customTools.length === 0) return [];
   const tools = [];
 
@@ -230,6 +230,31 @@ function buildCustomTools(customTools) {
         {},
         makeHostToolHandler("setup_auth"),
         { annotations: { destructiveHint: true } },
+      ),
+    );
+  }
+
+  if (customTools.includes("setup_oauth_provider")) {
+    const oauthIds = Array.isArray(oauthProviderIds) && oauthProviderIds.length
+      ? oauthProviderIds
+      : ["google"];
+    const oauthList = oauthIds.join(", ");
+    tools.push(
+      tool(
+        "setup_oauth_provider",
+        "Add a social sign-in provider (" + oauthList + ") to Convex Auth on this project. " +
+        "Opens a modal in the user's workspace where they register an app with the provider and paste their credentials (Apple uploads a .p8). " +
+        "ONLY call this when the user EXPLICITLY asks for social sign-in; otherwise default to password sign-in via setup_auth. " +
+        "PREREQUISITE: setup_auth must have run first. " +
+        "It blocks until the user completes or dismisses the modal (up to 5 minutes). On success it returns the exact " +
+        "convex/auth.ts import + providers-array line and the sign-in button to add — then run convex_deploy. On dismiss: do NOT retry.",
+        {
+          provider: z
+            .enum(oauthIds)
+            .default("google")
+            .describe("Provider id: " + oauthList + "."),
+        },
+        makeHostToolHandler("setup_oauth_provider"),
       ),
     );
   }
@@ -609,9 +634,9 @@ async function main() {
 
   emit({ type: "ready" });
 
-  const { prompt, images, sessionId, model, cwd, appendSystemPrompt, customTools } = config;
+  const { prompt, images, sessionId, model, cwd, appendSystemPrompt, customTools, oauthProviderIds } = config;
 
-  const tools = buildCustomTools(customTools);
+  const tools = buildCustomTools(customTools, oauthProviderIds);
   const mcpServer = tools.length > 0 ? createSdkMcpServer({ name: "botflow", tools }) : null;
 
   const options = {

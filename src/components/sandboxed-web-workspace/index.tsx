@@ -62,7 +62,7 @@ import {
   type BackendType,
 } from "@/lib/project-platform";
 import { FileSearch } from "@/components/persistent-workspace/file-search";
-import { GoogleOAuthModal } from "@/components/workspace/google-oauth-modal";
+import { OAuthProviderModal } from "@/components/workspace/oauth-provider-modal";
 import { StripeConnectModal } from "@/components/workspace/stripe-connect-modal";
 import { EnvVarModal } from "@/components/workspace/env-var-modal";
 import { StripeTab, StripeModeToggle } from "@/components/sandboxed-web-workspace/stripe-tab";
@@ -645,7 +645,7 @@ export function SandboxedWebWorkspace({
 
   // ── OAuth provider request polling ───────────────────────────────────
   // When the agent calls setupOAuthProvider, it creates a pending request in
-  // the DB. We poll for it and show the GoogleOAuthModal when one is found.
+  // the DB. We poll for it and show the OAuthProviderModal when one is found.
   //
   // NOTE: we deliberately do NOT gate on hasAuth here. setupAuth sets
   // authConfigured=true server-side but the workspace only reads it on mount.
@@ -1004,10 +1004,11 @@ export function SandboxedWebWorkspace({
   // ── Render ───────────────────────────────────────────────────────────
   return (
     <div className="h-screen flex bolt-bg text-fg">
-      {/* Google OAuth credential modal — shown when agent calls setupOAuthProvider */}
+      {/* OAuth credential modal — shown when agent calls setupOAuthProvider */}
       {pendingOAuthRequest && (
-        <GoogleOAuthModal
+        <OAuthProviderModal
           requestId={pendingOAuthRequest.id}
+          provider={pendingOAuthRequest.provider}
           convexSiteUrl={pendingOAuthRequest.convexSiteUrl}
           projectId={projectId}
           onClose={() => setPendingOAuthRequest(null)}

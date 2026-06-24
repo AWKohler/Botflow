@@ -11,7 +11,7 @@
  * same one the Convex CLI uses for `convex env list/set/rm`.
  */
 import { runConvexFunction, resolveConvexCreds } from "@/lib/convex-admin";
-import { isReservedEnvKey } from "@/lib/platform-env";
+import { isReservedEnvKey, isSecretReservedKey, MASKED_ENV_VALUE } from "@/lib/platform-env";
 
 export interface ConvexEnvVar {
   key: string;
@@ -47,7 +47,9 @@ export async function listConvexEnvVars(
     .filter((e): e is { name: string; value?: string } => Boolean(e?.name))
     .map((e) => ({
       key: e.name,
-      value: e.value ?? "",
+      // Redact managed bearer secrets (OAuth client secrets, signing keys) so a
+      // plaintext value never round-trips to the client / Env panel.
+      value: isSecretReservedKey(e.name) ? MASKED_ENV_VALUE : (e.value ?? ""),
       reserved: isReservedEnvKey(e.name),
     }));
 

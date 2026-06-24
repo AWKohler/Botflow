@@ -19,6 +19,8 @@ export interface ReservedEnvVar {
   scope: "frontend" | "backend";
   /** Short human label for the "why is this locked" tooltip. */
   managedBy: string;
+  /** Bearer secret — its value is redacted from API responses and the UI. */
+  secret?: boolean;
 }
 
 export const RESERVED_ENV_VARS: ReservedEnvVar[] = [
@@ -27,19 +29,28 @@ export const RESERVED_ENV_VARS: ReservedEnvVar[] = [
   { key: "EXPO_PUBLIC_CONVEX_URL", scope: "frontend", managedBy: "Convex backend" },
 
   // Backend → Convex Auth (set by convex-auth-setup.ts).
-  { key: "JWT_PRIVATE_KEY", scope: "backend", managedBy: "Convex Auth" },
-  { key: "CONVEX_AUTH_PRIVATE_KEY", scope: "backend", managedBy: "Convex Auth" },
+  { key: "JWT_PRIVATE_KEY", scope: "backend", managedBy: "Convex Auth", secret: true },
+  { key: "CONVEX_AUTH_PRIVATE_KEY", scope: "backend", managedBy: "Convex Auth", secret: true },
   { key: "JWKS", scope: "backend", managedBy: "Convex Auth" },
   { key: "SITE_URL", scope: "backend", managedBy: "Convex Auth" },
 
-  // Backend → Google OAuth (set by the sign-in setup modal).
+  // Backend → OAuth sign-in providers (set by the sign-in setup modal). The
+  // *_SECRET values are write-only: redacted in the Env panel so they never
+  // round-trip to the client. See src/lib/oauth-providers/.
   { key: "AUTH_GOOGLE_ID", scope: "backend", managedBy: "Google sign-in setup" },
-  { key: "AUTH_GOOGLE_SECRET", scope: "backend", managedBy: "Google sign-in setup" },
+  { key: "AUTH_GOOGLE_SECRET", scope: "backend", managedBy: "Google sign-in setup", secret: true },
+  { key: "AUTH_GITHUB_ID", scope: "backend", managedBy: "GitHub sign-in setup" },
+  { key: "AUTH_GITHUB_SECRET", scope: "backend", managedBy: "GitHub sign-in setup", secret: true },
+  { key: "AUTH_MICROSOFT_ENTRA_ID_ID", scope: "backend", managedBy: "Microsoft sign-in setup" },
+  { key: "AUTH_MICROSOFT_ENTRA_ID_SECRET", scope: "backend", managedBy: "Microsoft sign-in setup", secret: true },
+  { key: "AUTH_MICROSOFT_ENTRA_ID_ISSUER", scope: "backend", managedBy: "Microsoft sign-in setup" },
+  { key: "AUTH_APPLE_ID", scope: "backend", managedBy: "Apple sign-in setup" },
+  { key: "AUTH_APPLE_SECRET", scope: "backend", managedBy: "Apple sign-in setup", secret: true },
 
   // Backend → Stripe scaffold.
   { key: "BOTFLOW_PROJECT_ID", scope: "backend", managedBy: "Stripe integration" },
   { key: "BOTFLOW_STRIPE_PROXY_BASE", scope: "backend", managedBy: "Stripe integration" },
-  { key: "BOTFLOW_STRIPE_WEBHOOK_SECRET", scope: "backend", managedBy: "Stripe integration" },
+  { key: "BOTFLOW_STRIPE_WEBHOOK_SECRET", scope: "backend", managedBy: "Stripe integration", secret: true },
   { key: "STRIPE_MODE", scope: "backend", managedBy: "Stripe integration" },
 
   // Backend → provided automatically by Convex itself; cannot be set.
@@ -59,3 +70,11 @@ export function isReservedEnvKey(key: string): boolean {
 export function getReservedEnvVar(key: string): ReservedEnvVar | undefined {
   return RESERVED_BY_KEY.get(key.trim().toUpperCase());
 }
+
+/** True when a reserved key is a bearer secret whose value must be redacted. */
+export function isSecretReservedKey(key: string): boolean {
+  return RESERVED_BY_KEY.get(key.trim().toUpperCase())?.secret === true;
+}
+
+/** Placeholder returned/shown in place of a redacted secret value. */
+export const MASKED_ENV_VALUE = "••••••••";
