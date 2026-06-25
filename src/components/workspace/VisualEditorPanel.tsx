@@ -1,5 +1,6 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { twMerge } from "tailwind-merge";
 import { X } from "lucide-react";
@@ -325,7 +326,7 @@ export function VisualEditorPanel({
                 </span>
               ))}
             </div>
-            <input
+            <Input
               value={addInput}
               onChange={(e) => setAddInput(e.target.value)}
               onKeyDown={(e) => {

@@ -15,6 +15,7 @@
  * Phase A: connection + repo selection + link/unlink only. Save/Get-latest
  * land in Phase B.
  */
+import { Input } from "@/components/ui/input";
 import { useCallback, useEffect, useState } from "react";
 import {
   GitBranch,
@@ -467,7 +468,7 @@ export function SandboxGitHubPanel({
         {createMode ? (
           <div className="space-y-2 rounded-lg border border-border bg-elevated p-3">
             <div className="text-xs font-medium text-fg">Create new repository</div>
-            <input
+            <Input
               type="text"
               value={newRepoName}
               onChange={(e) => setNewRepoName(e.target.value)}
@@ -524,7 +525,7 @@ export function SandboxGitHubPanel({
             <div className="space-y-1.5">
               <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-surface border border-border">
                 <Search size={11} className="text-muted shrink-0" />
-                <input
+                <Input
                   type="text"
                   value={repoFilter}
                   onChange={(e) => setRepoFilter(e.target.value)}

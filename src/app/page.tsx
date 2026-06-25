@@ -986,6 +986,7 @@
 
 'use client';
 
+import { Input } from "@/components/ui/input";
 import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -2859,7 +2860,7 @@ export default function LandingV2() {
                 Give your project a short name so it&apos;s easy to find later.
               </p>
               <div className="mt-4">
-                <input
+                <Input
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
                   onKeyDown={(e) => {

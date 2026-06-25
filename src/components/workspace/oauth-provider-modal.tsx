@@ -1,5 +1,6 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
 import { useMemo, useState } from "react";
 import { Check, Copy, ExternalLink, X, Loader2, KeyRound, FileUp } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -273,7 +274,7 @@ export function OAuthProviderModal({
                     <label className="block text-xs font-medium text-muted">
                       {field.label}{isRequired && <span className="text-accent"> *</span>}
                     </label>
-                    <input
+                    <Input
                       type={field.type === "password" ? "password" : "text"}
                       value={values[field.key] ?? ""}
                       onChange={(e) => setField(field.key, e.target.value)}

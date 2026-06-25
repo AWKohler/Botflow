@@ -34,6 +34,7 @@
 //   'VALID'                                 → ready in TestFlight (success)
 //   'INVALID' / 'FAILED'                    → Apple rejected processing (failure)
 
+import { Input } from "@/components/ui/input";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -1008,7 +1009,7 @@ function Step1AppInfo({
             {appName.length}/{APP_NAME_MAX}
           </span>
         </div>
-        <input
+        <Input
           id="publish-app-name"
           type="text"
           value={appName}
@@ -1023,7 +1024,7 @@ function Step1AppInfo({
         <label htmlFor="publish-version" className="mb-1.5 block text-xs font-medium text-fg">
           Marketing Version
         </label>
-        <input
+        <Input
           id="publish-version"
           type="text"
           value={marketingVersion}
@@ -1043,7 +1044,7 @@ function Step1AppInfo({
         <label htmlFor="publish-bundle-id" className="mb-1.5 block text-xs font-medium text-fg">
           Bundle ID
         </label>
-        <input
+        <Input
           id="publish-bundle-id"
           type="text"
           value={bundleId}
@@ -1245,7 +1246,7 @@ function Step2AppleDeveloper({
             <label htmlFor="publish-apple-key-id" className="mb-1.5 block text-xs font-medium text-fg">
               Key ID
             </label>
-            <input
+            <Input
               id="publish-apple-key-id"
               type="text"
               placeholder="e.g. 2X9R4HXF34"
@@ -1258,7 +1259,7 @@ function Step2AppleDeveloper({
             <label htmlFor="publish-apple-issuer-id" className="mb-1.5 block text-xs font-medium text-fg">
               Issuer ID
             </label>
-            <input
+            <Input
               id="publish-apple-issuer-id"
               type="text"
               placeholder="69a6de7e-…"
@@ -1274,7 +1275,7 @@ function Step2AppleDeveloper({
             Team ID{" "}
             <span className="font-normal text-muted">(optional — detected automatically)</span>
           </label>
-          <input
+          <Input
             id="publish-apple-team-id"
             type="text"
             placeholder="e.g. A1B2C3D4E5"

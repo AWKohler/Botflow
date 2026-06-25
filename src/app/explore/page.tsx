@@ -1,5 +1,6 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
@@ -127,7 +128,7 @@ export default function ExplorePage() {
             <div className="mt-10 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <div className="relative flex-1 max-w-md">
                 <SearchIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
-                <input
+                <Input
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}

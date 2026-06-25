@@ -1,5 +1,6 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SignedIn, SignedOut, SignInButton } from '@clerk/nextjs';
@@ -109,7 +110,7 @@ export default function SettingsPage() {
               <div>
                 <label className="block text-sm font-medium mb-2">OpenAI API Key</label>
                 <div className="flex items-center gap-2">
-                  <input
+                  <Input
                     type="password"
                     placeholder={hasOpenai ? '●●●●●●●● saved' : 'sk-...'}
                     value={openaiKey}
@@ -129,7 +130,7 @@ export default function SettingsPage() {
               <div>
                 <label className="block text-sm font-medium mb-2">Anthropic API Key</label>
                 <div className="flex items-center gap-2">
-                  <input
+                  <Input
                     type="password"
                     placeholder={hasAnthropic ? '●●●●●●●● saved' : 'anthropic-...'}
                     value={anthropicKey}
@@ -149,7 +150,7 @@ export default function SettingsPage() {
               <div>
                 <label className="block text-sm font-medium mb-2">Moonshot API Key</label>
                 <div className="flex items-center gap-2">
-                  <input
+                  <Input
                     type="password"
                     placeholder={hasMoonshot ? '●●●●●●●● saved' : 'moonshot-...'}
                     value={moonshotKey}
@@ -169,7 +170,7 @@ export default function SettingsPage() {
               <div>
                 <label className="block text-sm font-medium mb-2">Fireworks AI API Key</label>
                 <div className="flex items-center gap-2">
-                  <input
+                  <Input
                     type="password"
                     placeholder={hasFireworks ? '●●●●●●●● saved' : 'fw-...'}
                     value={fireworksKey}

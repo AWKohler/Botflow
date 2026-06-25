@@ -1,5 +1,6 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { Eye, EyeOff, KeyRound, Loader2, X } from "lucide-react";
 
@@ -126,7 +127,7 @@ export function EnvVarModal({
           <div className="space-y-1.5">
             <label className="block text-xs font-medium text-muted">Value</label>
             <div className="relative">
-              <input
+              <Input
                 type={revealed ? "text" : "password"}
                 value={value}
                 onChange={(e) => { setValue(e.target.value); setError(null); }}

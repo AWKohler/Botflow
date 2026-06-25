@@ -21,6 +21,7 @@
  * GitHub: Phase A wiring lives in `./github-panel.tsx` and renders as a
  * sidebar tab on the Code view.
  */
+import { Input } from "@/components/ui/input";
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useToast } from "@/components/ui/toast";
@@ -1289,7 +1290,7 @@ export function SandboxedWebWorkspace({
                   {previewDevice === "responsive" && <AppWindow size={16} />}
                   {previewDevice === "figma" && <Frame size={16} />}
                 </button>
-                <input
+                <Input
                   className="flex-1 bg-transparent outline-none text-sm text-fg placeholder:text-muted"
                   value={previewPath}
                   onChange={(e) => setPreviewPath(e.target.value)}

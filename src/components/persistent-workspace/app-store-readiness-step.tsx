@@ -32,6 +32,7 @@
 // localStorage (`app-store-readiness:{projectId}`) so they survive close/reopen.
 // There are NO secrets in this step — nothing sensitive is ever stored.
 
+import { Input } from "@/components/ui/input";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -521,7 +522,7 @@ export function AppStoreReadinessStep({
               {iconPrompt.length}/{ICON_PROMPT_MAX}
             </span>
           </div>
-          <input
+          <Input
             id="readiness-icon-prompt"
             type="text"
             value={iconPrompt}
@@ -923,7 +924,7 @@ function MetaField({
           {value.length}/{max}
         </span>
       </div>
-      <input
+      <Input
         id={id}
         type="text"
         value={value}

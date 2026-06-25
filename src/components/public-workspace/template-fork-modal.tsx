@@ -1,5 +1,6 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, X, Sparkles, KeyRound, Lock, Check } from "lucide-react";
@@ -109,7 +110,7 @@ export function TemplateForkModal({
         <div className="px-5 py-4 space-y-4">
           <div>
             <label className="mb-1.5 block text-xs font-medium text-muted">Project name</label>
-            <input
+            <Input
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}

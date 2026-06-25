@@ -1,5 +1,6 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
 import { useEffect, useState } from 'react';
 import { SignedIn, SignedOut, SignInButton, PricingTable } from '@clerk/nextjs';
 import { useToast } from '@/components/ui/toast';
@@ -810,7 +811,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                             <p className="text-xs text-red-600 font-medium">{oauthError}</p>
                           )}
                           <div className="flex gap-2">
-                            <input
+                            <Input
                               type="text"
                               placeholder="Paste full callback URL or just the code…"
                               value={oauthCode}
@@ -956,7 +957,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               )}
                             </label>
                             <div className="flex items-center gap-2">
-                              <input
+                              <Input
                                 type="password"
                                 placeholder={hasKey[provider] ? '●●●●●●●● (type to replace)' : placeholder}
                                 value={keys[provider]}
@@ -1089,7 +1090,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <div>
                               <label className="block text-xs font-medium text-fg mb-1.5">Key ID</label>
-                              <input
+                              <Input
                                 type="text"
                                 placeholder="e.g. 2X9R4HXF34"
                                 value={appleKeyIdInput}
@@ -1099,7 +1100,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                             </div>
                             <div>
                               <label className="block text-xs font-medium text-fg mb-1.5">Issuer ID</label>
-                              <input
+                              <Input
                                 type="text"
                                 placeholder="69a6de7e-…"
                                 value={appleIssuerIdInput}
@@ -1112,7 +1113,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                             <label className="block text-xs font-medium text-fg mb-1.5">
                               Team ID <span className="font-normal text-muted">(optional — we auto-detect it if you leave this blank)</span>
                             </label>
-                            <input
+                            <Input
                               type="text"
                               placeholder="e.g. A1B2C3D4E5"
                               value={appleTeamIdInput}
