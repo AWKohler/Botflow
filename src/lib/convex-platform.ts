@@ -61,12 +61,13 @@ export class ConvexPlatformClient {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.log(`[Convex API] Error response: ${errorText}`);
+      // errorText is needed by callers to detect ProjectQuotaReached, but don't
+      // log the raw upstream body separately.
       throw new Error(`Failed to create Convex project: ${response.status} ${errorText}`);
     }
 
     const result = await response.json();
-    console.log(`[Convex API] Response body:`, JSON.stringify(result, null, 2));
+    // Do NOT log the response body — create_project can include a deploy/admin key.
 
     // The deployment URL is constructed from the deployment name
     // Response structure may vary - handle both possible formats
@@ -105,13 +106,12 @@ export class ConvexPlatformClient {
     console.log(`[Convex API] Deploy key response status: ${response.status}`);
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.log(`[Convex API] Deploy key error: ${errorText}`);
-      throw new Error(`Failed to create deploy key: ${response.status} ${errorText}`);
+      await response.text().catch(() => '');
+      throw new Error(`Failed to create deploy key (status ${response.status}).`);
     }
 
     const result = await response.json();
-    console.log(`[Convex API] Deploy key response:`, JSON.stringify(result, null, 2));
+    // Do NOT log the response body — it contains the deploy key.
 
     // The response contains a key like "prod:deployment-name|token"
     return result.key || result.deployKey || result.accessToken || '';
@@ -143,8 +143,10 @@ export class ConvexPlatformClient {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to set deployment env vars: ${response.status} ${errorText}`);
+      // Don't include the upstream body — the request payload carries secret env
+      // values (JWT_PRIVATE_KEY, AUTH_*_SECRET) a Convex error could echo back.
+      await response.text().catch(() => '');
+      throw new Error(`Failed to set deployment env vars (status ${response.status}).`);
     }
   }
 

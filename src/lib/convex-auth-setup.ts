@@ -161,12 +161,13 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function page(redirect: string, flow: string, error: string | null): string {
+function page(redirect: string, flow: string, error: string | null, state: string): string {
   const signUp = flow === "signUp";
   const title = signUp ? "Create account" : "Sign in";
   const toggleLabel = signUp ? "Have an account? Sign in" : "Need an account? Sign up";
   const toggleFlow = signUp ? "signIn" : "signUp";
-  const toggleHref = "/auth/signin?redirect=" + encodeURIComponent(redirect) + "&flow=" + toggleFlow;
+  const toggleHref = "/auth/signin?redirect=" + encodeURIComponent(redirect) + "&flow=" + toggleFlow +
+    (state ? "&state=" + encodeURIComponent(state) : "");
   const errHtml = error ? '<p class="err">' + esc(error) + "</p>" : "";
   return [
     "<!doctype html>",
@@ -194,6 +195,7 @@ function page(redirect: string, flow: string, error: string | null): string {
     '<form method="POST" action="/auth/signin">',
     '<input type="hidden" name="flow" value="' + flow + '">',
     '<input type="hidden" name="redirect" value="' + esc(redirect) + '">',
+    '<input type="hidden" name="state" value="' + esc(state) + '">',
     "<label>Email</label>",
     '<input name="email" type="email" autocomplete="email" autocapitalize="none" required>',
     "<label>Password</label>",
@@ -213,6 +215,15 @@ function htmlResponse(body: string, status: number): Response {
   });
 }
 
+// SECURITY: the sign-in page hands the freshly-minted JWT + refresh token to the
+// redirect target via the URL fragment. ONLY the native app's custom scheme is
+// allowed — never an http(s) origin — so a phishing link like
+// /auth/signin?redirect=https://attacker.example can't exfiltrate user tokens.
+const ALLOWED_REDIRECT_PREFIX = "botflowauth://";
+function isAllowedRedirect(r: string): boolean {
+  return r.startsWith(ALLOWED_REDIRECT_PREFIX);
+}
+
 http.route({
   path: "/auth/signin",
   method: "GET",
@@ -220,7 +231,13 @@ http.route({
     const url = new URL(request.url);
     const redirect = url.searchParams.get("redirect") || "";
     const flow = url.searchParams.get("flow") === "signUp" ? "signUp" : "signIn";
-    return htmlResponse(page(redirect, flow, null), 200);
+    // Per-attempt nonce the native app generates and verifies on the callback;
+    // threaded opaquely through the form so a forged callback can be rejected.
+    const state = url.searchParams.get("state") || "";
+    if (!isAllowedRedirect(redirect)) {
+      return htmlResponse(page("", flow, "Invalid sign-in link.", ""), 400);
+    }
+    return htmlResponse(page(redirect, flow, null, state), 200);
   }),
 });
 
@@ -233,9 +250,11 @@ http.route({
     const password = String(form.get("password") || "");
     const flow = String(form.get("flow") || "signIn") === "signUp" ? "signUp" : "signIn";
     const redirect = String(form.get("redirect") || "");
+    const state = String(form.get("state") || "");
 
-    if (!redirect || !redirect.includes("://")) {
-      return htmlResponse(page(redirect, flow, "Missing or invalid redirect target."), 400);
+    if (!isAllowedRedirect(redirect)) {
+      // Never hand tokens to anything but the native app's own scheme.
+      return htmlResponse(page("", flow, "Invalid redirect target.", ""), 400);
     }
 
     try {
@@ -245,12 +264,15 @@ http.route({
       });
       const tokens = result && result.tokens;
       if (!tokens || !tokens.token || !tokens.refreshToken) {
-        return htmlResponse(page(redirect, flow, "Sign-in failed. Please try again."), 200);
+        return htmlResponse(page(redirect, flow, "Sign-in failed. Please try again.", state), 200);
       }
+      // Echo the nonce back in the fragment so the app can verify this callback
+      // belongs to the sign-in it started (reject otherwise before storing tokens).
       const dest =
         redirect +
         "#token=" + encodeURIComponent(tokens.token) +
-        "&refresh=" + encodeURIComponent(tokens.refreshToken);
+        "&refresh=" + encodeURIComponent(tokens.refreshToken) +
+        (state ? "&state=" + encodeURIComponent(state) : "");
       return new Response(null, {
         status: 303,
         headers: { Location: dest, "Cache-Control": "no-store" },
@@ -259,7 +281,7 @@ http.route({
       const msg = flow === "signUp"
         ? "Could not sign up. The email may already be in use, or your password may be too short (8+ characters)."
         : "Could not sign in. Check your email and password.";
-      return htmlResponse(page(redirect, flow, msg), 200);
+      return htmlResponse(page(redirect, flow, msg, state), 200);
     }
   }),
 });
@@ -740,8 +762,13 @@ async function setEnvVarsViaDeployKey(
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to set Convex env vars (${response.status}): ${errorText}`);
+    // Deliberately do NOT surface the upstream response body. This request's
+    // payload carries secret env values (AUTH_*_SECRET, JWT_PRIVATE_KEY, Apple
+    // client-secret JWTs); a Convex error that echoed the submitted `changes`
+    // would otherwise leak those into our thrown message — which propagates to
+    // client error text and server logs. Status code only.
+    await response.text().catch(() => '');
+    throw new Error(`Failed to set Convex env vars (status ${response.status}).`);
   }
 }
 
@@ -949,15 +976,18 @@ export async function applyOAuthProvider(
   // Map fields → env vars (validates required fields, derives MS issuer, signs
   // the Apple client secret). Throws a clear Error on bad/missing input.
   const result = buildOAuthEnvVars(provider, fields);
-  await setEnvVarsViaDeployKey(deployUrl, deployKey, result.env);
 
-  // Record the provider as enabled (so the UI can list/manage configured
-  // providers) and, for Apple, persist the signing inputs encrypted so the
-  // secret can be auto-rotated before it expires.
+  // Persist the provider row FIRST (for Apple: the encrypted .p8 + expiry the
+  // rotation cron needs) BEFORE pushing env to Convex — but mark it
+  // "configuring", NOT "enabled", until the env push actually succeeds. This
+  // gives us both invariants: (a) a live AUTH_APPLE_SECRET always has its
+  // rotation inputs saved, and (b) the row is never reported "enabled" (and the
+  // rotation sweep, which only scans enabled rows, never targets it) while the
+  // secret hasn't actually reached Convex. A failed push leaves it "configuring";
+  // the user retries (idempotent), and on success step 3 flips it to "enabled".
   const convexSiteUrl = deployUrl.replace(".convex.cloud", ".convex.site");
   const now = new Date();
-  const stateCols = {
-    status: "enabled" as const,
+  const baseCols = {
     redirectUri: oauthCallbackUrl(convexSiteUrl, provider),
     updatedAt: now,
   };
@@ -971,13 +1001,28 @@ export async function applyOAuthProvider(
       }
     : {};
 
+  // 1) Persist inputs + mark configuring.
   await db
     .insert(projectOAuthProviders)
-    .values({ projectId, provider, configuredAt: now, ...stateCols, ...appleCols })
+    .values({ projectId, provider, configuredAt: now, status: "configuring", ...baseCols, ...appleCols })
     .onConflictDoUpdate({
       target: [projectOAuthProviders.projectId, projectOAuthProviders.provider],
-      set: { ...stateCols, ...appleCols },
+      set: { status: "configuring", ...baseCols, ...appleCols },
     });
+
+  // 2) Push env to Convex (throws on failure — row stays "configuring").
+  await setEnvVarsViaDeployKey(deployUrl, deployKey, result.env);
+
+  // 3) Secret is live — mark enabled.
+  await db
+    .update(projectOAuthProviders)
+    .set({ status: "enabled", updatedAt: new Date() })
+    .where(
+      and(
+        eq(projectOAuthProviders.projectId, projectId),
+        eq(projectOAuthProviders.provider, provider),
+      ),
+    );
 }
 
 /**

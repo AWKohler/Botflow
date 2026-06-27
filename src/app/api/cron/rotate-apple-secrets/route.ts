@@ -21,9 +21,9 @@ function isAuthorized(req: Request): boolean {
     console.error("[rotate-apple-secrets] CRON_SECRET is not set");
     return false;
   }
-  if (req.headers.get("authorization") === `Bearer ${cronSecret}`) return true;
-  const url = new URL(req.url);
-  return url.searchParams.get("token") === cronSecret;
+  // Authorization header ONLY. A ?token= query param lands in CDN / proxy /
+  // platform access logs, leaking the cron secret.
+  return req.headers.get("authorization") === `Bearer ${cronSecret}`;
 }
 
 export async function GET(req: Request) {
