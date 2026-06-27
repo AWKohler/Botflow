@@ -48,6 +48,10 @@ function canonicalFromSubscription(sub: Stripe.Subscription) {
         subscriptionId: sub.id,
         customerId: typeof sub.customer === 'string' ? sub.customer : sub.customer?.id ?? null,
         status,
+        // Mirror the webhook shape so the app-load reconcile path can render
+        // "cancels on …" identically to the async webhook path.
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+        cancelAt: sub.cancel_at ?? null,
         priceId: sub.items.data[0]?.price?.id ?? null,
         metadata: sub.metadata ?? {},
       },

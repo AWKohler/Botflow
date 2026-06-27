@@ -112,5 +112,18 @@ export async function pollConnectRequest(opts: {
     if (row.status === 'dismissed') return 'dismissed';
     // pending — keep polling
   }
+  // Timed out — mark this request dismissed (only if still pending) so the
+  // workspace closes the now-unwatched modal instead of orphaning it, matching
+  // the env-var and OAuth-provider flows.
+  await db
+    .update(stripeConnectRequests)
+    .set({ status: 'dismissed', updatedAt: new Date() })
+    .where(
+      and(
+        eq(stripeConnectRequests.id, opts.requestId),
+        eq(stripeConnectRequests.status, 'pending'),
+      ),
+    )
+    .catch(() => undefined);
   return 'timeout';
 }

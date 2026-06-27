@@ -79,12 +79,15 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const { state, authorizeUrl } = await mintStripeAuthorizeUrl({
+  const { authorizeUrl } = await mintStripeAuthorizeUrl({
     userId,
     projectId,
     mode,
     appOrigin: url.origin,
   });
 
-  return NextResponse.json({ ok: true, authorizeUrl, state, mode });
+  // Note: the state token is intentionally NOT returned — it lives only inside
+  // the authorizeUrl (where Stripe needs it) and the DB. Surfacing it separately
+  // would hand a single-use CSRF credential to client code for no reason.
+  return NextResponse.json({ ok: true, authorizeUrl, mode });
 }

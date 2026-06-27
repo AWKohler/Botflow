@@ -4,13 +4,26 @@
  * Stripe redirects here after the user authorizes their Standard account.
  * We exchange the code for the connected account id (`acct_…`), store it on
  * user_stripe_identity for the current mode, flip projects.stripe_enabled,
- * mark the state token consumed, then redirect into the workspace.
+ * then redirect into the workspace.
+ *
+ * Security:
+ *   • The state token (32 random bytes, single-use, 1h TTL) is consumed
+ *     ATOMICALLY before anything else, so a state leaked into access logs can
+ *     never be replayed or raced by two concurrent callbacks.
+ *   • We additionally require the current Clerk session to be the same user the
+ *     state was minted for — a leaked state alone can't bind a stranger's Stripe
+ *     account to a victim's project.
+ *   • A connected account already owned by a different Botflow user is rejected
+ *     (backstopped by partial-unique indexes) so inbound webhooks can never
+ *     resolve to the wrong owner.
  *
  * Error path: redirect into the workspace with ?stripe_connect=error&reason=…
  * so the UI can show a toast without us holding the response.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq, isNull, gt } from 'drizzle-orm';
+import { auth } from '@clerk/nextjs/server';
+import { and, eq, isNull, gt, ne } from 'drizzle-orm';
+import { randomBytes } from 'node:crypto';
 import { getDb } from '@/db';
 import {
   projects,
@@ -66,23 +79,63 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // Require an authenticated session FIRST (before consuming the state) so a
+  // transient auth hiccup never burns a legit user's one-shot token. The
+  // callback runs as a top-level same-origin navigation in the popup, so the
+  // Clerk session cookie is present in the normal flow.
+  const { userId } = await auth();
+  if (!userId) {
+    return workspaceRedirect(url.origin, null, {
+      stripe_connect: 'error',
+      reason: 'unauthorized',
+    });
+  }
+
   const db = getDb();
+
+  // Atomically claim (consume) the state: only one caller can flip consumedAt
+  // from NULL while it's unexpired. Closes the replay + concurrent-callback
+  // races in one statement.
+  const now = new Date();
   const [stateRow] = await db
-    .select()
-    .from(stripeOauthStates)
+    .update(stripeOauthStates)
+    .set({ consumedAt: now })
     .where(
       and(
         eq(stripeOauthStates.state, state),
         isNull(stripeOauthStates.consumedAt),
-        gt(stripeOauthStates.expiresAt, new Date()),
+        gt(stripeOauthStates.expiresAt, now),
       ),
     )
-    .limit(1);
+    .returning();
 
   if (!stateRow) {
     return workspaceRedirect(url.origin, null, {
       stripe_connect: 'error',
       reason: 'invalid-or-expired-state',
+    });
+  }
+
+  // The session must match the user the state was minted for. A state leaked
+  // into logs is useless to anyone signed in as someone else.
+  if (stateRow.userId !== userId) {
+    return workspaceRedirect(url.origin, null, {
+      stripe_connect: 'error',
+      reason: 'user-mismatch',
+    });
+  }
+
+  // Re-verify the project still belongs to this user (could have been deleted
+  // or transferred while the popup was open).
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.id, stateRow.projectId), eq(projects.userId, userId)))
+    .limit(1);
+  if (!project) {
+    return workspaceRedirect(url.origin, stateRow.projectId, {
+      stripe_connect: 'error',
+      reason: 'project-not-found',
     });
   }
 
@@ -110,16 +163,31 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Upsert the user_stripe_identity row with the new account id for this mode.
-  // We intentionally don't overwrite the other mode's columns.
-  const now = new Date();
   const accountField = mode === 'live' ? 'liveAccountId' : 'testAccountId';
   const pkField = mode === 'live' ? 'livePublishableKey' : 'testPublishableKey';
 
+  // Reject linking a Stripe account that already belongs to a DIFFERENT Botflow
+  // user (backstopped by the partial-unique index). Otherwise inbound webhooks
+  // for that account could route to the wrong owner's projects.
+  const accountCol = mode === 'live' ? userStripeIdentity.liveAccountId : userStripeIdentity.testAccountId;
+  const [conflict] = await db
+    .select({ userId: userStripeIdentity.userId })
+    .from(userStripeIdentity)
+    .where(and(eq(accountCol, stripeUserId), ne(userStripeIdentity.userId, userId)))
+    .limit(1);
+  if (conflict) {
+    return workspaceRedirect(url.origin, stateRow.projectId, {
+      stripe_connect: 'error',
+      reason: 'account-already-linked',
+    });
+  }
+
+  // Upsert the user_stripe_identity row with the new account id for this mode.
+  // We intentionally don't overwrite the other mode's columns.
   const [existing] = await db
     .select()
     .from(userStripeIdentity)
-    .where(eq(userStripeIdentity.userId, stateRow.userId))
+    .where(eq(userStripeIdentity.userId, userId))
     .limit(1);
 
   if (existing) {
@@ -131,10 +199,10 @@ export async function GET(req: NextRequest) {
         connectedAt: existing.connectedAt ?? now,
         updatedAt: now,
       })
-      .where(eq(userStripeIdentity.userId, stateRow.userId));
+      .where(eq(userStripeIdentity.userId, userId));
   } else {
     await db.insert(userStripeIdentity).values({
-      userId: stateRow.userId,
+      userId,
       [accountField]: stripeUserId,
       [pkField]: publishableKey,
       connectedAt: now,
@@ -143,12 +211,16 @@ export async function GET(req: NextRequest) {
   }
 
   // Flip the project flag so the Stripe tab can appear and the agent's next
-  // initializeStripePayments call returns already-connected.
+  // initializeStripePayments call returns already-connected. Ensure a per-project
+  // webhook secret exists NOW (don't rely on a later flipProjectEnabled) — the
+  // inbound fan-out drops events for a stripeEnabled project that has no secret.
+  const webhookSecret = project.stripeWebhookSecret ?? `bfws_${randomBytes(32).toString('hex')}`;
   await db
     .update(projects)
     .set({
       stripeEnabled: true,
       stripePaymentMode: mode,
+      stripeWebhookSecret: webhookSecret,
       updatedAt: now,
     })
     .where(eq(projects.id, stateRow.projectId));
@@ -177,12 +249,6 @@ export async function GET(req: NextRequest) {
       console.error('[stripe/oauth/callback] product mirror failed (non-fatal):', err);
     }
   }
-
-  // Mark the state token consumed so it can't be replayed.
-  await db
-    .update(stripeOauthStates)
-    .set({ consumedAt: now })
-    .where(eq(stripeOauthStates.state, state));
 
   // If this OAuth was launched from an agent-tool modal request, flip the
   // request row to completed so the tool's polling loop resolves. No-op when
