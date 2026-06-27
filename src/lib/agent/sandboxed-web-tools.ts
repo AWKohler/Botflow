@@ -701,8 +701,7 @@ export function getSandboxedWebTools(params: {
       inputSchema: z.object({
         provider: z
           .enum(OAUTH_PROVIDER_IDS as [string, ...string[]])
-          .default("google")
-          .describe(`Provider to add: ${oauthProviderIdList()}.`),
+          .describe(`Provider to add (required, no default): ${oauthProviderIdList()}.`),
       }),
       async execute({ provider }) {
         // Direct DB access — avoids the Clerk auth problem that would arise
@@ -762,8 +761,9 @@ export function getSandboxedWebTools(params: {
 
         const requestId = record.id;
 
-        // ── Poll DB directly until completed/dismissed (up to 5 min) ──────
-        const deadline = Date.now() + 5 * 60 * 1000;
+        // ── Poll until completed/dismissed (270s, < route maxDuration so the
+        //    timeout-dismiss below runs before the platform kills the request) ──
+        const deadline = Date.now() + 270 * 1000;
         while (Date.now() < deadline) {
           await new Promise<void>((r) => setTimeout(r, 3000));
 
@@ -839,6 +839,19 @@ REQUIRED NEXT STEPS:
           // status === 'pending' — keep polling
         }
 
+        // Timed out — mark this request dismissed so the workspace closes the
+        // (now-unwatched) modal instead of leaving it orphaned. Only flip it if
+        // it's still pending, so we don't clobber a just-completed submission.
+        await db
+          .update(oauthProviderRequests)
+          .set({ status: "dismissed", updatedAt: new Date() })
+          .where(
+            and(
+              eq(oauthProviderRequests.id, requestId),
+              eq(oauthProviderRequests.status, "pending"),
+            ),
+          );
+
         return {
           ok: false,
           error:
@@ -863,10 +876,10 @@ REQUIRED NEXT STEPS:
         target: z.enum(["client", "server"]).describe("'client' = frontend Vite .env; 'server' = Convex deployment env."),
         key: z.string().describe("Variable name, e.g. VITE_MAPBOX_TOKEN or OPENAI_API_KEY. Shown read-only to the user."),
         message: z.string().optional().describe("Short explanation rendered in the modal (what the value is, where the user finds it)."),
-        isSecret: z.boolean().optional().describe("Mask the value as a secret in the Env panel (client target). Default false."),
+        isSecret: z.boolean().optional().describe("Mask the value in the Env panel. ONLY valid for target='server' — client/frontend vars ship in the browser bundle and are never secret. Default false."),
       }),
       async execute({ target, key, message, isSecret }) {
-        const invalid = validateEnvVarRequest({ target, key });
+        const invalid = validateEnvVarRequest({ target, key, isSecret });
         if (invalid) return { ok: false, error: invalid };
 
         const db = getDb();

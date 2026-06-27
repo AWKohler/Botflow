@@ -546,7 +546,9 @@ export async function POST(req: Request) {
         authorizeUrl,
       });
 
-      const deadlineMs = Date.now() + 5 * 60 * 1000;
+      // 270s (< maxDuration 300s) so pollConnectRequest's timeout-dismiss runs
+      // before the platform kills the request.
+      const deadlineMs = Date.now() + 270 * 1000;
       const result = await pollConnectRequest({ requestId, projectId: binding.projectId, deadlineMs });
 
       if (result === "completed") {
@@ -883,10 +885,18 @@ export async function POST(req: Request) {
 
       const dbLocal = getDbLocal();
 
-      const inputProvider = (body.input?.provider as string | undefined) ?? "google";
+      // Require an explicit provider — don't silently default to a real one, or a
+      // malformed tool call would configure the wrong app's AUTH_* vars.
+      const inputProvider = (body.input?.provider as string | undefined)?.toLowerCase().trim() ?? "";
       const { isSupportedOAuthProvider, getOAuthProvider } = await import(
         "@/lib/oauth-providers/registry"
       );
+      if (!inputProvider) {
+        return NextResponse.json({
+          ok: false,
+          content: "provider is required (one of: google, github, microsoft-entra-id, apple).",
+        });
+      }
       if (!isSupportedOAuthProvider(inputProvider)) {
         return NextResponse.json({
           ok: false,
@@ -924,8 +934,9 @@ export async function POST(req: Request) {
 
       const requestId = oauthRecord.id;
 
-      // Poll for up to 5 minutes for the user to complete the modal
-      const deadline = Date.now() + 5 * 60 * 1000;
+      // Poll for the user to complete the modal — 270s (< route maxDuration) so
+      // the timeout-dismiss below runs before the platform kills the request.
+      const deadline = Date.now() + 270 * 1000;
       while (Date.now() < deadline) {
         await new Promise<void>((r) => setTimeout(r, 3000));
 
@@ -992,6 +1003,19 @@ REQUIRED NEXT STEPS:
         // status === 'pending' — keep polling
       }
 
+      // Timed out — mark this request dismissed (only if still pending, so we
+      // don't clobber a just-completed submit) so the workspace closes the
+      // now-unwatched modal instead of orphaning it.
+      await dbLocal
+        .update(oauthTable)
+        .set({ status: "dismissed", updatedAt: new Date() })
+        .where(
+          andLocal(
+            eqLocal(oauthTable.id, requestId),
+            eqLocal(oauthTable.status, "pending"),
+          ),
+        );
+
       return NextResponse.json({
         ok: false,
         content:
@@ -1006,7 +1030,8 @@ REQUIRED NEXT STEPS:
       // outcome. The value itself never flows through here.
       const target = body.input?.target;
       const key = body.input?.key;
-      const invalid = validateEnvVarRequest({ target, key });
+      const isSecret = body.input?.isSecret;
+      const invalid = validateEnvVarRequest({ target, key, isSecret });
       if (invalid) {
         return NextResponse.json({ ok: false, content: invalid });
       }
@@ -1056,7 +1081,7 @@ REQUIRED NEXT STEPS:
         status: "pending",
       });
 
-      const deadline = Date.now() + 5 * 60 * 1000;
+      const deadline = Date.now() + 270 * 1000; // < maxDuration, leaves cleanup headroom
       while (Date.now() < deadline) {
         await new Promise<void>((r) => setTimeout(r, 2000));
         const [row] = await dbLocal
@@ -1104,6 +1129,8 @@ REQUIRED NEXT STEPS:
           and(
             eq(chatQuestions.toolCallId, toolCallId),
             eq(chatQuestions.projectId, binding.projectId),
+            // pending-only so a just-answered question isn't clobbered to dismissed.
+            eq(chatQuestions.status, "pending"),
           ),
         )
         .catch(() => undefined);

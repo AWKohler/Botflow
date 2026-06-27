@@ -118,10 +118,12 @@ export async function POST(
     }
 
     if (body.dismissed) {
+      // Only dismiss a still-pending request — a delayed dismiss must NOT flip a
+      // just-completed one back to dismissed.
       await db
         .update(envVarRequests)
         .set({ status: "dismissed", updatedAt: new Date() })
-        .where(eq(envVarRequests.id, request.id));
+        .where(and(eq(envVarRequests.id, request.id), eq(envVarRequests.status, "pending")));
       return NextResponse.json({ ok: true, status: "dismissed" });
     }
 
@@ -142,33 +144,66 @@ export async function POST(
       );
     }
 
-    if (request.target === "server") {
-      const result = await setConvexEnvVar(projectId, request.key, value);
-      if (!result.ok) {
-        return NextResponse.json({ ok: false, error: result.error }, { status: 502 });
-      }
-    } else {
-      await db
-        .insert(projectEnvVars)
-        .values({
-          projectId,
-          key: request.key.toUpperCase(),
-          value,
-          isSecret: request.isSecret,
-        })
-        .onConflictDoUpdate({
-          target: [projectEnvVars.projectId, projectEnvVars.key],
-          set: { value, isSecret: request.isSecret, updatedAt: new Date() },
-        });
-      // Best-effort: a stopped/expired sandbox shouldn't block saving — the
-      // .env is regenerated on the next dev-server start anyway.
-      try {
-        await materializeFrontendEnv(projectId);
-      } catch {
-        /* regenerated on next dev start */
-      }
+    // Atomically CLAIM the request (pending → "completing") BEFORE writing the
+    // value, so a concurrent dismiss/timeout can't win mid-write and make the
+    // agent observe a transient 'dismissed'. The agent poller treats any
+    // non-terminal status (incl. 'completing') as keep-waiting.
+    const [claimed] = await db
+      .update(envVarRequests)
+      .set({ status: "completing", updatedAt: new Date() })
+      .where(and(eq(envVarRequests.id, request.id), eq(envVarRequests.status, "pending")))
+      .returning({ id: envVarRequests.id });
+    if (!claimed) {
+      return NextResponse.json(
+        { ok: false, error: "This request is no longer pending (it was dismissed or already completed)." },
+        { status: 409 },
+      );
     }
 
+    try {
+      if (request.target === "server") {
+        const result = await setConvexEnvVar(projectId, request.key, value);
+        if (!result.ok) {
+          // Revert so the user can retry.
+          await db
+            .update(envVarRequests)
+            .set({ status: "pending", updatedAt: new Date() })
+            .where(eq(envVarRequests.id, request.id))
+            .catch(() => undefined);
+          return NextResponse.json({ ok: false, error: result.error }, { status: 502 });
+        }
+      } else {
+        await db
+          .insert(projectEnvVars)
+          .values({
+            projectId,
+            key: request.key.toUpperCase(),
+            value,
+            isSecret: request.isSecret,
+          })
+          .onConflictDoUpdate({
+            target: [projectEnvVars.projectId, projectEnvVars.key],
+            set: { value, isSecret: request.isSecret, updatedAt: new Date() },
+          });
+        // Best-effort: a stopped/expired sandbox shouldn't block saving — the
+        // .env is regenerated on the next dev-server start anyway.
+        try {
+          await materializeFrontendEnv(projectId);
+        } catch {
+          /* regenerated on next dev start */
+        }
+      }
+    } catch (e) {
+      // Revert on any unexpected failure so the request isn't stuck 'completing'.
+      await db
+        .update(envVarRequests)
+        .set({ status: "pending", updatedAt: new Date() })
+        .where(eq(envVarRequests.id, request.id))
+        .catch(() => undefined);
+      throw e;
+    }
+
+    // Side effect durable → finalize. We hold the claim, so this can't be raced.
     await db
       .update(envVarRequests)
       .set({ status: "completed", updatedAt: new Date() })

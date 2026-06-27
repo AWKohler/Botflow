@@ -29,6 +29,7 @@ const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export function validateEnvVarRequest(input: {
   target: unknown;
   key: unknown;
+  isSecret?: unknown;
 }): string | null {
   if (input.target !== "client" && input.target !== "server") {
     return "target must be 'client' (frontend Vite .env) or 'server' (Convex deployment).";
@@ -38,6 +39,13 @@ export function validateEnvVarRequest(input: {
   }
   if (isReservedEnvKey(input.key)) {
     return `${input.key} is managed by Botflow and can't be set by the user.`;
+  }
+  // A CLIENT (frontend) env var is compiled into the browser bundle and written
+  // to the sandbox .env — it is NOT secret and the agent can read it. Refuse to
+  // collect an actual secret there; real secrets must go to the server (Convex)
+  // target, which is never exposed to the frontend or the sandbox.
+  if (input.target === "client" && input.isSecret === true) {
+    return "Client (frontend) env vars are embedded in the browser bundle and readable from the sandbox — they are NOT secret. For an actual secret (API key, token), use target='server' (Convex deployment). If this value is genuinely public (a publishable key, a feature flag, a public URL), set isSecret=false.";
   }
   return null;
 }
@@ -87,7 +95,9 @@ export async function pollEnvVarRequest(params: {
   projectId: string;
 }): Promise<EnvVarRequestOutcome> {
   const db = getDb();
-  const deadline = Date.now() + 5 * 60 * 1000;
+  // 270s (< the route's 300s maxDuration) so the timeout-dismiss below actually
+  // runs before the serverless request is killed at the platform boundary.
+  const deadline = Date.now() + 270 * 1000;
   while (Date.now() < deadline) {
     await new Promise<void>((r) => setTimeout(r, 2500));
     const [row] = await db

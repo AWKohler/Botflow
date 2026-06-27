@@ -251,8 +251,7 @@ function buildCustomTools(customTools, oauthProviderIds) {
         {
           provider: z
             .enum(oauthIds)
-            .default("google")
-            .describe("Provider id: " + oauthList + "."),
+            .describe("Provider id (required, no default): " + oauthList + "."),
         },
         makeHostToolHandler("setup_oauth_provider"),
       ),
