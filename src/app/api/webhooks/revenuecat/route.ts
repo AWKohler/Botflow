@@ -18,14 +18,21 @@
  * after that, always 200 — we own the retry budget from here.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import {
   projects,
-  revenueCatWebhookEvents,
+  revenueCatWebhookDeliveries,
   userRevenueCatIdentity,
 } from '@/db/schema';
+import {
+  backoffMs,
+  convexSiteUrlFor,
+  deliverWebhookEventOnce,
+  DELIVERY_LEASE_MS,
+} from '@/lib/webhook-delivery';
+import { parseProjectIdFromAppUserId, stripNamespacedAppUserId } from '@/lib/revenuecat-app-user-id';
 import { REVENUECAT_ENABLED } from '@/lib/feature-flags';
 
 export const runtime = 'nodejs';
@@ -116,48 +123,83 @@ function normalize(event: RevenueCatEvent): CanonicalEvent | null {
   }
 }
 
-// ─── Fan-out to project Convex sites ──────────────────────────────────────
+// ─── Durable, routed fan-out (mirrors the hardened Stripe path) ────────────
 
-function convexSiteUrlFor(project: typeof projects.$inferSelect): string | null {
-  const deployUrl = project.userConvexUrl ?? project.convexDeployUrl;
-  if (!deployUrl) return null;
-  return deployUrl.replace('.convex.cloud', '.convex.site');
-}
+/** Record a (event, project) target and attempt inline delivery once. */
+async function recordAndDeliver(opts: {
+  project: typeof projects.$inferSelect;
+  eventId: string;
+  canonicalType: string;
+  payload: string;
+}): Promise<{ projectId: string; ok: boolean; reason?: string }> {
+  const { project, eventId, canonicalType, payload } = opts;
+  const db = getDb();
 
-async function deliverWithRetry(opts: {
-  url: string;
-  signature: string;
-  body: string;
-}): Promise<{ ok: boolean; lastStatus?: number; lastError?: string }> {
-  const delays = [200, 1000, 5000];
-  let lastStatus: number | undefined;
-  let lastError: string | undefined;
-  for (let i = 0; i < delays.length; i++) {
-    try {
-      const res = await fetch(opts.url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Botflow-Signature': opts.signature,
-        },
-        body: opts.body,
-        signal: AbortSignal.timeout(8000),
-      });
-      lastStatus = res.status;
-      if (res.ok) return { ok: true, lastStatus };
-      lastError = (await res.text()).slice(0, 300);
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-    }
-    if (i < delays.length - 1) {
-      await new Promise((r) => setTimeout(r, delays[i + 1]));
-    }
+  // Claim the (event, project) target FIRST — before deliverability checks — so a
+  // paid entitlement event is never dropped because the project momentarily lacks
+  // a secret/backend; the cron retries once config catches up. onConflictDoNothing
+  // makes RevenueCat's re-delivery idempotent; the lease lets a crashed attempt be
+  // reclaimed instead of stranded 'pending'.
+  const [claimed] = await db
+    .insert(revenueCatWebhookDeliveries)
+    .values({
+      eventId,
+      projectId: project.id,
+      canonicalType,
+      payload,
+      status: 'pending',
+      nextAttemptAt: new Date(Date.now() + DELIVERY_LEASE_MS),
+    })
+    .onConflictDoNothing()
+    .returning({ id: revenueCatWebhookDeliveries.id });
+  if (!claimed) {
+    return { projectId: project.id, ok: true, reason: 'already_claimed' };
   }
-  return {
-    ok: false,
-    ...(lastStatus !== undefined ? { lastStatus } : {}),
-    ...(lastError ? { lastError } : {}),
-  };
+
+  const siteUrl = convexSiteUrlFor(project);
+  if (!project.revenuecatWebhookSecret || !siteUrl) {
+    await db
+      .update(revenueCatWebhookDeliveries)
+      .set({
+        status: 'failed',
+        lastError: !project.revenuecatWebhookSecret ? 'no_secret' : 'no_convex_site',
+        nextAttemptAt: new Date(Date.now() + backoffMs(1)),
+        updatedAt: new Date(),
+      })
+      .where(eq(revenueCatWebhookDeliveries.id, claimed.id));
+    return {
+      projectId: project.id,
+      ok: false,
+      reason: !project.revenuecatWebhookSecret ? 'no_secret' : 'no_convex_site',
+    };
+  }
+
+  const result = await deliverWebhookEventOnce({
+    url: `${siteUrl}/revenuecat/webhook`,
+    secret: project.revenuecatWebhookSecret,
+    payload,
+  });
+  const nowTs = new Date();
+  if (result.ok) {
+    await db
+      .update(revenueCatWebhookDeliveries)
+      .set({ status: 'delivered', attempts: 1, lastStatus: result.status ?? null, updatedAt: nowTs })
+      .where(eq(revenueCatWebhookDeliveries.id, claimed.id));
+    return { projectId: project.id, ok: true };
+  }
+  console.error('[revenuecat/webhook] inline delivery failed', project.id, 'status=', result.status, 'err=', result.error);
+  await db
+    .update(revenueCatWebhookDeliveries)
+    .set({
+      status: 'failed',
+      attempts: 1,
+      lastStatus: result.status ?? null,
+      lastError: result.error ?? null,
+      nextAttemptAt: new Date(Date.now() + backoffMs(1)),
+      updatedAt: nowTs,
+    })
+    .where(eq(revenueCatWebhookDeliveries.id, claimed.id));
+  return { projectId: project.id, ok: false, reason: 'delivery_failed' };
 }
 
 function constantTimeEqual(a: string, b: string): boolean {
@@ -184,17 +226,18 @@ export async function POST(req: NextRequest) {
 
   const db = getDb();
 
-  // Authenticate: which Botflow user owns this inbound secret?
-  const identities = await db
+  // Authenticate by INDEXED digest lookup (O(1)), then constant-time compare the
+  // full secret as defense — no more O(N) scan over every user's secret.
+  const digest = createHash('sha256').update(authHeader).digest('hex');
+  const [identity] = await db
     .select({
       userId: userRevenueCatIdentity.userId,
       secret: userRevenueCatIdentity.rcInboundWebhookSecret,
     })
-    .from(userRevenueCatIdentity);
-  const identity = identities.find(
-    (row) => row.secret && constantTimeEqual(authHeader, row.secret),
-  );
-  if (!identity) {
+    .from(userRevenueCatIdentity)
+    .where(eq(userRevenueCatIdentity.rcInboundWebhookSecretDigest, digest))
+    .limit(1);
+  if (!identity || !identity.secret || !constantTimeEqual(authHeader, identity.secret)) {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -210,65 +253,77 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, ignored: 'no_event_id' });
   }
 
-  // Claim the event — PK conflict = already processed → 200.
-  try {
-    await db.insert(revenueCatWebhookEvents).values({ eventId: rcEvent.id });
-  } catch {
-    return NextResponse.json({ ok: true, dedup: true });
-  }
-
   const canonical = normalize(rcEvent);
   if (!canonical) {
     return NextResponse.json({ ok: true, ignored: rcEvent.type ?? 'unknown' });
   }
 
-  // Fan out to all of this user's RevenueCat-connected projects. A user may run
-  // several apps under one RevenueCat project, so each project's billing.ts
-  // decides relevance by app_user_id.
-  const projectRows = await db
-    .select()
-    .from(projects)
-    .where(
-      and(
-        eq(projects.userId, identity.userId),
-        eq(projects.revenuecatStatus, 'connected'),
-      ),
-    );
+  // Route by the project-namespaced app_user_id (bfp_<projectId>__…) → deliver to
+  // the SINGLE owning project, so one app's customer/payment data never reaches
+  // the user's other apps. If the id isn't namespaced (anonymous / legacy app),
+  // fall back to broadcasting to the user's connected projects so a paid event is
+  // never lost — but log it so the missing namespace is visible.
+  const appUserId = (canonical.data.appUserId as string | null) ?? null;
+  const routedProjectId = parseProjectIdFromAppUserId(appUserId);
+
+  // Deliver the STRIPPED app user id (the value the app passed to RevenueCat),
+  // so the generated billing.ts can match its own users. Keep the raw id too for
+  // debugging. Without this, a namespaced event delivers but never grants/revokes.
+  canonical.data.rawAppUserId = appUserId;
+  canonical.data.appUserId = stripNamespacedAppUserId(appUserId);
+
+  let targets: Array<typeof projects.$inferSelect>;
+  if (routedProjectId) {
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(
+        and(
+          eq(projects.id, routedProjectId),
+          eq(projects.userId, identity.userId),
+          eq(projects.revenuecatStatus, 'connected'),
+        ),
+      )
+      .limit(1);
+    if (!project) {
+      // Namespaced to a project that isn't this owner's connected project — drop
+      // rather than deliver elsewhere.
+      console.warn(
+        '[revenuecat/webhook] event for unrecognized/foreign project dropped',
+        'event=', canonical.id, 'project=', routedProjectId,
+      );
+      return NextResponse.json({ ok: true, ignored: 'project_not_owned_or_disconnected' });
+    }
+    targets = [project];
+  } else {
+    targets = await db
+      .select()
+      .from(projects)
+      .where(
+        and(
+          eq(projects.userId, identity.userId),
+          eq(projects.revenuecatStatus, 'connected'),
+        ),
+      );
+    if (targets.length > 1) {
+      console.warn(
+        '[revenuecat/webhook] un-namespaced app_user_id — broadcasting to',
+        targets.length,
+        'projects. Set a project-scoped RevenueCat App User ID (bfp_<projectId>__…) to route to one.',
+      );
+    }
+  }
 
   const payload = JSON.stringify(canonical);
   const deliveries = await Promise.all(
-    projectRows.map(async (project) => {
-      if (!project.revenuecatWebhookSecret) {
-        return { projectId: project.id, ok: false, reason: 'no_secret' };
-      }
-      const siteUrl = convexSiteUrlFor(project);
-      if (!siteUrl) {
-        return { projectId: project.id, ok: false, reason: 'no_convex_site' };
-      }
-      const signature = createHmac('sha256', project.revenuecatWebhookSecret)
-        .update(payload)
-        .digest('hex');
-      const result = await deliverWithRetry({
-        url: `${siteUrl}/revenuecat/webhook`,
-        signature,
-        body: payload,
-      });
-      if (!result.ok) {
-        console.error(
-          '[revenuecat/webhook] fan-out failed',
-          project.id,
-          'lastStatus=',
-          result.lastStatus,
-          'lastError=',
-          result.lastError,
-        );
-      }
-      return {
-        projectId: project.id,
-        ok: result.ok,
-        ...(result.lastStatus !== undefined ? { lastStatus: result.lastStatus } : {}),
-      };
-    }),
+    targets.map((project) =>
+      recordAndDeliver({
+        project,
+        eventId: canonical.id,
+        canonicalType: canonical.type,
+        payload,
+      }),
+    ),
   );
 
   return NextResponse.json({

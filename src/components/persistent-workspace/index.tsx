@@ -15,6 +15,7 @@ import { FileSearch } from "./file-search";
 import { SwiftSimulatorPreview } from "./swift-simulator-preview";
 import { SwiftPipWindow } from "./swift-pip-window";
 import { IPhoneDeviceRunner } from "./iphone-device-runner";
+import { PublishToAppStore } from "./publish-to-app-store";
 import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
 import { RevenueCatTab } from "./revenuecat-tab";
 import { REVENUECAT_ENABLED } from "@/lib/feature-flags";
@@ -88,6 +89,10 @@ export function PersistentWorkspace({
   const [previewStopped, setPreviewStopped] = useState<boolean>(true);
 
   const initializedRef = useRef(false);
+
+  // "Publish to App Store" wizard (Swift projects only). The component stays
+  // mounted while the workspace lives so wizard state survives close/reopen.
+  const [publishOpen, setPublishOpen] = useState(false);
 
   // Project row (fetched client-side) — drives backend-aware UI. Null until loaded.
   const [project, setProject] = useState<ProjectRow | null>(null);
@@ -354,6 +359,19 @@ export function PersistentWorkspace({
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedFile, hasUnsavedChanges, handleSaveFile]);
 
+  // Warn before leaving (tab close / refresh / external navigation) when the
+  // open file has unsaved edits, so work isn't lost. The listener is only armed
+  // while changes are pending, so there's no prompt during normal navigation.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent): void => {
+      e.preventDefault();
+      e.returnValue = ""; // Chrome requires returnValue to be set to show the prompt
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   return (
     <div className="h-screen flex bolt-bg text-fg">
       {/* Agent sidebar */}
@@ -488,8 +506,12 @@ export function PersistentWorkspace({
               variant="default"
               size="sm"
               className="font-bold text-sm text-white"
-              onClick={() => toast({ title: "Coming soon", description: "Publishing for persistent projects isn't available yet." })}
-              title="Publish (coming soon)"
+              onClick={() =>
+                platform === "swift"
+                  ? setPublishOpen(true)
+                  : toast({ title: "Coming soon", description: "Publishing for persistent projects isn't available yet." })
+              }
+              title={platform === "swift" ? "Publish to App Store" : "Publish (coming soon)"}
             >
               <Globe size={14} className="mr-1.5" />
               Publish
@@ -499,10 +521,12 @@ export function PersistentWorkspace({
 
         {/* Content */}
         <div className="flex-1 min-h-0 relative bg-surface">
-          {/* Code view */}
+          {/* Code view — inset 10px from the bottom/right to match the
+              Preview/Database/Payments cards (which use `pb-2.5 pr-2.5`); flush
+              to the header (top) and agent sidebar (left). */}
           <div
             className={cn(
-              "absolute inset-0",
+              "absolute top-0 left-0 right-2.5 bottom-2.5",
               currentView === "code" ? "flex flex-col" : "hidden",
               "rounded-xl border border-border overflow-hidden",
             )}
@@ -717,6 +741,18 @@ export function PersistentWorkspace({
           )}
         </div>
       </div>
+
+      {/* Publish to App Store wizard — Swift projects only. Always mounted (not
+          gated on publishOpen) so an in-flight publish build keeps its state
+          across close/reopen; polling pauses while closed and resumes on open. */}
+      {platform === "swift" && (
+        <PublishToAppStore
+          projectId={projectId}
+          projectName={project?.name ?? ""}
+          open={publishOpen}
+          onClose={() => setPublishOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -760,7 +796,7 @@ function StoppedPreviewPlaceholder({
   };
 
   return (
-    <div className="absolute inset-0 flex flex-col gap-2 p-2.5 pb-2.5 pr-2.5">
+    <div className="absolute inset-0 flex flex-col gap-2 pb-2.5 pr-2.5">
       {/* Picker bar — choose the device/orientation before starting. */}
       <div className="flex h-9 flex-shrink-0 items-center rounded-xl border border-border bg-elevated/60 px-3">
         <span className="text-[11px] text-muted">

@@ -21,6 +21,7 @@
  * GitHub: Phase A wiring lives in `./github-panel.tsx` and renders as a
  * sidebar tab on the Code view.
  */
+import { Input } from "@/components/ui/input";
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useToast } from "@/components/ui/toast";
@@ -62,7 +63,7 @@ import {
   type BackendType,
 } from "@/lib/project-platform";
 import { FileSearch } from "@/components/persistent-workspace/file-search";
-import { GoogleOAuthModal } from "@/components/workspace/google-oauth-modal";
+import { OAuthProviderModal } from "@/components/workspace/oauth-provider-modal";
 import { StripeConnectModal } from "@/components/workspace/stripe-connect-modal";
 import { EnvVarModal } from "@/components/workspace/env-var-modal";
 import { StripeTab, StripeModeToggle } from "@/components/sandboxed-web-workspace/stripe-tab";
@@ -645,7 +646,7 @@ export function SandboxedWebWorkspace({
 
   // ── OAuth provider request polling ───────────────────────────────────
   // When the agent calls setupOAuthProvider, it creates a pending request in
-  // the DB. We poll for it and show the GoogleOAuthModal when one is found.
+  // the DB. We poll for it and show the OAuthProviderModal when one is found.
   //
   // NOTE: we deliberately do NOT gate on hasAuth here. setupAuth sets
   // authConfigured=true server-side but the workspace only reads it on mount.
@@ -1004,10 +1005,11 @@ export function SandboxedWebWorkspace({
   // ── Render ───────────────────────────────────────────────────────────
   return (
     <div className="h-screen flex bolt-bg text-fg">
-      {/* Google OAuth credential modal — shown when agent calls setupOAuthProvider */}
+      {/* OAuth credential modal — shown when agent calls setupOAuthProvider */}
       {pendingOAuthRequest && (
-        <GoogleOAuthModal
+        <OAuthProviderModal
           requestId={pendingOAuthRequest.id}
+          provider={pendingOAuthRequest.provider}
           convexSiteUrl={pendingOAuthRequest.convexSiteUrl}
           projectId={projectId}
           onClose={() => setPendingOAuthRequest(null)}
@@ -1288,7 +1290,7 @@ export function SandboxedWebWorkspace({
                   {previewDevice === "responsive" && <AppWindow size={16} />}
                   {previewDevice === "figma" && <Frame size={16} />}
                 </button>
-                <input
+                <Input
                   className="flex-1 bg-transparent outline-none text-sm text-fg placeholder:text-muted"
                   value={previewPath}
                   onChange={(e) => setPreviewPath(e.target.value)}

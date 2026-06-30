@@ -1,5 +1,6 @@
 'use client';
 
+import { Input } from "@/components/ui/input";
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2, Eye, EyeOff, Lock, RefreshCw, Globe, Server, AlertCircle } from 'lucide-react';
@@ -171,7 +172,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
   const renderAddForm = (scope: Scope) => (
     <div className="space-y-2 pt-2">
       <div className="flex gap-2">
-        <input
+        <Input
           value={newKey[scope]}
           onChange={(e) =>
             setNewKey((p) => ({ ...p, [scope]: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') }))
@@ -181,7 +182,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
         />
       </div>
       <div className="flex gap-2">
-        <input
+        <Input
           value={newValue[scope]}
           onChange={(e) => setNewValue((p) => ({ ...p, [scope]: e.target.value }))}
           placeholder="value"

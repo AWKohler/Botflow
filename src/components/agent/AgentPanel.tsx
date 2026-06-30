@@ -6,7 +6,7 @@ import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls, isToolUIPart, getToolName, type UIMessage } from 'ai';
 import { Button } from '@/components/ui/button';
 import { Markdown } from '@/components/ui/markdown';
-import { ChevronDown, ChevronRight, ArrowUp, X as IconX, Cog, AlertCircle, RotateCcw, Loader2, ListPlus, Check, ImagePlus } from 'lucide-react';
+import { ChevronDown, ChevronRight, ArrowUp, X as IconX, Cog, AlertCircle, RotateCcw, Loader2, ListPlus, Check, ImagePlus, Smartphone } from 'lucide-react';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { cn } from '@/lib/utils';
 import { LiveActions } from '@/components/agent/LiveActions';
@@ -388,7 +388,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [initialized, setInitialized] = useState(false);
   const [actions, setActions] = useState<ToolCallData[]>([]);
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
-  const [model, setModel] = useState<ModelId>('fireworks-kimi-k2p6');
+  const [model, setModel] = useState<ModelId>('fireworks-kimi-k2p7');
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
   const [hasClaudeOAuth, setHasClaudeOAuth] = useState<boolean | null>(null);
@@ -396,7 +396,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
   const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
   const [hasGoogleKey, setHasGoogleKey] = useState<boolean | null>(null);
-  // Server flag (USE_TOGETHER_KIMI): Kimi K2.6 is served by Together AI, not Fireworks.
+  // Server flag (USE_TOGETHER_KIMI): Kimi K2.7 is served by Together AI, not Fireworks.
   const [useTogetherKimi, setUseTogetherKimi] = useState(false);
   // BYOK user's per-account preference for which agent runs Claude models.
   // Honored by the derivation only when the user has a genuine choice
@@ -417,6 +417,13 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const pendingUploadsRef = useRef<Map<string, Promise<void>>>(new Map());
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- Simulator screenshot state (swift projects only) ---
+  // `simShotAvailable` mirrors whether the sibling SwiftSimulatorPreview has a
+  // live frame to grab; `capturingSimShot` debounces the in-flight grab.
+  const isSwift = platform === 'swift';
+  const [simShotAvailable, setSimShotAvailable] = useState(false);
+  const [capturingSimShot, setCapturingSimShot] = useState(false);
 
   // --- Lightbox state ---
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
@@ -1000,8 +1007,15 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         const tc = part as { toolCallId?: string; state?: string; input?: unknown; output?: unknown };
         const toolCallId = tc.toolCallId ?? '';
         const state = tc.state ?? '';
-        if (toolName === 'endTurn' && state === 'output-available') {
-          endTurnFound = true;
+        // endTurn is a control-flow signal, not a visible action — skip it in
+        // EVERY state so it never lands in Live Actions. Previously only the
+        // final 'output-available' state was skipped; the earlier
+        // 'input-available' event pushed endTurn with status 'invoked' (spinner)
+        // and the later 'output-available' event hit this `continue` without
+        // ever clearing it. endTurn is fire-and-forget, so nothing updates that
+        // entry afterwards and the spinner runs forever.
+        if (toolName === 'endTurn') {
+          if (state === 'output-available') endTurnFound = true;
           continue;
         }
         const key = `${toolCallId}:${state}`;
@@ -1371,6 +1385,55 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // --- Handle file selection for image attachments ---
   const MAX_IMAGES = 10;
 
+  // Add a single image File to the pending strip and kick off its upload.
+  // Shared by the file picker and the simulator-screenshot capture so both
+  // paths produce identical attachments (process → /api/chat-images/upload).
+  const enqueueImageFile = useCallback((file: File) => {
+    const pendingId = crypto.randomUUID();
+    const localUrl = URL.createObjectURL(file);
+
+    setPendingImages(prev => [...prev, {
+      id: pendingId,
+      file,
+      localUrl,
+      uploading: true,
+      uploaded: false,
+    }]);
+
+    const uploadPromise = (async () => {
+      try {
+        const processed = await processImageForUpload(file);
+        const formData = new FormData();
+        formData.append('file', processed);
+        formData.append('projectId', projectId);
+
+        const res = await fetch('/api/chat-images/upload', { method: 'POST', body: formData });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error((data as { error?: string }).error ?? 'Upload failed');
+        }
+        const { id: dbId, url, key } = await res.json() as { id: string; url: string; key: string };
+
+        setPendingImages(prev => prev.map(img =>
+          img.id === pendingId
+            ? { ...img, uploading: false, uploaded: true, dbId, url, key }
+            : img
+        ));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Upload failed';
+        setPendingImages(prev => prev.map(img =>
+          img.id === pendingId
+            ? { ...img, uploading: false, uploaded: false, error: msg }
+            : img
+        ));
+      } finally {
+        pendingUploadsRef.current.delete(pendingId);
+      }
+    })();
+
+    pendingUploadsRef.current.set(pendingId, uploadPromise);
+  }, [projectId]);
+
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const allFiles = Array.from(e.target.files ?? []);
     if (allFiles.length === 0) return;
@@ -1386,52 +1449,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       toast({ title: `Maximum ${MAX_IMAGES} images per message — ${allFiles.length - files.length} file(s) skipped` });
     }
 
-    for (const file of files) {
-      const pendingId = crypto.randomUUID();
-      const localUrl = URL.createObjectURL(file);
-
-      setPendingImages(prev => [...prev, {
-        id: pendingId,
-        file,
-        localUrl,
-        uploading: true,
-        uploaded: false,
-      }]);
-
-      const uploadPromise = (async () => {
-        try {
-          const processed = await processImageForUpload(file);
-          const formData = new FormData();
-          formData.append('file', processed);
-          formData.append('projectId', projectId);
-
-          const res = await fetch('/api/chat-images/upload', { method: 'POST', body: formData });
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({})) as { error?: string };
-            throw new Error((data as { error?: string }).error ?? 'Upload failed');
-          }
-          const { id: dbId, url, key } = await res.json() as { id: string; url: string; key: string };
-
-          setPendingImages(prev => prev.map(img =>
-            img.id === pendingId
-              ? { ...img, uploading: false, uploaded: true, dbId, url, key }
-              : img
-          ));
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Upload failed';
-          setPendingImages(prev => prev.map(img =>
-            img.id === pendingId
-              ? { ...img, uploading: false, uploaded: false, error: msg }
-              : img
-          ));
-        } finally {
-          pendingUploadsRef.current.delete(pendingId);
-        }
-      })();
-
-      pendingUploadsRef.current.set(pendingId, uploadPromise);
-    }
-  }, [projectId, pendingImages, toast]);
+    for (const file of files) enqueueImageFile(file);
+  }, [pendingImages.length, toast, enqueueImageFile]);
 
   // --- Remove a pending image ---
   const handleRemoveImage = useCallback((pendingId: string) => {
@@ -1450,6 +1469,68 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       return prev.filter(i => i.id !== pendingId);
     });
   }, []);
+
+  // --- Simulator screenshot bridge (swift projects) ---
+  // The SwiftSimulatorPreview is a sibling component that owns the streaming
+  // canvas and its live/stopped state. It can't be reached through props from
+  // here, so we coordinate over window events (the pattern this codebase
+  // already uses for cross-component signals), scoped by projectId:
+  //   • it broadcasts `swift-sim-availability` whenever a live frame becomes
+  //     (un)grabbable — we mirror that into `simShotAvailable` to enable/gray
+  //     the button. We also fire a one-shot query on mount in case the sim
+  //     went live before this listener attached.
+  useEffect(() => {
+    if (!isSwift) return;
+    const onAvail = (e: Event) => {
+      const d = (e as CustomEvent<{ projectId: string; available: boolean }>).detail;
+      if (!d || d.projectId !== projectId) return;
+      setSimShotAvailable(Boolean(d.available));
+    };
+    window.addEventListener('swift-sim-availability', onAvail);
+    window.dispatchEvent(new CustomEvent('swift-sim-availability-query', { detail: { projectId } }));
+    return () => window.removeEventListener('swift-sim-availability', onAvail);
+  }, [isSwift, projectId]);
+
+  // Request a fresh grab of the simulator screen and, when it comes back,
+  // funnel it through the normal image-attachment pipeline so it rides along
+  // with the next message exactly like a manually-uploaded screenshot.
+  const handleCaptureSimShot = useCallback(() => {
+    if (!simShotAvailable || capturingSimShot) return;
+    if (pendingImages.length >= MAX_IMAGES) {
+      toast({ title: `Maximum ${MAX_IMAGES} images per message` });
+      return;
+    }
+    setCapturingSimShot(true);
+    const requestId = crypto.randomUUID();
+    // Mutable holder (vs. plain `let`s) so `finish` can clear the timeout and
+    // guard against double-settle without tripping prefer-const / TDZ ordering.
+    const pending: { settled: boolean; timer?: ReturnType<typeof setTimeout> } = { settled: false };
+
+    const finish = (result: { blob?: Blob; error?: string }) => {
+      if (pending.settled) return;
+      pending.settled = true;
+      window.removeEventListener('swift-sim-capture-response', onResp);
+      if (pending.timer) clearTimeout(pending.timer);
+      setCapturingSimShot(false);
+      if (result.error || !result.blob) {
+        toast({ title: "Couldn't capture the simulator", description: result.error ?? 'No frame available yet.' });
+        return;
+      }
+      const ext = result.blob.type === 'image/png' ? 'png' : 'jpg';
+      const file = new File([result.blob], `simulator-${Date.now()}.${ext}`, { type: result.blob.type || 'image/jpeg' });
+      enqueueImageFile(file);
+    };
+
+    function onResp(e: Event) {
+      const d = (e as CustomEvent<{ projectId: string; requestId: string; blob?: Blob; error?: string }>).detail;
+      if (!d || d.projectId !== projectId || d.requestId !== requestId) return;
+      finish({ blob: d.blob, error: d.error });
+    }
+
+    window.addEventListener('swift-sim-capture-response', onResp);
+    pending.timer = setTimeout(() => finish({ error: 'The preview did not respond. Make sure it is running.' }), 5000);
+    window.dispatchEvent(new CustomEvent('swift-sim-capture-request', { detail: { projectId, requestId } }));
+  }, [simShotAvailable, capturingSimShot, pendingImages.length, projectId, enqueueImageFile, toast]);
 
   // --- Error display component ---
   const renderError = () => {
@@ -2071,6 +2152,22 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             </button>
           )}
 
+          {/* Simulator screenshot button — swift projects only. Grabs the live
+              simulator frame and attaches it like an upload. Grayed out when
+              the simulator isn't running. */}
+          {isSwift && modelSupportsImages(model) && (
+            <button
+              type="button"
+              onClick={handleCaptureSimShot}
+              disabled={!simShotAvailable || capturingSimShot}
+              className="flex items-center justify-center size-6 rounded-full text-muted hover:text-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-muted"
+              title={simShotAvailable ? 'Attach a screenshot of the simulator' : 'Start the simulator to attach a screenshot'}
+              aria-label="Attach simulator screenshot"
+            >
+              {capturingSimShot ? <Loader2 size={16} className="animate-spin" /> : <Smartphone size={16} />}
+            </button>
+          )}
+
           {/* Queued message count */}
           {messageQueue.length > 0 && (
             <span className="text-[10px] text-muted bg-soft border border-border rounded-full px-2 py-0.5">
@@ -2112,7 +2209,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                     setShowCompletionWarning(false);
                     setMessageQueue([]);
                     // Signal workspace to dismiss any pending tool-driven modals
-                    // (e.g. GoogleOAuthModal from setupOAuthProvider) and tell
+                    // (e.g. OAuthProviderModal from setupOAuthProvider) and tell
                     // the server-side polling loops to terminate early.
                     window.dispatchEvent(new CustomEvent('agent-user-stopped'));
                   }}
@@ -2143,7 +2240,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         {/* Inset bottom — Token counter. Shows real Claude Code usage when
             available; falls back to our char/4 estimate for Botflow. */}
         {(displayedTokens > 0 || isCompacting) && (
-          <div className="flex items-center gap-2 px-4 py-2 border-t border-border">
+          <div
+            className="flex items-center gap-2 px-4 py-2 border-t border-border cursor-help"
+            title="Context window used vs. total — how much of the model's memory this conversation is using. Older messages are auto-summarized as it fills up."
+          >
             <div className="flex-1 h-1 rounded-full bg-soft overflow-hidden">
               <div
                 className={cn(

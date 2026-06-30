@@ -14,6 +14,7 @@ import { auth } from "@clerk/nextjs/server";
 import { eq, and } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects, oauthProviderRequests } from "@/db/schema";
+import { isSupportedOAuthProvider } from "@/lib/oauth-providers/registry";
 
 /**
  * DELETE /api/projects/[id]/convex/setup-oauth-provider
@@ -80,11 +81,18 @@ export async function POST(
 
     const { id: projectId } = await params;
     const body = (await req.json().catch(() => ({}))) as { provider?: string };
-    const provider = (body.provider ?? "google").toLowerCase();
-
-    if (provider !== "google") {
+    // Require an explicit provider — don't silently default to a real one, or a
+    // malformed call would configure the wrong app's AUTH_* vars.
+    const provider = (body.provider ?? "").toLowerCase().trim();
+    if (!provider) {
       return NextResponse.json(
-        { ok: false, error: `Unsupported OAuth provider: ${provider}. Only 'google' is supported.` },
+        { ok: false, error: "provider is required." },
+        { status: 400 },
+      );
+    }
+    if (!isSupportedOAuthProvider(provider)) {
+      return NextResponse.json(
+        { ok: false, error: `Unsupported OAuth provider: ${provider}.` },
         { status: 400 },
       );
     }

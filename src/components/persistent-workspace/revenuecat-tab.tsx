@@ -13,6 +13,7 @@
  * No data dashboard in this preliminary build — RevenueCat's own dashboard does
  * the heavy lifting.
  */
+import { Input } from "@/components/ui/input";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -377,7 +378,7 @@ function Field({
   return (
     <div>
       <label className="block text-xs text-muted mb-1">{label}</label>
-      <input
+      <Input
         type={type ?? "text"}
         value={value}
         onChange={(e) => onChange(e.target.value)}

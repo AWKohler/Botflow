@@ -489,12 +489,25 @@ export const stripeWebhook = httpAction(async (ctx, req) => {
   if (!PROJECT_SECRET) {
     return new Response("Stripe integration not configured", { status: 500 });
   }
-  const signatureHeader = req.headers.get("X-Botflow-Signature");
-  if (!signatureHeader) return new Response("missing signature", { status: 401 });
-
   const raw = await req.text();
-  const expected = await hmacHex(PROJECT_SECRET, raw);
-  if (!safeEqual(signatureHeader, expected)) {
+
+  // Require the timestamped V2 signature: HMAC("<timestamp>.<body>") with the
+  // timestamp within 5 minutes. Binding a fresh timestamp blocks replay of a
+  // captured request, and REQUIRING it (no body-only fallback) blocks a
+  // signature-stripping downgrade. The Botflow platform always sends both
+  // headers, so there is nothing to fall back to.
+  const tsHeader = req.headers.get("X-Botflow-Timestamp");
+  const sigV2 = req.headers.get("X-Botflow-Signature-V2");
+  if (!tsHeader || !sigV2) {
+    return new Response("missing signature", { status: 401 });
+  }
+  const ts = Number(tsHeader);
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (!Number.isFinite(ts) || Math.abs(nowSec - ts) > 300) {
+    return new Response("stale or invalid timestamp", { status: 401 });
+  }
+  const expected = await hmacHex(PROJECT_SECRET, ts + "." + raw);
+  if (!safeEqual(sigV2, expected)) {
     return new Response("bad signature", { status: 401 });
   }
 
@@ -515,15 +528,25 @@ export const BILLING_TS = `// EDITABLE — implement how Stripe events change yo
 // (the synchronous post-checkout reconcile) both call applyStripeEvent below,
 // so this is the single place your tier/subscription logic lives.
 //
+// ⚠️ IDEMPOTENCY: the same event can arrive more than once — the webhook is
+// at-least-once (delivery is retried until it succeeds) AND reconcile may apply
+// it too. Setting a tier/status to a fixed value is naturally safe to repeat,
+// but ADDITIVE actions (granting credits, sending an email, incrementing a
+// counter) MUST be guarded. Record event.id (passed below) in a table and skip
+// if you've already processed it.
+//
 // The payload is a NORMALIZED Botflow event — NOT a raw Stripe event. Handle
 // these event.type values, with these event.data fields:
 //
 //   subscription.activated  — user just paid / started a plan
 //       data: { subscriptionId, customerId, status, priceId, metadata }
-//   subscription.updated    — plan or status changed
-//       data: { subscriptionId, status, priceId?, metadata }
-//   subscription.canceled   — ended, or set to cancel at period end
-//       data: { subscriptionId, customerId?, cancelAtPeriodEnd?, status?, metadata }
+//   subscription.updated    — plan or status changed. If the user scheduled a
+//                             cancellation, cancelAtPeriodEnd is true and cancelAt
+//                             is the unix time access ends — they KEEP access
+//                             until then (don't downgrade early).
+//       data: { subscriptionId, customerId, status, cancelAtPeriodEnd, cancelAt?, priceId?, metadata }
+//   subscription.canceled   — actually ended (status 'canceled' / deleted)
+//       data: { subscriptionId, customerId?, status?, metadata }
 //   payment.succeeded       — one-time payment / first invoice cleared
 //       data: { sessionId?, paymentIntentId?, amountTotal?, currency?, customerEmail?, metadata }
 //   payment.failed          — a charge failed

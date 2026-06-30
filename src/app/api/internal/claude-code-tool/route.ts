@@ -139,16 +139,23 @@ export async function POST(req: Request) {
       // Build the zip from the project's sandbox FS.
       let zipBlob = await buildConvexDeployZip(binding.projectId);
       if (!zipBlob) {
-        // Sandbox may have expired and been re-created empty. Try auto-seeding.
+        // Sandbox may have expired and been re-created empty. Try auto-seeding
+        // with the PROJECT'S template (a swift project must reseed swiftConvex,
+        // never viteConvex) and the platform-correct config injection — Swift
+        // gets ConvexConfig.swift, web gets .env. Mirrors deployConvexFromSandbox.
         try {
-          const { seedSandboxIfEmpty } = await import("@/lib/vercel-sandbox");
-          const { materializeFrontendEnv } = await import("@/lib/sandbox-env");
-          const seeded = await seedSandboxIfEmpty(binding.projectId, "viteConvex");
-          if (seeded) {
-            // Regenerate .env from the DB (frontend vars + VITE_CONVEX_URL) so a
-            // re-created sandbox keeps the user's configured frontend vars.
-            await materializeFrontendEnv(binding.projectId).catch(() => undefined);
-            zipBlob = await buildConvexDeployZip(binding.projectId);
+          const { seedSandboxIfEmpty, pickSandboxTemplate } = await import("@/lib/vercel-sandbox");
+          const template = pickSandboxTemplate(project);
+          if (template) {
+            const seeded = await seedSandboxIfEmpty(binding.projectId, template);
+            if (seeded) {
+              const { materializeFrontendEnv, materializeSwiftConvexConfig } =
+                await import("@/lib/sandbox-env");
+              const materialize =
+                template === "swiftConvex" ? materializeSwiftConvexConfig : materializeFrontendEnv;
+              await materialize(binding.projectId).catch(() => undefined);
+              zipBlob = await buildConvexDeployZip(binding.projectId);
+            }
           }
         } catch (reseedErr) {
           console.warn("[claude-code-tool] auto-reseed failed:", reseedErr);
@@ -184,6 +191,7 @@ export async function POST(req: Request) {
         logs?: string;
         error?: string;
         generatedFiles?: { path: string; content: string }[];
+        functionSpec?: import("@/lib/swift-convex-codegen").ConvexFunctionSpec;
       };
       try {
         workerJson = await workerResponse.json();
@@ -207,6 +215,18 @@ export async function POST(req: Request) {
         await writeGeneratedConvexFiles(binding.projectId, workerJson.generatedFiles);
       }
 
+      // Swift codegen: regenerate Sources/Core/ConvexAPI.swift from the
+      // deployed function manifest. Non-fatal; no-op for web projects.
+      let swiftApiRegenerated = false;
+      if (workerJson.functionSpec) {
+        const { writeSwiftConvexApi } = await import("@/lib/swift-convex-codegen");
+        swiftApiRegenerated = await writeSwiftConvexApi(
+          binding.projectId,
+          project,
+          workerJson.functionSpec,
+        );
+      }
+
       const result: DeployResult = {
         ok: true,
         output: workerJson.logs ?? "",
@@ -215,7 +235,11 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         ok: true,
-        content: `Convex deployment completed.\n\n${result.output}`.trim(),
+        content:
+          `Convex deployment completed.\n\n${result.output}`.trim() +
+          (swiftApiRegenerated
+            ? "\n\nRegenerated Sources/Core/ConvexAPI.swift from the deployed functions — reference Convex functions through ConvexAPI constants only."
+            : ""),
         generatedFilesCount: result.generatedFiles?.length ?? 0,
       });
     }
@@ -531,7 +555,9 @@ export async function POST(req: Request) {
         authorizeUrl,
       });
 
-      const deadlineMs = Date.now() + 5 * 60 * 1000;
+      // 270s (< maxDuration 300s) so pollConnectRequest's timeout-dismiss runs
+      // before the platform kills the request.
+      const deadlineMs = Date.now() + 270 * 1000;
       const result = await pollConnectRequest({ requestId, projectId: binding.projectId, deadlineMs });
 
       if (result === "completed") {
@@ -777,20 +803,29 @@ export async function POST(req: Request) {
           content: "This project has no backend — Convex Auth is not available.",
         });
       }
-      if (project.platform !== "sandboxed-web") {
+      const isSwiftAuth = project.platform === "swift";
+      if (project.platform !== "sandboxed-web" && !isSwiftAuth) {
         return NextResponse.json({
           ok: false,
-          content: "setupAuth is only available for sandboxed-web projects.",
+          content: "setupAuth is only available for sandboxed-web and swift projects.",
         });
       }
 
-      // Resolve SITE_URL from the sandbox's stable preview domain
+      // Resolve SITE_URL. Web uses the sandbox's stable preview domain. Swift
+      // has no web preview origin (the app returns to a custom URL scheme), so
+      // SITE_URL only needs to be a valid URL — use the deployment's own
+      // *.convex.site origin when known. Mirrors the public setup-auth route.
       let siteUrl = "https://placeholder.example.com";
-      try {
-        const sandbox = await getOrCreatePersistentSandbox(binding.projectId);
-        siteUrl = sandbox.domain(5173);
-      } catch {
-        // Non-fatal — placeholder is acceptable
+      if (isSwiftAuth) {
+        const convexUrl = project.convexDeployUrl ?? project.userConvexUrl ?? null;
+        if (convexUrl) siteUrl = convexUrl.replace(".convex.cloud", ".convex.site");
+      } else {
+        try {
+          const sandbox = await getOrCreatePersistentSandbox(binding.projectId);
+          siteUrl = sandbox.domain(5173);
+        } catch {
+          // Non-fatal — placeholder is acceptable
+        }
       }
 
       let userConvexOAuthToken: string | null = null;
@@ -808,7 +843,11 @@ export async function POST(req: Request) {
 
       let authResult;
       try {
-        authResult = await setupConvexAuth(binding.projectId, { siteUrl, userConvexOAuthToken });
+        authResult = await setupConvexAuth(binding.projectId, {
+          siteUrl,
+          userConvexOAuthToken,
+          platform: isSwiftAuth ? "swift" : "web",
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error("[claude-code-tool/setup_auth] threw:", err);
@@ -818,11 +857,16 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, content: authResult.error });
       }
 
+      // Everything must ride inside `content` — the bridge's MCP handler only
+      // surfaces result.content to the model (sibling fields like `files` are
+      // silently dropped). content is an object; the bridge JSON.stringifies it.
       return NextResponse.json({
         ok: true,
-        content: authResult.context,
-        files: authResult.files,
-        packagesToInstall: authResult.packagesToInstall,
+        content: {
+          files: authResult.files,
+          packagesToInstall: authResult.packagesToInstall,
+          context: authResult.context,
+        },
       });
     }
 
@@ -846,15 +890,26 @@ export async function POST(req: Request) {
       // via a server-side URL call. Instead, we duplicate the minimal logic here.
       const { getDb: getDbLocal } = await import("@/db");
       const { oauthProviderRequests: oauthTable } = await import("@/db/schema");
-      const { eq: eqLocal, and: andLocal, desc: descLocal } = await import("drizzle-orm");
+      const { eq: eqLocal, and: andLocal } = await import("drizzle-orm");
 
       const dbLocal = getDbLocal();
 
-      const inputProvider = (body.input?.provider as string | undefined) ?? "google";
-      if (inputProvider !== "google") {
+      // Require an explicit provider — don't silently default to a real one, or a
+      // malformed tool call would configure the wrong app's AUTH_* vars.
+      const inputProvider = (body.input?.provider as string | undefined)?.toLowerCase().trim() ?? "";
+      const { isSupportedOAuthProvider, getOAuthProvider } = await import(
+        "@/lib/oauth-providers/registry"
+      );
+      if (!inputProvider) {
         return NextResponse.json({
           ok: false,
-          content: `Unsupported OAuth provider: ${inputProvider}. Only 'google' is supported.`,
+          content: "provider is required (one of: google, github, microsoft-entra-id, apple).",
+        });
+      }
+      if (!isSupportedOAuthProvider(inputProvider)) {
+        return NextResponse.json({
+          ok: false,
+          content: `Unsupported OAuth provider: ${inputProvider}.`,
         });
       }
 
@@ -888,8 +943,9 @@ export async function POST(req: Request) {
 
       const requestId = oauthRecord.id;
 
-      // Poll for up to 5 minutes for the user to complete the modal
-      const deadline = Date.now() + 5 * 60 * 1000;
+      // Poll for the user to complete the modal — 270s (< route maxDuration) so
+      // the timeout-dismiss below runs before the platform kills the request.
+      const deadline = Date.now() + 270 * 1000;
       while (Date.now() < deadline) {
         await new Promise<void>((r) => setTimeout(r, 3000));
 
@@ -907,51 +963,72 @@ export async function POST(req: Request) {
         if (!statusRow) break; // Shouldn't happen — bail gracefully
 
         if (statusRow.status === "completed") {
+          const def = getOAuthProvider(inputProvider)!;
+          const imp = def.authImport.default
+            ? `import ${def.authImport.symbol} from "${def.authImport.from}";`
+            : `import { ${def.authImport.symbol} } from "${def.authImport.from}";`;
+          const appleNote =
+            inputProvider === "apple"
+              ? "\n\nAPPLE NOTE: name/email arrive ONLY on the first sign-in — capture them then. Apple can't be tested on localhost; use the deployed preview."
+              : "";
           return NextResponse.json({
             ok: true,
-            content: `=== GOOGLE OAUTH CREDENTIALS SAVED ===
+            content: `=== ${def.displayName.toUpperCase()} OAUTH CREDENTIALS SAVED ===
 
-AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET are now set on your Convex deployment.
+${def.envVars.join(", ")} now set on your Convex deployment.
 
 REQUIRED NEXT STEPS:
 
-1. Update convex/auth.ts — add the Google provider:
+1. Update convex/auth.ts — add the provider (pass NO arguments; extra config is
+   read from env automatically):
 
    import { convexAuth } from "@convex-dev/auth/server";
    import { Password } from "@convex-dev/auth/providers/Password";
-   import Google from "@auth/core/providers/google";
+   ${imp}
 
    export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-     providers: [Password, Google],
+     providers: [Password, ${def.providerExpr}],
+     // keep the existing callbacks.redirect block intact
    });
 
 2. Run convex_deploy to push the updated auth config.
 
-3. Add a Google sign-in button to the UI:
-
-   const { signIn } = useAuthActions();
-   <button onClick={() => void signIn("google")}>Sign in with Google</button>
-
-   Clicking the button redirects to Google's consent screen.
-   On return, Convex Auth creates or merges the user account automatically.`,
+3. Add a sign-in button using startOAuthSignIn(signIn, "${inputProvider}") from
+   @/lib/botflowAuth (NOT signIn directly) so it works from the preview iframe,
+   and call resumePendingOAuthSignIn(signIn) once at app mount. On return, Convex
+   Auth creates or merges the user account automatically.${appleNote}`,
           });
         }
 
         if (statusRow.status === "dismissed") {
+          const name = getOAuthProvider(inputProvider)?.displayName ?? inputProvider;
           return NextResponse.json({
             ok: false,
             content:
-              "User dismissed the Google OAuth modal without saving credentials. " +
+              `User dismissed the ${name} OAuth modal without saving credentials. ` +
               "Do not retry automatically. Continue with other work.",
           });
         }
         // status === 'pending' — keep polling
       }
 
+      // Timed out — mark this request dismissed (only if still pending, so we
+      // don't clobber a just-completed submit) so the workspace closes the
+      // now-unwatched modal instead of orphaning it.
+      await dbLocal
+        .update(oauthTable)
+        .set({ status: "dismissed", updatedAt: new Date() })
+        .where(
+          andLocal(
+            eqLocal(oauthTable.id, requestId),
+            eqLocal(oauthTable.status, "pending"),
+          ),
+        );
+
       return NextResponse.json({
         ok: false,
         content:
-          "Timed out waiting for Google OAuth credentials (5 minutes). " +
+          `Timed out waiting for ${getOAuthProvider(inputProvider)?.displayName ?? inputProvider} OAuth credentials (5 minutes). ` +
           "Call setup_oauth_provider again when the user is ready.",
       });
     }
@@ -962,7 +1039,8 @@ REQUIRED NEXT STEPS:
       // outcome. The value itself never flows through here.
       const target = body.input?.target;
       const key = body.input?.key;
-      const invalid = validateEnvVarRequest({ target, key });
+      const isSecret = body.input?.isSecret;
+      const invalid = validateEnvVarRequest({ target, key, isSecret });
       if (invalid) {
         return NextResponse.json({ ok: false, content: invalid });
       }
@@ -1012,7 +1090,7 @@ REQUIRED NEXT STEPS:
         status: "pending",
       });
 
-      const deadline = Date.now() + 5 * 60 * 1000;
+      const deadline = Date.now() + 270 * 1000; // < maxDuration, leaves cleanup headroom
       while (Date.now() < deadline) {
         await new Promise<void>((r) => setTimeout(r, 2000));
         const [row] = await dbLocal
@@ -1060,6 +1138,8 @@ REQUIRED NEXT STEPS:
           and(
             eq(chatQuestions.toolCallId, toolCallId),
             eq(chatQuestions.projectId, binding.projectId),
+            // pending-only so a just-answered question isn't clobbered to dismissed.
+            eq(chatQuestions.status, "pending"),
           ),
         )
         .catch(() => undefined);

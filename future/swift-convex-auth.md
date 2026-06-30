@@ -58,7 +58,7 @@ ConvexClientWithAuth refreshes by calling auth:signIn {refreshToken} via loginFr
 
 ## Build plan
 
-### A. Template (`swift-convex-template`, branch `feat/auth`) — Swift client
+### A. Template (`swift-convex-template`, `main`) — Swift client
 Ships the auth scaffolding **inert by default** (auth is opt-in via `setupAuth`,
 exactly like web ships `botflowAuth.ts` only when auth is configured). Gated by a
 generated flag so a no-auth project builds + runs unchanged.
@@ -149,9 +149,10 @@ prod after review/merge:
   `convex-platform.ts` uses `DELETE /v1/projects/{id}` → **405**. Correct is
   `POST /v1/projects/{id}/delete` (confirmed). Deleted Botflow projects currently
   leak their Convex backends. Flagged as a separate task.
-- **Template branch-pin** (`TEMPLATE_BRANCHES` in `vercel-sandbox.ts`) is a
-  temporary test shim pointing `swiftConvex` at `swift-convex-template@feat/auth`.
-  Revert once that template branch merges to its `main`.
+- **Template branch-pin** (`TEMPLATE_BRANCHES` in `vercel-sandbox.ts`): RESOLVED —
+  `swift-convex-template@feat/auth` merged to `main` (PR #1), so the pin was removed
+  and `swiftConvex` now clones `main` (which carries the auth scaffolding + the
+  App Store publish template fixes).
 
 ## Out of scope v1 (unchanged)
 Google/OAuth providers (additive: the page hosts the redirect later), magic-link

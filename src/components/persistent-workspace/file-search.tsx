@@ -1,5 +1,6 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -69,7 +70,7 @@ export function FileSearch({ projectId, onOpenFile }: FileSearchProps) {
       <div className="mb-2">
         <div className="flex items-center gap-2 bg-surface border border-border shadow rounded-lg px-3 py-2">
           <span className="text-muted">🔍</span>
-          <input
+          <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search files (ripgrep)"

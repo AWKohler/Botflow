@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 const COMPANION_DIST_BASE =
   "https://github.com/AWKohler/botflow-companion-dist/releases/latest/download";
 const COMPANION_DOWNLOAD_MAC =
-  process.env.NEXT_PUBLIC_COMPANION_MAC_URL || `${COMPANION_DIST_BASE}/BotflowCompanion.zip`;
+  process.env.NEXT_PUBLIC_COMPANION_MAC_URL || `${COMPANION_DIST_BASE}/BotflowCompanion.dmg`;
 const COMPANION_DOWNLOAD_WIN =
   process.env.NEXT_PUBLIC_COMPANION_WIN_URL || `${COMPANION_DIST_BASE}/BotflowCompanionSetup.exe`;
 // The `latest/download/<asset>` redirect 404s silently if a release renames or
@@ -657,14 +657,10 @@ function CompanionSetupGuide({ error, onRetry }: { error: string | null; onRetry
           </>
         ) : (
           <>
-            <GuideStep n={1}>Unzip and drag <span className="font-medium text-fg">Botflow Companion</span> into your Applications folder.</GuideStep>
-            <GuideStep n={2}>
-              First launch: right-click the app → <span className="font-medium text-fg">Open</span> → Open
-              (this clears macOS Gatekeeper for an app downloaded from the web).
-            </GuideStep>
-            <GuideStep n={3}>It lives in your menu bar. Open it and <span className="font-medium text-fg">sign in with your Apple ID</span> — a free Apple ID works.</GuideStep>
-            <GuideStep n={4}>Connect your iPhone with a cable, unlock it, and tap <span className="font-medium text-fg">Trust</span>.</GuideStep>
-            <GuideStep n={5}>The companion will guide you to turn on <span className="font-medium text-fg">Developer Mode</span> if it isn&apos;t already.</GuideStep>
+            <GuideStep n={1}>Open <span className="font-medium text-fg">BotflowCompanion.dmg</span> and drag <span className="font-medium text-fg">Botflow Companion</span> into Applications.</GuideStep>
+            <GuideStep n={2}>Open it from Applications — it lives in your <span className="font-medium text-fg">menu bar</span>. Sign in with your Apple ID (a free Apple ID works).</GuideStep>
+            <GuideStep n={3}>Connect your iPhone with a cable, unlock it, and tap <span className="font-medium text-fg">Trust</span>.</GuideStep>
+            <GuideStep n={4}>If Developer Mode is off, click <span className="font-medium text-fg">Enable Developer Mode</span> in the companion, then confirm on the device and restart it.</GuideStep>
           </>
         )}
       </div>

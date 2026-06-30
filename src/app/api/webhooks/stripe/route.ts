@@ -5,34 +5,35 @@
  * for all connected accounts here (one endpoint per mode in Stripe dashboard;
  * we verify against whichever secret matches). We then:
  *
- *   1. Verify Stripe-Signature against STRIPE_WEBHOOK_SECRET_TEST or
- *      STRIPE_WEBHOOK_SECRET (live). The first one that verifies wins.
- *   2. Claim the event by INSERTing into stripe_webhook_events. PK conflict
- *      = already processed → 200 ok.
- *   3. Look up which Botflow projects belong to event.account.
- *   4. Normalize to canonical types (subscription.activated|canceled|updated,
- *      payment.succeeded|failed, account.updated).
- *   5. Fan out to each affected project's Convex HTTP endpoint, HMAC-signed
- *      with the project's stripe_webhook_secret. Inline 3-try backoff per
- *      fan-out; failures are logged but don't 500 the response (we already
- *      claimed the event).
+ *   1. Verify Stripe-Signature against the configured/managed secrets. The
+ *      first one that verifies wins (and tells us the mode).
+ *   2. Normalize to canonical types.
+ *   3. ROUTE: payment/subscription events go ONLY to the single project that
+ *      created them (metadata.botflow_project_id), never broadcast across a
+ *      user's other apps that share the same connected account. Account-level
+ *      events (account.updated) broadcast to the user's same-mode projects.
+ *   4. Record each (event, project) target in the durable stripe_webhook_deliveries
+ *      outbox and attempt delivery inline once. Failures are retried by
+ *      /api/cron/retry-stripe-deliveries — so a paid event is never lost.
  *
- * Failures inside step 1 return 400 so Stripe retries (the test/live secret
- * setup is platform-side and recoverable). Failures after that return 200
- * so Stripe doesn't re-deliver (we own the retry budget from here on).
+ * We ALWAYS return 200 (once the signature verifies) so the shared platform
+ * Connect endpoint is never disabled by one user's down Convex backend. Only a
+ * failed signature returns 400 (so Stripe retries a transient platform-side
+ * secret misconfig).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { createHmac } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { getDb } from '@/db';
-import {
-  projects,
-  stripeWebhookEvents,
-  userStripeIdentity,
-} from '@/db/schema';
+import { projects, stripeWebhookDeliveries, stripeObjectProjectMap, userStripeIdentity } from '@/db/schema';
 import { getStripe, type StripeMode } from '@/lib/stripe';
 import { getManagedWebhookSecrets } from '@/lib/stripe-webhook-provisioning';
+import {
+  backoffMs,
+  convexSiteUrlFor,
+  deliverStripeEventOnce,
+  DELIVERY_LEASE_MS,
+} from '@/lib/stripe-webhook-delivery';
 import { STRIPE_CONNECT_ENABLED } from '@/lib/feature-flags';
 
 export const runtime = 'nodejs';
@@ -51,6 +52,9 @@ interface CanonicalEvent {
   mode: StripeMode;
   data: Record<string, unknown>;
 }
+
+// account.updated is the only account-level (non-project-scoped) event we emit.
+const ACCOUNT_LEVEL_TYPES = new Set<CanonicalEvent['type']>(['account.updated']);
 
 // ─── Signature verification (try each mode's secret) ─────────────────────
 
@@ -114,7 +118,12 @@ function normalize(event: Stripe.Event, mode: StripeMode): CanonicalEvent | null
         id,
         accountId,
         mode,
-        data: { subscriptionId: sub.id, status: sub.status, metadata: sub.metadata },
+        data: {
+          subscriptionId: sub.id,
+          customerId: typeof sub.customer === 'string' ? sub.customer : sub.customer.id,
+          status: sub.status,
+          metadata: sub.metadata,
+        },
       };
     }
     case 'customer.subscription.deleted': {
@@ -133,8 +142,13 @@ function normalize(event: Stripe.Event, mode: StripeMode): CanonicalEvent | null
     }
     case 'customer.subscription.updated': {
       const sub = event.data.object as Stripe.Subscription;
-      // Transition to canceled / past_due → emit canceled
-      if (sub.status === 'canceled' || sub.cancel_at_period_end) {
+      // Only a TERMINAL status emits canceled. `cancel_at_period_end` means the
+      // customer turned off renewal but is still paid through the current period
+      // (status stays 'active'/'trialing') — emitting canceled here would revoke
+      // their access immediately, before they've actually lost it. Surface it as
+      // an update carrying cancelAtPeriodEnd so the app can show "cancels on …"
+      // without dropping entitlement early.
+      if (sub.status === 'canceled') {
         return {
           type: 'subscription.canceled',
           id,
@@ -142,7 +156,7 @@ function normalize(event: Stripe.Event, mode: StripeMode): CanonicalEvent | null
           mode,
           data: {
             subscriptionId: sub.id,
-            cancelAtPeriodEnd: sub.cancel_at_period_end,
+            customerId: typeof sub.customer === 'string' ? sub.customer : sub.customer.id,
             status: sub.status,
             metadata: sub.metadata,
           },
@@ -155,46 +169,63 @@ function normalize(event: Stripe.Event, mode: StripeMode): CanonicalEvent | null
         mode,
         data: {
           subscriptionId: sub.id,
+          customerId: typeof sub.customer === 'string' ? sub.customer : sub.customer.id,
           status: sub.status,
+          cancelAtPeriodEnd: sub.cancel_at_period_end,
+          // When a cancellation is scheduled, this is the unix timestamp the
+          // subscription actually ends — so the app can render "cancels on …"
+          // while keeping access until then.
+          cancelAt: sub.cancel_at ?? null,
           priceId: sub.items.data[0]?.price?.id ?? null,
           metadata: sub.metadata,
         },
       };
     }
-    case 'payment_intent.succeeded':
+    // NOTE: we intentionally do NOT handle `payment_intent.succeeded`. The app
+    // always pays via Checkout, and `checkout.session.completed` is the single
+    // canonical "payment done" signal. Handling both would emit TWO distinct
+    // `payment.succeeded` events (different Stripe event ids → not deduped) for
+    // ONE charge, causing double fulfillment. Subscription-invoice PaymentIntents
+    // are conveyed by the subscription.* events instead.
+    // `completed` covers immediate (card) payments; `async_payment_succeeded`
+    // covers delayed methods (bank debits etc.) that finish unpaid and clear
+    // later. For an async payment, `completed` fires first with payment_status
+    // != 'paid' (→ null here), and the real success arrives as
+    // async_payment_succeeded with payment_status === 'paid' — so exactly one
+    // payment.succeeded is emitted per payment.
+    case 'checkout.session.async_payment_succeeded':
     case 'checkout.session.completed': {
-      const obj = event.data.object as
-        | Stripe.PaymentIntent
-        | Stripe.Checkout.Session;
-      const metadata = (obj.metadata ?? {}) as Record<string, string>;
-      if (event.type === 'checkout.session.completed') {
-        const session = obj as Stripe.Checkout.Session;
-        if (session.payment_status !== 'paid') return null;
-        return {
-          type: 'payment.succeeded',
-          id,
-          accountId,
-          mode,
-          data: {
-            sessionId: session.id,
-            paymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : null,
-            amountTotal: session.amount_total ?? null,
-            currency: session.currency ?? null,
-            customerEmail: session.customer_details?.email ?? null,
-            metadata,
-          },
-        };
-      }
-      const pi = obj as Stripe.PaymentIntent;
+      const session = event.data.object as Stripe.Checkout.Session;
+      if (session.payment_status !== 'paid') return null;
+      const metadata = (session.metadata ?? {}) as Record<string, string>;
       return {
         type: 'payment.succeeded',
         id,
         accountId,
         mode,
         data: {
-          paymentIntentId: pi.id,
-          amount: pi.amount,
-          currency: pi.currency,
+          sessionId: session.id,
+          paymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+          customerId: typeof session.customer === 'string' ? session.customer : null,
+          amountTotal: session.amount_total ?? null,
+          currency: session.currency ?? null,
+          customerEmail: session.customer_details?.email ?? null,
+          metadata,
+        },
+      };
+    }
+    case 'checkout.session.async_payment_failed': {
+      const session = event.data.object as Stripe.Checkout.Session;
+      const metadata = (session.metadata ?? {}) as Record<string, string>;
+      return {
+        type: 'payment.failed',
+        id,
+        accountId,
+        mode,
+        data: {
+          sessionId: session.id,
+          paymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+          customerId: typeof session.customer === 'string' ? session.customer : null,
           metadata,
         },
       };
@@ -208,6 +239,7 @@ function normalize(event: Stripe.Event, mode: StripeMode): CanonicalEvent | null
         mode,
         data: {
           paymentIntentId: pi.id,
+          customerId: typeof pi.customer === 'string' ? pi.customer : null,
           amount: pi.amount,
           currency: pi.currency,
           lastError: pi.last_payment_error?.message ?? null,
@@ -235,45 +267,184 @@ function normalize(event: Stripe.Event, mode: StripeMode): CanonicalEvent | null
   }
 }
 
-// ─── Fan-out to project Convex sites ──────────────────────────────────────
-
-function convexSiteUrlFor(project: typeof projects.$inferSelect): string | null {
-  const deployUrl = project.userConvexUrl ?? project.convexDeployUrl;
-  if (!deployUrl) return null;
-  return deployUrl.replace('.convex.cloud', '.convex.site');
+function botflowProjectIdOf(canonical: CanonicalEvent): string | null {
+  const md = canonical.data.metadata as Record<string, unknown> | undefined;
+  const pid = md?.botflow_project_id;
+  return typeof pid === 'string' && pid.length > 0 ? pid : null;
 }
 
-async function deliverWithRetry(opts: {
-  url: string;
-  signature: string;
-  body: string;
-}): Promise<{ ok: boolean; lastStatus?: number; lastError?: string }> {
-  const delays = [200, 1000, 5000];
-  let lastStatus: number | undefined;
-  let lastError: string | undefined;
-  for (let i = 0; i < delays.length; i++) {
-    try {
-      const res = await fetch(opts.url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Botflow-Signature': opts.signature,
-        },
-        body: opts.body,
-        // Reasonable per-attempt timeout — Convex HTTP actions are quick.
-        signal: AbortSignal.timeout(8000),
-      });
-      lastStatus = res.status;
-      if (res.ok) return { ok: true, lastStatus };
-      lastError = (await res.text()).slice(0, 300);
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
+/** Stripe object ids on the event we can key a project mapping by (sub/customer). */
+function mappableObjectIds(canonical: CanonicalEvent): string[] {
+  const out: string[] = [];
+  const sub = canonical.data.subscriptionId;
+  const cus = canonical.data.customerId;
+  if (typeof sub === 'string' && sub) out.push(sub);
+  if (typeof cus === 'string' && cus) out.push(cus);
+  return out;
+}
+
+/**
+ * Resolve the single project a payment/subscription event belongs to.
+ * Metadata.botflow_project_id is authoritative; on a miss we fall back to the
+ * object→project map (populated from earlier metadata-bearing events on the same
+ * subscription/customer). Always re-verifies owner + mode + enabled so a stale
+ * map row can't misroute. Returns null when it genuinely can't be attributed.
+ */
+async function resolveOwningProject(
+  db: ReturnType<typeof getDb>,
+  canonical: CanonicalEvent,
+  ownerUserId: string,
+): Promise<typeof projects.$inferSelect | null> {
+  const verify = async (pid: string) => {
+    const [p] = await db
+      .select()
+      .from(projects)
+      .where(
+        and(
+          eq(projects.id, pid),
+          eq(projects.userId, ownerUserId),
+          eq(projects.stripeEnabled, true),
+          eq(projects.stripePaymentMode, canonical.mode),
+        ),
+      )
+      .limit(1);
+    return p ?? null;
+  };
+
+  const metaPid = botflowProjectIdOf(canonical);
+  if (metaPid) {
+    const p = await verify(metaPid);
+    if (p) {
+      // Record the mapping so follow-up events that lack metadata still route.
+      await rememberObjectMap(db, canonical, p.id);
+      return p;
     }
-    if (i < delays.length - 1) {
-      await new Promise((r) => setTimeout(r, delays[i + 1]));
+    return null; // metadata names a project that isn't this owner's / mode — drop
+  }
+
+  // Metadata absent — try the fallback map (sub id, then customer id).
+  for (const objId of mappableObjectIds(canonical)) {
+    const [row] = await db
+      .select({ projectId: stripeObjectProjectMap.projectId })
+      .from(stripeObjectProjectMap)
+      .where(
+        and(
+          eq(stripeObjectProjectMap.mode, canonical.mode),
+          eq(stripeObjectProjectMap.objectId, objId),
+        ),
+      )
+      .limit(1);
+    if (row) {
+      const p = await verify(row.projectId);
+      if (p) return p;
     }
   }
-  return { ok: false, ...(lastStatus !== undefined ? { lastStatus } : {}), ...(lastError ? { lastError } : {}) };
+  return null;
+}
+
+/** Persist (mode, sub/customer id) → project so later metadata-less events route. */
+async function rememberObjectMap(
+  db: ReturnType<typeof getDb>,
+  canonical: CanonicalEvent,
+  projectId: string,
+): Promise<void> {
+  const ids = mappableObjectIds(canonical);
+  if (ids.length === 0) return;
+  const now = new Date();
+  for (const objectId of ids) {
+    await db
+      .insert(stripeObjectProjectMap)
+      .values({ mode: canonical.mode, objectId, projectId, updatedAt: now })
+      .onConflictDoUpdate({
+        target: [stripeObjectProjectMap.mode, stripeObjectProjectMap.objectId],
+        set: { projectId, updatedAt: now },
+      });
+  }
+}
+
+// ─── Durable, routed fan-out ──────────────────────────────────────────────
+
+/** Record a (event, project) target and attempt inline delivery once. */
+async function recordAndDeliver(opts: {
+  project: typeof projects.$inferSelect;
+  eventId: string;
+  canonicalType: string;
+  mode: StripeMode;
+  payload: string;
+}): Promise<{ projectId: string; ok: boolean; reason?: string }> {
+  const { project, eventId, canonicalType, mode, payload } = opts;
+  const db = getDb();
+
+  // Claim this (event, project) target FIRST — before any deliverability check —
+  // so a routed event is never dropped just because the project momentarily
+  // lacks a webhook secret or Convex backend; the cron retries it once config
+  // catches up. onConflictDoNothing makes Stripe's re-delivery idempotent; if we
+  // didn't insert, another attempt (or the retry cron) owns it. nextAttemptAt is
+  // leased forward so a crash before the terminal update still gets reclaimed.
+  const [claimed] = await db
+    .insert(stripeWebhookDeliveries)
+    .values({
+      eventId,
+      projectId: project.id,
+      canonicalType,
+      mode,
+      payload,
+      status: 'pending',
+      nextAttemptAt: new Date(Date.now() + DELIVERY_LEASE_MS),
+    })
+    .onConflictDoNothing()
+    .returning({ id: stripeWebhookDeliveries.id });
+  if (!claimed) {
+    return { projectId: project.id, ok: true, reason: 'already_claimed' };
+  }
+
+  const siteUrl = convexSiteUrlFor(project);
+  if (!project.stripeWebhookSecret || !siteUrl) {
+    // Can't deliver yet — schedule a retry instead of dropping. The cron reads
+    // the CURRENT project secret/site at retry time, so this self-heals once the
+    // backend is configured.
+    await db
+      .update(stripeWebhookDeliveries)
+      .set({
+        status: 'failed',
+        lastError: !project.stripeWebhookSecret ? 'no_secret' : 'no_convex_site',
+        nextAttemptAt: new Date(Date.now() + backoffMs(1)),
+        updatedAt: new Date(),
+      })
+      .where(eq(stripeWebhookDeliveries.id, claimed.id));
+    return {
+      projectId: project.id,
+      ok: false,
+      reason: !project.stripeWebhookSecret ? 'no_secret' : 'no_convex_site',
+    };
+  }
+
+  const result = await deliverStripeEventOnce({
+    siteUrl,
+    secret: project.stripeWebhookSecret,
+    payload,
+  });
+  const nowTs = new Date();
+  if (result.ok) {
+    await db
+      .update(stripeWebhookDeliveries)
+      .set({ status: 'delivered', attempts: 1, lastStatus: result.status ?? null, updatedAt: nowTs })
+      .where(eq(stripeWebhookDeliveries.id, claimed.id));
+    return { projectId: project.id, ok: true };
+  }
+  console.error('[stripe/webhook] inline delivery failed', project.id, 'status=', result.status, 'err=', result.error);
+  await db
+    .update(stripeWebhookDeliveries)
+    .set({
+      status: 'failed',
+      attempts: 1,
+      lastStatus: result.status ?? null,
+      lastError: result.error ?? null,
+      nextAttemptAt: new Date(Date.now() + backoffMs(1)),
+      updatedAt: nowTs,
+    })
+    .where(eq(stripeWebhookDeliveries.id, claimed.id));
+  return { projectId: project.id, ok: false, reason: 'delivery_failed' };
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────
@@ -298,79 +469,74 @@ export async function POST(req: NextRequest) {
   }
   const { event, mode } = verified;
 
-  // Claim the event — PK conflict = already processed → 200 to Stripe.
-  const db = getDb();
-  try {
-    await db.insert(stripeWebhookEvents).values({ eventId: event.id });
-  } catch {
-    // Duplicate key. Stripe is re-delivering; we already handled it.
-    return NextResponse.json({ ok: true, dedup: true });
-  }
-
   const canonical = normalize(event, mode);
   if (!canonical) {
-    // We don't care about this event type — already deduped, just ack.
     return NextResponse.json({ ok: true, ignored: event.type });
   }
 
-  // Find which Botflow user owns the connected account, then fan out to all
-  // of their Stripe-enabled projects.
   if (!canonical.accountId) {
     return NextResponse.json({ ok: true, ignored: 'no_account_on_event' });
   }
-  const accountCol =
+
+  // Resolve which Botflow user owns the connected account (unique per mode).
+  const db = getDb();
+  const ownerAccountCol =
     canonical.mode === 'live' ? userStripeIdentity.liveAccountId : userStripeIdentity.testAccountId;
   const [identity] = await db
     .select({ userId: userStripeIdentity.userId })
     .from(userStripeIdentity)
-    .where(eq(accountCol, canonical.accountId))
+    .where(eq(ownerAccountCol, canonical.accountId))
     .limit(1);
   if (!identity) {
     return NextResponse.json({ ok: true, ignored: 'no_botflow_user_for_account' });
   }
-  const projectRows = await db
-    .select()
-    .from(projects)
-    .where(
-      and(
-        eq(projects.userId, identity.userId),
-        eq(projects.stripeEnabled, true),
-        // Only deliver to projects in the same mode the event came from —
-        // a project switched to 'live' shouldn't receive 'test' events.
-        eq(projects.stripePaymentMode, canonical.mode),
-      ),
-    );
+
+  // ── Determine target projects ──────────────────────────────────────────
+  let targets: Array<typeof projects.$inferSelect>;
+  if (ACCOUNT_LEVEL_TYPES.has(canonical.type)) {
+    // Account status — safe to broadcast to the owner's same-mode projects
+    // (carries no customer/payment data).
+    targets = await db
+      .select()
+      .from(projects)
+      .where(
+        and(
+          eq(projects.userId, identity.userId),
+          eq(projects.stripeEnabled, true),
+          eq(projects.stripePaymentMode, canonical.mode),
+        ),
+      );
+  } else {
+    // Payment/subscription — route to the SINGLE owning project (metadata first,
+    // object-map fallback). Never broadcast one app's customer/payment data to
+    // the user's other apps.
+    const project = await resolveOwningProject(db, canonical, identity.userId);
+    if (!project) {
+      // Genuinely can't attribute this to one of the owner's enabled, same-mode
+      // projects (e.g. an externally-created charge with no metadata and no prior
+      // mapping). Drop rather than leak — but log so it's visible, not silent.
+      console.warn(
+        '[stripe/webhook] unroutable payment/subscription event dropped',
+        'type=', canonical.type,
+        'event=', canonical.id,
+        'owner=', identity.userId,
+      );
+      return NextResponse.json({ ok: true, ignored: 'unroutable' });
+    }
+    targets = [project];
+  }
 
   const payload = JSON.stringify(canonical);
   const deliveries = await Promise.all(
-    projectRows.map(async (project) => {
-      if (!project.stripeWebhookSecret) {
-        return { projectId: project.id, ok: false, reason: 'no_secret' };
-      }
-      const siteUrl = convexSiteUrlFor(project);
-      if (!siteUrl) {
-        return { projectId: project.id, ok: false, reason: 'no_convex_site' };
-      }
-      const signature = createHmac('sha256', project.stripeWebhookSecret)
-        .update(payload)
-        .digest('hex');
-      const result = await deliverWithRetry({
-        url: `${siteUrl}/stripe/webhook`,
-        signature,
-        body: payload,
-      });
-      if (!result.ok) {
-        console.error(
-          '[stripe/webhook] fan-out failed',
-          project.id,
-          'lastStatus=',
-          result.lastStatus,
-          'lastError=',
-          result.lastError,
-        );
-      }
-      return { projectId: project.id, ok: result.ok, ...(result.lastStatus !== undefined ? { lastStatus: result.lastStatus } : {}) };
-    }),
+    targets.map((project) =>
+      recordAndDeliver({
+        project,
+        eventId: canonical.id,
+        canonicalType: canonical.type,
+        mode: canonical.mode,
+        payload,
+      }),
+    ),
   );
 
   return NextResponse.json({
@@ -380,4 +546,3 @@ export async function POST(req: NextRequest) {
     failed: deliveries.filter((d) => !d.ok).length,
   });
 }
-

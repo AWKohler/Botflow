@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, Lock } from 'lucide-react';
-import { MODEL_CONFIGS, type ModelId } from '@/lib/agent/models';
+import { MODEL_CONFIGS, isModelDisabled, modelDisabledReason, type ModelId } from '@/lib/agent/models';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
 import type { LimitReachedPayload } from '@/components/ui/LimitModal';
@@ -17,13 +17,18 @@ export interface ModelSelectorProps {
   onTierLocked?: (payload: LimitReachedPayload) => void;
   size?: 'sm' | 'md';
   className?: string;
-  /** When true, Kimi K2.6 is served by Together AI (USE_TOGETHER_KIMI flag),
+  /** When true, Kimi K2.7 is served by Together AI (USE_TOGETHER_KIMI flag),
    *  so its provider badge reads "Together" instead of "Fireworks". */
   useTogetherKimi?: boolean;
   /** Optional content rendered inside the trigger pill, left of the model
    *  name and separated by a divider — e.g. the agent backend glyph, so the
    *  agent identity and the model read as one body. */
   leading?: ReactNode;
+  /** Which way the dropdown opens. 'up' (bottom-full) for bottom toolbars like
+   *  the landing prompt box, where a downward menu is clipped by the hero's
+   *  overflow-hidden; 'down' (default) for top toolbars like the agent panel,
+   *  where opening upward would run off the top of the panel. */
+  openDirection?: 'up' | 'down';
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -36,9 +41,9 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 /** Minimum tier required to use a model on server-side keys (must match backend MODEL_TIER_REQUIREMENT) */
 const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
-  'fireworks-minimax-m2p7': 'free',
-  'fireworks-glm-5p1': 'free',
-  'fireworks-kimi-k2p6': 'free',
+  'fireworks-minimax-m3': 'free',
+  'fireworks-glm-5p2': 'free',
+  'fireworks-kimi-k2p7': 'free',
   'gpt-5.3-codex': 'pro',       // Pro+ for server key; free requires BYOK/OAuth
   'gpt-5.4': 'pro',             // Pro+
   'gpt-5.5': 'pro',             // Pro+
@@ -53,9 +58,9 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
  * Selecting these skips the "missing API key" BYOK check.
  */
 const SERVER_KEY_MODELS = new Set<ModelId>([
-  'fireworks-minimax-m2p7',
-  'fireworks-glm-5p1',
-  'fireworks-kimi-k2p6',
+  'fireworks-minimax-m3',
+  'fireworks-glm-5p2',
+  'fireworks-kimi-k2p7',
   'gpt-5.3-codex',
   'gpt-5.4',
   'gpt-5.5',
@@ -67,9 +72,9 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
 
 /** Rounded per-model cost multiplier for user display */
 const MODEL_COST_LABEL: Record<ModelId, string> = {
-  'fireworks-minimax-m2p7': 'x1',
-  'fireworks-glm-5p1': 'x3',
-  'fireworks-kimi-k2p6': 'x3',
+  'fireworks-minimax-m3': 'x1',
+  'fireworks-glm-5p2': 'x3',
+  'fireworks-kimi-k2p7': 'x3',
   'gpt-5.3-codex': 'x4',
   'gemini-3.1-pro-preview': 'x5',
   'claude-sonnet-4-6': 'x5',
@@ -90,9 +95,9 @@ function formatContextSize(tokens: number): string {
 
 // Order: cheapest → most expensive (by credit multiplier)
 const MODEL_ORDER: ModelId[] = [
-  'fireworks-minimax-m2p7',  // x1
-  'fireworks-glm-5p1',         // x3
-  'fireworks-kimi-k2p6',     // x3
+  'fireworks-minimax-m3',  // x1
+  'fireworks-glm-5p2',         // x3
+  'fireworks-kimi-k2p7',     // x3
   'gpt-5.3-codex',           // x4
   'gemini-3.1-pro-preview',  // x5
   'claude-sonnet-4-6',       // x5
@@ -102,7 +107,7 @@ const MODEL_ORDER: ModelId[] = [
   'claude-fable-5',          // x20 — most expensive (Max-only)
 ];
 
-export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', className, useTogetherKimi = false, leading }: ModelSelectorProps) {
+export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', className, useTogetherKimi = false, leading, openDirection = 'down' }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -110,7 +115,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
   /** Provider label for the dropdown badge — reflects the live Kimi→Together redirect. */
   const providerLabel = useCallback(
     (modelId: ModelId) => {
-      if (modelId === 'fireworks-kimi-k2p6' && useTogetherKimi) return PROVIDER_LABELS.together;
+      if (modelId === 'fireworks-kimi-k2p7' && useTogetherKimi) return PROVIDER_LABELS.together;
       return PROVIDER_LABELS[MODEL_CONFIGS[modelId].provider];
     },
     [useTogetherKimi],
@@ -120,6 +125,17 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
 
   const handleSelect = useCallback((modelId: ModelId) => {
     const config = MODEL_CONFIGS[modelId];
+
+    // Globally disabled model (e.g. rescinded by the provider) — never selectable
+    // for any user/tier/auth path. The option stays visible but inert.
+    if (isModelDisabled(modelId)) {
+      toast({
+        title: `${config.displayName} unavailable`,
+        description: modelDisabledReason(modelId),
+      });
+      return;
+    }
+
     const requiredTier = MODEL_SERVER_TIER[modelId] ?? 'free';
     const userTierRank = TIER_RANK[userTier] ?? 0;
     const requiredTierRank = TIER_RANK[requiredTier] ?? 0;
@@ -191,7 +207,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
           'inline-flex items-center gap-1.5 border transition min-w-0',
           isSm
             ? 'bg-elevated border-border rounded-md px-2 py-1 text-xs text-muted max-w-[180px]'
-            : 'pointer-events-auto rounded-full border-border bg-elevated px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm shadow-soft hover:border-transparent hover:bg-accent/15 max-w-[120px] sm:max-w-[200px]',
+            : 'pointer-events-auto rounded-full border-border bg-elevated px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm hover:border-transparent hover:bg-accent/15 max-w-[120px] sm:max-w-[200px]',
         )}
       >
         {leading != null && (
@@ -208,7 +224,12 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
       {open && (
         <div
           className={cn(
-            'absolute z-50 mt-1 min-w-[280px] rounded-xl border border-border bg-surface shadow-lg overflow-hidden',
+            'absolute z-50 min-w-[280px] max-h-[320px] overflow-y-auto modern-scrollbar rounded-xl border border-border bg-surface shadow-lg',
+            // 'up' opens above the trigger (bottom toolbars like the landing
+            // prompt box, where a downward menu is clipped by the hero's
+            // overflow-hidden); 'down' opens below (top toolbars like the agent
+            // panel, where opening upward would run off the top of the panel).
+            openDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1',
             isSm ? 'right-0' : 'left-0',
           )}
         >
@@ -221,22 +242,26 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
             const requiredTierRank = TIER_RANK[requiredTier] ?? 0;
             const isTierLocked = requiredTierRank > userTierRank && !hasAccess;
             const isSelected = modelId === value;
+            const isDisabled = isModelDisabled(modelId);
+            const disabledReason = isDisabled ? modelDisabledReason(modelId) : '';
 
             const tierBadge = requiredTierRank > 0 ? TIER_LABELS[requiredTier] : null;
-            // Kimi K2.6 costs more on Together AI ($1.20 input → x4 vs x3 on Fireworks).
-            const costLabel = modelId === 'fireworks-kimi-k2p6' && useTogetherKimi
-              ? 'x4'
-              : MODEL_COST_LABEL[modelId];
+            // Kimi K2.7 is x3 on both providers — Together homologated to Fireworks pricing.
+            const costLabel = MODEL_COST_LABEL[modelId];
 
             return (
               <button
                 key={modelId}
                 type="button"
                 onClick={() => handleSelect(modelId)}
+                disabled={isDisabled}
+                aria-disabled={isDisabled}
+                title={isDisabled ? disabledReason : undefined}
                 className={cn(
                   'flex w-full items-center gap-3 px-3 py-2.5 text-left transition',
                   isSelected ? 'bg-elevated' : 'hover:bg-elevated/60',
                   isTierLocked && 'opacity-50',
+                  isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent',
                 )}
               >
                 <div className="flex-1 min-w-0">
@@ -263,14 +288,23 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                     <span className="text-muted/50">·</span>
                     <span className="font-medium">{costLabel}</span>
                   </div>
+                  {isDisabled && (
+                    <div className="text-[11px] text-muted mt-0.5">{disabledReason}</div>
+                  )}
                 </div>
-                {(isCredentialMissing && !isTierLocked && !SERVER_KEY_MODELS.has(modelId)) && (
+                {isDisabled && (
+                  <div className="flex items-center gap-1 text-muted">
+                    <Lock className="h-3 w-3" />
+                    <span className="text-[10px]">Unavailable</span>
+                  </div>
+                )}
+                {(!isDisabled && isCredentialMissing && !isTierLocked && !SERVER_KEY_MODELS.has(modelId)) && (
                   <div className="flex items-center gap-1 text-muted">
                     <Lock className="h-3 w-3" />
                     <span className="text-[10px]">no key</span>
                   </div>
                 )}
-                {isTierLocked && (
+                {!isDisabled && isTierLocked && (
                   <div className="flex items-center gap-1 text-muted">
                     <Lock className="h-3 w-3" />
                     <span className="text-[10px]">{tierBadge}</span>

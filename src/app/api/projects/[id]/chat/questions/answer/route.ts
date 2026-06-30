@@ -76,7 +76,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .limit(1);
     }
     if (!target) return NextResponse.json({ error: "Question not found" }, { status: 404 });
-    const targetClause = eq(chatQuestions.id, target.id);
+    // Only resolve a still-pending question — a late answer must not clobber a
+    // dismissed one, and a late dismiss must not clobber an answered one. If the
+    // row is already resolved the update affects 0 rows → 404 below (no-op).
+    const targetClause = and(eq(chatQuestions.id, target.id), eq(chatQuestions.status, "pending"));
 
     if (body.dismissed) {
       const [updated] = await db

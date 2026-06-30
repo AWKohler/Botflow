@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { setUserCredentials } from '@/lib/user-credentials';
 import { enforce, identifierFor } from '@/lib/rate-limit';
+import { verifyConvexOAuthState } from '@/lib/convex-oauth-state';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -23,12 +24,24 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get('code');
   const stateParam = searchParams.get('state');
 
-  let returnTo = '/';
-  if (stateParam) {
-    try {
-      const decoded = JSON.parse(Buffer.from(stateParam, 'base64url').toString('utf-8')) as { returnTo?: string };
-      if (decoded.returnTo) returnTo = decoded.returnTo;
-    } catch { /* use default */ }
+  // Verify the HMAC-signed state. A tampered/forged state fails verification, so
+  // the embedded userId is trustworthy.
+  const decoded = stateParam ? verifyConvexOAuthState(stateParam) : null;
+
+  // Only honor a same-site path returnTo (no open redirect to //evil.com).
+  const returnTo =
+    decoded && decoded.returnTo.startsWith('/') && !decoded.returnTo.startsWith('//')
+      ? decoded.returnTo
+      : '/';
+
+  // CSRF defense: the session completing this callback must be the SAME user who
+  // started the flow, and the state must be fresh (<=15 min). Otherwise an
+  // attacker could get a logged-in victim to complete an OAuth flow the attacker
+  // started, binding the attacker's Convex team as the victim's BYOC connection
+  // (the victim's app data would then deploy to the attacker's Convex backend).
+  const STATE_TTL_MS = 15 * 60 * 1000;
+  if (!decoded || decoded.userId !== userId || Date.now() - decoded.ts > STATE_TTL_MS) {
+    return NextResponse.redirect(`${origin}${returnTo}?convex_error=invalid_state`);
   }
 
   if (!code) return NextResponse.redirect(`${origin}${returnTo}?convex_error=no_code`);
@@ -61,10 +74,17 @@ export async function GET(req: NextRequest) {
     const teamMatch = accessToken.match(/^team:([^|]+)\|/);
     const convexTeamId = teamMatch ? teamMatch[1] : null;
 
+    // Capture a refresh token + expiry if Convex issues them, so provisioning can
+    // refresh later instead of bricking when the access token expires. (If Convex
+    // issues neither, these stay null — same as before.)
+    const refreshToken = typeof tokenData.refresh_token === 'string' ? tokenData.refresh_token : null;
+    const expiresIn = typeof tokenData.expires_in === 'number' ? tokenData.expires_in : null;
+    const expiresAt = expiresIn ? Date.now() + expiresIn * 1000 : null;
+
     await setUserCredentials(userId, {
       convexOAuthAccessToken: accessToken,
-      convexOAuthRefreshToken: null,
-      convexOAuthExpiresAt: null,
+      convexOAuthRefreshToken: refreshToken,
+      convexOAuthExpiresAt: expiresAt,
       convexBackendPreference: 'user',
       ...(convexTeamId ? { convexTeamId } : {}),
     });

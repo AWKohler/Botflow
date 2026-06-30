@@ -38,11 +38,21 @@ export const runtime = 'nodejs';
 // setupOAuthProvider for parity.
 export const maxDuration = 300;
 
-const POLL_DEADLINE_MS = 5 * 60 * 1000;
+// 270s (< maxDuration 300s) so the timeout-dismiss in pollConnectRequest runs
+// before the platform kills the request, instead of orphaning the modal.
+const POLL_DEADLINE_MS = 270 * 1000;
 
-async function flipProjectEnabled(projectId: string, stripeWebhookSecret: string | null) {
+async function flipProjectEnabled(projectId: string) {
   const db = getDb();
-  const webhookSecret = stripeWebhookSecret ?? `bfws_${randomBytes(32).toString('hex')}`;
+  // Re-read the CURRENT secret rather than trusting a stale snapshot — the OAuth
+  // callback may have already minted one. Only generate when truly absent, so
+  // the project row, the Convex env, and the fan-out HMAC never disagree.
+  const [current] = await db
+    .select({ secret: projects.stripeWebhookSecret })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  const webhookSecret = current?.secret ?? `bfws_${randomBytes(32).toString('hex')}`;
   await db
     .update(projects)
     .set({
@@ -165,7 +175,7 @@ export async function POST(
   const existingAccountId =
     identity && mode === 'live' ? identity.liveAccountId : identity?.testAccountId;
   if (existingAccountId) {
-    const webhookSecret = await flipProjectEnabled(projectId, project.stripeWebhookSecret);
+    const webhookSecret = await flipProjectEnabled(projectId);
     scheduleScaffolding({
       projectId,
       mode,
@@ -212,7 +222,7 @@ export async function POST(
       .limit(1);
     const accountId =
       linked && mode === 'live' ? linked.liveAccountId : linked?.testAccountId;
-    const webhookSecret = await flipProjectEnabled(projectId, project.stripeWebhookSecret);
+    const webhookSecret = await flipProjectEnabled(projectId);
     scheduleScaffolding({
       projectId,
       mode,

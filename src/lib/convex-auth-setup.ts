@@ -9,8 +9,15 @@
 
 import { generateKeyPairSync, createPublicKey } from "crypto";
 import { getDb } from "@/db";
-import { projects } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { projects, projectOAuthProviders } from "@/db/schema";
+import { eq, and, lt } from "drizzle-orm";
+import { encryptSecret, decryptSecret } from "@/lib/secrets";
+import { buildOAuthEnvVars, signAppleClientSecret } from "@/lib/oauth-providers/server";
+import {
+  OAUTH_PROVIDERS,
+  OAUTH_PROVIDER_IDS,
+  oauthCallbackUrl,
+} from "@/lib/oauth-providers/registry";
 
 export interface ConvexAuthFile {
   path: string;
@@ -154,12 +161,13 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function page(redirect: string, flow: string, error: string | null): string {
+function page(redirect: string, flow: string, error: string | null, state: string): string {
   const signUp = flow === "signUp";
   const title = signUp ? "Create account" : "Sign in";
   const toggleLabel = signUp ? "Have an account? Sign in" : "Need an account? Sign up";
   const toggleFlow = signUp ? "signIn" : "signUp";
-  const toggleHref = "/auth/signin?redirect=" + encodeURIComponent(redirect) + "&flow=" + toggleFlow;
+  const toggleHref = "/auth/signin?redirect=" + encodeURIComponent(redirect) + "&flow=" + toggleFlow +
+    (state ? "&state=" + encodeURIComponent(state) : "");
   const errHtml = error ? '<p class="err">' + esc(error) + "</p>" : "";
   return [
     "<!doctype html>",
@@ -187,6 +195,7 @@ function page(redirect: string, flow: string, error: string | null): string {
     '<form method="POST" action="/auth/signin">',
     '<input type="hidden" name="flow" value="' + flow + '">',
     '<input type="hidden" name="redirect" value="' + esc(redirect) + '">',
+    '<input type="hidden" name="state" value="' + esc(state) + '">',
     "<label>Email</label>",
     '<input name="email" type="email" autocomplete="email" autocapitalize="none" required>',
     "<label>Password</label>",
@@ -206,6 +215,15 @@ function htmlResponse(body: string, status: number): Response {
   });
 }
 
+// SECURITY: the sign-in page hands the freshly-minted JWT + refresh token to the
+// redirect target via the URL fragment. ONLY the native app's custom scheme is
+// allowed — never an http(s) origin — so a phishing link like
+// /auth/signin?redirect=https://attacker.example can't exfiltrate user tokens.
+const ALLOWED_REDIRECT_PREFIX = "botflowauth://";
+function isAllowedRedirect(r: string): boolean {
+  return r.startsWith(ALLOWED_REDIRECT_PREFIX);
+}
+
 http.route({
   path: "/auth/signin",
   method: "GET",
@@ -213,7 +231,13 @@ http.route({
     const url = new URL(request.url);
     const redirect = url.searchParams.get("redirect") || "";
     const flow = url.searchParams.get("flow") === "signUp" ? "signUp" : "signIn";
-    return htmlResponse(page(redirect, flow, null), 200);
+    // Per-attempt nonce the native app generates and verifies on the callback;
+    // threaded opaquely through the form so a forged callback can be rejected.
+    const state = url.searchParams.get("state") || "";
+    if (!isAllowedRedirect(redirect)) {
+      return htmlResponse(page("", flow, "Invalid sign-in link.", ""), 400);
+    }
+    return htmlResponse(page(redirect, flow, null, state), 200);
   }),
 });
 
@@ -226,9 +250,11 @@ http.route({
     const password = String(form.get("password") || "");
     const flow = String(form.get("flow") || "signIn") === "signUp" ? "signUp" : "signIn";
     const redirect = String(form.get("redirect") || "");
+    const state = String(form.get("state") || "");
 
-    if (!redirect || !redirect.includes("://")) {
-      return htmlResponse(page(redirect, flow, "Missing or invalid redirect target."), 400);
+    if (!isAllowedRedirect(redirect)) {
+      // Never hand tokens to anything but the native app's own scheme.
+      return htmlResponse(page("", flow, "Invalid redirect target.", ""), 400);
     }
 
     try {
@@ -238,12 +264,15 @@ http.route({
       });
       const tokens = result && result.tokens;
       if (!tokens || !tokens.token || !tokens.refreshToken) {
-        return htmlResponse(page(redirect, flow, "Sign-in failed. Please try again."), 200);
+        return htmlResponse(page(redirect, flow, "Sign-in failed. Please try again.", state), 200);
       }
+      // Echo the nonce back in the fragment so the app can verify this callback
+      // belongs to the sign-in it started (reject otherwise before storing tokens).
       const dest =
         redirect +
         "#token=" + encodeURIComponent(tokens.token) +
-        "&refresh=" + encodeURIComponent(tokens.refreshToken);
+        "&refresh=" + encodeURIComponent(tokens.refreshToken) +
+        (state ? "&state=" + encodeURIComponent(state) : "");
       return new Response(null, {
         status: 303,
         headers: { Location: dest, "Cache-Control": "no-store" },
@@ -252,7 +281,7 @@ http.route({
       const msg = flow === "signUp"
         ? "Could not sign up. The email may already be in use, or your password may be too short (8+ characters)."
         : "Could not sign in. Check your email and password.";
-      return htmlResponse(page(redirect, flow, msg), 200);
+      return htmlResponse(page(redirect, flow, msg, state), 200);
     }
   }),
 });
@@ -376,6 +405,25 @@ export const viewer = query({
 }
 
 /**
+ * Render the per-provider cheat-sheet injected into the agent context. Generated
+ * from the registry so this guidance never drifts from what the platform
+ * actually supports.
+ */
+function buildOAuthProviderGuidance(): string {
+  return OAUTH_PROVIDER_IDS.map((id) => {
+    const p = OAUTH_PROVIDERS[id];
+    const imp = p.authImport.default
+      ? `import ${p.authImport.symbol} from "${p.authImport.from}";`
+      : `import { ${p.authImport.symbol} } from "${p.authImport.from}";`;
+    const notes = p.caveats.length ? `\n      notes: ${p.caveats.join(" ")}` : "";
+    return `  • ${p.displayName} — setupOAuthProvider({ provider: "${p.id}" })
+      ${imp}
+      providers: [Password, ${p.providerExpr}]
+      sign-in button: startOAuthSignIn(signIn, "${p.id}")${notes}`;
+  }).join("\n\n");
+}
+
+/**
  * Build the rich context string that helps the AI agent understand the full
  * Convex Auth surface: file roles, frontend wiring, provider patterns, and
  * how to protect queries/mutations.
@@ -433,6 +481,13 @@ BACKEND PATTERN — protecting queries and mutations:
 
   // getAuthUserId returns null when not authenticated — it never throws.
   // Always check for null before using the id.
+  //
+  // CONVENTION — tolerant reads, strict writes: for any query a component may
+  // subscribe to around sign-in/sign-out (or anything rendered outside
+  // <Authenticated>), prefer returning [] / null when userId is null instead
+  // of throwing — a query can briefly run before the auth token attaches, and
+  // a throw surfaces as a generic ServerError. Keep mutations/actions strict
+  // (throw when unauthenticated).
 
 ─────────────────────────────────────────────────────────────
 FRONTEND PATTERN — main.tsx setup:
@@ -521,75 +576,65 @@ FRONTEND PATTERN — sign out:
   <button onClick={() => void signOut()}>Sign out</button>
 
 ─────────────────────────────────────────────────────────────
-ADDING OAUTH PROVIDERS (Google):
+ADDING OAUTH / SOCIAL SIGN-IN (Google, GitHub, Microsoft, Apple):
 ─────────────────────────────────────────────────────────────
 
-  ONLY DO THIS WHEN THE USER EXPLICITLY ASKS FOR GOOGLE / SOCIAL SIGN-IN.
-  Default to the Password provider (optionally Anonymous). Google OAuth
-  requires the user to own a Google Cloud project and complete a console
-  setup — do NOT add it proactively or "to be helpful." If auth is needed
-  and the user hasn't specified a method, use Password.
+  ONLY DO THIS WHEN THE USER EXPLICITLY ASKS FOR SOCIAL SIGN-IN.
+  Default to the Password provider (optionally Anonymous). Every OAuth provider
+  requires the user to own a developer account and register an app — do NOT add
+  one proactively. If auth is needed and no method was specified, use Password.
 
   THIS PLATFORM PROVIDES A DEDICATED TOOL: setupOAuthProvider
-  DO NOT use bash or npx convex env set to set OAuth credentials.
-  The setupOAuthProvider tool handles credential collection securely
-  via a modal in the user's workspace.
+  DO NOT use bash or npx convex env set to set OAuth credentials. The tool
+  collects credentials securely via a modal in the user's workspace and sets the
+  provider's env vars on the Convex deployment — you never see them.
 
-  CORRECT SEQUENCE FOR GOOGLE SIGN-IN:
+  SUPPORTED PROVIDERS (pass one id to setupOAuthProvider):
 
-  Step 1 — Call setupOAuthProvider({ provider: "google" }).
-           This opens a modal in the workspace where the user pastes their
-           Google OAuth Client ID and Client Secret. The tool BLOCKS until
-           the user completes or dismisses the modal (up to 5 minutes).
-           The credentials are saved as AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET
-           on the Convex deployment — you never see them.
+${buildOAuthProviderGuidance()}
 
-           The modal shows the user the redirect URI they need to register
-           in Google Cloud Console: ${convexSiteUrl}/api/auth/callback/google
-           (this URL is stable and never changes for this project).
+  CORRECT SEQUENCE (any provider — replace <id> with the chosen provider id):
 
-  Step 2 — After setupOAuthProvider returns ok: true, update convex/auth.ts:
-           import Google from "@auth/core/providers/google";
-           // add Google to the providers array alongside Password.
-           // IMPORTANT: keep the existing callbacks.redirect block intact — it
-           // lets OAuth return to the right domain in both preview and prod.
-           // Only edit the providers array.
+  Step 1 — Call setupOAuthProvider({ provider: "<id>" }). It opens the modal
+           (which shows the user the redirect URI to register,
+           ${convexSiteUrl}/api/auth/callback/<id>) and BLOCKS until the user
+           completes or dismisses it (up to 5 minutes). On ok: true the
+           provider's env vars are set on the deployment — you never see them.
+
+  Step 2 — After ok: true, edit convex/auth.ts: add the provider's import (see
+           the list above) and add it to the providers array alongside Password.
+           Keep the existing callbacks.redirect block intact — only edit the
+           providers array. Pass NO arguments to the provider; Microsoft and
+           Apple read their extra env vars (issuer / client secret) automatically.
 
   Step 3 — Run convexDeploy to push the updated auth config.
 
-  Step 4 — Add a Google sign-in button to the UI.
-
-           CRITICAL: OAuth can't complete inside the Botflow preview iframe
-           (the provider page refuses to be framed). The scaffold provides
-           src/lib/botflowAuth.ts to handle this — ALWAYS use it for OAuth
-           buttons; never call signIn("google") directly for an OAuth provider.
+  Step 4 — Add a sign-in button. OAuth can't complete inside the Botflow preview
+           iframe (the provider page refuses to be framed), so ALWAYS use the
+           scaffolded helper — never call signIn("<id>") directly for OAuth:
 
              import { useAuthActions } from "@convex-dev/auth/react";
              import { startOAuthSignIn } from "@/lib/botflowAuth";
 
              const { signIn } = useAuthActions();
-             <button onClick={() => void startOAuthSignIn(signIn, "google")}>
-               Sign in with Google
+             <button onClick={() => void startOAuthSignIn(signIn, "<id>")}>
+               Sign in
              </button>
 
-           In the preview, startOAuthSignIn asks the workspace to reopen the app
-           in a new tab and resume sign-in there; in the deployed app it just
-           calls signIn normally. (Password/anonymous sign-in does NOT redirect,
-           so keep calling signIn directly for those.)
-
-           Then, so the new tab resumes the flow automatically, call
-           resumePendingOAuthSignIn ONCE at app mount (e.g. in App.tsx):
+           Then call resumePendingOAuthSignIn ONCE at app mount so the new-tab
+           handoff resumes automatically (Password/anonymous do NOT redirect —
+           keep calling signIn directly for those):
 
              import { useEffect } from "react";
-             import { useAuthActions } from "@convex-dev/auth/react";
              import { resumePendingOAuthSignIn } from "@/lib/botflowAuth";
-
-             const { signIn } = useAuthActions();
              useEffect(() => { resumePendingOAuthSignIn(signIn); }, [signIn]);
 
-  If the user clicks Cancel in the modal, setupOAuthProvider returns
-  ok: false. In that case, do NOT retry automatically — just acknowledge
-  the cancellation and continue with other work.
+  APPLE — extra: Apple returns the user's name/email ONLY on the first sign-in.
+  If you need their name, capture it then (it is never sent again). Apple also
+  cannot be tested on localhost — use the deployed preview.
+
+  If the user clicks Cancel in the modal, setupOAuthProvider returns ok: false.
+  Do NOT retry automatically — acknowledge the cancellation and continue.
 
 ─────────────────────────────────────────────────────────────
 ADDING ANONYMOUS AUTH:
@@ -648,13 +693,33 @@ WHAT YOU MUST DO AFTER setupAuth RETURNS:
   4. That is it for enabling sign-in — do NOT edit ConvexConfig.swift (platform-
      managed) and do NOT build a native login form; the hosted page IS the form.
 
-PROTECTING DATA (backend pattern, identical to web):
+PROTECTING DATA — tolerant reads, strict writes (IMPORTANT):
+  The Swift app's live subscriptions can fire BEFORE the SDK has attached the
+  auth token (app launch, sign-in handoff, token refresh). A query that throws
+  "Not authenticated" during that window surfaces as a generic ServerError in
+  the UI. So:
+  • QUERIES (anything subscribed) must TOLERATE missing auth — return [] or
+    null when getAuthUserId is null. The subscription re-fires with real data
+    the moment auth attaches.
+  • MUTATIONS/ACTIONS must REQUIRE auth — throw when getAuthUserId is null.
+
   import { getAuthUserId } from "@convex-dev/auth/server";
-  export const myQuery = query({
+
+  export const list = query({
+    args: {},
     handler: async (ctx) => {
       const userId = await getAuthUserId(ctx); // null when signed out — never throws
-      if (userId === null) throw new Error("Not authenticated");
-      return await ctx.db.query("things").withIndex("by_user", q => q.eq("userId", userId)).collect();
+      if (userId === null) return [];          // tolerate the auth race — do NOT throw
+      return await ctx.db.query("notes").withIndex("by_user", q => q.eq("userId", userId)).collect();
+    },
+  });
+
+  export const add = mutation({
+    args: { text: v.string() },
+    handler: async (ctx, { text }) => {
+      const userId = await getAuthUserId(ctx);
+      if (userId === null) throw new Error("Not authenticated"); // writes stay strict
+      await ctx.db.insert("notes", { userId, text });
     },
   });
 
@@ -691,11 +756,19 @@ async function setEnvVarsViaDeployKey(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ changes }),
+    // Bound the request so a single hung deployment can't stall the Apple
+    // rotation cron, which sweeps projects serially.
+    signal: AbortSignal.timeout(20_000),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to set Convex env vars (${response.status}): ${errorText}`);
+    // Deliberately do NOT surface the upstream response body. This request's
+    // payload carries secret env values (AUTH_*_SECRET, JWT_PRIVATE_KEY, Apple
+    // client-secret JWTs); a Convex error that echoed the submitted `changes`
+    // would otherwise leak those into our thrown message — which propagates to
+    // client error text and server logs. Status code only.
+    await response.text().catch(() => '');
+    throw new Error(`Failed to set Convex env vars (status ${response.status}).`);
   }
 }
 
@@ -876,14 +949,19 @@ export async function refreshAuthSiteUrl(
 }
 
 /**
- * Set OAuth provider credentials (CLIENT_ID / CLIENT_SECRET) on the Convex
- * deployment. Called server-side after the user fills in the workspace modal.
+ * Apply an OAuth provider's credentials: map the collected fields to the Convex
+ * Auth env vars (signing/deriving as needed — see src/lib/oauth-providers), push
+ * them onto the deployment, and record the provider as enabled for this project.
+ * For providers that need rotation (Apple) the signing inputs are persisted
+ * encrypted at rest.
+ *
+ * Called server-side after the user fills in the workspace modal — credentials
+ * never enter the sandbox, the client, or the agent.
  */
-export async function setOAuthProviderEnvVars(
+export async function applyOAuthProvider(
   projectId: string,
-  provider: "google",
-  clientId: string,
-  clientSecret: string,
+  provider: string,
+  fields: Record<string, string>,
 ): Promise<void> {
   const db = getDb();
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
@@ -895,14 +973,116 @@ export async function setOAuthProviderEnvVars(
     throw new Error("No Convex deployment is configured for this project.");
   }
 
-  const vars: Record<string, string> =
-    provider === "google"
-      ? { AUTH_GOOGLE_ID: clientId, AUTH_GOOGLE_SECRET: clientSecret }
-      : {};
+  // Map fields → env vars (validates required fields, derives MS issuer, signs
+  // the Apple client secret). Throws a clear Error on bad/missing input.
+  const result = buildOAuthEnvVars(provider, fields);
 
-  if (Object.keys(vars).length === 0) {
-    throw new Error(`Unknown OAuth provider: ${provider}`);
+  // Persist the provider row FIRST (for Apple: the encrypted .p8 + expiry the
+  // rotation cron needs) BEFORE pushing env to Convex — but mark it
+  // "configuring", NOT "enabled", until the env push actually succeeds. This
+  // gives us both invariants: (a) a live AUTH_APPLE_SECRET always has its
+  // rotation inputs saved, and (b) the row is never reported "enabled" (and the
+  // rotation sweep, which only scans enabled rows, never targets it) while the
+  // secret hasn't actually reached Convex. A failed push leaves it "configuring";
+  // the user retries (idempotent), and on success step 3 flips it to "enabled".
+  const convexSiteUrl = deployUrl.replace(".convex.cloud", ".convex.site");
+  const now = new Date();
+  const baseCols = {
+    redirectUri: oauthCallbackUrl(convexSiteUrl, provider),
+    updatedAt: now,
+  };
+  const appleCols = result.persist
+    ? {
+        appleTeamId: result.persist.appleTeamId,
+        appleKeyId: result.persist.appleKeyId,
+        appleServicesId: result.persist.appleServicesId,
+        applePrivateKeyP8: encryptSecret(result.persist.applePrivateKeyP8),
+        secretExpiresAt: result.persist.secretExpiresAt,
+      }
+    : {};
+
+  // 1) Persist inputs + mark configuring.
+  await db
+    .insert(projectOAuthProviders)
+    .values({ projectId, provider, configuredAt: now, status: "configuring", ...baseCols, ...appleCols })
+    .onConflictDoUpdate({
+      target: [projectOAuthProviders.projectId, projectOAuthProviders.provider],
+      set: { status: "configuring", ...baseCols, ...appleCols },
+    });
+
+  // 2) Push env to Convex (throws on failure — row stays "configuring").
+  await setEnvVarsViaDeployKey(deployUrl, deployKey, result.env);
+
+  // 3) Secret is live — mark enabled.
+  await db
+    .update(projectOAuthProviders)
+    .set({ status: "enabled", updatedAt: new Date() })
+    .where(
+      and(
+        eq(projectOAuthProviders.projectId, projectId),
+        eq(projectOAuthProviders.provider, provider),
+      ),
+    );
+}
+
+/**
+ * Re-sign "Sign in with Apple" client secrets nearing Apple's 6-month expiry.
+ * Apple's client secret is an ES256 JWT we sign from the user's .p8;
+ * applyOAuthProvider persists that .p8 (encrypted) + the expiry, and this sweep
+ * — driven by a daily cron — re-signs any secret expiring within `withinDays`
+ * and pushes the fresh value to that project's Convex deployment, so Apple
+ * sign-in never silently breaks. Per-project failures are isolated and logged.
+ */
+export async function rotateExpiringAppleSecrets(
+  withinDays = 30,
+): Promise<{ checked: number; rotated: number; failed: number }> {
+  const db = getDb();
+  const cutoff = Math.floor(Date.now() / 1000) + withinDays * 24 * 60 * 60;
+
+  const rows = await db
+    .select()
+    .from(projectOAuthProviders)
+    .where(
+      and(
+        eq(projectOAuthProviders.provider, "apple"),
+        eq(projectOAuthProviders.status, "enabled"),
+        lt(projectOAuthProviders.secretExpiresAt, cutoff),
+      ),
+    );
+
+  let rotated = 0;
+  let failed = 0;
+  for (const row of rows) {
+    try {
+      const p8 = decryptSecret(row.applePrivateKeyP8);
+      if (!p8 || !row.appleTeamId || !row.appleKeyId || !row.appleServicesId) {
+        throw new Error("Missing or undecryptable Apple signing inputs.");
+      }
+
+      const [project] = await db.select().from(projects).where(eq(projects.id, row.projectId));
+      const deployUrl = project?.userConvexUrl ?? project?.convexDeployUrl ?? null;
+      const deployKey = project?.userConvexDeployKey ?? project?.convexDeployKey ?? null;
+      if (!deployUrl || !deployKey) {
+        throw new Error("No Convex deployment is configured for this project.");
+      }
+
+      const { secret, expiresAt } = signAppleClientSecret({
+        teamId: row.appleTeamId,
+        keyId: row.appleKeyId,
+        servicesId: row.appleServicesId,
+        p8,
+      });
+      await setEnvVarsViaDeployKey(deployUrl, deployKey, { AUTH_APPLE_SECRET: secret });
+      await db
+        .update(projectOAuthProviders)
+        .set({ secretExpiresAt: expiresAt, updatedAt: new Date() })
+        .where(eq(projectOAuthProviders.id, row.id));
+      rotated++;
+    } catch (err) {
+      failed++;
+      console.error(`[rotateExpiringAppleSecrets] project ${row.projectId} failed:`, err);
+    }
   }
 
-  await setEnvVarsViaDeployKey(deployUrl, deployKey, vars);
+  return { checked: rows.length, rotated, failed };
 }

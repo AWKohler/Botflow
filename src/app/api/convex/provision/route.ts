@@ -34,6 +34,15 @@ export async function POST(req: NextRequest) {
 
   if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
+  // Idempotency guard: if this project already has a user-owned Convex
+  // deployment, return it instead of calling create_project again. Without this,
+  // a repeat or concurrent call would provision a SECOND Convex project, orphan
+  // the first, and overwrite the DB pointer. (A truly-simultaneous first call is
+  // still a narrow race — a per-project provisioning lock would close it fully.)
+  if (project.backendType === 'user' && project.userConvexUrl && project.userConvexDeployKey) {
+    return NextResponse.json({ ok: true, deployUrl: project.userConvexUrl, alreadyProvisioned: true });
+  }
+
   try {
     // Resolve team slug from stored value or token prefix ("team:<slug>|<jwt>")
     let teamSlug = creds.convexTeamId ?? null;
@@ -71,7 +80,7 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json() as Record<string, unknown>;
-    console.log('[BYOC provision] create_project raw response:', JSON.stringify(data));
+    // Do NOT log the raw response — create_project can include an adminKey/deployKey.
 
     const projectSlug =
       (data.projectSlug as string | undefined) ||
@@ -105,7 +114,8 @@ export async function POST(req: NextRequest) {
         },
       );
       const keyData = await keyRes.json() as Record<string, unknown>;
-      console.log(`[BYOC provision] create_deploy_key status=${keyRes.status} response:`, JSON.stringify(keyData));
+      // Never log keyData — it contains the deploy key. Status only.
+      console.log(`[BYOC provision] create_deploy_key status=${keyRes.status}`);
       if (!keyRes.ok) {
         const cliKeyRes = await fetch(`https://api.convex.dev/api/get_admin_key`, {
           method: 'POST',
@@ -113,7 +123,7 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({ deploymentName, team: teamSlug }),
         });
         const cliKeyData = await cliKeyRes.json() as Record<string, unknown>;
-        console.log(`[BYOC provision] CLI get_admin_key status=${cliKeyRes.status} response:`, JSON.stringify(cliKeyData));
+        console.log(`[BYOC provision] CLI get_admin_key status=${cliKeyRes.status}`);
         adminKey =
           (cliKeyData.adminKey as string | undefined) ||
           (cliKeyData.key as string | undefined);
@@ -124,9 +134,9 @@ export async function POST(req: NextRequest) {
           (keyData.accessToken as string | undefined);
       }
       if (!adminKey) {
-        throw new Error(`Failed to obtain Convex deploy key — Platform API returned: ${JSON.stringify(keyData)}`);
+        // Don't include the response body — it may contain a partial/secret key.
+        throw new Error('Failed to obtain Convex deploy key from the Convex API.');
       }
-      console.log(`[BYOC provision] deploy key prefix: ${adminKey.slice(0, 20)}`);
     }
 
     const deploymentUrl = prodUrl || `https://${deploymentName}.convex.cloud`;
@@ -145,10 +155,12 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, deployUrl: deploymentUrl });
   } catch (e) {
+    // Log server-side (messages no longer embed key material); return a stable,
+    // non-sensitive message to the client.
     console.error('Convex BYOC provision failed:', e instanceof Error ? e.message : e);
     return NextResponse.json({
       error: 'provision_failed',
-      message: e instanceof Error ? e.message : 'Failed to provision Convex backend.',
+      message: 'Failed to provision your Convex backend. Please try again, or reconnect Convex in Settings.',
     }, { status: 500 });
   }
 }

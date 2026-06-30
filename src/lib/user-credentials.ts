@@ -38,6 +38,14 @@ export interface UserCredentials {
   // Display (non-sensitive, kept in Neon but mirrored here for convenience)
   githubUsername: string | null;
   githubAvatarUrl: string | null;
+  // Apple App Store Connect API key (per Apple Developer team). Used for the
+  // Swift "Publish to App Store / TestFlight" flow. The .p8 private key is
+  // write-only from the client's perspective: never returned by any API route.
+  appleAscIssuerId: string | null;  // team-level issuer UUID
+  appleAscKeyId: string | null;     // 10-char key id
+  appleAscKeyP8: string | null;     // PEM private key contents
+  appleTeamId: string | null;       // 10-char Developer Team ID (signing)
+  appleTeamName: string | null;     // display only
   // Convex OAuth
   convexOAuthAccessToken: string | null;
   convexOAuthRefreshToken: string | null;
@@ -134,6 +142,13 @@ export async function getUserCredentials(userId: string): Promise<UserCredential
     githubAccessToken: (meta.githubAccessToken ?? neon.githubAccessToken) ?? null,
     githubUsername: (meta.githubUsername ?? neon.githubUsername) ?? null,
     githubAvatarUrl: (meta.githubAvatarUrl ?? neon.githubAvatarUrl) ?? null,
+    // Apple ASC fields are newer and stored only in Clerk privateMetadata
+    // (no Neon legacy columns), so there's nothing to fall back to.
+    appleAscIssuerId: meta.appleAscIssuerId ?? null,
+    appleAscKeyId: meta.appleAscKeyId ?? null,
+    appleAscKeyP8: meta.appleAscKeyP8 ?? null,
+    appleTeamId: meta.appleTeamId ?? null,
+    appleTeamName: meta.appleTeamName ?? null,
     convexOAuthAccessToken: (meta.convexOAuthAccessToken ?? neon.convexOAuthAccessToken) ?? null,
     convexOAuthRefreshToken: (meta.convexOAuthRefreshToken ?? neon.convexOAuthRefreshToken) ?? null,
     convexOAuthExpiresAt: (meta.convexOAuthExpiresAt ?? neon.convexOAuthExpiresAt) ?? null,

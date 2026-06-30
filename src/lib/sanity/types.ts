@@ -53,6 +53,7 @@ export interface BlogPostListItem {
 }
 
 export interface BlogPost extends BlogPostListItem {
+  _createdAt?: string;
   body: PortableTextBlock[];
   seo?: BlogSEO;
 }

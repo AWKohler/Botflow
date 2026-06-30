@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "21";
+export const BRIDGE_SCRIPT_VERSION = "23";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -28,12 +28,18 @@ export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
  * Config shape:
  *   {
  *     prompt: string,
+ *     images?: { media_type: string, data: string }[],  // base64 image blocks
  *     sessionId?: string,
  *     model?: string,
  *     cwd?: string,
  *     appendSystemPrompt?: string,
  *     customTools?: string[],         // names of MCP tools to enable
  *   }
+ *
+ * When images is present we drive query() in streaming-input mode (an async
+ * iterable of one user message carrying [text?, ...image blocks]) instead of a
+ * plain string prompt — a string can't carry images. The generator yields once
+ * and completes, so the SDK runs a single turn just like string mode.
  *
  * Env vars (set by the host):
  *   BOTFLOW_CONFIG_PATH   — path to the config JSON file (required)
@@ -179,7 +185,7 @@ async function handleNativeAskUserQuestion(input) {
   return { behavior: "allow", updatedInput: { questions: rawQuestions, answers } };
 }
 
-function buildCustomTools(customTools) {
+function buildCustomTools(customTools, oauthProviderIds) {
   if (!Array.isArray(customTools) || customTools.length === 0) return [];
   const tools = [];
 
@@ -209,6 +215,45 @@ function buildCustomTools(customTools) {
           onlyErrors: z.boolean().optional(),
         },
         makeHostToolHandler("get_convex_logs"),
+      ),
+    );
+  }
+
+  if (customTools.includes("setup_auth")) {
+    tools.push(
+      tool(
+        "setup_auth",
+        "Provision Convex Auth (email + password sign-in) on this project. Call this ONCE when the user wants accounts / login / sign-up / per-user data. " +
+        "It generates RSA signing keys server-side and sets them on the Convex deployment (you never see them), then returns JSON with 'files' (boilerplate to write verbatim), 'packagesToInstall', and 'context' (the full reference — READ IT; it is platform-specific). " +
+        "After it returns: write every file in 'files' (merge your existing schema tables into the returned schema.ts, keeping ...authTables), install the packages in /convex's package scope, then run convex_deploy — auth is not live until deployed. " +
+        "Calling again just rotates the signing keys.",
+        {},
+        makeHostToolHandler("setup_auth"),
+        { annotations: { destructiveHint: true } },
+      ),
+    );
+  }
+
+  if (customTools.includes("setup_oauth_provider")) {
+    const oauthIds = Array.isArray(oauthProviderIds) && oauthProviderIds.length
+      ? oauthProviderIds
+      : ["google"];
+    const oauthList = oauthIds.join(", ");
+    tools.push(
+      tool(
+        "setup_oauth_provider",
+        "Add a social sign-in provider (" + oauthList + ") to Convex Auth on this project. " +
+        "Opens a modal in the user's workspace where they register an app with the provider and paste their credentials (Apple uploads a .p8). " +
+        "ONLY call this when the user EXPLICITLY asks for social sign-in; otherwise default to password sign-in via setup_auth. " +
+        "PREREQUISITE: setup_auth must have run first. " +
+        "It blocks until the user completes or dismisses the modal (up to 5 minutes). On success it returns the exact " +
+        "convex/auth.ts import + providers-array line and the sign-in button to add — then run convex_deploy. On dismiss: do NOT retry.",
+        {
+          provider: z
+            .enum(oauthIds)
+            .describe("Provider id (required, no default): " + oauthList + "."),
+        },
+        makeHostToolHandler("setup_oauth_provider"),
       ),
     );
   }
@@ -588,9 +633,9 @@ async function main() {
 
   emit({ type: "ready" });
 
-  const { prompt, sessionId, model, cwd, appendSystemPrompt, customTools } = config;
+  const { prompt, images, sessionId, model, cwd, appendSystemPrompt, customTools, oauthProviderIds } = config;
 
-  const tools = buildCustomTools(customTools);
+  const tools = buildCustomTools(customTools, oauthProviderIds);
   const mcpServer = tools.length > 0 ? createSdkMcpServer({ name: "botflow", tools }) : null;
 
   const options = {
@@ -651,6 +696,41 @@ async function main() {
     includePartialMessages: false,
   };
 
+  // Build the prompt for query(). With no images we pass the plain string
+  // (single-shot "print" mode). With images we MUST use streaming-input mode:
+  // a string prompt can't carry image blocks. We yield exactly one user message
+  // whose content is [text?, ...image blocks], then let the generator complete
+  // — the SDK runs one turn and the async iterator ends after the result
+  // message, same as string mode.
+  let queryPrompt = prompt;
+  if (Array.isArray(images) && images.length > 0) {
+    const content = [];
+    if (typeof prompt === "string" && prompt.length > 0) {
+      content.push({ type: "text", text: prompt });
+    }
+    for (const img of images) {
+      if (img && typeof img.data === "string" && img.data.length > 0) {
+        content.push({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: typeof img.media_type === "string" ? img.media_type : "image/jpeg",
+            data: img.data,
+          },
+        });
+      }
+    }
+    if (content.length > 0) {
+      queryPrompt = (async function* () {
+        yield {
+          type: "user",
+          message: { role: "user", content: content },
+          parent_tool_use_id: null,
+        };
+      })();
+    }
+  }
+
   let lastSessionId = null;
 
   // ---------------------------------------------------------------------------
@@ -684,7 +764,7 @@ async function main() {
   }
 
   try {
-    for await (const message of query({ prompt, options })) {
+    for await (const message of query({ prompt: queryPrompt, options })) {
       if (message && message.session_id && message.session_id !== lastSessionId) {
         lastSessionId = message.session_id;
         emit({ type: "session_started", sessionId: message.session_id });

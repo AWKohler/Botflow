@@ -9,19 +9,24 @@ const CLIENT_ID = process.env.GITHUB_CLIENT_ID!;
 const SCOPES = 'repo user:email';
 
 export async function GET(req: NextRequest) {
+  const origin = new URL(req.url).origin;
+  // Caller sends `returnTo`; also accept `return_to` for safety.
+  const { searchParams } = new URL(req.url);
+  const returnTo = searchParams.get('returnTo') || searchParams.get('return_to') || '/projects';
+
+  // This endpoint is reached via a full-page browser navigation, so every
+  // response must be a redirect (or HTML) — never JSON, or the browser renders
+  // the raw object in the page instead of advancing the flow.
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!userId) return NextResponse.redirect(`${origin}/sign-in`);
 
     const blocked = await enforce(identifierFor(userId, req), 'oauthStart');
     if (blocked) return blocked;
 
     if (!CLIENT_ID) {
-      return NextResponse.json({ error: 'GitHub OAuth not configured' }, { status: 500 });
+      return NextResponse.redirect(`${origin}${returnTo}?github_error=not_configured`);
     }
-
-    const { searchParams } = new URL(req.url);
-    const returnTo = searchParams.get('return_to') || '/projects';
 
     // Encode returnTo into state so callback can redirect back
     const state = Buffer.from(JSON.stringify({ userId, returnTo, ts: Date.now() })).toString('base64url');
@@ -33,9 +38,10 @@ export async function GET(req: NextRequest) {
     });
 
     const authUrl = `https://github.com/login/oauth/authorize?${params.toString()}`;
-    return NextResponse.json({ authUrl });
+    // Bounce the browser straight to GitHub's consent screen.
+    return NextResponse.redirect(authUrl);
   } catch (e) {
     console.error('GitHub OAuth start failed:', e);
-    return NextResponse.json({ error: 'Failed to start OAuth flow' }, { status: 500 });
+    return NextResponse.redirect(`${origin}${returnTo}?github_error=server`);
   }
 }

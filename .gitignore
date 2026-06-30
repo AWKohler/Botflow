@@ -57,3 +57,4 @@ next-env.d.ts
 
 # local one-off data backup (do not commit)
 .supabase_links_backup.json
+.integration-audit/

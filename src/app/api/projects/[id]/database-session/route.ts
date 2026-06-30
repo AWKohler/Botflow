@@ -4,6 +4,9 @@ import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -29,9 +32,12 @@ export async function GET(
     return NextResponse.json({ error: 'No Convex backend for this project' }, { status: 404 });
   }
 
-  return NextResponse.json({
-    deploymentUrl,
-    deploymentName,
-    adminKey,
-  });
+  // This response carries the Convex admin/deploy key for the embedded Convex
+  // dashboard (the owner's own key, in the owner's authenticated session, handed
+  // to dashboard-embedded.convex.dev via an origin-scoped postMessage — the
+  // official Convex embed pattern). Never let it be cached anywhere.
+  return NextResponse.json(
+    { deploymentUrl, deploymentName, adminKey },
+    { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate', Pragma: 'no-cache' } },
+  );
 }

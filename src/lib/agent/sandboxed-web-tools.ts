@@ -27,6 +27,12 @@ import { deployConvexFromSandbox } from "@/lib/sandbox-convex-deploy";
 import { refreshAuthSiteUrl } from "@/lib/convex-auth-setup";
 import { getDb } from "@/db";
 import { projects, oauthProviderRequests } from "@/db/schema";
+import {
+  OAUTH_PROVIDER_IDS,
+  getOAuthProvider,
+  oauthProviderNameList,
+  oauthProviderIdList,
+} from "@/lib/oauth-providers/registry";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { STRIPE_CONNECT_ENABLED } from "@/lib/feature-flags";
 import {
@@ -677,28 +683,25 @@ export function getSandboxedWebTools(params: {
     }),
     setupOAuthProvider: tool({
       description:
-        "Add a Google OAuth provider to Convex Auth on this project. " +
-        "Calling this tool causes a modal to appear in the user's workspace where they paste their Google OAuth Client ID and Secret.\n\n" +
-        "ONLY call this when the user EXPLICITLY asks for Google / social sign-in. " +
-        "It requires them to own a Google Cloud project and complete a console setup, " +
-        "so never add it proactively — default to the Password provider when auth is needed.\n\n" +
+        `Add a social sign-in provider (${oauthProviderNameList()}) to Convex Auth on this project. ` +
+        "Calling this tool opens a modal in the user's workspace where they register an app and paste their credentials.\n\n" +
+        "ONLY call this when the user EXPLICITLY asks for social sign-in. Each provider requires them to own a " +
+        "developer account and complete a console setup, so never add it proactively — default to the Password provider when auth is needed.\n\n" +
         "PREREQUISITES:\n" +
         "  • setupAuth must have been called first.\n\n" +
         "FLOW:\n" +
         "  1. This tool creates a pending request and the workspace shows a modal immediately.\n" +
-        "  2. The user opens Google Cloud Console, creates an OAuth Client ID, and pastes the credentials.\n" +
+        "  2. The user registers the app in the provider's console and pastes the credentials (Apple uploads a .p8).\n" +
         "  3. This tool blocks (polls) until the user completes or dismisses the modal (up to 5 minutes).\n" +
         "  4. On success: credentials are saved server-side. You then update convex/auth.ts and run convexDeploy.\n" +
         "  5. On dismiss: returns an error. Stop trying — do not call this again unless the user asks.\n\n" +
-        "AFTER SUCCESS:\n" +
-        "  1. Add Google to convex/auth.ts providers array.\n" +
-        "  2. Run convexDeploy.\n" +
-        "  3. Add a 'Sign in with Google' button using the startOAuthSignIn helper " +
-        "from @/lib/botflowAuth (NOT signIn('google') directly) so it works from " +
-        "the preview iframe, and call resumePendingOAuthSignIn(signIn) once at app " +
-        "mount. See the setupAuth context for the exact pattern.",
+        "AFTER SUCCESS: add the provider to the convex/auth.ts providers array, run convexDeploy, and add a sign-in " +
+        "button using startOAuthSignIn from @/lib/botflowAuth (NOT signIn(...) directly) so it works from the preview " +
+        "iframe, plus resumePendingOAuthSignIn(signIn) once at app mount. The tool returns the exact per-provider snippet.",
       inputSchema: z.object({
-        provider: z.literal("google").default("google").describe("OAuth provider to add. Currently only 'google' is supported."),
+        provider: z
+          .enum(OAUTH_PROVIDER_IDS as [string, ...string[]])
+          .describe(`Provider to add (required, no default): ${oauthProviderIdList()}.`),
       }),
       async execute({ provider }) {
         // Direct DB access — avoids the Clerk auth problem that would arise
@@ -758,8 +761,9 @@ export function getSandboxedWebTools(params: {
 
         const requestId = record.id;
 
-        // ── Poll DB directly until completed/dismissed (up to 5 min) ──────
-        const deadline = Date.now() + 5 * 60 * 1000;
+        // ── Poll until completed/dismissed (270s, < route maxDuration so the
+        //    timeout-dismiss below runs before the platform kills the request) ──
+        const deadline = Date.now() + 270 * 1000;
         while (Date.now() < deadline) {
           await new Promise<void>((r) => setTimeout(r, 3000));
 
@@ -777,54 +781,81 @@ export function getSandboxedWebTools(params: {
           if (!statusRow) break; // Record disappeared — bail
 
           if (statusRow.status === "completed") {
+            const def = getOAuthProvider(provider)!;
+            const imp = def.authImport.default
+              ? `import ${def.authImport.symbol} from "${def.authImport.from}";`
+              : `import { ${def.authImport.symbol} } from "${def.authImport.from}";`;
+            const appleNote =
+              provider === "apple"
+                ? "\n\nAPPLE NOTE: the user's name/email are returned ONLY on the first sign-in — capture them then. Apple can't be tested on localhost; use the deployed preview."
+                : "";
             return {
               ok: true,
               provider,
-              context: `=== GOOGLE OAUTH CREDENTIALS SAVED ===
+              context: `=== ${def.displayName.toUpperCase()} OAUTH CREDENTIALS SAVED ===
 
-AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET are now set on your Convex deployment.
+${def.envVars.join(", ")} now set on your Convex deployment.
 
 REQUIRED NEXT STEPS:
 
-1. Update convex/auth.ts — add the Google provider:
+1. Update convex/auth.ts — add the provider (pass NO arguments; extra config such
+   as the Microsoft issuer or Apple client secret is read from env automatically):
 
    import { convexAuth } from "@convex-dev/auth/server";
    import { Password } from "@convex-dev/auth/providers/Password";
-   import Google from "@auth/core/providers/google";
+   ${imp}
 
    export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-     providers: [Password, Google],
+     providers: [Password, ${def.providerExpr}],
+     // keep the existing callbacks.redirect block intact
    });
 
 2. Run convexDeploy to push the updated auth config.
 
-3. Add a Google sign-in button to the UI:
+3. Add a sign-in button using the preview-safe helper (NOT signIn("${provider}") directly):
+
+   import { useAuthActions } from "@convex-dev/auth/react";
+   import { startOAuthSignIn } from "@/lib/botflowAuth";
 
    const { signIn } = useAuthActions();
-   <button onClick={() => void signIn("google")}>Sign in with Google</button>
+   <button onClick={() => void startOAuthSignIn(signIn, "${provider}")}>Sign in</button>
 
-   Clicking the button redirects to Google's consent screen.
-   On return, Convex Auth creates or merges the user account automatically.
-   The <Authenticated> block updates reactively — no manual navigation needed.`,
+   Also call resumePendingOAuthSignIn(signIn) once at app mount so the new-tab
+   handoff resumes the flow. On return, Convex Auth creates or merges the user
+   account automatically and <Authenticated> updates reactively.${appleNote}`,
             };
           }
 
           if (statusRow.status === "dismissed") {
+            const name = getOAuthProvider(provider)?.displayName ?? provider;
             return {
               ok: false,
               error:
-                "User declined to set up Google sign-in. The modal was dismissed and no credentials were saved. " +
+                `User declined to set up ${name} sign-in. The modal was dismissed and no credentials were saved. ` +
                 "Do not retry automatically. Continue with the rest of the implementation and tell the user " +
-                "they can add Google sign-in later from the workspace.",
+                "they can add it later from the workspace.",
             };
           }
           // status === 'pending' — keep polling
         }
 
+        // Timed out — mark this request dismissed so the workspace closes the
+        // (now-unwatched) modal instead of leaving it orphaned. Only flip it if
+        // it's still pending, so we don't clobber a just-completed submission.
+        await db
+          .update(oauthProviderRequests)
+          .set({ status: "dismissed", updatedAt: new Date() })
+          .where(
+            and(
+              eq(oauthProviderRequests.id, requestId),
+              eq(oauthProviderRequests.status, "pending"),
+            ),
+          );
+
         return {
           ok: false,
           error:
-            "Timed out waiting for Google OAuth credentials (5 minutes elapsed). " +
+            `Timed out waiting for ${getOAuthProvider(provider)?.displayName ?? provider} OAuth credentials (5 minutes elapsed). ` +
             "The modal is no longer visible. You can call setupOAuthProvider again when ready.",
         };
       },
@@ -845,10 +876,10 @@ REQUIRED NEXT STEPS:
         target: z.enum(["client", "server"]).describe("'client' = frontend Vite .env; 'server' = Convex deployment env."),
         key: z.string().describe("Variable name, e.g. VITE_MAPBOX_TOKEN or OPENAI_API_KEY. Shown read-only to the user."),
         message: z.string().optional().describe("Short explanation rendered in the modal (what the value is, where the user finds it)."),
-        isSecret: z.boolean().optional().describe("Mask the value as a secret in the Env panel (client target). Default false."),
+        isSecret: z.boolean().optional().describe("Mask the value in the Env panel. ONLY valid for target='server' — client/frontend vars ship in the browser bundle and are never secret. Default false."),
       }),
       async execute({ target, key, message, isSecret }) {
-        const invalid = validateEnvVarRequest({ target, key });
+        const invalid = validateEnvVarRequest({ target, key, isSecret });
         if (invalid) return { ok: false, error: invalid };
 
         const db = getDb();

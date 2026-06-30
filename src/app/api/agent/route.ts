@@ -15,13 +15,13 @@ import { isSandboxPlatform } from "@/lib/project-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { getPersistentTools } from "@/lib/agent/persistent-tools";
 import { getSandboxedWebTools } from "@/lib/agent/sandboxed-web-tools";
-import { MODEL_CONFIGS, resolveModelId, type ModelId } from "@/lib/agent/models";
+import { MODEL_CONFIGS, resolveModelId, isModelDisabled, modelDisabledReason, type ModelId } from "@/lib/agent/models";
 import { agentLog, generateRequestId, setRequestId } from "@/lib/agent/logger";
 import { classifyError, formatErrorResponse } from "@/lib/agent/errors";
 import { USE_TOGETHER_KIMI } from "@/lib/feature-flags";
 
-/** Together AI's OpenAI-compatible Kimi K2.6 model identifier. */
-const TOGETHER_KIMI_MODEL = "moonshotai/Kimi-K2.6";
+/** Together AI's OpenAI-compatible Kimi K2.7-Code model identifier. */
+const TOGETHER_KIMI_MODEL = "moonshotai/Kimi-K2.7-Code";
 /** Together AI's OpenAI-compatible base URL. */
 const TOGETHER_BASE_URL = "https://api.together.xyz/v1";
 
@@ -512,9 +512,9 @@ async function injectOpenAICacheRetention(input: RequestInfo | URL, init?: Reque
 
 /** Server key models: models the app pays for on behalf of paid users */
 const SERVER_KEY_MODELS = new Set<ModelId>([
-  'fireworks-minimax-m2p7', // free tier
-  'fireworks-glm-5p1',         // free tier
-  'fireworks-kimi-k2p6',     // free tier
+  'fireworks-minimax-m3', // free tier
+  'fireworks-glm-5p2',         // free tier
+  'fireworks-kimi-k2p7',     // free tier
   'gpt-5.3-codex',           // pro+
   'gpt-5.4',                 // pro+
   'gpt-5.5',                 // pro+
@@ -562,7 +562,7 @@ export async function POST(req: Request) {
     const db = getDb();
 
     // Determine selected model for project and ensure ownership
-    let selectedModel: ModelId = "fireworks-kimi-k2p6";
+    let selectedModel: ModelId = "fireworks-kimi-k2p7";
     // Default to true so non-project agent requests still get the full toolset.
     let hasBackend = true;
     let convexUrl: string | undefined;
@@ -610,6 +610,22 @@ export async function POST(req: Request) {
           autonomy,
         };
       }
+    }
+
+    // ── Globally disabled model guard (applies to ALL auth paths) ────────────
+    // A model can be administratively disabled in the central registry (e.g.
+    // rescinded by the provider). This guard runs BEFORE any BYOK/OAuth/server-
+    // key branching, so no user can bypass the grayed-out selector by calling
+    // this endpoint directly with their own key.
+    if (isModelDisabled(selectedModel)) {
+      return new Response(
+        JSON.stringify({
+          error: modelDisabledReason(selectedModel),
+          errorType: "model_disabled",
+          model: selectedModel,
+        }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      );
     }
 
     // Load credentials from Clerk (Redis-cached)
@@ -665,12 +681,12 @@ export async function POST(req: Request) {
       if (selectedModel === 'gpt-5.3-codex' || selectedModel === 'gpt-5.4' || selectedModel === 'gpt-5.5') {
         return Boolean(creds.codexOAuthAccessToken || creds.openaiApiKey);
       }
-      if (selectedModel === 'fireworks-kimi-k2p6' && USE_TOGETHER_KIMI) {
+      if (selectedModel === 'fireworks-kimi-k2p7' && USE_TOGETHER_KIMI) {
         // Kimi traffic is redirected to Together AI — BYOK means a personal
         // Together key and no server-side TOGETHER_API_KEY.
         return Boolean(creds.togetherApiKey) && !process.env.TOGETHER_API_KEY;
       }
-      if (selectedModel === 'fireworks-minimax-m2p7' || selectedModel === 'fireworks-glm-5p1' || selectedModel === 'fireworks-kimi-k2p6') {
+      if (selectedModel === 'fireworks-minimax-m3' || selectedModel === 'fireworks-glm-5p2' || selectedModel === 'fireworks-kimi-k2p7') {
         return Boolean(creds.fireworksApiKey) && !process.env.FIREWORKS_API_KEY;
       }
       if (selectedModel === 'gemini-3.1-pro-preview') {
@@ -865,7 +881,7 @@ export async function POST(req: Request) {
         }
 
         // Fireworks fallback: providerMetadata or response header
-        if (cachedRead === 0 && (selectedModel === 'fireworks-minimax-m2p7' || selectedModel === 'fireworks-glm-5p1' || selectedModel === 'fireworks-kimi-k2p6')) {
+        if (cachedRead === 0 && (selectedModel === 'fireworks-minimax-m3' || selectedModel === 'fireworks-glm-5p2' || selectedModel === 'fireworks-kimi-k2p7')) {
           const metaCache = event.providerMetadata?.fireworks?.cachedPromptTokens as number | undefined;
           if (metaCache !== undefined && metaCache > 0) {
             cachedRead = metaCache;
@@ -1069,11 +1085,11 @@ export async function POST(req: Request) {
         return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
       }
 
-      // ── Kimi K2.6 via Together AI (feature-flagged redirect off Fireworks) ──
+      // ── Kimi K2.7 via Together AI (feature-flagged redirect off Fireworks) ──
       // When USE_TOGETHER_KIMI is on, Kimi traffic goes to Together AI's
       // OpenAI-compatible endpoint instead of Fireworks. The model id stays
-      // `fireworks-kimi-k2p6` everywhere else; only the provider changes here.
-      if (selectedModel === "fireworks-kimi-k2p6" && USE_TOGETHER_KIMI) {
+      // `fireworks-kimi-k2p7` everywhere else; only the provider changes here.
+      if (selectedModel === "fireworks-kimi-k2p7" && USE_TOGETHER_KIMI) {
         // Priority: server-side TOGETHER_API_KEY (server-key model) → BYOK key
         const serverTogetherKey = process.env.TOGETHER_API_KEY;
         const apiKey = isServerKeyModel(selectedModel) && serverTogetherKey
@@ -1110,7 +1126,7 @@ export async function POST(req: Request) {
         return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
       }
 
-      if (selectedModel === "fireworks-minimax-m2p7" || selectedModel === "fireworks-glm-5p1" || selectedModel === "fireworks-kimi-k2p6") {
+      if (selectedModel === "fireworks-minimax-m3" || selectedModel === "fireworks-glm-5p2" || selectedModel === "fireworks-kimi-k2p7") {
         // Check for server-side Fireworks key first (for server-key models)
         const serverFireworksKey = process.env.FIREWORKS_API_KEY;
         const apiKey = isServerKeyModel(selectedModel) && serverFireworksKey

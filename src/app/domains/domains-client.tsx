@@ -1,5 +1,6 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
 import {
@@ -126,7 +127,7 @@ function AddDomainModal({
         </p>
         <label className="mb-4 block">
           <span className="mb-1 block text-xs font-medium text-muted">Apex domain</span>
-          <input
+          <Input
             autoFocus
             type="text"
             value={apex}
@@ -215,19 +216,19 @@ function RecordEditor({
             </label>
             <label className="col-span-2">
               <span className="mb-1 block text-xs font-medium text-muted">Name</span>
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="@ or www" className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg focus:border-emerald-500/50 focus:outline-none" />
+              <Input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="@ or www" className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg focus:border-emerald-500/50 focus:outline-none" />
             </label>
           </div>
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-muted">
               {type === "A" || type === "AAAA" ? "IP address" : type === "CNAME" ? "Target hostname" : type === "MX" ? "Mail server" : type === "TXT" ? "Text content" : "Value"}
             </span>
-            <input type="text" value={content} onChange={(e) => setContent(e.target.value)} placeholder={type === "A" ? "192.0.2.1" : type === "CNAME" ? "example.pages.dev" : ""} className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg focus:border-emerald-500/50 focus:outline-none" />
+            <Input type="text" value={content} onChange={(e) => setContent(e.target.value)} placeholder={type === "A" ? "192.0.2.1" : type === "CNAME" ? "example.pages.dev" : ""} className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg focus:border-emerald-500/50 focus:outline-none" />
           </label>
           {type === "MX" && (
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-muted">Priority</span>
-              <input type="number" value={priority} onChange={(e) => setPriority(parseInt(e.target.value, 10))} className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg focus:border-emerald-500/50 focus:outline-none" />
+              <Input type="number" value={priority} onChange={(e) => setPriority(parseInt(e.target.value, 10))} className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg focus:border-emerald-500/50 focus:outline-none" />
             </label>
           )}
           {(type === "A" || type === "AAAA" || type === "CNAME") && (

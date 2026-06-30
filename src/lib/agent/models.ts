@@ -10,9 +10,9 @@ export type ModelId =
   | "claude-opus-4-8"
   | "claude-fable-5"
   | "gemini-3.1-pro-preview"
-  | "fireworks-minimax-m2p7"
-  | "fireworks-glm-5p1"
-  | "fireworks-kimi-k2p6";
+  | "fireworks-minimax-m3"
+  | "fireworks-glm-5p2"
+  | "fireworks-kimi-k2p7";
 
 export type Provider = "openai" | "anthropic" | "google" | "fireworks";
 
@@ -31,6 +31,14 @@ export interface ModelConfig {
   criticalThreshold: number;
   /** Whether this model supports image/file inputs */
   supportsImages: boolean;
+  /**
+   * When true, the model is shown in the UI but cannot be selected or used.
+   * Enforced both in the selector (grayed/non-selectable) and server-side
+   * (request dispatch rejects it for ALL auth paths, including BYOK/OAuth).
+   */
+  disabled?: boolean;
+  /** Short reason surfaced to the user when a disabled model is encountered. */
+  disabledReason?: string;
 }
 
 export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
@@ -93,6 +101,10 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
+    // Temporarily rescinded by Anthropic — visible in the UI but unusable for
+    // every user (free/pro/max, BYOK, and OAuth) until re-enabled here.
+    disabled: true,
+    disabledReason: "Temporarily unavailable — rescinded by Anthropic.",
   },
   "gemini-3.1-pro-preview": {
     id: "gemini-3.1-pro-preview",
@@ -104,42 +116,42 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     criticalThreshold: 0.9,
     supportsImages: true,
   },
-  "fireworks-minimax-m2p7": {
-    id: "fireworks-minimax-m2p7",
+  "fireworks-minimax-m3": {
+    id: "fireworks-minimax-m3",
     provider: "fireworks",
-    apiModelId: "accounts/fireworks/models/minimax-m2p7",
-    displayName: "MiniMax-M2.7",
+    apiModelId: "accounts/fireworks/models/minimax-m3",
+    displayName: "MiniMax-M3",
     maxContextTokens: 196_600,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: false,
   },
-  // "fireworks-glm-5": {
-  //   id: "fireworks-glm-5",
+  // "fireworks-glm-5p1": {
+  //   id: "fireworks-glm-5p1",
   //   provider: "fireworks",
-  //   apiModelId: "accounts/fireworks/models/glm-5",
-  //   displayName: "GLM-5",
+  //   apiModelId: "accounts/fireworks/models/glm-5p1",
+  //   displayName: "GLM-5.1",
   //   maxContextTokens: 202_800,
   //   warnThreshold: 0.7,
   //   criticalThreshold: 0.9,
   //   supportsImages: false,
   // },
-  "fireworks-glm-5p1": {
-    id: "fireworks-glm-5p1",
+  "fireworks-glm-5p2": {
+    id: "fireworks-glm-5p2",
     provider: "fireworks",
-    apiModelId: "accounts/fireworks/models/glm-5p1",
-    displayName: "GLM-5.1",
+    apiModelId: "accounts/fireworks/models/glm-5p2",
+    displayName: "GLM-5.2",
     maxContextTokens: 202_800,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: false,
   },
-  "fireworks-kimi-k2p6": {
-    id: "fireworks-kimi-k2p6",
+  "fireworks-kimi-k2p7": {
+    id: "fireworks-kimi-k2p7",
     provider: "fireworks",
-    apiModelId: "accounts/fireworks/models/kimi-k2p6",
-    displayName: "Kimi K2.6",
-    maxContextTokens: 262_100,
+    apiModelId: "accounts/fireworks/models/kimi-k2p7-code",
+    displayName: "Kimi K2.7",
+    maxContextTokens: 262_144,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
@@ -152,16 +164,37 @@ export function resolveModelId(stored: string | null | undefined): ModelId {
   if (stored === "claude-sonnet-4.5" || stored === "claude-sonnet-4.6") return "claude-sonnet-4-6";
   if (stored === "claude-opus-4.5" || stored === "claude-opus-4.6" || stored === "claude-opus-4.7" || stored === "claude-opus-4-7" || stored === "claude-opus-4-1") return "claude-opus-4-8";
   if (stored === "gpt-4.1" || stored === "gpt-5.2") return "gpt-5.3-codex";
-  if (stored === "fireworks-glm-5") return "fireworks-glm-5p1";
+  if (stored === "fireworks-glm-5" || stored === "fireworks-glm-5p1") return "fireworks-glm-5p2";
+  if (stored === "fireworks-minimax-m2p7" || stored === "fireworks-minimax-m2p5") return "fireworks-minimax-m3";
+  if (stored === "fireworks-kimi-k2p6") return "fireworks-kimi-k2p7";
   // Still-valid model: pass through
   if (stored && stored in MODEL_CONFIGS) return stored as ModelId;
   // Unknown or removed model: silently use default
-  return "fireworks-kimi-k2p6";
+  return "fireworks-kimi-k2p7";
 }
 
 /** Check if a model supports image/file inputs */
 export function modelSupportsImages(model: ModelId): boolean {
   return MODEL_CONFIGS[model]?.supportsImages ?? false;
+}
+
+/** Fallback message when a model is disabled but no explicit reason is set. */
+export const DEFAULT_DISABLED_MODEL_REASON = "This model is temporarily unavailable.";
+
+/**
+ * Whether a model is currently disabled (single source of truth: the `disabled`
+ * flag on its config). Both the selector UI and the server-side request guard
+ * derive from this so the two can never drift apart.
+ */
+export function isModelDisabled(model: string | null | undefined): boolean {
+  if (!model || !(model in MODEL_CONFIGS)) return false;
+  return MODEL_CONFIGS[model as ModelId].disabled === true;
+}
+
+/** Human-readable reason a model is disabled (empty string if it isn't). */
+export function modelDisabledReason(model: string | null | undefined): string {
+  if (!isModelDisabled(model)) return "";
+  return MODEL_CONFIGS[model as ModelId].disabledReason ?? DEFAULT_DISABLED_MODEL_REASON;
 }
 
 /** Check if a model uses the Anthropic provider */

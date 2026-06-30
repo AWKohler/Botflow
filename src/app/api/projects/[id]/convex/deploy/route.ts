@@ -59,6 +59,23 @@ export async function POST(
         }, { status: 402 });
       }
     } else {
+      // Re-read the latest row right before deciding to provision: a concurrent
+      // deploy may have just provisioned, and acting on the stale snapshot would
+      // create a SECOND platform Convex project (orphaning the first and bypassing
+      // the per-tier cap). This narrows — but a truly simultaneous pair still
+      // needs a per-project provisioning lock to fully close.
+      const [freshProject] = await db
+        .select()
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+      if (freshProject) {
+        project.convexDeployKey = freshProject.convexDeployKey;
+        project.convexProjectId = freshProject.convexProjectId;
+        project.convexDeploymentId = freshProject.convexDeploymentId;
+        project.convexDeployUrl = freshProject.convexDeployUrl;
+        project.userConvexDeployKey = freshProject.userConvexDeployKey;
+      }
       // Auto-provision platform Convex backend if missing (handles projects created before
       // Convex integration or where provisioning silently failed at creation time).
       if (!project.convexDeployKey && !project.userConvexDeployKey) {
@@ -108,12 +125,15 @@ export async function POST(
           }
         } catch (provisionErr) {
           const msg = provisionErr instanceof Error ? provisionErr.message : String(provisionErr);
+          console.error('[convex/deploy] provisioning failed:', msg);
           const isQuota = msg.includes('ProjectQuotaReached');
           return NextResponse.json(
             {
+              // Generic for non-quota so we never echo an upstream Convex body to
+              // the client (the detail is in the server log above).
               error: isQuota
                 ? 'Convex project quota reached (20/20). Delete unused projects or upgrade your Convex plan at https://www.convex.dev/plans to continue.'
-                : `Failed to provision Convex backend: ${msg}`,
+                : 'Failed to provision a Convex backend. Please try again.',
             },
             { status: isQuota ? 402 : 500 }
           );
@@ -123,7 +143,8 @@ export async function POST(
 
     // 3. Resolve the deploy key — prefer user key, fall back to platform key
     const resolvedDeployKey = (project.userConvexDeployKey || project.convexDeployKey || '').trim();
-    console.log(`[convex/deploy] project=${projectId} backendType=${project.backendType} keyPrefix=${resolvedDeployKey.slice(0, 20) || '(empty)'}`);
+    // Don't log any portion of the deploy key — just whether one is present.
+    console.log(`[convex/deploy] project=${projectId} backendType=${project.backendType} hasKey=${resolvedDeployKey ? 'yes' : 'no'}`);
     if (!resolvedDeployKey) {
       console.error(`No deploy key available for project ${projectId} (backendType=${project.backendType})`);
       return NextResponse.json(
@@ -170,7 +191,13 @@ export async function POST(
     }
 
     // 5. Parse response from deployment worker
-    let result: { success?: boolean; logs?: string; error?: string; generatedFiles?: { path: string; content: string }[] };
+    let result: {
+      success?: boolean;
+      logs?: string;
+      error?: string;
+      generatedFiles?: { path: string; content: string }[];
+      functionSpec?: import('@/lib/swift-convex-codegen').ConvexFunctionSpec;
+    };
     try {
       result = await response.json();
     } catch {
@@ -194,10 +221,23 @@ export async function POST(
       );
     }
 
+    // 5b. Swift codegen: regenerate Sources/Core/ConvexAPI.swift from the
+    // deployed function manifest so Swift call sites reference compile-checked
+    // constants instead of raw strings. Non-fatal; no-op for web projects.
+    let swiftApiRegenerated = false;
+    if (result.functionSpec) {
+      const { writeSwiftConvexApi } = await import('@/lib/swift-convex-codegen');
+      swiftApiRegenerated = await writeSwiftConvexApi(projectId, project, result.functionSpec);
+    }
+
     // 6. Return success with logs and generated files
     return NextResponse.json({
       ok: true,
-      output: result.logs || '',
+      output:
+        (result.logs || '') +
+        (swiftApiRegenerated
+          ? '\nRegenerated Sources/Core/ConvexAPI.swift from the deployed functions — reference Convex functions through ConvexAPI constants only.\n'
+          : ''),
       generatedFiles: result.generatedFiles || [],
     });
   } catch (error) {

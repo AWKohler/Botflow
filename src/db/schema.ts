@@ -1,4 +1,5 @@
 import { pgTable, uuid, timestamp, text, jsonb, integer, bigint, uniqueIndex, index, boolean } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const projects = pgTable('projects', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -12,8 +13,8 @@ export const projects = pgTable('projects', {
   // mint a new uuid here so the new agent reads a clean slate (older messages
   // stay in the DB under their old segment_id for UI display).
   currentSegmentId: uuid('current_segment_id'),
-  // Preferred model for this project: 'gpt-5.3-codex' | 'gpt-5.4' | 'gpt-5.5' | 'claude-sonnet-4-6' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m2p7' | 'fireworks-glm-5p1' | 'fireworks-kimi-k2p6' | 'gemini-3.1-pro-preview'
-  model: text('model').notNull().default('fireworks-kimi-k2p6'),
+  // Preferred model for this project: 'gpt-5.3-codex' | 'gpt-5.4' | 'gpt-5.5' | 'claude-sonnet-4-6' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-glm-5p2' | 'fireworks-kimi-k2p7' | 'gemini-3.1-pro-preview'
+  model: text('model').notNull().default('fireworks-kimi-k2p7'),
   // Snapshot URLs for project thumbnails and HTML captures
   thumbnailUrl: text('thumbnail_url'),
   htmlSnapshotUrl: text('html_snapshot_url'),
@@ -337,7 +338,7 @@ export const oauthProviderRequests = pgTable('oauth_provider_requests', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull(),
-  /** Which OAuth provider to configure. Currently only 'google'. */
+  /** Auth.js provider id: 'google' | 'github' | 'microsoft-entra-id' | 'apple'. */
   provider: text('provider').notNull(),
   /** 'pending' → modal is open. 'completed' → credentials saved. 'dismissed' → user cancelled. */
   status: text('status').notNull().default('pending'),
@@ -347,10 +348,48 @@ export const oauthProviderRequests = pgTable('oauth_provider_requests', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (t) => ({
   projectIdIdx: index('oauth_provider_requests_project_id_idx').on(t.projectId),
+  // At most one ACTIVE request per project ('pending' or the in-flight
+  // 'completing' claim) — the atomic "one open modal" invariant. Including
+  // 'completing' prevents a new request from coexisting with an in-flight apply
+  // (which would let a failed apply's revert-to-pending conflict and get stuck).
+  onePendingPerProject: uniqueIndex('oauth_provider_requests_one_pending')
+    .on(t.projectId)
+    .where(sql`${t.status} in ('pending', 'completing')`),
 }));
 
 export type OAuthProviderRequest = typeof oauthProviderRequests.$inferSelect;
 export type NewOAuthProviderRequest = typeof oauthProviderRequests.$inferInsert;
+
+// Configured OAuth sign-in providers per generated app (Google, GitHub,
+// Microsoft Entra ID, Apple). The actual client secret lives ONLY on the
+// project's Convex deployment env (set via deploy key, never stored here) — this
+// table tracks which providers are enabled so the UI can list/manage them.
+// Apple is the exception: its client secret is an ES256 JWT that expires every
+// ≤6 months, so we persist the signing inputs (encrypted via src/lib/secrets.ts)
+// to auto-rotate it. See src/lib/oauth-providers/.
+export const projectOAuthProviders = pgTable('project_oauth_providers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  /** Auth.js provider id: 'google' | 'github' | 'microsoft-entra-id' | 'apple'. */
+  provider: text('provider').notNull(),
+  status: text('status').notNull().default('enabled'), // 'enabled' | 'disabled'
+  /** The /api/auth/callback/<provider> URL registered with the provider. */
+  redirectUri: text('redirect_uri'),
+  // ─── Sign in with Apple — encrypted signing inputs for secret rotation ───
+  appleTeamId: text('apple_team_id'),
+  appleKeyId: text('apple_key_id'),
+  appleServicesId: text('apple_services_id'),
+  applePrivateKeyP8: text('apple_private_key_p8'), // encrypted via src/lib/secrets.ts
+  secretExpiresAt: bigint('secret_expires_at', { mode: 'number' }), // unix seconds (Apple)
+  configuredAt: timestamp('configured_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  projectIdIdx: index('project_oauth_providers_project_id_idx').on(t.projectId),
+  projectProviderUnique: uniqueIndex('project_oauth_providers_project_provider_unique').on(t.projectId, t.provider),
+}));
+
+export type ProjectOAuthProvider = typeof projectOAuthProviders.$inferSelect;
+export type NewProjectOAuthProvider = typeof projectOAuthProviders.$inferInsert;
 
 // Env-var entry requests — created by the agent's requestEnvVar tool call;
 // resolved when the user enters the value in the workspace modal. The agent
@@ -375,6 +414,10 @@ export const envVarRequests = pgTable('env_var_requests', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (t) => ({
   projectIdIdx: index('env_var_requests_project_id_idx').on(t.projectId),
+  // At most one ACTIVE request per project ('pending' or in-flight 'completing').
+  onePendingPerProject: uniqueIndex('env_var_requests_one_pending')
+    .on(t.projectId)
+    .where(sql`${t.status} in ('pending', 'completing')`),
 }));
 
 export type EnvVarRequest = typeof envVarRequests.$inferSelect;
@@ -499,8 +542,17 @@ export const userStripeIdentity = pgTable('user_stripe_identity', {
   connectedAt: timestamp('connected_at'),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (t) => ({
-  testAccountIdIdx: index('user_stripe_identity_test_account_id_idx').on(t.testAccountId),
-  liveAccountIdIdx: index('user_stripe_identity_live_account_id_idx').on(t.liveAccountId),
+  // Partial UNIQUE indexes: a given connected Stripe account may belong to at
+  // most one Botflow user per mode. Without this, two users could OAuth-link the
+  // same acct_… and inbound webhooks (resolved with .limit(1)) would route to an
+  // arbitrary owner — cross-user payment/customer data leakage. NULLs excluded
+  // so unconnected users don't collide.
+  testAccountIdUnique: uniqueIndex('user_stripe_identity_test_account_id_unique')
+    .on(t.testAccountId)
+    .where(sql`${t.testAccountId} is not null`),
+  liveAccountIdUnique: uniqueIndex('user_stripe_identity_live_account_id_unique')
+    .on(t.liveAccountId)
+    .where(sql`${t.liveAccountId} is not null`),
 }));
 
 // Short-lived state tokens for the Stripe OAuth flow. CSRF prevention + binds
@@ -536,6 +588,10 @@ export const stripeConnectRequests = pgTable('stripe_connect_requests', {
 }, (t) => ({
   projectIdIdx: index('stripe_connect_requests_project_id_idx').on(t.projectId),
   stateIdx: index('stripe_connect_requests_state_idx').on(t.state),
+  // At most one PENDING request per project (atomic "one open modal" invariant).
+  onePendingPerProject: uniqueIndex('stripe_connect_requests_one_pending')
+    .on(t.projectId)
+    .where(sql`${t.status} = 'pending'`),
 }));
 
 export type StripeConnectRequest = typeof stripeConnectRequests.$inferSelect;
@@ -570,6 +626,56 @@ export const stripeWebhookEndpoints = pgTable('stripe_webhook_endpoints', {
 export type StripeWebhookEndpoint = typeof stripeWebhookEndpoints.$inferSelect;
 export type NewStripeWebhookEndpoint = typeof stripeWebhookEndpoints.$inferInsert;
 
+// Durable outbox for fanning normalized Stripe events out to each project's
+// Convex site. The inbound receiver records one row per (event, project) target,
+// attempts delivery inline once, and ALWAYS 200s Stripe (so the shared platform
+// Connect endpoint is never disabled by one user's down backend). Rows that fail
+// are retried by /api/cron/retry-stripe-deliveries with backoff until delivered
+// or exhausted — so a paid event is never silently lost.
+export const stripeWebhookDeliveries = pgTable('stripe_webhook_deliveries', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  eventId: text('event_id').notNull(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  canonicalType: text('canonical_type').notNull(),
+  mode: text('mode').notNull(), // 'test' | 'live'
+  payload: text('payload').notNull(), // the exact signed JSON body
+  status: text('status').notNull().default('pending'), // 'pending' | 'delivered' | 'failed' | 'exhausted'
+  attempts: integer('attempts').notNull().default(0),
+  // NOT NULL so a retryable row can never be stranded with a NULL the cron's
+  // `nextAttemptAt <= now` predicate would skip. Always set on every transition.
+  nextAttemptAt: timestamp('next_attempt_at').notNull().defaultNow(),
+  lastStatus: integer('last_status'),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  // One delivery row per (event, project) — idempotency against Stripe's
+  // re-delivery of the same event.id.
+  eventProjectUnique: uniqueIndex('stripe_webhook_deliveries_event_project_unique').on(t.eventId, t.projectId),
+  // Retry cron scans by status + due time.
+  retryIdx: index('stripe_webhook_deliveries_retry_idx').on(t.status, t.nextAttemptAt),
+}));
+
+export type StripeWebhookDelivery = typeof stripeWebhookDeliveries.$inferSelect;
+export type NewStripeWebhookDelivery = typeof stripeWebhookDeliveries.$inferInsert;
+
+// Maps a Stripe object (subscription id / customer id) → the Botflow project it
+// belongs to, per mode. Populated whenever we route an event that DOES carry
+// metadata.botflow_project_id; used as a routing fallback for later events on
+// the same object that don't (e.g. a subscription-renewal PaymentIntent, which
+// doesn't inherit the subscription's metadata). Avoids silently dropping
+// follow-up payment events.
+export const stripeObjectProjectMap = pgTable('stripe_object_project_map', {
+  mode: text('mode').notNull(), // 'test' | 'live'
+  objectId: text('object_id').notNull(), // sub_… or cus_…
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  pk: uniqueIndex('stripe_object_project_map_pk').on(t.mode, t.objectId),
+}));
+
+export type StripeObjectProjectMap = typeof stripeObjectProjectMap.$inferSelect;
+
 // ─── RevenueCat (iOS in-app purchases) ─────────────────────────────────────────
 
 // One row per Botflow user. BYO model: the user links their own RevenueCat
@@ -586,6 +692,10 @@ export const userRevenueCatIdentity = pgTable('user_revenuecat_identity', {
   // The Authorization header value we expect inbound RevenueCat webhooks to
   // carry (the user pastes this into their RevenueCat dashboard).
   rcInboundWebhookSecret: text('rc_inbound_webhook_secret'),
+  // SHA-256 of rc_inbound_webhook_secret, indexed, so the inbound webhook can
+  // resolve the owning user with an O(1) lookup instead of scanning every user's
+  // secret (then it still constant-time-compares the secret as defense).
+  rcInboundWebhookSecretDigest: text('rc_inbound_webhook_secret_digest'),
   // Apple App Store Connect API key — reused for distribution + IAP product
   // creation, and uploaded by the user to RevenueCat for receipt validation.
   ascIssuerId: text('asc_issuer_id'),
@@ -593,7 +703,9 @@ export const userRevenueCatIdentity = pgTable('user_revenuecat_identity', {
   ascPrivateKeyP8: text('asc_private_key_p8'), // encrypted
   connectedAt: timestamp('connected_at'),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  inboundDigestIdx: index('user_revenuecat_identity_inbound_digest_idx').on(t.rcInboundWebhookSecretDigest),
+}));
 
 export type UserRevenueCatIdentity = typeof userRevenueCatIdentity.$inferSelect;
 export type NewUserRevenueCatIdentity = typeof userRevenueCatIdentity.$inferInsert;
@@ -607,3 +719,29 @@ export const revenueCatWebhookEvents = pgTable('revenuecat_webhook_events', {
 
 export type RevenueCatWebhookEvent = typeof revenueCatWebhookEvents.$inferSelect;
 export type NewRevenueCatWebhookEvent = typeof revenueCatWebhookEvents.$inferInsert;
+
+// Durable outbox for fanning RevenueCat entitlement events out to each connected
+// project's Convex site. Mirrors stripe_webhook_deliveries: the inbound receiver
+// records one row per (event, project), attempts delivery inline once, and always
+// 200s RevenueCat; failures are retried by /api/cron/retry-revenuecat-deliveries
+// with backoff until delivered or exhausted — so a paid entitlement event is
+// never silently lost.
+export const revenueCatWebhookDeliveries = pgTable('revenuecat_webhook_deliveries', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  eventId: text('event_id').notNull(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  canonicalType: text('canonical_type').notNull(),
+  payload: text('payload').notNull(),
+  status: text('status').notNull().default('pending'), // 'pending' | 'delivered' | 'failed' | 'exhausted'
+  attempts: integer('attempts').notNull().default(0),
+  nextAttemptAt: timestamp('next_attempt_at').notNull().defaultNow(),
+  lastStatus: integer('last_status'),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  eventProjectUnique: uniqueIndex('revenuecat_webhook_deliveries_event_project_unique').on(t.eventId, t.projectId),
+  retryIdx: index('revenuecat_webhook_deliveries_retry_idx').on(t.status, t.nextAttemptAt),
+}));
+
+export type RevenueCatWebhookDelivery = typeof revenueCatWebhookDeliveries.$inferSelect;

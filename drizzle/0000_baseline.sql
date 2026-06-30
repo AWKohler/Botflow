@@ -145,7 +145,7 @@ CREATE TABLE "projects" (
 	"platform" text DEFAULT 'web' NOT NULL,
 	"agent_backend" text DEFAULT 'botflow' NOT NULL,
 	"current_segment_id" uuid,
-	"model" text DEFAULT 'fireworks-kimi-k2p6' NOT NULL,
+	"model" text DEFAULT 'fireworks-kimi-k2p7' NOT NULL,
 	"thumbnail_url" text,
 	"html_snapshot_url" text,
 	"thumbnail_key" text,

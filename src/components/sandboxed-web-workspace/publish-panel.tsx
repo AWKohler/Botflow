@@ -1,5 +1,6 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -364,7 +365,7 @@ export function SandboxPublishPanel({
         </span>
       </label>
       {listPublic && (
-        <input
+        <Input
           type="text"
           value={publicDesc}
           onChange={(e) => setPublicDesc(e.target.value)}
@@ -577,7 +578,7 @@ export function SandboxPublishPanel({
                           </select>
                         </div>
                         <div className="flex items-center gap-2">
-                          <input
+                          <Input
                             type="text"
                             value={selectedSubdomain}
                             onChange={(e) => setSelectedSubdomain(e.target.value)}
@@ -648,7 +649,7 @@ export function SandboxPublishPanel({
                       </div>
                     ) : (
                       <>
-                        <input
+                        <Input
                           type="text"
                           value={cnameInput}
                           onChange={(e) => setCnameInput(e.target.value)}

@@ -33,14 +33,11 @@ const TEMPLATE_REPOS = {
 
 export type SandboxTemplate = keyof typeof TEMPLATE_REPOS;
 
-// TEMPORARY (feat/swift-convex-followups): pin a template to a non-default
-// branch so the Swift Convex Auth scaffolding (which lives on
-// swift-convex-template@feat/auth) can be validated end-to-end on this branch's
-// preview deployment WITHOUT merging the template to its main. Remove once
-// swift-convex-template feat/auth merges to main.
-const TEMPLATE_BRANCHES: Partial<Record<SandboxTemplate, string>> = {
-  swiftConvex: "feat/auth",
-};
+// Optional per-template branch override. Empty by default — every template
+// clones its repo's default branch (main). Add an entry only to temporarily
+// validate template changes on a non-main branch before merging.
+// (swift-convex-template@feat/auth merged to main, so its pin is removed.)
+const TEMPLATE_BRANCHES: Partial<Record<SandboxTemplate, string>> = {};
 
 function assertSandboxAuth(): void {
   const hasOidcToken = Boolean(process.env.VERCEL_OIDC_TOKEN);
@@ -618,6 +615,21 @@ export async function sandboxWriteFile(
     path: abs,
     content: Buffer.from(content, "utf-8"),
   }]);
+}
+
+/** Write raw bytes into the sandbox (e.g. a generated PNG icon). */
+export async function sandboxWriteBinaryFile(
+  projectId: string,
+  projectRelativePath: string,
+  content: Buffer,
+): Promise<void> {
+  const sandbox = await getOrCreatePersistentSandbox(projectId);
+  const abs = toAbsPath(projectRelativePath);
+  const dir = abs.substring(0, abs.lastIndexOf("/"));
+  if (dir && dir !== SANDBOX_ROOT) {
+    await sandbox.runCommand("mkdir", ["-p", dir]);
+  }
+  await sandbox.writeFiles([{ path: abs, content }]);
 }
 
 export async function sandboxListFiles(

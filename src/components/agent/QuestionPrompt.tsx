@@ -17,6 +17,7 @@
  *     /api/projects/:id/chat/questions/answer; the bridge's blocking poll
  *     unblocks and returns the structured answer to Claude.
  */
+import { Input } from "@/components/ui/input";
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -228,7 +229,7 @@ export function QuestionPrompt({
             >
               {optionBadge(options.length)}
             </span>
-            <input
+            <Input
               type="text"
               value={customText}
               onChange={(e) => handleCustomChange(e.target.value)}

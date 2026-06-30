@@ -4,6 +4,7 @@ import { projects, chatImages, projectAssets } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { deleteConvexBackend } from '@/lib/convex-platform';
+import { isModelDisabled, modelDisabledReason } from '@/lib/agent/models';
 import { UTApi } from 'uploadthing/server';
 
 const utapi = new UTApi();
@@ -60,12 +61,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       model !== 'claude-opus-4.5' && // backwards compat
       model !== 'kimi-k2.5' && // removed → mapped to minimax
       model !== 'kimi-k2-thinking-turbo' && // removed → mapped to minimax
-      model !== 'fireworks-minimax-m2p7' &&
-      model !== 'fireworks-glm-5p1' &&
-      model !== 'fireworks-kimi-k2p6' &&
+      model !== 'fireworks-minimax-m2p7' && // backwards compat → resolves to m3
+      model !== 'fireworks-minimax-m3' &&
+      model !== 'fireworks-glm-5p2' &&
+      model !== 'fireworks-glm-5p1' && // backwards compat → resolved to glm-5p2
+      model !== 'fireworks-kimi-k2p7' &&
+      model !== 'fireworks-kimi-k2p6' && // backwards compat → resolved to k2p7
       model !== 'gemini-3.1-pro-preview'
     ) {
       return NextResponse.json({ error: 'Invalid model' }, { status: 400 });
+    }
+    // Reject globally disabled models (e.g. rescinded by the provider) for all
+    // users and auth paths — can't switch a project onto an unusable model.
+    if (model && isModelDisabled(model)) {
+      return NextResponse.json({ error: modelDisabledReason(model) }, { status: 403 });
     }
     const updateData: Partial<typeof proj> = {
       updatedAt: new Date(),

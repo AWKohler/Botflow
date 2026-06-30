@@ -615,6 +615,76 @@ export function SwiftSimulatorPreview({
     return () => clearTimeout(t);
   }, [hasFrame]);
 
+  // ── Agent-panel screenshot bridge ────────────────────────────────────────
+  // The AgentPanel shows a "screenshot the simulator" button but can't reach
+  // this canvas directly. We coordinate over window events (scoped by
+  // projectId): broadcast whether a frame is grabbable so the button can
+  // enable/grey itself, and on request hand the current canvas back as a JPEG
+  // blob for the panel to attach like an uploaded image.
+  const simShotAvailable = pill.kind === "live" && hasFrame;
+  const availableRef = useRef(false);
+  availableRef.current = simShotAvailable;
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("swift-sim-availability", {
+        detail: { projectId, available: simShotAvailable },
+      }),
+    );
+  }, [projectId, simShotAvailable]);
+
+  useEffect(() => {
+    const onQuery = (e: Event) => {
+      const d = (e as CustomEvent<{ projectId: string }>).detail;
+      if (!d || d.projectId !== projectId) return;
+      window.dispatchEvent(
+        new CustomEvent("swift-sim-availability", {
+          detail: { projectId, available: availableRef.current },
+        }),
+      );
+    };
+    const onCapture = (e: Event) => {
+      const d = (e as CustomEvent<{ projectId: string; requestId: string }>).detail;
+      if (!d || d.projectId !== projectId) return;
+      const respond = (detail: { blob?: Blob; error?: string }) =>
+        window.dispatchEvent(
+          new CustomEvent("swift-sim-capture-response", {
+            detail: {
+              projectId,
+              requestId: d.requestId,
+              deviceModel: deviceModelRef.current,
+              ...detail,
+            },
+          }),
+        );
+      const canvas = canvasRef.current;
+      if (!canvas || !hasFrameRef.current) {
+        respond({ error: "The simulator isn't streaming a frame yet." });
+        return;
+      }
+      try {
+        canvas.toBlob(
+          (blob) => respond(blob ? { blob } : { error: "Couldn't read the simulator screen." }),
+          "image/jpeg",
+          0.9,
+        );
+      } catch {
+        respond({ error: "Couldn't read the simulator screen." });
+      }
+    };
+    window.addEventListener("swift-sim-availability-query", onQuery);
+    window.addEventListener("swift-sim-capture-request", onCapture);
+    return () => {
+      window.removeEventListener("swift-sim-availability-query", onQuery);
+      window.removeEventListener("swift-sim-capture-request", onCapture);
+      // Unmounting (Stop / tab close) — tell the panel the grab is gone so its
+      // button greys out.
+      window.dispatchEvent(
+        new CustomEvent("swift-sim-availability", { detail: { projectId, available: false } }),
+      );
+    };
+  }, [projectId]);
+
   const drawFrame = useCallback((b64: string) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -868,7 +938,9 @@ export function SwiftSimulatorPreview({
     <div
       className={cn(
         "absolute inset-0 flex flex-col",
-        isPip ? "gap-1 p-1.5" : "gap-2 p-2.5 pb-2.5 pr-2.5",
+        // Full mode: flush to top/left, 10px gap on right/bottom — matches the
+        // Code/Database cards exactly. PIP keeps its tight all-around padding.
+        isPip ? "gap-1 p-1.5" : "gap-2 pb-2.5 pr-2.5",
       )}
     >
       {/* Status bar — compact in PIP mode */}
@@ -1044,62 +1116,73 @@ export function SwiftSimulatorPreview({
       </div>
 
       {/* Stream / state surface — canvas inside the device bezel. DeviceFrame
-          owns geometry, orientation, and fit-scaling for both iPhone + iPad. */}
-      <DeviceFrame
-        deviceModel={deviceModel}
-        orientation={liveOrientation ?? orientation}
-        overlay={
-          pill.kind !== "live" ? (
-            <CenterContent pill={pill} hasCalibration={!!calibration} />
-          ) : undefined
-        }
-        footer={
-          !isPip && pill.kind === "live" ? (
-            <div className="rounded-md bg-black/55 px-2 py-0.5 text-[10px] text-white/70 backdrop-blur whitespace-nowrap">
-              {kbdFocused
-                ? "Keyboard connected — typing goes to the device"
-                : "Click the screen to enable keyboard"}
-            </div>
-          ) : undefined
-        }
+          owns geometry, orientation, and fit-scaling for both iPhone + iPad.
+          The bordered card mirrors the stopped-state placeholder exactly (same
+          border + bg-elevated/60) so the device doesn't shift or change
+          background when the preview starts. PIP keeps its bare look since the
+          SwiftPipWindow already provides the border. */}
+      <div
+        className={cn(
+          "relative flex min-h-0 flex-1 flex-col overflow-hidden",
+          !isPip && "rounded-xl border border-border bg-elevated/60",
+        )}
       >
-        <canvas
-          ref={canvasRef}
-          tabIndex={pill.kind === "live" ? 0 : -1}
-          className={cn(
-            "block max-h-full max-w-full select-none outline-none",
-            pill.kind === "live"
-              ? "relative cursor-crosshair"
-              : "pointer-events-none absolute opacity-0",
-            kbdFocused && "ring-2 ring-accent/70",
-          )}
-          style={{ touchAction: "none" }}
-        />
-        {/* Last-seen screenshot — covers the black screen (blurred) while the
-            session provisions/builds; de-blurs away on the first real frame. */}
-        {(() => {
-          const screenshotUrl =
-            deviceModel === "iPad-Pro" ? screenshots?.ipad : screenshots?.iphone;
-          if (!screenshotUrl || screenshotOverlayGone) return null;
-          return (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={screenshotUrl}
-              alt=""
-              // object-contain mirrors the live canvas's max-w/h letterboxing,
-              // so the de-blur hands off to the stream without a size jump.
-              className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain"
-              style={{
-                filter: hasFrame
-                  ? "blur(0px) brightness(1)"
-                  : "blur(7px) brightness(0.75)",
-                opacity: hasFrame ? 0 : 1,
-                transition: "filter 700ms ease, opacity 700ms ease",
-              }}
-            />
-          );
-        })()}
-      </DeviceFrame>
+        <DeviceFrame
+          deviceModel={deviceModel}
+          orientation={liveOrientation ?? orientation}
+          overlay={
+            pill.kind !== "live" ? (
+              <CenterContent pill={pill} hasCalibration={!!calibration} />
+            ) : undefined
+          }
+          footer={
+            !isPip && pill.kind === "live" ? (
+              <div className="rounded-md bg-black/55 px-2 py-0.5 text-[10px] text-white/70 backdrop-blur whitespace-nowrap">
+                {kbdFocused
+                  ? "Keyboard connected — typing goes to the device"
+                  : "Click the screen to enable keyboard"}
+              </div>
+            ) : undefined
+          }
+        >
+          <canvas
+            ref={canvasRef}
+            tabIndex={pill.kind === "live" ? 0 : -1}
+            className={cn(
+              "block max-h-full max-w-full select-none outline-none",
+              pill.kind === "live"
+                ? "relative cursor-crosshair"
+                : "pointer-events-none absolute opacity-0",
+              kbdFocused && "ring-2 ring-accent/70",
+            )}
+            style={{ touchAction: "none" }}
+          />
+          {/* Last-seen screenshot — covers the black screen (blurred) while the
+              session provisions/builds; de-blurs away on the first real frame. */}
+          {(() => {
+            const screenshotUrl =
+              deviceModel === "iPad-Pro" ? screenshots?.ipad : screenshots?.iphone;
+            if (!screenshotUrl || screenshotOverlayGone) return null;
+            return (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={screenshotUrl}
+                alt=""
+                // object-contain mirrors the live canvas's max-w/h letterboxing,
+                // so the de-blur hands off to the stream without a size jump.
+                className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain"
+                style={{
+                  filter: hasFrame
+                    ? "blur(0px) brightness(1)"
+                    : "blur(7px) brightness(0.75)",
+                  opacity: hasFrame ? 0 : 1,
+                  transition: "filter 700ms ease, opacity 700ms ease",
+                }}
+              />
+            );
+          })()}
+        </DeviceFrame>
+      </div>
 
       {/* Structured build Issues panel — full mode only.
           In PIP, a build failure pops a toast and the user expands. */}

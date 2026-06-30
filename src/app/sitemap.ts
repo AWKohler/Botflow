@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { getPostSlugs } from '@/lib/sanity/posts';
+import { getIndexablePostSlugs } from '@/lib/sanity/posts';
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? 'https://botflow.io';
@@ -42,7 +42,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   let blogEntries: MetadataRoute.Sitemap = [];
   try {
-    const slugs = await getPostSlugs();
+    const slugs = await getIndexablePostSlugs();
     blogEntries = slugs
       .filter((s) => s.slug)
       .map((s) => ({

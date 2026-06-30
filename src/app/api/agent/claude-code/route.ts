@@ -32,6 +32,7 @@ import { swiftRuntimeForbidden } from "@/lib/swift-access";
 
 import { isClaudeCodeFlagEnabled } from "@/lib/agent/claude-code/feature-flag";
 import { STRIPE_CONNECT_ENABLED } from "@/lib/feature-flags";
+import { OAUTH_PROVIDER_IDS } from "@/lib/oauth-providers/registry";
 import { deriveAgentBackend } from "@/lib/agent/derive-backend";
 import {
   ensureClaudeInstalled,
@@ -74,20 +75,102 @@ function jsonError(status: number, message: string): Response {
   });
 }
 
-/** Pull the user's most recent text from a UIMessage array. */
-function extractUserPrompt(messages: UIMessage[]): string | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i];
-    if (m.role !== "user") continue;
-    const parts = m.parts ?? [];
-    const texts: string[] = [];
-    for (const p of parts) {
-      if (p.type === "text" && typeof p.text === "string") texts.push(p.text);
-    }
-    if (texts.length === 0) continue;
-    return texts.join("\n");
+/**
+ * Pull the CURRENT turn's user text — from the LAST message only. The route
+ * guarantees the last message is the user's new message (replay guard), so the
+ * current prompt always lives there. Scanning backward (as an earlier version
+ * did) is wrong once a turn can be image-only: an image-only message has no
+ * text, and a backward scan would replay the PREVIOUS turn's text as if it were
+ * a brand-new prompt. Prior turns are carried separately by the preamble.
+ */
+function extractCurrentUserText(messages: UIMessage[]): string {
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== "user") return "";
+  const texts: string[] = [];
+  for (const p of last.parts ?? []) {
+    if (p.type === "text" && typeof p.text === "string") texts.push(p.text);
   }
-  return null;
+  return texts.join("\n");
+}
+
+/* ------------------------------- images -------------------------------- */
+
+/** A base64-encoded image, ready to embed as an Anthropic `image` block. */
+interface PromptImage {
+  media_type: string;
+  data: string;
+}
+
+// Media types the Anthropic API accepts for image blocks. The uploader only
+// ever produces jpeg/png/webp, but gif is kept since the API supports it.
+const SUPPORTED_IMAGE_MEDIA_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+// Per-image byte ceiling — matches the uploader's 5MB cap and stays under the
+// Anthropic per-image limit. Oversized fetches are skipped, not truncated.
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+// Hard cap on images per turn (mirrors the client's MAX_IMAGES) so a crafted
+// request can't make us fetch an unbounded number of remote URLs.
+const MAX_PROMPT_IMAGES = 10;
+
+/** Collect image file-parts from the current (last) user message — the remote
+ *  URLs plus declared media types. Fetching happens separately. */
+function extractCurrentUserImageParts(
+  messages: UIMessage[],
+): Array<{ url: string; mediaType: string }> {
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== "user") return [];
+  const out: Array<{ url: string; mediaType: string }> = [];
+  for (const p of last.parts ?? []) {
+    if (p.type !== "file") continue;
+    const fp = p as { type: "file"; url?: unknown; mediaType?: unknown };
+    if (typeof fp.url !== "string") continue;
+    const mediaType = typeof fp.mediaType === "string" ? fp.mediaType : "";
+    if (!mediaType.startsWith("image/")) continue; // ignore non-image files
+    out.push({ url: fp.url, mediaType });
+  }
+  return out;
+}
+
+/**
+ * Fetch each uploaded image and base64-encode it so the bridge can embed it as
+ * an Anthropic `image` content block. We resolve the bytes server-side (rather
+ * than handing the sandbox a URL) so the payload is self-contained and doesn't
+ * depend on the sandbox reaching the upload CDN. Individual failures are
+ * skipped — one broken image shouldn't sink the whole turn.
+ */
+async function fetchPromptImages(
+  parts: Array<{ url: string; mediaType: string }>,
+): Promise<PromptImage[]> {
+  const limited = parts.slice(0, MAX_PROMPT_IMAGES);
+  const settled = await Promise.all(
+    limited.map(async ({ url, mediaType }): Promise<PromptImage | null> => {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+        if (!res.ok) return null;
+        const bytes = Buffer.from(await res.arrayBuffer());
+        if (bytes.byteLength === 0 || bytes.byteLength > MAX_IMAGE_BYTES) return null;
+        // Prefer the response's content-type when it's a supported image type;
+        // otherwise fall back to the part's declared mediaType, then jpeg.
+        const responseType = (res.headers.get("content-type") ?? "")
+          .split(";")[0]
+          .trim()
+          .toLowerCase();
+        const media_type = SUPPORTED_IMAGE_MEDIA_TYPES.has(responseType)
+          ? responseType
+          : SUPPORTED_IMAGE_MEDIA_TYPES.has(mediaType)
+            ? mediaType
+            : "image/jpeg";
+        return { media_type, data: bytes.toString("base64") };
+      } catch {
+        return null; // timeout / network error / abort — skip this image.
+      }
+    }),
+  );
+  return settled.filter((img): img is PromptImage => img !== null);
 }
 
 /**
@@ -159,9 +242,9 @@ export async function POST(req: Request) {
   // Replay guard: every legitimate Claude Code turn is initiated by a new
   // user message, so the array must END with one. A trailing assistant
   // message means an automatic client resubmit (e.g. useChat's
-  // sendAutomaticallyWhen) — since extractUserPrompt scans backward, honoring
-  // it would replay the user's PREVIOUS prompt as a brand-new turn, looping
-  // the agent (and burning the user's subscription) indefinitely.
+  // sendAutomaticallyWhen); rejecting it here stops the agent from being
+  // re-triggered without new user input, which would loop the agent (and burn
+  // the user's subscription) indefinitely.
   if (messages[messages.length - 1]?.role !== "user") {
     return jsonError(409, "Last message must be a user message");
   }
@@ -213,9 +296,15 @@ export async function POST(req: Request) {
     return fallback(derived.reason);
   }
 
-  const userPrompt = extractUserPrompt(messages);
-  if (!userPrompt) {
-    return jsonError(400, "No user text in last message");
+  const userPrompt = extractCurrentUserText(messages);
+  // Pull any images attached to the current message and resolve them to base64
+  // so the bridge can relay them to the model. Without this they're silently
+  // dropped (text-only extraction ignores file parts) — the model never sees
+  // them, which is exactly the "images aren't sent" bug on the Claude Code path.
+  const imageParts = extractCurrentUserImageParts(messages);
+  const images = imageParts.length ? await fetchPromptImages(imageParts) : [];
+  if (!userPrompt && images.length === 0) {
+    return jsonError(400, "No user text or image in last message");
   }
 
   // Build a prior-conversation preamble so the model has context if this turn
@@ -296,6 +385,8 @@ export async function POST(req: Request) {
         "list_convex_tables",
         "read_convex_table",
         "write_convex_data",
+        "setup_auth",
+        "setup_oauth_provider",
       );
       if (STRIPE_CONNECT_ENABLED) {
         customTools.push(
@@ -319,6 +410,7 @@ export async function POST(req: Request) {
         "open_pull_request",
       );
     }
+    
   } else if (platform === "swift") {
     // Simulator control — the sim never runs while the agent works (no HMR;
     // compiling is expensive). The agent opens it once its work is done.
@@ -330,15 +422,25 @@ export async function POST(req: Request) {
       "ask_question",
       "request_env_var",
     );
+    if (hasBackend) {
+      // Swift + Convex backend: the deploy/logs/auth tools are platform-
+      // agnostic server-side (the deploy pipeline zips /convex regardless of
+      // frontend language; setup_auth is platform-aware in the host route).
+      customTools.push("convex_deploy", "get_convex_logs", "setup_auth");
+    }
   }
 
   const bridgeConfig = {
     prompt,
+    ...(images.length ? { images } : {}),
     ...(sessionId ? { sessionId } : {}),
     model: MODEL_CONFIGS[selectedModel].apiModelId,
     cwd: "/vercel/sandbox",
     appendSystemPrompt,
     ...(customTools.length ? { customTools } : {}),
+    ...(customTools.includes("setup_oauth_provider")
+      ? { oauthProviderIds: OAUTH_PROVIDER_IDS }
+      : {}),
   };
 
   const turnId = Math.random().toString(36).slice(2, 10);

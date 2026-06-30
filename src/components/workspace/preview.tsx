@@ -1,5 +1,6 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import html2canvas from "html2canvas";
 import Image from "next/image";
@@ -1449,7 +1450,7 @@ export function Preview({
             <span className="text-muted text-sm mr-2">
               {activePreview.baseUrl}
             </span>
-            <input
+            <Input
               type="text"
               defaultValue={internalPath}
               onKeyDown={handlePathChange}

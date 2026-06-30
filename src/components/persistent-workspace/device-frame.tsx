@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+
+// Measure before the browser paints (on the client) so the device never paints
+// at a stale scale and visibly "flashes" to its real size — e.g. when switching
+// iPad → iPhone, where the previous device's scale would otherwise be applied to
+// the new, much taller bezel for one frame. Falls back to useEffect on the
+// server to avoid React's "useLayoutEffect does nothing on the server" warning.
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 export type DeviceModelUI = "iPhone-16-Pro" | "iPad-Pro";
 export type OrientationUI = "portrait" | "landscape";
@@ -75,16 +82,22 @@ export function DeviceFrame({
     : g.screen;
 
   const outerRef = useRef<HTMLDivElement | null>(null);
-  const [scale, setScale] = useState(0.2);
-  useEffect(() => {
+  // `null` until the container has been measured. The device is kept invisible
+  // until then (see `visibility` below) so it never paints at a guessed scale
+  // and visibly "flashes" to its real size on the first ResizeObserver tick.
+  const [scale, setScale] = useState<number | null>(null);
+  useIsoLayoutEffect(() => {
     const outer = outerRef.current;
     if (!outer) return;
-    const ro = new ResizeObserver(() => {
+    const measure = (): void => {
       const h = outer.clientHeight;
       const w = outer.clientWidth;
+      if (!h || !w) return; // not laid out yet — wait for a real measurement
       const base = Math.min(h / box.h, w / box.w);
       setScale(Math.max(0.05, Math.min(base * 0.92, 2)));
-    });
+    };
+    measure(); // measure once up front so the first visible paint is correct
+    const ro = new ResizeObserver(measure);
     ro.observe(outer);
     return () => ro.disconnect();
   }, [box.w, box.h]);
@@ -99,9 +112,10 @@ export function DeviceFrame({
           position: "relative",
           width: box.w,
           height: box.h,
-          transform: `scale(${scale})`,
+          transform: `scale(${scale ?? 1})`,
           transformOrigin: "center center",
           flexShrink: 0,
+          visibility: scale == null ? "hidden" : "visible",
         }}
       >
         {/* Screen content (canvas) — clipped to the rounded screen rect. */}

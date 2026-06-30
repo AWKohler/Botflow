@@ -14,6 +14,7 @@ import {
   getPostSlugs,
   getRelatedPosts,
 } from '@/lib/sanity/posts';
+import { isBlogPostNoIndexed } from '@/lib/sanity/blog-seo';
 import { cn } from '@/lib/utils';
 
 export const revalidate = 60;
@@ -79,7 +80,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title,
     description,
     alternates: { canonical },
-    robots: post.seo?.noIndex ? { index: false, follow: false } : undefined,
+    robots: isBlogPostNoIndexed(post) ? { index: false, follow: true } : undefined,
     openGraph: {
       title,
       description,

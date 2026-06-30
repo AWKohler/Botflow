@@ -11,7 +11,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, desc } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { projects, stripeConnectRequests } from '@/db/schema';
 
@@ -55,7 +55,9 @@ export async function GET(
         eq(stripeConnectRequests.status, 'pending'),
       ),
     )
-    .orderBy(stripeConnectRequests.createdAt)
+    // Newest pending first — show the request the agent just created, not a
+    // stale older one if two ever coexist.
+    .orderBy(desc(stripeConnectRequests.createdAt))
     .limit(1);
 
   return NextResponse.json({ ok: true, pending: pending ?? null });
