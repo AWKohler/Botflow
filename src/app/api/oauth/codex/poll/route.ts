@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { setUserCredentials } from '@/lib/user-credentials';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -28,6 +29,9 @@ export async function POST(req: NextRequest) {
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const blocked = await enforce(identifierFor(userId, req), 'oauthPoll');
+    if (blocked) return blocked;
 
     const { device_auth_id, user_code } = await req.json() as {
       device_auth_id: string;

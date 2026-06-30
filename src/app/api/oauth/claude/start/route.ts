@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import crypto from 'crypto';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -13,10 +14,14 @@ function base64url(buf: Buffer): string {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // Key by userId, falling back to IP so unauthed probes are still bounded.
+    const blocked = await enforce(identifierFor(userId, req), 'oauthStart');
+    if (blocked) return blocked;
 
     // Generate PKCE verifier (32 random bytes → base64url)
     const verifier = base64url(crypto.randomBytes(32));

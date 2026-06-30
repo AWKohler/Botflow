@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { setUserCredentials } from '@/lib/user-credentials';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 import { getDb } from '@/db';
 import { userSettings } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -17,6 +18,9 @@ export async function GET(req: NextRequest) {
   if (!userId) {
     return NextResponse.redirect(`${origin}/sign-in`);
   }
+
+  const blocked = await enforce(identifierFor(userId, req), 'oauthExchange');
+  if (blocked) return blocked;
 
   const { searchParams } = new URL(req.url);
   const code = searchParams.get('code');

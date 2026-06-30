@@ -47,6 +47,7 @@ import {
 } from "@/lib/agent/claude-code/session-store";
 import { createTranslator, type BridgeEvent } from "@/lib/agent/claude-code/translator";
 import { mintToolToken, revokeToolToken } from "@/lib/agent/claude-code/tool-token";
+import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -219,6 +220,13 @@ export async function POST(req: Request) {
 
   const { userId } = await auth();
   if (!userId) return jsonError(401, "Unauthorized");
+
+  // Per-user request-rate guard. This is the most expensive path (spawns a
+  // claude subprocess in a per-project sandbox, mints a tool-callback token,
+  // streams for up to maxDuration). No credit reservation here, so this is the
+  // primary burst guard against repeated sandbox spawns.
+  const blocked = await enforce(identifierFor(userId, req), "claudeCode");
+  if (blocked) return blocked;
 
   let body: RequestBody;
   try {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { setUserCredentials } from '@/lib/user-credentials';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -13,6 +14,11 @@ export async function POST(req: NextRequest) {
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // Tight guard against token/code-grinding: each call hits Anthropic's token
+    // endpoint with attacker-supplied code+verifier. Key by userId (or client IP).
+    const blocked = await enforce(identifierFor(userId, req), 'oauthExchange');
+    if (blocked) return blocked;
 
     const { code, verifier } = await req.json() as { code: string; verifier: string };
     if (!code?.trim()) return NextResponse.json({ error: 'Missing code' }, { status: 400 });

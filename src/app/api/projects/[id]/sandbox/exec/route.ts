@@ -5,6 +5,7 @@ import { getDb } from "@/db";
 import { projects } from "@/db/schema";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,10 @@ export async function POST(
   if (!userId) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
   }
+
+  // Highest-cost route: arbitrary command exec + long-lived SSE stream.
+  const blocked = await enforce(identifierFor(userId, req), "expensive");
+  if (blocked) return blocked;
 
   const { id } = await params;
   const db = getDb();

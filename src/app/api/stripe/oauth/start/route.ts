@@ -21,6 +21,7 @@ import {
 } from '@/lib/stripe';
 import { mintStripeAuthorizeUrl } from '@/lib/stripe-connect';
 import { STRIPE_CONNECT_ENABLED } from '@/lib/feature-flags';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 
@@ -36,6 +37,9 @@ export async function GET(req: NextRequest) {
   if (!userId) {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
+
+  const blocked = await enforce(identifierFor(userId, req), 'oauthStart');
+  if (blocked) return blocked;
 
   const url = new URL(req.url);
   const projectId = url.searchParams.get('projectId');

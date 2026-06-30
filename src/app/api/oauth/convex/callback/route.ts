@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { setUserCredentials } from '@/lib/user-credentials';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 import { verifyConvexOAuthState } from '@/lib/convex-oauth-state';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,9 @@ export async function GET(req: NextRequest) {
   const origin = new URL(req.url).origin;
   const { userId } = await auth();
   if (!userId) return NextResponse.redirect(`${origin}/sign-in`);
+
+  const blocked = await enforce(identifierFor(userId, req), 'oauthExchange');
+  if (blocked) return blocked;
 
   const { searchParams } = new URL(req.url);
   const code = searchParams.get('code');

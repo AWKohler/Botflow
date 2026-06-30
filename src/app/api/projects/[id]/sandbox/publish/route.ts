@@ -15,6 +15,7 @@ import { getUserTierAndLimits } from '@/lib/tier';
 import { countUserCfPagesDeployments } from '@/lib/usage';
 import { reconcilePublicState } from '@/lib/public-bundle';
 import { refreshAuthSiteUrl } from '@/lib/convex-auth-setup';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 
 // SSE endpoint — Vercel Pro plans allow up to 300s. Builds can be slow.
 export const maxDuration = 300;
@@ -63,6 +64,10 @@ export async function POST(
 ) {
   const { userId } = await auth();
   if (!userId) return new Response('Unauthorized', { status: 401 });
+
+  // Strictest per-user cap — runs the full build + Cloudflare Pages deploy pipeline.
+  const blocked = await enforce(identifierFor(userId, req), 'deploy');
+  if (blocked) return blocked;
 
   const { id: projectId } = await params;
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 import { signConvexOAuthState } from '@/lib/convex-oauth-state';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +13,10 @@ const REDIRECT_URI = `${APP_URL}/api/oauth/convex/callback`;
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const blocked = await enforce(identifierFor(userId, req), 'oauthStart');
+  if (blocked) return blocked;
+
   if (!CLIENT_ID) return NextResponse.json({ error: 'Convex OAuth not configured' }, { status: 500 });
 
   const { searchParams } = new URL(req.url);

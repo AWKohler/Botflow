@@ -68,6 +68,7 @@ import {
   getMonthlyLimit,
 } from "@/lib/credits";
 import { limitReachedResponse } from "@/lib/plan-response";
+import { enforce, identifierFor } from "@/lib/rate-limit";
 import type { ProjectPlatform } from "@/lib/project-platform";
 
 // Allow long-running streamed responses on Vercel
@@ -544,6 +545,12 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "application/json" },
       });
     }
+
+    // Per-user request-rate guard for this expensive LLM turn endpoint. Runs
+    // before any model/credit work so a burst can't drive Anthropic/OpenAI/etc.
+    // spend or long-lived streams; credit reservation below is a separate guard.
+    const blocked = await enforce(identifierFor(userId, req), "agent");
+    if (blocked) return blocked;
 
     const {
       messages,

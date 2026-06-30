@@ -4,6 +4,7 @@ import { UTApi } from 'uploadthing/server';
 import { getDb } from '@/db';
 import { projects, chatImages } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 
 const utapi = new UTApi();
 
@@ -16,6 +17,9 @@ export async function POST(request: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const blocked = await enforce(identifierFor(userId, request), 'upload');
+    if (blocked) return blocked;
 
     const formData = await request.formData();
     const file = formData.get('file') as File | null;

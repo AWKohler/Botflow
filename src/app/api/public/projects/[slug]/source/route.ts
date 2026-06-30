@@ -11,6 +11,7 @@ import { gunzipSync } from 'zlib';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -69,10 +70,14 @@ function extractTextFiles(tar: Buffer): SourceFile[] {
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
+    // Public, unauth, heavy (remote fetch + gunzip + tar parse): strict per-IP cap.
+    const blocked = await enforce(identifierFor(null, req), 'publicHeavy');
+    if (blocked) return blocked;
+
     const { slug } = await params;
     const db = getDb();
     const [project] = await db

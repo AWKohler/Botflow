@@ -13,6 +13,7 @@ import {
 } from "@/lib/sim-platform";
 import { recordSwiftPreviewSession } from "@/lib/swift-preview-store";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { enforce, identifierFor } from "@/lib/rate-limit";
 import type { SimDeviceModel, SimOrientation } from "@/lib/sim-platform";
 
 const DEVICE_MODELS: readonly SimDeviceModel[] = ["iPhone-16-Pro", "iPad-Pro"];
@@ -30,6 +31,9 @@ export async function POST(
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const blocked = await enforce(identifierFor(userId, req), "deploy");
+  if (blocked) return blocked;
 
   // Optional body: { deviceModel?, orientation? }. Defaults preserve the
   // original iPhone behavior when the browser sends nothing.

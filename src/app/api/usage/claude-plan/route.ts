@@ -15,6 +15,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { getFreshAnthropicAccessToken } from "@/lib/anthropic-oauth";
+import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,12 +35,15 @@ function normalizePct(u: number | undefined): number | null {
   return Math.max(0, Math.min(100, Math.round(pct)));
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const blocked = await enforce(identifierFor(userId, req), "expensive");
+    if (blocked) return blocked;
 
     const creds = await getUserCredentials(userId);
     if (!creds.claudeOAuthAccessToken) {

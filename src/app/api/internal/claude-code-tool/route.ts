@@ -17,6 +17,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { chatQuestions, projects } from "@/db/schema";
 import { resolveToolToken } from "@/lib/agent/claude-code/tool-token";
+import { enforce, identifierFor } from "@/lib/rate-limit";
 import {
   buildConvexDeployZip,
   writeGeneratedConvexFiles,
@@ -83,6 +84,14 @@ export async function POST(req: Request) {
   if (!binding) {
     return NextResponse.json({ ok: false, error: "Invalid or expired tool token" }, { status: 401 });
   }
+
+  // ── Rate limit ─────────────────────────────────────────────────────────────
+  // Key by the binding's userId (NOT the token) so a compromised/looping bridge
+  // can't multiply heavy tool spend (deploys, Stripe, git/PR, 5-min block-polls)
+  // by re-minting tokens. Higher ceiling than the agent routes since one turn
+  // legitimately fans out to many tool calls.
+  const blocked = await enforce(identifierFor(binding.userId, req), "toolCallback");
+  if (blocked) return blocked;
 
   // ── Parse ────────────────────────────────────────────────────────────────
   let body: RequestBody;

@@ -35,6 +35,7 @@ import { getStripe, type StripeMode } from '@/lib/stripe';
 import { mirrorStripeProductsAcrossModes } from '@/lib/stripe-scaffold';
 import { ensureConnectWebhookEndpoint } from '@/lib/stripe-webhook-provisioning';
 import { STRIPE_CONNECT_ENABLED } from '@/lib/feature-flags';
+import { enforce, identifierFor } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 
@@ -78,6 +79,12 @@ export async function GET(req: NextRequest) {
       reason: 'missing-code-or-state',
     });
   }
+
+  // Throttle by client IP before any auth/state work, so an attacker can't grind
+  // states or hammer the Stripe exchange and the heavy write/provisioning side
+  // effects below. Keyed by IP since this guard runs ahead of the auth() check.
+  const blocked = await enforce(identifierFor(null, req), 'oauthExchange');
+  if (blocked) return blocked;
 
   // Require an authenticated session FIRST (before consuming the state) so a
   // transient auth hiccup never burns a legit user's one-shot token. The
