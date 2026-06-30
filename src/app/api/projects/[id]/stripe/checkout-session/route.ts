@@ -3,8 +3,9 @@
  *
  * Called by the scaffolded convex/platformStripe.ts action. Uses the
  * platform's master Stripe key with the Stripe-Account header to create a
- * Checkout Session on the user's connected account. Takes a 1% platform fee
- * on every charge (application_fee_percent).
+ * Checkout Session on the user's connected account. Takes the 1% platform fee
+ * on every charge — application_fee_percent for subscriptions, an absolute
+ * application_fee_amount (1% of the resolved price) for one-time payments.
  *
  * Auth: X-Botflow-Project-Secret matches projects.stripe_webhook_secret.
  *
@@ -160,10 +161,31 @@ export async function POST(
         application_fee_percent: STRIPE_PLATFORM_FEE_PERCENT,
         metadata,
       };
+    } else {
+      // Stamp the PaymentIntent (the Checkout Session's metadata does NOT
+      // propagate to it, so without this the payment_intent.* events carry no
+      // botflow_project_id and the webhook can't route them) AND take the 1%
+      // platform fee. A one-time fee needs an absolute amount, so resolve the
+      // price's unit_amount.
+      const piData: import('stripe').Stripe.Checkout.SessionCreateParams.PaymentIntentData = {
+        metadata,
+      };
+      try {
+        const price = await stripe.prices.retrieve(resolvedPriceId, {
+          stripeAccount: auth.accountId,
+        });
+        if (price.unit_amount != null) {
+          const fee = Math.round((price.unit_amount * quantity * STRIPE_PLATFORM_FEE_PERCENT) / 100);
+          if (fee > 0) piData.application_fee_amount = fee;
+        }
+        // Tiered/metered prices have a null unit_amount — the absolute total
+        // isn't known up front, so we skip the fee for those rather than guess.
+      } catch (err) {
+        // Never block a customer's checkout on a fee-calculation hiccup.
+        console.error('[stripe/checkout-session] could not resolve price for platform fee:', err);
+      }
+      sessionParams.payment_intent_data = piData;
     }
-    // For one-time payments, application_fee_amount needs an absolute amount;
-    // we'd need to expand the Price first. Skipped for slice D — TODO in a
-    // future products slice.
 
     const session = await stripe.checkout.sessions.create(sessionParams, {
       stripeAccount: auth.accountId,

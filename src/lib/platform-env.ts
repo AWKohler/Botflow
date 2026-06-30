@@ -53,6 +53,9 @@ export const RESERVED_ENV_VARS: ReservedEnvVar[] = [
   { key: "BOTFLOW_STRIPE_WEBHOOK_SECRET", scope: "backend", managedBy: "Stripe integration", secret: true },
   { key: "STRIPE_MODE", scope: "backend", managedBy: "Stripe integration" },
 
+  // Backend → RevenueCat scaffold (per-project HMAC the Convex receiver verifies).
+  { key: "BOTFLOW_REVENUECAT_WEBHOOK_SECRET", scope: "backend", managedBy: "RevenueCat integration", secret: true },
+
   // Backend → provided automatically by Convex itself; cannot be set.
   { key: "CONVEX_SITE_URL", scope: "backend", managedBy: "Convex" },
 ];

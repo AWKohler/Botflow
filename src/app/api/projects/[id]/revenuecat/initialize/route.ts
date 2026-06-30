@@ -18,6 +18,7 @@
  *   • backend-blocked / tier-blocked — preflight failures.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { and, eq } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
@@ -25,6 +26,7 @@ import { getDb } from '@/db';
 import { projects, userRevenueCatIdentity } from '@/db/schema';
 import { canUseRevenueCat } from '@/lib/tier';
 import { decryptSecret } from '@/lib/secrets';
+import { scaffoldRevenueCatIntoProject } from '@/lib/revenuecat-scaffold';
 import { REVENUECAT_ENABLED } from '@/lib/feature-flags';
 
 export const runtime = 'nodejs';
@@ -114,6 +116,15 @@ export async function POST(
       .update(projects)
       .set({ revenuecatProjectId: identity.rcProjectId, updatedAt: new Date() })
       .where(eq(projects.id, projectId));
+    // Scaffold the Convex receiver + set the webhook secret env var so signed
+    // deliveries can be verified. Best-effort, in the background.
+    after(async () => {
+      try {
+        await scaffoldRevenueCatIntoProject(projectId);
+      } catch (err) {
+        console.error('[revenuecat/initialize] background scaffold threw:', err);
+      }
+    });
     return NextResponse.json({
       ok: true,
       status: 'already-connected',

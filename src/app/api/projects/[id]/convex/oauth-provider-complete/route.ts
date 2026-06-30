@@ -84,7 +84,7 @@ export async function POST(
       await db
         .update(oauthProviderRequests)
         .set({ status: "dismissed", updatedAt: new Date() })
-        .where(eq(oauthProviderRequests.id, requestId));
+        .where(and(eq(oauthProviderRequests.id, requestId), eq(oauthProviderRequests.status, "pending")));
       return NextResponse.json({ ok: true, status: "dismissed" });
     }
 
@@ -103,15 +103,40 @@ export async function POST(
       );
     }
 
+    // Atomically CLAIM the request (pending → "completing") BEFORE the side
+    // effect, so a concurrent dismiss/timeout can't win mid-apply and make the
+    // agent observe a transient 'dismissed'. Only one of submit/dismiss can move
+    // it out of 'pending'. The agent pollers treat any non-terminal status
+    // (including 'completing') as keep-waiting, so they never see a transient.
+    const [claimed] = await db
+      .update(oauthProviderRequests)
+      .set({ status: "completing", updatedAt: new Date() })
+      .where(and(eq(oauthProviderRequests.id, requestId), eq(oauthProviderRequests.status, "pending")))
+      .returning({ id: oauthProviderRequests.id });
+    if (!claimed) {
+      // A dismiss already won, or it's already resolved — don't apply.
+      return NextResponse.json(
+        { ok: false, error: "This request is no longer pending (it was dismissed or already completed)." },
+        { status: 409 },
+      );
+    }
+
     // Map fields → env vars and apply server-side. Per-provider required-field
     // validation happens inside applyOAuthProvider; surface its message as a 400.
     try {
       await applyOAuthProvider(projectId, oauthReq.provider, fields);
     } catch (e) {
+      // Revert to pending so the user can retry (the modal is still watched).
+      await db
+        .update(oauthProviderRequests)
+        .set({ status: "pending", updatedAt: new Date() })
+        .where(eq(oauthProviderRequests.id, requestId))
+        .catch(() => undefined);
       const msg = e instanceof Error ? e.message : "Failed to save credentials.";
       return NextResponse.json({ ok: false, error: msg }, { status: 400 });
     }
 
+    // Side effect durable → finalize. (We hold the claim, so this can't be raced.)
     await db
       .update(oauthProviderRequests)
       .set({ status: "completed", updatedAt: new Date() })

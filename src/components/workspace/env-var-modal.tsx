@@ -147,9 +147,11 @@ export function EnvVarModal({
               </button>
             </div>
             <p className="text-[11px] text-muted leading-relaxed">
-              {isSecret
-                ? "Stored as a secret — masked in the Env panel and never shown to the assistant."
-                : "The value is saved to your project and never shown to the assistant."}
+              {target === "client"
+                ? "Heads up: frontend variables are bundled into your app and visible to anyone who uses it (and readable by the assistant). Don't enter a real secret here — for API keys or tokens, ask for a backend (server) variable instead."
+                : isSecret
+                  ? "Stored as a secret on your Convex backend — never exposed to the frontend, the sandbox, or the assistant."
+                  : "Saved on your Convex backend — never exposed to the frontend, the sandbox, or the assistant."}
             </p>
           </div>
 

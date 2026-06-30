@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { signConvexOAuthState } from '@/lib/convex-oauth-state';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -16,7 +17,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const returnTo = searchParams.get('return_to') || '/';
 
-  const state = Buffer.from(JSON.stringify({ userId, returnTo, ts: Date.now() })).toString('base64url');
+  // HMAC-signed so the callback can trust the embedded userId (an unsigned state
+  // could be forged with a victim's userId to bind an attacker's Convex team).
+  const state = signConvexOAuthState({ userId, returnTo, ts: Date.now() });
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
     redirect_uri: REDIRECT_URI,

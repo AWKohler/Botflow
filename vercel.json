@@ -18,6 +18,14 @@
     {
       "path": "/api/cron/rotate-apple-secrets",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/retry-stripe-deliveries",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/retry-revenuecat-deliveries",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

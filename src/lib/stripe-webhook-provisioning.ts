@@ -28,7 +28,13 @@ const ENABLED_EVENTS: Stripe.WebhookEndpointCreateParams.EnabledEvent[] = [
   'customer.subscription.updated',
   'customer.subscription.deleted',
   'checkout.session.completed',
-  'payment_intent.succeeded',
+  // Delayed/async Checkout payment methods (bank debits etc.) finish unpaid and
+  // clear later — without these the success would never be fulfilled.
+  'checkout.session.async_payment_succeeded',
+  'checkout.session.async_payment_failed',
+  // NOTE: payment_intent.succeeded is deliberately NOT enabled — it would
+  // duplicate checkout.session.completed for the same one-time charge (the
+  // receiver also ignores it). Only the failure event is needed.
   'payment_intent.payment_failed',
   'account.updated',
 ];
@@ -55,15 +61,26 @@ export async function getManagedWebhookSecrets(): Promise<Array<{ mode: StripeMo
 export async function ensureConnectWebhookEndpoint(mode: StripeMode): Promise<void> {
   try {
     const db = getDb();
+    const stripe = getStripe(mode);
     const [existing] = await db
       .select()
       .from(stripeWebhookEndpoints)
       .where(eq(stripeWebhookEndpoints.mode, mode))
       .limit(1);
-    if (existing) return; // already provisioned for this mode
+    if (existing) {
+      // Already provisioned — but self-heal the enabled-events set so newly-added
+      // event types (e.g. async Checkout) reach EXISTING production endpoints
+      // without a manual migration. Idempotent (setting the same set is a no-op);
+      // best-effort so a transient Stripe error doesn't break the connect flow.
+      try {
+        await stripe.webhookEndpoints.update(existing.endpointId, { enabled_events: ENABLED_EVENTS });
+      } catch (err) {
+        console.error('[stripe-webhook-provisioning] failed to sync enabled_events for', mode, err);
+      }
+      return;
+    }
 
     const url = webhookUrl();
-    const stripe = getStripe(mode);
     const endpoint = await stripe.webhookEndpoints.create({
       url,
       enabled_events: ENABLED_EVENTS,
@@ -71,12 +88,25 @@ export async function ensureConnectWebhookEndpoint(mode: StripeMode): Promise<vo
     });
     if (!endpoint.secret) {
       console.error('[stripe-webhook-provisioning] Stripe returned no secret for', mode);
+      // Don't leave a secretless endpoint live at Stripe.
+      await stripe.webhookEndpoints.del(endpoint.id).catch(() => {});
       return;
     }
-    await db
+    const [inserted] = await db
       .insert(stripeWebhookEndpoints)
       .values({ mode, endpointId: endpoint.id, secret: endpoint.secret, url })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ endpointId: stripeWebhookEndpoints.endpointId });
+    if (!inserted) {
+      // A concurrent call already provisioned this mode and won the insert. The
+      // endpoint we just created is an orphan whose secret isn't stored — its
+      // deliveries would fail verification forever. Delete it immediately.
+      await stripe.webhookEndpoints.del(endpoint.id).catch((err) => {
+        console.error('[stripe-webhook-provisioning] failed to delete orphan endpoint', endpoint.id, err);
+      });
+      console.log('[stripe-webhook-provisioning] lost provisioning race for', mode, '— deleted orphan', endpoint.id);
+      return;
+    }
     console.log('[stripe-webhook-provisioning] provisioned', mode, 'endpoint', endpoint.id);
   } catch (err) {
     console.error('[stripe-webhook-provisioning] ensure failed for', mode, err);

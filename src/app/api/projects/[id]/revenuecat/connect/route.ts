@@ -16,14 +16,16 @@
  * }
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { and, eq } from 'drizzle-orm';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import { getDb } from '@/db';
 import { projects, userRevenueCatIdentity } from '@/db/schema';
 import { canUseRevenueCat } from '@/lib/tier';
 import { encryptSecret } from '@/lib/secrets';
 import { validateConnection } from '@/lib/revenuecat';
+import { scaffoldRevenueCatIntoProject } from '@/lib/revenuecat-scaffold';
 import { REVENUECAT_ENABLED } from '@/lib/feature-flags';
 
 export const runtime = 'nodejs';
@@ -126,6 +128,10 @@ export async function POST(
     .limit(1);
   const rcInboundWebhookSecret =
     existing?.rcInboundWebhookSecret ?? `bfrcin_${randomBytes(24).toString('hex')}`;
+  // Indexed digest so the inbound webhook can resolve the owner by O(1) lookup.
+  const rcInboundWebhookSecretDigest = createHash('sha256')
+    .update(rcInboundWebhookSecret)
+    .digest('hex');
 
   const now = new Date();
   const values = {
@@ -134,6 +140,7 @@ export async function POST(
     rcPublicSdkKey,
     rcProjectId,
     rcInboundWebhookSecret,
+    rcInboundWebhookSecretDigest,
     ...(body.ascIssuerId ? { ascIssuerId: body.ascIssuerId.trim() } : {}),
     ...(body.ascKeyId ? { ascKeyId: body.ascKeyId.trim() } : {}),
     ...(body.ascPrivateKeyP8
@@ -160,6 +167,25 @@ export async function POST(
       updatedAt: now,
     })
     .where(eq(projects.id, projectId));
+
+  // Scaffold the Convex receiver + set BOTFLOW_REVENUECAT_WEBHOOK_SECRET on the
+  // deployment in the background, so the app can actually verify the platform's
+  // signed webhook deliveries. Best-effort — failures are logged, not fatal.
+  after(async () => {
+    try {
+      const result = await scaffoldRevenueCatIntoProject(projectId);
+      console.log(
+        '[revenuecat/connect] background scaffold',
+        projectId,
+        'files=', result.filesWritten,
+        'envSet=', result.envSet,
+        result.envError ? `envError=${result.envError}` : '',
+        result.filesError ? `filesError=${result.filesError}` : '',
+      );
+    } catch (err) {
+      console.error('[revenuecat/connect] background scaffold threw:', err);
+    }
+  });
 
   return NextResponse.json({
     ok: true,

@@ -59,7 +59,7 @@ async function provisionUserConvex(
   }
 
   const data = await res.json() as Record<string, unknown>;
-  console.log('[BYOC] create_project raw response:', JSON.stringify(data));
+  // Do NOT log the raw response — create_project can include an adminKey/deployKey.
 
   const projectSlug =
     (data.projectSlug as string | undefined) ||
@@ -94,7 +94,8 @@ async function provisionUserConvex(
       },
     );
     const keyData = await keyRes.json() as Record<string, unknown>;
-    console.log(`[BYOC] create_deploy_key status=${keyRes.status} response:`, JSON.stringify(keyData));
+    // Never log keyData — it contains the deploy key. Status only.
+    console.log(`[BYOC] create_deploy_key status=${keyRes.status}`);
     if (!keyRes.ok) {
       // Platform API v1 may not accept OAuth tokens — try the CLI API fallback
       const cliKeyRes = await fetch(`https://api.convex.dev/api/get_admin_key`, {
@@ -103,7 +104,7 @@ async function provisionUserConvex(
         body: JSON.stringify({ deploymentName, teamSlug }),
       });
       const cliKeyData = await cliKeyRes.json() as Record<string, unknown>;
-      console.log(`[BYOC] CLI get_admin_key status=${cliKeyRes.status} response:`, JSON.stringify(cliKeyData));
+      console.log(`[BYOC] CLI get_admin_key status=${cliKeyRes.status}`);
       adminKey =
         (cliKeyData.adminKey as string | undefined) ||
         (cliKeyData.key as string | undefined);
@@ -114,9 +115,9 @@ async function provisionUserConvex(
         (keyData.accessToken as string | undefined);
     }
     if (!adminKey) {
-      throw new Error(`Failed to obtain Convex deploy key — Platform API returned: ${JSON.stringify(keyData)}`);
+      // Don't include the response body — it may contain a partial/secret key.
+      throw new Error('Failed to obtain Convex deploy key from the Convex API.');
     }
-    console.log(`[BYOC] deploy key obtained, prefix: ${adminKey.slice(0, 20)}`);
   }
 
   return {
@@ -193,18 +194,25 @@ export async function GET(request: Request) {
     // in, so for those we silently coerce `none` -> `platform`.
     const supportsNoBackend =
       platform === 'web' || platform === 'sandboxed-web' || platform === 'swift';
-    // Honor either the URL param OR the saved user preference for `none`. The
-    // page client puts backendType=none in the URL when the user selects it,
-    // but if anything strips/loses that param in transit, the saved preference
-    // is still our source of truth.
-    const userWantsNone =
-      backendTypeParam === 'none' || creds.convexBackendPreference === 'none';
-    if (userWantsNone && supportsNoBackend) {
+    // Precedence: an EXPLICIT URL param always wins over the sticky saved
+    // preference, then the saved preference, then platform default.
+    //   • ?backendType=user  → BYOC (the hard gate below errors if no token)
+    //   • ?backendType=none  → no backend (coerced to platform if unsupported)
+    //   • else sticky 'none' → no backend
+    //   • else sticky 'user' → BYOC, but ONLY if a Convex OAuth token actually
+    //     exists (so a disconnected user — token cleared, preference left 'user'
+    //     — falls back to platform instead of being stuck on convex_not_connected)
+    //   • else                → platform
+    if (backendTypeParam === 'user') {
+      backendType = 'user';
+    } else if (backendTypeParam === 'none') {
+      backendType = supportsNoBackend ? 'none' : 'platform';
+    } else if (creds.convexBackendPreference === 'none' && supportsNoBackend) {
       backendType = 'none';
+    } else if (creds.convexBackendPreference === 'user' && !!creds.convexOAuthAccessToken) {
+      backendType = 'user';
     } else {
-      const userWantsBYOC =
-        creds.convexBackendPreference === 'user' || backendTypeParam === 'user';
-      backendType = userWantsBYOC ? 'user' : 'platform';
+      backendType = 'platform';
     }
     console.log(
       `[start] project creation: platform=${platform} backendTypeParam=${backendTypeParam} ` +
