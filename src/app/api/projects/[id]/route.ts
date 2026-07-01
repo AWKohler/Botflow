@@ -49,7 +49,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       model !== 'gpt-5.5' &&
       model !== 'gpt-5.2' && // backwards compat
       model !== 'gpt-4.1' && // backwards compat
-      model !== 'claude-sonnet-4-6' &&
+      model !== 'claude-sonnet-5' &&
+      model !== 'claude-sonnet-4-6' && // backwards compat → resolves to sonnet-5
       model !== 'claude-sonnet-4.5' && // backwards compat
       model !== 'claude-sonnet-4.6' && // backwards compat
       model !== 'claude-haiku-4.5' && // removed → mapped to sonnet

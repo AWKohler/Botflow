@@ -221,7 +221,7 @@ export const MODEL_TIER_REQUIREMENT: Record<string, Tier> = {
   'gpt-5.3-codex': 'pro',            // Pro+ for server key; free requires BYOK/OAuth
   'gpt-5.4': 'pro',                  // Pro+ for server key
   'gpt-5.5': 'pro',                  // Pro+ for server key
-  'claude-sonnet-4-6': 'pro',        // Pro+ for server key
+  'claude-sonnet-5': 'pro',          // Pro+ for server key
   'claude-opus-4-8': 'pro',          // Pro+ for server key
   'claude-fable-5': 'max',           // Max-only on server key; free/pro require BYOK/OAuth
   'gemini-3.1-pro-preview': 'pro',   // Pro+ for server key; free requires BYOK

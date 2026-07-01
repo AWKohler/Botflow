@@ -47,7 +47,7 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
   'gpt-5.3-codex': 'pro',       // Pro+ for server key; free requires BYOK/OAuth
   'gpt-5.4': 'pro',             // Pro+
   'gpt-5.5': 'pro',             // Pro+
-  'claude-sonnet-4-6': 'pro',   // Pro+
+  'claude-sonnet-5': 'pro',     // Pro+
   'claude-opus-4-8': 'pro',     // Pro+
   'claude-fable-5': 'max',      // Max-only
   'gemini-3.1-pro-preview': 'pro', // Pro+ for server key; free requires BYOK
@@ -64,7 +64,7 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
   'gpt-5.3-codex',
   'gpt-5.4',
   'gpt-5.5',
-  'claude-sonnet-4-6',
+  'claude-sonnet-5',
   'claude-opus-4-8',
   'claude-fable-5',
   'gemini-3.1-pro-preview',
@@ -77,7 +77,7 @@ const MODEL_COST_LABEL: Record<ModelId, string> = {
   'fireworks-kimi-k2p7': 'x3',
   'gpt-5.3-codex': 'x4',
   'gemini-3.1-pro-preview': 'x5',
-  'claude-sonnet-4-6': 'x5',
+  'claude-sonnet-5': 'x5',
   'gpt-5.4': 'x6',
   'claude-opus-4-8': 'x10',
   'gpt-5.5': 'x12',
@@ -100,7 +100,7 @@ const MODEL_ORDER: ModelId[] = [
   'fireworks-kimi-k2p7',     // x3
   'gpt-5.3-codex',           // x4
   'gemini-3.1-pro-preview',  // x5
-  'claude-sonnet-4-6',       // x5
+  'claude-sonnet-5',         // x5
   'gpt-5.4',                 // x6
   'claude-opus-4-8',         // x10
   'gpt-5.5',                 // x12

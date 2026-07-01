@@ -1387,7 +1387,7 @@ export default function LandingV2() {
   const PENDING_NAME_KEY = 'huggable_pending_project_name';
   const serverKeyModels = useMemo(() => new Set([
     'fireworks-minimax-m3', 'fireworks-glm-5p2', 'fireworks-kimi-k2p7',
-    'gpt-5.3-codex', 'gpt-5.4', 'gpt-5.5', 'claude-sonnet-4.6', 'claude-opus-4.7', 'claude-opus-4-8',
+    'gpt-5.3-codex', 'gpt-5.4', 'gpt-5.5', 'claude-sonnet-5', 'claude-sonnet-4.6', 'claude-opus-4.7', 'claude-opus-4-8',
   ]), []);
   const landingSignInModalAppearance = {
     elements: {
@@ -2478,7 +2478,7 @@ export default function LandingV2() {
                 creditPct={22}
                 defaultView="code"
                 agentWorking={false}
-                modelName="Claude Sonnet 4.6"
+                modelName="Claude Sonnet 5"
                 className="shadow-[0_8px_40px_-12px_rgba(0,0,0,0.2)]"
               />
             </Reveal>

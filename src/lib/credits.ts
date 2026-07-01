@@ -75,7 +75,10 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     cachedInput: 0.25 / BASE_PRICE,   // 0.83
     output:      15.00 / BASE_PRICE,  // 50.0
   },
-  'claude-sonnet-4-6': {
+  // Claude Sonnet 5 — standard (regular) pricing, effective 2026-09-01 onward.
+  // Identical to the prior Sonnet 4.6 rates ($3 / $15 per MTok). Until then the
+  // introductory pricing below applies; the date switch lives in calculateCredits().
+  'claude-sonnet-5': {
     input:       3.00 / BASE_PRICE,   // 10.0
     cachedInput: 0.30 / BASE_PRICE,   // 1.0  (cache hit/refresh)
     output:      15.00 / BASE_PRICE,  // 50.0
@@ -123,6 +126,21 @@ const GPT54_LONG_CONTEXT_PRICING: ModelPricing = {
 
 const GPT54_LONG_CONTEXT_THRESHOLD = 272_000;
 
+// Claude Sonnet 5 introductory pricing — $2 input / $10 output per MTok, a
+// temporary discount from the standard $3 / $15 rates in MODEL_PRICING above.
+// Anthropic applies it through 2026-08-31; standard pricing resumes 2026-09-01.
+// Cache write (5-min) and cache read follow the usual 1.25× / 0.1× of input.
+const SONNET5_INTRO_PRICING: ModelPricing = {
+  input:       2.00 / BASE_PRICE,   // 6.67
+  cachedInput: 0.20 / BASE_PRICE,   // 0.67 (cache hit/refresh)
+  output:     10.00 / BASE_PRICE,   // 33.33
+  cacheWrite:  2.50 / BASE_PRICE,   // 8.33 (5-min ephemeral cache write)
+};
+
+// First instant standard pricing applies (UTC). Before this, Sonnet 5 uses the
+// introductory rates above; on/after it, the standard rates in MODEL_PRICING.
+const SONNET5_INTRO_END = Date.UTC(2026, 8, 1); // 2026-09-01T00:00:00Z (month is 0-indexed)
+
 /**
  * Rounded per-model cost multiplier for frontend display.
  * Shown in model selector dropdown to give users a sense of relative cost.
@@ -137,7 +155,7 @@ export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = {
   'fireworks-kimi-k2p7': 3,
   'gpt-5.3-codex': 4,
   'gemini-3.1-pro-preview': 5,
-  'claude-sonnet-4-6': 5,
+  'claude-sonnet-5': 5,
   'gpt-5.4': 6,
   'claude-opus-4-8': 10,
   'gpt-5.5': 12,
@@ -173,6 +191,12 @@ export function calculateCredits(params: CreditCalculationInput): number {
   // Gemini 3.1 Pro: use higher pricing tier if total input context exceeds 200K
   if (model === 'gemini-3.1-pro-preview' && (inputTokens + cachedReadTokens) > GEMINI_LONG_CONTEXT_THRESHOLD) {
     pricing = GEMINI_LONG_CONTEXT_PRICING;
+  }
+
+  // Claude Sonnet 5: introductory pricing applies through 2026-08-31 (UTC);
+  // standard rates (already in MODEL_PRICING) take over from 2026-09-01.
+  if (model === 'claude-sonnet-5' && Date.now() < SONNET5_INTRO_END) {
+    pricing = SONNET5_INTRO_PRICING;
   }
 
   const inputCredits = inputTokens * pricing.input;

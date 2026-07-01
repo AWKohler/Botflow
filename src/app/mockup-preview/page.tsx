@@ -62,7 +62,7 @@ export default function MockupPreviewPage() {
           creditPct={18}
           defaultView="code"
           agentWorking={false}
-          modelName="Claude Sonnet 4.6"
+          modelName="Claude Sonnet 5"
         />
       </div>
     </div>

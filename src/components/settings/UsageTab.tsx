@@ -40,9 +40,10 @@ const MODEL_DISPLAY: Record<string, string> = {
   'fireworks-kimi-k2p7': 'Kimi K2.7',
   'fireworks-kimi-k2p6': 'Kimi K2.6', // historical usage records
 
-  'claude-sonnet-4.5': 'Claude Sonnet 4',
-  'claude-sonnet-4.6': 'Claude Sonnet 4',
-  'claude-sonnet-4-6': 'Claude Sonnet 4',
+  'claude-sonnet-5': 'Claude Sonnet 5',
+  'claude-sonnet-4.5': 'Claude Sonnet 4', // legacy usage records
+  'claude-sonnet-4.6': 'Claude Sonnet 4.6', // legacy usage records
+  'claude-sonnet-4-6': 'Claude Sonnet 4.6', // legacy usage records
   'claude-opus-4.5': 'Claude Opus 4.7',
   'claude-opus-4.6': 'Claude Opus 4.7',
   'claude-opus-4.7': 'Claude Opus 4.7',

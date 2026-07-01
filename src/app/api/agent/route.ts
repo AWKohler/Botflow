@@ -518,7 +518,7 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
   'gpt-5.3-codex',           // pro+
   'gpt-5.4',                 // pro+
   'gpt-5.5',                 // pro+
-  'claude-sonnet-4-6',       // pro+
+  'claude-sonnet-5',         // pro+
   'claude-opus-4-8',         // pro+
   'claude-fable-5',          // max-only
   'gemini-3.1-pro-preview',  // pro+

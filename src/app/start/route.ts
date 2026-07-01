@@ -146,10 +146,11 @@ export async function GET(request: Request) {
     modelParam === 'gpt-5.5' ? 'gpt-5.5' :
     modelParam === 'gpt-5.2' ? 'gpt-5.3-codex' : // migrate legacy
     modelParam === 'gpt-4.1' ? 'gpt-5.3-codex' : // migrate legacy
-    modelParam === 'claude-sonnet-4-6' ? 'claude-sonnet-4-6' :
-    modelParam === 'claude-sonnet-4.6' ? 'claude-sonnet-4-6' :
-    modelParam === 'claude-sonnet-4.5' ? 'claude-sonnet-4-6' : // migrate legacy
-    modelParam === 'claude-haiku-4.5' ? 'claude-sonnet-4-6' : // removed model
+    modelParam === 'claude-sonnet-5' ? 'claude-sonnet-5' :
+    modelParam === 'claude-sonnet-4-6' ? 'claude-sonnet-5' : // migrate legacy → superseded by Sonnet 5
+    modelParam === 'claude-sonnet-4.6' ? 'claude-sonnet-5' : // migrate legacy
+    modelParam === 'claude-sonnet-4.5' ? 'claude-sonnet-5' : // migrate legacy
+    modelParam === 'claude-haiku-4.5' ? 'claude-sonnet-5' : // removed model
     modelParam === 'claude-opus-4-8' ? 'claude-opus-4-8' :
     modelParam === 'claude-opus-4-7' ? 'claude-opus-4-8' : // migrate legacy
     modelParam === 'claude-opus-4.7' ? 'claude-opus-4-8' : // migrate legacy
@@ -167,7 +168,7 @@ export async function GET(request: Request) {
     modelParam === 'fireworks-kimi-k2p7' ? 'fireworks-kimi-k2p7' :
     modelParam === 'gemini-3.1-pro-preview' ? 'gemini-3.1-pro-preview' :
     'fireworks-kimi-k2p7'
-  ) as 'gpt-5.3-codex' | 'gpt-5.4' | 'gpt-5.5' | 'claude-sonnet-4-6' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-glm-5p2' | 'fireworks-kimi-k2p7' | 'gemini-3.1-pro-preview';
+  ) as 'gpt-5.3-codex' | 'gpt-5.4' | 'gpt-5.5' | 'claude-sonnet-5' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-glm-5p2' | 'fireworks-kimi-k2p7' | 'gemini-3.1-pro-preview';
 
   if (!userId) {
     return redirectToSignIn({ returnBackUrl: request.url });
