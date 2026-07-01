@@ -83,7 +83,7 @@ Two backends, selected automatically per turn by `deriveAgentBackend()` (run on 
 - **Botflow agent (`/api/agent`)** — ai-sdk `streamText` with server-side tool execution against the sandbox. Default for all non-Anthropic models and for Anthropic-via-BYOK/platform-key. Tools are platform-specific (`sandboxed-web-tools.ts`, `persistent-tools.ts`): file ops, dev-server/preview control, browser-log capture, and (with backend) `setupAuth`, `setupOAuthProvider`, `convexDeploy`, `getConvexLogs`, `list/read/writeConvexData`, plus Stripe tools when enabled.
 - **Claude Code agent (`/api/agent/claude-code`)** — runs a real `claude` subprocess **inside the user's sandbox** via `@anthropic-ai/claude-agent-sdk`, driven by the user's **own Claude Pro/Max OAuth subscription**. Sensitive tools (Convex deploy, Stripe, git) call back to Next.js over HTTPS with a short-lived bearer token so platform secrets never enter the sandbox. ToS-compliant; **zero platform model cost**. (See §0 moat #1.)
 
-**Models** (single source: `src/lib/agent/models.ts`): GPT-5.3 / 5.4 / 5.5, Claude Sonnet 4.6, **Claude Opus 4.8**, Claude Fable 5 *(currently disabled — "rescinded by Anthropic")*, Gemini 3.1 Pro, MiniMax-M3, GLM-5.2, **Kimi K2.6 (the default)**. Up to 1M-token context. Credentials resolve OAuth → personal BYOK → server platform key. **BYOK/OAuth traffic consumes zero Botflow credits.**
+**Models** (single source: `src/lib/agent/models.ts`): GPT-5.3 / 5.4 / 5.5, Claude Sonnet 4.6, **Claude Opus 4.8**, Claude Fable 5, Gemini 3.1 Pro, MiniMax-M3, GLM-5.2, **Kimi K2.6 (the default)**. Up to 1M-token context. Credentials resolve OAuth → personal BYOK → server platform key. **BYOK/OAuth traffic consumes zero Botflow credits.**
 
 **Pricing/credits** (`src/lib/tier.ts`, `src/lib/credits.ts`): Clerk billing, tiers **free / pro / max**. Credits are normalized to "MiniMax-equivalent tokens" ($0.30/MTok base) with per-model multipliers (×1 MiniMax → ×20 Fable). Free ≈ 3 projects / Kimi-K2.6-class models only; Pro/Max unlock the frontier models on the server key. This is **more model choice and more pricing transparency than any competitor** (most ship a single hidden model and an opaque "credit ≈ a message" unit).
 
@@ -110,7 +110,7 @@ Three iOS rails off one farm:
 
 **Native monetization:** **RevenueCat** (BYO-account, gated `REVENUECAT_ENABLED`, Pro/Max) for iOS in-app purchases.
 
-> **Honest status flags:** Swift is private beta; App Store publishing is implemented end-to-end in code but the live signing "Spike 0" + integrated production run are the last unverified link; the build farm is **one Mac** (`{1,1}`); Stripe Connect and RevenueCat default **off** until verified; Fable 5 is disabled; there is **brand ambiguity** (Botflow.io / "OpenVibeCode" / `open-vibe-code`).
+> **Honest status flags:** Swift is private beta; App Store publishing is implemented end-to-end in code but the live signing "Spike 0" + integrated production run are the last unverified link; the build farm is **one Mac** (`{1,1}`); Stripe Connect and RevenueCat default **off** until verified; there is **brand ambiguity** (Botflow.io / "OpenVibeCode" / `open-vibe-code`).
 
 ### 2.5 What the user must still bring for native (be precise)
 

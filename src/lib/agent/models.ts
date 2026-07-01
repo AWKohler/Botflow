@@ -101,10 +101,6 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
-    // Temporarily rescinded by Anthropic — visible in the UI but unusable for
-    // every user (free/pro/max, BYOK, and OAuth) until re-enabled here.
-    disabled: true,
-    disabledReason: "Temporarily unavailable — rescinded by Anthropic.",
   },
   "gemini-3.1-pro-preview": {
     id: "gemini-3.1-pro-preview",
