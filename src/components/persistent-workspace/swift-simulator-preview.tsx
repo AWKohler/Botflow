@@ -54,9 +54,11 @@ function naturalOrientation(_model: DeviceModelUI): OrientationUI {
 /**
  * Draw a decoded frame to the canvas, compensating for the iOS-26 simulator
  * quirk where the captured framebuffer stays portrait even when the app is in
- * landscape (content rendered sideways). For a landscape display we swap the
- * canvas to landscape dims and rotate the source 90° clockwise so it shows
+ * landscape (content rendered sideways). The app rotates its UI clockwise
+ * within the portrait framebuffer, so for a landscape display we swap the
+ * canvas to landscape dims and counter-rotate the source 90° CCW so it shows
  * upright; for portrait we draw 1:1. `sw`/`sh` are the source's natural dims.
+ * The direction must stay in sync with norm() and the DeviceFrame bezel.
  */
 function blitToCanvas(
   canvas: HTMLCanvasElement,
@@ -73,8 +75,8 @@ function blitToCanvas(
       canvas.height = sw;
     }
     ctx.save();
-    ctx.translate(canvas.width, 0); // = sh
-    ctx.rotate(Math.PI / 2); // 90° clockwise
+    ctx.translate(0, canvas.height); // = sw
+    ctx.rotate(-Math.PI / 2); // 90° counter-clockwise
     ctx.drawImage(source, 0, 0, sw, sh);
     ctx.restore();
   } else {
@@ -876,11 +878,12 @@ export function SwiftSimulatorPreview({
       const r = canvas.getBoundingClientRect();
       const dnx = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
       const dny = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
-      // In landscape the canvas shows the portrait device surface rotated 90° CW,
-      // so invert that to get coordinates in the device's (portrait) surface space
-      // — which is what the host's tap mapping expects. (CW: snx=dny, sny=1-dnx.)
+      // In landscape the canvas shows the portrait device surface rotated 90° CCW
+      // (see blitToCanvas), so invert that to get coordinates in the device's
+      // (portrait) surface space — which is what the host's tap mapping expects.
+      // (CCW: snx=1-dny, sny=dnx.)
       if (displayOrientationRef.current === "landscape") {
-        return { normX: dny, normY: 1 - dnx };
+        return { normX: 1 - dny, normY: dnx };
       }
       return { normX: dnx, normY: dny };
     };
