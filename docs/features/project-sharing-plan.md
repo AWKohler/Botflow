@@ -11,7 +11,7 @@ Decisions locked 2026-07-02:
 | Access model | Custom `project_members` table — NOT Clerk Organizations |
 | Availability | **Pro/Max owners only** — inviting requires a paid plan (server-side gate on the invite route) |
 | Roles (v1) | `owner` + `editor` only; `viewer` deferred |
-| Billing | **Hybrid** (locked 2026-07-02): platform-metered models bill the **owner's** credits, capped per-collaborator via a share-sheet % slider; Claude/Codex **OAuth tokens are never shared** — collaborators use their **own** connected accounts; **model availability follows the owner's tier** |
+| Billing | **Hybrid** (locked 2026-07-02): platform-metered models bill the **owner's** credits, capped per-collaborator via a share-sheet % slider; Claude/Codex **OAuth tokens are never shared** — collaborators use their **own** connected accounts; **model availability follows the owner's tier**. Exception: owner-OAuth sharing behind `SHARING_ALLOW_OWNER_OAUTH` env flag + per-project owner switch, both default off (TOS caution) |
 | Agent concurrency | Allowed — multiple concurrent agent turns in **one shared sandbox**; threads are **private-to-creator for prompting**, one running turn per thread |
 | Git push (editors) | Per-project **share-sheet switch** ("editors can push"), default **off** |
 | Spend caps | **At launch** (not deferred): per-collaborator cap as % of the owner's monthly tokens, set in the share sheet, enforced at the proxy |
@@ -163,6 +163,7 @@ owner: POST /api/projects/[id]/members  { email, role:'editor' }     (owner-only
 - **Platform-metered models** (Fireworks / platform API keys): bill the **owner's** credit pool. The share sheet sets a **per-collaborator cap as a % of the owner's monthly token allowance** (default 25%, editable per member row); enforced **at the proxy / metering layer** and present from the first sharing release — not deferred.
 - **Claude Code / Codex OAuth models**: the collaborator's turns use **their own** connected account (their `user_settings` OAuth tokens, refreshed server-side, protected by the same proxy — nobody's token enters the box). The owner's OAuth token is used only for the owner's own turns. A collaborator without a connected account can't select these models.
 - **Model availability follows the OWNER's tier**: the project's selectable model list is gated by the *owner's* plan — a Free collaborator on a Max owner's project can select Opus-class models. For OAuth models, whatever the collaborator's own subscription permits applies on top.
+- **Owner-OAuth sharing escape hatch (TOS-driven, default OFF everywhere):** it is currently unclear whether Anthropic/OpenAI consumer-subscription TOS permit collaborators consuming the owner's plan. Collaborators may use the owner's OAuth only when BOTH hold: (a) platform env flag `SHARING_ALLOW_OWNER_OAUTH=1`, and (b) the per-project share-sheet switch (`projects.shareOwnerOauth`, owner-set, default off). When both hold, a collaborator's OAuth-model turn resolves to the owner's connected account (billing identity = owner); otherwise the default hybrid rule applies. The env flag is the platform-wide kill switch if compliance clarifies against it; the share-sheet switch is only rendered when the env flag is set, and enforcement is server-side at credential resolution (the UI switch is never trusted).
 - **Attribution:** every turn records `actingUserId` (separate attribution table alongside `usage_records`, keeping the existing metering upsert path untouched). Owner sees a per-collaborator breakdown; the proxy binding carries `actingUserId` + the resolved billing identity — the sandbox can influence neither.
 
 ### 5.2 Concurrent agents in one shared sandbox
@@ -240,7 +241,7 @@ Redis breadcrumb per file write: `filewrite:<projectId>:<path>` = `{ actorType, 
 
 ## 7. Workspace UX surface (v1 scope)
 
-- "Share" sheet (owner, Pro/Max only): email input + member list + revoke — mirrors the Docs share dialog — plus per-member **token-cap slider** (% of owner's monthly allowance, default 25%) and a project-level **"editors can git push" switch** (default off). Cap → `project_members.tokenCapPct`; switch → `projects.editorsCanPush`.
+- "Share" sheet (owner, Pro/Max only): email input + member list + revoke — mirrors the Docs share dialog — plus per-member **token-cap slider** (% of owner's monthly allowance, default 25%) and a project-level **"editors can git push" switch** (default off). Cap → `project_members.tokenCapPct`; switch → `projects.editorsCanPush`. When `SHARING_ALLOW_OWNER_OAUTH=1` platform-wide, an additional **"collaborators may use my Claude/Codex subscription" switch** appears (default off → `projects.shareOwnerOauth`; §5.1 escape hatch).
 - `/projects`: "Shared with me" section; leave-project action.
 - Presence avatars in the workspace header + file tree; agent-thread list showing whose agent is doing what, live-ish.
 - Conflict dialog on 409 saves (reload / diff / overwrite).
@@ -290,6 +291,7 @@ Phases 1–2 are prerequisites from §8; conflict safety intentionally lands **w
 - **CAS:** stale save → 409; force overwrite; save racing an agent write (server re-hash catches it); two tabs same user.
 - **Concurrency:** two threads, two turns, same project — streams don't cross; infra-op lock contention (both agents restart dev server); git `index.lock` never surfaces to users.
 - **Cost regressions:** presence heartbeat lands in poll bucket (no soft-ban at 2 collaborators × normal usage); idle-sleep still fires with a presence-only idle tab open — **explicit test**, this is the June bill-spike regression.
+- **Owner-OAuth flag:** with env flag unset, the share-sheet switch is hidden AND a collaborator turn can never resolve the owner's OAuth even if `shareOwnerOauth` is true in the DB; with flag set + switch on, collaborator OAuth turn uses the owner's account and bills the owner.
 - **Billing:** platform-metered collaborator turn meters to owner with correct `actorUserId`; per-member % cap blocks the turn past the threshold (clean error, not mid-turn kill — decide exact semantics at build time); OAuth turn uses the collaborator's OWN token and never the owner's; collaborator without a connected account cannot select OAuth models; Free collaborator on a Max owner's project sees Max model list; revoked collaborator's in-flight turn completes then no new turns.
 
 ---
@@ -298,7 +300,7 @@ Phases 1–2 are prerequisites from §8; conflict safety intentionally lands **w
 
 | Area | Change |
 |---|---|
-| `src/db/schema.ts` + migration | **New:** `project_members` (incl. `tokenCapPct`), `project_file_versions`, usage-attribution table; `projects.editorsCanPush`; `chat_sessions` + `ownerUserId`/`title`/active-segment; `chat_messages.userId` |
+| `src/db/schema.ts` + migration | **New:** `project_members` (incl. `tokenCapPct`), `project_file_versions`, usage-attribution table; `projects.editorsCanPush`, `projects.shareOwnerOauth`; `chat_sessions` + `ownerUserId`/`title`/active-segment; `chat_messages.userId` |
 | `src/lib/agent/models.ts` + model-select UI | Model availability gated by the project **owner's** tier; OAuth models require the **acting** user's own connected account |
 | `src/lib/project-access.ts` | **New:** `requireProjectAccess()` |
 | `src/app/api/projects/[id]/**` (~34 routes) | Migrate to helper; role gates; secret field filtering |
@@ -321,7 +323,7 @@ Resolved 2026-07-02 (owner):
 1. **Availability** — Pro/Max owners only.
 2. **Thread semantics** — threads are private-to-creator for prompting; prompting someone else's thread is impossible by design; double-send to your own busy thread is rejected.
 3. **Editor git push** — per-project share-sheet switch, default off.
-4. **Billing** — hybrid: platform-metered → owner's credits with per-collaborator share-sheet % caps at launch; Claude/Codex OAuth → collaborator's own connected account (tokens never shared); model list gated by owner's tier.
+4. **Billing** — hybrid: platform-metered → owner's credits with per-collaborator share-sheet % caps at launch; Claude/Codex OAuth → collaborator's own connected account (tokens never shared); model list gated by owner's tier. Owner-OAuth sharing permitted only behind `SHARING_ALLOW_OWNER_OAUTH` env flag + per-project share-sheet switch, both default off (TOS-compliance uncertainty — flag = platform kill switch).
 
 Resolved (engineering defaults, changeable):
 
