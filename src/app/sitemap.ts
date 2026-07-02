@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { getIndexablePostSlugs } from '@/lib/sanity/posts';
+import { COMPETITOR_SLUGS } from '@/lib/marketing/competitors';
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? 'https://botflow.io';
@@ -26,6 +27,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'monthly',
       priority: 0.8,
     },
+    {
+      url: `${BASE_URL}/compare`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.8,
+    },
+    ...COMPETITOR_SLUGS.map((slug) => ({
+      url: `${BASE_URL}/compare/botflow-vs-${slug}`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly' as const,
+      priority: 0.8,
+    })),
+    ...COMPETITOR_SLUGS.map((slug) => ({
+      url: `${BASE_URL}/alternatives/${slug}`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly' as const,
+      priority: 0.8,
+    })),
     {
       url: `${BASE_URL}/sign-up`,
       lastModified: new Date(),

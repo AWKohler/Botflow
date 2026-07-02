@@ -1020,7 +1020,7 @@ import { WorkspaceMockup } from '@/components/landing/WorkspaceMockup';
 import { CardSpotlight } from '@/components/landing/CardSpotlight';
 import { ModelCloud } from '@/components/landing/ModelCloud';
 import { MobileFeatureGrid } from '@/components/landing/MobileFeatureGrid';
-import { LandingNav, MarginHatch, MarginBg } from '@/components/landing/shared';
+import { LandingFooter, LandingNav, MarginHatch, MarginBg } from '@/components/landing/shared';
 import { LandingShowcase } from '@/components/showcase/LandingShowcase';
 import { Convex } from '@/components/icons/convex';
 import { Anthropic } from '@/components/icons/anthropic';
@@ -2654,31 +2654,7 @@ export default function LandingV2() {
       {/* ================================================================ */}
       {/* FOOTER                                                           */}
       {/* ================================================================ */}
-      <LineDivider />
-      <footer>
-        <div className="mx-auto max-w-7xl px-6 sm:px-10 py-8">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2.5">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/botflow-glyph.svg" alt="" className="h-6 w-6" />
-              <span className="text-sm text-[var(--sand-text-muted)]">
-                &copy; 2026 Botflow
-              </span>
-            </div>
-            <div className="flex items-center gap-6 text-sm text-[var(--sand-text-muted)]">
-              <a href="/privacy" className="hover:text-[var(--sand-text)] transition">
-                Privacy
-              </a>
-              <a href="/terms" className="hover:text-[var(--sand-text)] transition">
-                Terms
-              </a>
-              <a href="mailto:awkohler@botflow.io" className="hover:text-[var(--sand-text)] transition">
-                Contact
-              </a>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <LandingFooter />
     </div>
 
     <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} defaultTab={settingsDefaultTab} />

@@ -359,33 +359,143 @@ export function LandingNav() {
 }
 
 // ============================================================================
-// Shared footer
+// Shared footer — editorial multi-column with a clipped serif wordmark
 // ============================================================================
 
-export function LandingFooter() {
+// Curated here (rather than imported from the marketing data file) so the
+// footer bundle stays light on every page that renders it.
+const FOOTER_COMPARE_LINKS = [
+  { href: '/compare/botflow-vs-lovable', label: 'vs Lovable' },
+  { href: '/compare/botflow-vs-rork', label: 'vs Rork' },
+  { href: '/compare/botflow-vs-vibecode', label: 'vs Vibecode' },
+  { href: '/compare/botflow-vs-bloom', label: 'vs Bloom' },
+  { href: '/compare/botflow-vs-base44', label: 'vs Base44' },
+  { href: '/compare', label: 'All comparisons' },
+];
+
+const FOOTER_ALTERNATIVES_LINKS = [
+  { href: '/alternatives/lovable', label: 'Lovable alternatives' },
+  { href: '/alternatives/rork', label: 'Rork alternatives' },
+  { href: '/alternatives/vibecode', label: 'Vibecode alternatives' },
+  { href: '/alternatives/bloom', label: 'Bloom alternatives' },
+  { href: '/alternatives/base44', label: 'Base44 alternatives' },
+];
+
+function FooterColumn({
+  title,
+  links,
+}: {
+  title: string;
+  links: { href: string; label: string; external?: boolean }[];
+}) {
   return (
-    <footer>
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-8">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/botflow-glyph.svg" alt="" className="h-6 w-6" />
-            <span className="text-sm text-[var(--sand-text-muted)]">
-              &copy; 2026 Botflow
-            </span>
+    <div>
+      <p className="mb-4 text-[11px] font-medium uppercase tracking-[0.2em] text-[var(--sand-text-muted)]">
+        {title}
+      </p>
+      <ul className="space-y-2.5">
+        {links.map((l) => (
+          <li key={l.href}>
+            {l.external ? (
+              <a
+                href={l.href}
+                className="text-sm text-[var(--sand-text-muted)] hover:text-[var(--sand-accent)] transition"
+              >
+                {l.label}
+              </a>
+            ) : (
+              <Link
+                href={l.href}
+                className="text-sm text-[var(--sand-text-muted)] hover:text-[var(--sand-accent)] transition"
+              >
+                {l.label}
+              </Link>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export function LandingFooter() {
+  const productLinks = [
+    ...(process.env.NEXT_PUBLIC_HIDE_EXPLORE !== 'true'
+      ? [{ href: '/explore', label: 'Explore' }]
+      : []),
+    { href: '/convex', label: 'Convex' },
+    { href: '/pricing', label: 'Pricing' },
+    { href: '/docs', label: 'Docs' },
+    { href: '/blog', label: 'Blog' },
+  ];
+
+  const companyLinks = [
+    { href: '/privacy', label: 'Privacy' },
+    { href: '/terms', label: 'Terms' },
+    { href: 'mailto:awkohler@botflow.io', label: 'Contact', external: true },
+  ];
+
+  return (
+    <footer className="relative overflow-hidden">
+      <LineDivider />
+      <MarginHatch />
+
+      <div className="relative mx-auto max-w-7xl px-6 sm:px-10 pt-14 sm:pt-16 pb-8">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-[1.7fr_1fr_1fr_1fr_0.8fr]">
+          {/* Brand */}
+          <div className="col-span-2 md:col-span-1 md:pr-8">
+            <div className="flex items-center gap-2.5">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/botflow-glyph.svg" alt="" className="h-7 w-7" />
+              <span className={cn(serif.className, 'text-2xl tracking-tight')}>Botflow</span>
+            </div>
+            <p className="mt-4 max-w-xs text-sm text-[var(--sand-text-muted)] leading-relaxed">
+              Describe it, and Botflow builds it — a real full-stack web app or a
+              native iOS app, with a backend included and code you own.
+            </p>
+            <a
+              href="mailto:awkohler@botflow.io"
+              className="mt-4 inline-block text-sm text-[var(--sand-text-muted)] hover:text-[var(--sand-accent)] transition"
+            >
+              awkohler@botflow.io
+            </a>
           </div>
-          <div className="flex items-center gap-6 text-sm text-[var(--sand-text-muted)]">
-            <a href="/privacy" className="hover:text-[var(--sand-text)] transition">
-              Privacy
-            </a>
-            <a href="/terms" className="hover:text-[var(--sand-text)] transition">
-              Terms
-            </a>
-            <a href="mailto:awkohler@botflow.io" className="hover:text-[var(--sand-text)] transition">
-              Contact
-            </a>
-          </div>
+
+          <FooterColumn title="Product" links={productLinks} />
+          <FooterColumn title="Compare" links={FOOTER_COMPARE_LINKS} />
+          <FooterColumn title="Alternatives" links={FOOTER_ALTERNATIVES_LINKS} />
+          <FooterColumn title="Company" links={companyLinks} />
         </div>
+
+        {/* Bottom bar */}
+        <div className="mt-12 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-[var(--sand-border)] pt-6">
+          <span className="text-sm text-[var(--sand-text-muted)]">
+            &copy; {new Date().getFullYear()} Botflow
+          </span>
+          <span className={cn(serif.className, 'text-sm italic text-[var(--sand-text-muted)]')}>
+            Real apps. Real code. Yours.
+          </span>
+        </div>
+      </div>
+
+      {/* Giant clipped wordmark */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none select-none relative h-[17vw] sm:h-[13vw] md:h-[11vw]"
+        style={{
+          maskImage: 'linear-gradient(to bottom, black 0%, transparent 92%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, black 0%, transparent 92%)',
+        }}
+      >
+        <span
+          className={cn(
+            serif.className,
+            'absolute left-1/2 -translate-x-1/2 top-0 text-[26vw] sm:text-[20vw] md:text-[17vw] leading-[0.78] tracking-tight whitespace-nowrap',
+          )}
+          style={{ color: 'var(--sand-text)', opacity: 0.05 }}
+        >
+          Botflow
+        </span>
       </div>
     </footer>
   );
