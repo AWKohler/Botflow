@@ -155,6 +155,7 @@ The proxy is what *makes* sharing safe, but it also forces one product decision:
   - *Owner-pays*: proxy always binds `billingUserId = project.owner`. Simple; owner funds all agent usage; needs guardrails (per-collaborator rate/spend caps in the proxy).
   - *Actor-pays*: proxy binds `billingUserId = actingUser`; each collaborator must have their own connected Anthropic credential. Fairer cost; requires every collaborator to be connected.
   - The proxy enforces whichever is chosen server-side — the sandbox can't influence it.
+  - **RESOLVED 2026-07-02 — hybrid** (see `project-sharing-plan.md` §5.1): Claude/Codex **OAuth turns always use the acting user's own connected account** — personal OAuth tokens are never shared across users; the owner's OAuth credential is injected only for the owner's own turns. **Platform-metered model turns bill the owner's credit pool**, capped per-collaborator by a share-sheet % slider enforced at this proxy/metering layer. Model availability follows the owner's tier.
 - **Per-turn identity.** The spawn path already knows `userId` for the turn. Extend the binding to carry both `actingUserId` and `billingUserId`. No credential for *any* user ever lands in the shared box.
 - **Isolation win.** With the proxy, even the *acting* user's own token is protected from co-tenants, because nobody's real token is ever in the sandbox. This is strictly better than "each user gets their own sandbox" for the credential-exposure axis (though separate sandboxes remain better for filesystem/data isolation — the two are orthogonal).
 
@@ -204,7 +205,7 @@ Security benefit lands at Phase 2 and is independently valuable even if sharing 
 ## 11. Decisions to lock before building
 
 1. **Runtime for the proxy** — standard serverless vs Fluid vs dedicated service (driven by §5.1 duration/scale). *Biggest open question.*
-2. **Billing model for shared turns** — owner-pays vs actor-pays (§6).
+2. **Billing model for shared turns** — ~~owner-pays vs actor-pays~~ **RESOLVED: hybrid, see §6.**
 3. **Token lifetime policy** — per-turn TTL length, whether to single-use, revoke aggressiveness.
 4. **Fallback policy** — if the proxy is down, do we fall back to in-box credential (Phase 1) or fail the turn (Phase 2+)? Phase 2+ must fail closed to preserve the security property.
 5. **Rate/spend caps** — per-project and per-collaborator limits enforced at the proxy.

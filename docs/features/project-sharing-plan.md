@@ -9,9 +9,12 @@ Decisions locked 2026-07-02:
 | Decision | Choice |
 |---|---|
 | Access model | Custom `project_members` table — NOT Clerk Organizations |
+| Availability | **Pro/Max owners only** — inviting requires a paid plan (server-side gate on the invite route) |
 | Roles (v1) | `owner` + `editor` only; `viewer` deferred |
-| Billing | **Owner-pays** — collaborator turns consume the owner's credential/quota, enforced server-side by the Anthropic proxy binding |
-| Agent concurrency | Allowed — multiple concurrent agent turns in **one shared sandbox**, one chat thread per running turn |
+| Billing | **Hybrid** (locked 2026-07-02): platform-metered models bill the **owner's** credits, capped per-collaborator via a share-sheet % slider; Claude/Codex **OAuth tokens are never shared** — collaborators use their **own** connected accounts; **model availability follows the owner's tier** |
+| Agent concurrency | Allowed — multiple concurrent agent turns in **one shared sandbox**; threads are **private-to-creator for prompting**, one running turn per thread |
+| Git push (editors) | Per-project **share-sheet switch** ("editors can push"), default **off** |
+| Spend caps | **At launch** (not deferred): per-collaborator cap as % of the owner's monthly tokens, set in the share sheet, enforced at the proxy |
 | Realtime layer | None — presence + cursor info via Redis keys read on existing polls; no CRDT/co-typing |
 | Conflict model | No merge. CAS (compare-and-swap) saves + advisory presence + per-file version history backstop |
 | Hard prerequisite | Anthropic proxy Phases 0–2 (owner credential out of the sandbox) before any invite ships |
@@ -83,6 +86,7 @@ projectMembers = pgTable('project_members', {
   userId: text(),                      // Clerk id; NULL while invite is pending signup
   invitedEmail: text().notNull(),      // normalized (lowercased) email the invite targeted
   role: text().notNull(),              // 'editor' (owner stays on projects.userId — see below)
+  tokenCapPct: integer().notNull().default(25), // % of owner's monthly tokens this member may consume (platform-metered path)
   status: text().notNull().default('pending'), // 'pending' | 'active' | 'revoked'
   invitedBy: text().notNull(),         // Clerk id of the inviter (owner)
   invitedAt / acceptedAt / revokedAt: timestamps,
@@ -113,7 +117,7 @@ requireProjectAccess(projectId, userId, minRole: 'editor' | 'owner')
 | Open workspace, files, preview, terminal | ✅ | ✅ |
 | Run agent (own threads) | ✅ | ✅ |
 | Save files / env vars (non-secret values) | ✅ | ✅ |
-| Git commit/push to the linked repo | ✅ | ✅ (uses owner's link — by design, like Docs "editor can edit") |
+| Git commit/push to the linked repo | ✅ | ⚙️ owner-controlled share-sheet switch, default off (pushes attributed to the acting editor in commit messages) |
 | View secret env values, deploy keys | ✅ | ❌ (field-level filtering on the few routes that return them) |
 | Invite/revoke members | ✅ | ❌ |
 | Delete project, publish/unpublish, custom domains | ✅ | ❌ |
@@ -142,6 +146,7 @@ owner: POST /api/projects/[id]/members  { email, role:'editor' }     (owner-only
                   for the session user's verified emails (covers missed webhooks)
 ```
 
+- **Paid-plan gate:** the invite route requires the owner to be Pro/Max. On an owner downgrade to Free, memberships are **suspended** (collaborators lose access until re-upgrade; rows are kept, not revoked) — proposed, confirm.
 - **Existing users are added instantly** (Google Docs behavior) — the project appears in a "Shared with me" section of `/projects`; a member can leave a project themselves (delete own row).
 - **Revoke** is immediate: row → `revoked`; `requireProjectAccess` reads live, so the next request 404s. Any in-flight agent turn the revoked user started is allowed to finish (turn-scoped identity was already bound at spawn).
 - Anti-abuse: per-owner invite rate limit; pending invites expire after 14 days (lazy expiry check, no cron needed).
@@ -151,12 +156,14 @@ owner: POST /api/projects/[id]/members  { email, role:'editor' }     (owner-only
 
 ## 5. Billing, identity, and agent concurrency
 
-### 5.1 Owner-pays (locks proxy plan §6/§11.2)
+### 5.1 Billing — hybrid (resolves proxy plan §6/§11.2, locked 2026-07-02)
 
-- The proxy binding for every turn carries `actingUserId` (who prompted) and `billingUserId = project owner`. The sandbox cannot influence either.
-- Model/token spend meters against the **owner's** quota and credentials. Editors need no Anthropic connection of their own.
-- **No invisible spending:** extend usage recording with actor attribution — either an `actorUserId` column on `usage_records` (unique key becomes `(billingUserId, actorUserId, period, model)`) or a parallel attribution table. Owner sees a per-collaborator breakdown.
-- Per-collaborator spend/rate caps enforced **at the proxy** (proxy plan §11.5) — v1 ships attribution + visibility; hard caps can follow.
+**Personal credentials are never shared across users.** Two billing paths, chosen per turn by the selected model's credential mode:
+
+- **Platform-metered models** (Fireworks / platform API keys): bill the **owner's** credit pool. The share sheet sets a **per-collaborator cap as a % of the owner's monthly token allowance** (default 25%, editable per member row); enforced **at the proxy / metering layer** and present from the first sharing release — not deferred.
+- **Claude Code / Codex OAuth models**: the collaborator's turns use **their own** connected account (their `user_settings` OAuth tokens, refreshed server-side, protected by the same proxy — nobody's token enters the box). The owner's OAuth token is used only for the owner's own turns. A collaborator without a connected account can't select these models.
+- **Model availability follows the OWNER's tier**: the project's selectable model list is gated by the *owner's* plan — a Free collaborator on a Max owner's project can select Opus-class models. For OAuth models, whatever the collaborator's own subscription permits applies on top.
+- **Attribution:** every turn records `actingUserId` (separate attribution table alongside `usage_records`, keeping the existing metering upsert path untouched). Owner sees a per-collaborator breakdown; the proxy binding carries `actingUserId` + the resolved billing identity — the sandbox can influence neither.
 
 ### 5.2 Concurrent agents in one shared sandbox
 
@@ -164,7 +171,7 @@ Requirement: collaborators spin up their **own** agents concurrently. Rejected a
 
 Design:
 
-1. **Multiple chat threads per project.** Generalize `chat_sessions` → N per project: add `ownerUserId`, `title`, and move active-segment tracking from `projects.currentSegmentId` to the session row. All threads are visible to all members (watching what the other agent did *is* the collaboration); messages get a `userId`. Concurrent turns run in **different threads**, so `useChat`/stream state never interleaves. One running turn per thread; starting a turn in a thread that already has one queues or rejects ("this thread is busy").
+1. **Multiple chat threads per project — private-to-creator for prompting.** Generalize `chat_sessions` → N per project: add `ownerUserId`, `title`, and move active-segment tracking from `projects.currentSegmentId` to the session row. **Only a thread's creator can prompt it** — collaborators never send into each other's threads, so the "prompting a busy shared thread" case cannot arise by construction (a double-send into your *own* busy thread is rejected with a message). Other members get **read-only visibility** of threads for awareness/audit of what changed the shared files *(interpretation to confirm — flip to fully-private threads if preferred)*. Messages carry `userId`. Concurrent turns always run in different threads, so `useChat`/stream state never interleaves.
 2. **Cross-agent awareness.** When a turn spawns while another is live, inject into its system prompt: "Another agent is currently active in this workspace, working on: <thread title / first user message>. Avoid unrelated refactors and re-read files before editing." Cheap and effective; not a guarantee.
 3. **Infra ops stay serialized.** Dev-server restart, package installs, and git operations (`index.lock`) take short per-project Redis locks (existing run-state machinery). File edits interleave; infrastructure does not.
 4. **CC session state per thread.** Claude Code session-resume state becomes keyed per thread (per-thread session ids → separate `~/.claude` session files), so concurrent bridges don't fight over one session.
@@ -233,7 +240,7 @@ Redis breadcrumb per file write: `filewrite:<projectId>:<path>` = `{ actorType, 
 
 ## 7. Workspace UX surface (v1 scope)
 
-- "Share" button (owner): email input + member list + revoke — mirrors the Docs share dialog.
+- "Share" sheet (owner, Pro/Max only): email input + member list + revoke — mirrors the Docs share dialog — plus per-member **token-cap slider** (% of owner's monthly allowance, default 25%) and a project-level **"editors can git push" switch** (default off). Cap → `project_members.tokenCapPct`; switch → `projects.editorsCanPush`.
 - `/projects`: "Shared with me" section; leave-project action.
 - Presence avatars in the workspace header + file tree; agent-thread list showing whose agent is doing what, live-ish.
 - Conflict dialog on 409 saves (reload / diff / overwrite).
@@ -270,9 +277,9 @@ Phases 1–2 are prerequisites from §8; conflict safety intentionally lands **w
 1. **Phase 0 — foundation refactor (no behavior change).** `requireProjectAccess()` helper; migrate all ~34 routes; verify pure no-op while still owner-only. Field-level secret filtering marked for the routes that return secrets.
 2. **Phase 1 — proxy Phases 0–2** (separate plan; can proceed in parallel with Phase 0).
 3. **Phase 2 — sandbox secrets audit** + fixes for account-scoped items (§8.2).
-4. **Phase 3 — members + invites + conflict safety.** `project_members`, invite/claim/revoke flow, Shared-with-me UI, role gates live; CAS saves, auto-reload, file-level presence, `project_file_versions`. Feature-flagged; dogfood on internal projects first. *(Still one-agent-at-a-time at this point: turns across ALL threads take the per-project agent lock.)*
-5. **Phase 4 — concurrent agents.** Multi-thread schema migration, per-thread CC session state, drop the global agent lock in favor of per-thread locks + infra-op locks, cross-agent prompt awareness, breadcrumb warnings, actor-attributed usage + owner breakdown. Proxy binding extended with `actingUserId`/`billingUserId` (proxy Phase 3).
-6. **Phase 5 — polish.** Cursor-line presence, turn checkpoints/revert-turn, per-collaborator spend caps at the proxy, invite-expiry tuning.
+4. **Phase 3 — members + invites + conflict safety.** Pro/Max gate on invites; `project_members`, invite/claim/revoke flow, Shared-with-me UI, role gates live; share sheet with per-member % caps (enforced) + git-push switch; owner-tier model-list gating; per-actor OAuth credential resolution; CAS saves, auto-reload, file-level presence, `project_file_versions`. Feature-flagged; dogfood on internal projects first. *(Still one-agent-at-a-time at this point: turns across ALL threads take the per-project agent lock.)*
+5. **Phase 4 — concurrent agents.** Multi-thread schema migration (private-to-creator prompting), per-thread CC session state, drop the global agent lock in favor of per-thread locks + infra-op locks, cross-agent prompt awareness, breadcrumb warnings, actor-attributed usage + owner breakdown. Proxy binding extended with acting identity + per-path billing (proxy Phase 3).
+6. **Phase 5 — polish.** Cursor-line presence, turn checkpoints/revert-turn, cap-default tuning from real usage data, invite-expiry tuning.
 
 ---
 
@@ -283,7 +290,7 @@ Phases 1–2 are prerequisites from §8; conflict safety intentionally lands **w
 - **CAS:** stale save → 409; force overwrite; save racing an agent write (server re-hash catches it); two tabs same user.
 - **Concurrency:** two threads, two turns, same project — streams don't cross; infra-op lock contention (both agents restart dev server); git `index.lock` never surfaces to users.
 - **Cost regressions:** presence heartbeat lands in poll bucket (no soft-ban at 2 collaborators × normal usage); idle-sleep still fires with a presence-only idle tab open — **explicit test**, this is the June bill-spike regression.
-- **Billing:** collaborator turn meters to owner with correct `actorUserId`; revoked collaborator's in-flight turn completes then no new turns.
+- **Billing:** platform-metered collaborator turn meters to owner with correct `actorUserId`; per-member % cap blocks the turn past the threshold (clean error, not mid-turn kill — decide exact semantics at build time); OAuth turn uses the collaborator's OWN token and never the owner's; collaborator without a connected account cannot select OAuth models; Free collaborator on a Max owner's project sees Max model list; revoked collaborator's in-flight turn completes then no new turns.
 
 ---
 
@@ -291,7 +298,8 @@ Phases 1–2 are prerequisites from §8; conflict safety intentionally lands **w
 
 | Area | Change |
 |---|---|
-| `src/db/schema.ts` + migration | **New:** `project_members`, `project_file_versions`; `chat_sessions` + `ownerUserId`/`title`/active-segment; `chat_messages.userId`; usage attribution |
+| `src/db/schema.ts` + migration | **New:** `project_members` (incl. `tokenCapPct`), `project_file_versions`, usage-attribution table; `projects.editorsCanPush`; `chat_sessions` + `ownerUserId`/`title`/active-segment; `chat_messages.userId` |
+| `src/lib/agent/models.ts` + model-select UI | Model availability gated by the project **owner's** tier; OAuth models require the **acting** user's own connected account |
 | `src/lib/project-access.ts` | **New:** `requireProjectAccess()` |
 | `src/app/api/projects/[id]/**` (~34 routes) | Migrate to helper; role gates; secret field filtering |
 | `src/app/api/projects/[id]/members/*` | **New:** invite / list / revoke / leave |
@@ -306,11 +314,24 @@ Phases 1–2 are prerequisites from §8; conflict safety intentionally lands **w
 
 ---
 
-## 12. Decisions to lock before building
+## 12. Decisions
 
-1. **Usage attribution shape** — column on `usage_records` (unique-key migration) vs separate attribution table.
-2. **Thread-queue semantics** — second prompt to a busy thread: queue or reject? (Recommend reject-with-message v1; queueing invites hidden costs.)
-3. **Editor git push rights** — editors push via the owner's GitHub link (recommended, Docs-like) vs owner-only push.
-4. **Invite expiry + resend policy** — 14-day default proposed.
-5. **GitHub token remediation** (§8.2) — server-side-only git vs scoped installation tokens; decides whether in-box git tooling survives sharing.
-6. **Version caps** — 20 versions/file, 512 KB size cap proposed; confirm against real project shapes.
+Resolved 2026-07-02 (owner):
+
+1. **Availability** — Pro/Max owners only.
+2. **Thread semantics** — threads are private-to-creator for prompting; prompting someone else's thread is impossible by design; double-send to your own busy thread is rejected.
+3. **Editor git push** — per-project share-sheet switch, default off.
+4. **Billing** — hybrid: platform-metered → owner's credits with per-collaborator share-sheet % caps at launch; Claude/Codex OAuth → collaborator's own connected account (tokens never shared); model list gated by owner's tier.
+
+Resolved (engineering defaults, changeable):
+
+5. **Usage attribution** — separate attribution table (existing `usage_records` upsert path untouched).
+6. **Invite expiry** — 14 days, lazy expiry.
+7. **Version caps** — 20 versions/file, 512 KB size cap.
+8. **Cap default** — 25% per member.
+
+Still open:
+
+9. **GitHub token remediation** (§8.2) — server-side-only git vs scoped installation tokens; decided after the Phase 2 audit reports what's actually in the box.
+10. **Thread visibility** — read-only visibility of others' threads assumed (awareness/audit); confirm vs fully private.
+11. **Owner downgrade behavior** — suspend memberships until re-upgrade (proposed §4).
