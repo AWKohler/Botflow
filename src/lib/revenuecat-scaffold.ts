@@ -136,6 +136,22 @@ export const applyRevenueCatEvent = internalMutation({
 });
 `;
 
+/**
+ * Minimal convex/http.ts seeded when the project has none yet — without it
+ * Convex serves no HTTP routes at all and signed deliveries 404. Editable by
+ * the agent; auth setup replaces it wholesale (and re-wires this route).
+ */
+const MINIMAL_HTTP_TS = `import { httpRouter } from "convex/server";
+import { revenueCatWebhook } from "./revenueCatWebhook";
+
+const http = httpRouter();
+
+// Receives the Botflow platform's signed RevenueCat entitlement events.
+http.route({ path: "/revenuecat/webhook", method: "POST", handler: revenueCatWebhook });
+
+export default http;
+`;
+
 /** Set the Convex env vars the scaffolded RevenueCat receiver reads. Idempotent. */
 export async function setRevenueCatConvexEnv(
   projectId: string,
@@ -229,7 +245,8 @@ export async function scaffoldRevenueCatIntoProject(projectId: string): Promise<
       written.push('/convex/revenueCatBilling.ts');
     }
     // Mount the route in convex/http.ts so deliveries don't 404. If http.ts
-    // doesn't exist yet (no auth set up), the agent wires it per guidance.
+    // doesn't exist yet (no auth set up), create a minimal router — auth setup
+    // later replaces the file but re-wires this route (convex-auth-setup.ts).
     const http = await sandboxReadFile(projectId, '/convex/http.ts').catch(() => null);
     if (http && http.content) {
       const updated = wireRevenueCatRoute(http.content);
@@ -240,6 +257,10 @@ export async function scaffoldRevenueCatIntoProject(projectId: string): Promise<
       } else if (http.content.includes('/revenuecat/webhook')) {
         routeWired = true; // already mounted
       }
+    } else {
+      await sandboxWriteFile(projectId, '/convex/http.ts', MINIMAL_HTTP_TS);
+      written.push('/convex/http.ts');
+      routeWired = true;
     }
   } catch (err) {
     filesError = err instanceof Error ? err.message : String(err);
@@ -251,11 +272,32 @@ export async function scaffoldRevenueCatIntoProject(projectId: string): Promise<
     error: err instanceof Error ? err.message : String(err),
   }));
 
-  return {
+  const result = {
     filesWritten: written,
     envSet: envResult.ok === true,
     routeWired,
     ...(envResult.ok === true ? {} : { envError: envResult.error }),
     ...(filesError ? { filesError } : {}),
   };
+
+  // Persist the outcome so the payments tab can show real backend health (and
+  // a retry affordance) instead of all-green while the receiver is missing.
+  try {
+    const db2 = getDb();
+    await db2
+      .update(projects)
+      .set({
+        revenuecatScaffoldState: {
+          ok: result.envSet && result.routeWired && !filesError,
+          ...result,
+          at: new Date().toISOString(),
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(projects.id, projectId));
+  } catch (err) {
+    console.error('[revenuecat-scaffold] failed to persist scaffold state:', err);
+  }
+
+  return result;
 }

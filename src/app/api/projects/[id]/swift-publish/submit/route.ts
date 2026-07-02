@@ -9,7 +9,7 @@ import {
   nextBuildNumber,
   type AscAuth,
 } from "@/lib/asc-publish";
-import { materializeSwiftConvexConfig } from "@/lib/sandbox-env";
+import { materializeSwiftBuildConfig } from "@/lib/sandbox-env";
 import { submitAppStoreBuild } from "@/lib/sim-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { recordSwiftPublishBuild } from "@/lib/swift-publish-store";
@@ -130,7 +130,7 @@ export async function POST(
     const buildNumber = await nextBuildNumber(ascAuth, app.ascAppId);
 
     // 4. Snapshot the project source (same prep as the device-build flow).
-    await materializeSwiftConvexConfig(projectId);
+    await materializeSwiftBuildConfig(projectId);
     const tarball = await tarSandboxProject(projectId, { excludeConvex: true });
 
     // 5. Hand off to the Mac controller for archive → signed export → upload.

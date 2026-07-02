@@ -13,6 +13,7 @@
  * Authorization header ONLY (never a query param — those land in access logs).
  */
 import { NextResponse } from 'next/server';
+import { timingSafeEqual } from 'node:crypto';
 import { and, eq, lte, inArray } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { projects, stripeWebhookDeliveries } from '@/db/schema';
@@ -37,7 +38,9 @@ function isAuthorized(req: Request): boolean {
     console.error('[retry-stripe-deliveries] CRON_SECRET is not set');
     return false;
   }
-  return req.headers.get('authorization') === `Bearer ${cronSecret}`;
+  const provided = Buffer.from(req.headers.get('authorization') ?? '', 'utf-8');
+  const expected = Buffer.from(`Bearer ${cronSecret}`, 'utf-8');
+  return provided.length === expected.length && timingSafeEqual(provided, expected);
 }
 
 export async function GET(req: Request) {

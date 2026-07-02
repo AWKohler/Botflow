@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
 import { tarSandboxProject } from "@/lib/vercel-sandbox";
-import { materializeSwiftConvexConfig } from "@/lib/sandbox-env";
+import { materializeSwiftBuildConfig } from "@/lib/sandbox-env";
 import {
   createSession,
   releaseSession,
@@ -78,7 +78,7 @@ export async function POST(
     // tarring (no-op for no-backend / unprovisioned / non-Swift projects), and
     // drop the /convex TS backend from the simulator upload — the Mac doesn't
     // build it.
-    await materializeSwiftConvexConfig(projectId);
+    await materializeSwiftBuildConfig(projectId);
     const tarball = await tarSandboxProject(projectId, { excludeConvex: true });
     await uploadBuild(sessionId, tarball);
 

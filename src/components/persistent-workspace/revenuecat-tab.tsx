@@ -37,7 +37,16 @@ interface StatusResponse {
     keysProvided: boolean;
     connectionValid: boolean;
     appleKeyProvided: boolean;
+    backendReady: boolean;
   };
+  scaffold: {
+    ok: boolean;
+    envSet: boolean;
+    routeWired: boolean;
+    envError?: string;
+    filesError?: string;
+    at: string;
+  } | null;
   connectionError: string | null;
   webhook: { url: string; authorizationHeader: string | null };
 }
@@ -147,7 +156,13 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
         throw new Error(body.error || `HTTP ${res.status}`);
       }
       toast({ title: "RevenueCat connected", description: `Linked project "${body.projectName ?? rcProjectId.trim()}".` });
+      if (body.warning) {
+        toast({ title: "Heads up", description: body.warning });
+      }
+      // Drop all pasted credentials from client state once stored server-side.
       setRcSecretKey("");
+      setRcPublicSdkKey("");
+      setAscPrivateKeyP8("");
       onChanged?.();
       await loadStatus();
     } catch (e) {
@@ -162,6 +177,24 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
     await loadStatus();
     setVerifying(false);
   }, [loadStatus]);
+
+  // Re-run the Convex-side scaffold (receiver files + env + http route) when a
+  // previous background attempt failed. initialize re-scaffolds for connected
+  // projects; the scaffold write happens after the response, so re-check late.
+  const [repairing, setRepairing] = useState(false);
+  const handleRepairBackend = useCallback(async () => {
+    setRepairing(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/revenuecat/initialize`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast({ title: "Backend setup re-run", description: "Re-checking in a few seconds…" });
+      setTimeout(() => void loadStatus(), 4000);
+    } catch (e) {
+      toast({ title: "Couldn't re-run setup", description: e instanceof Error ? e.message : "Unknown error" });
+    } finally {
+      setRepairing(false);
+    }
+  }, [projectId, toast, loadStatus]);
 
   const handleDisconnect = useCallback(async () => {
     if (!window.confirm("Turn off in-app purchases for this project? Your RevenueCat account stays linked for your other apps.")) {
@@ -223,7 +256,30 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
                 <span className="text-amber-500">{data?.connectionError ?? "Unverified"}</span>
               )}
             </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted">Backend receiver</span>
+              {data?.checklist.backendReady ? (
+                <span className="flex items-center gap-1 text-emerald-500"><CircleCheck size={14} /> Ready</span>
+              ) : (
+                <span className="text-amber-500">Not set up</span>
+              )}
+            </div>
           </div>
+
+          {data && !data.checklist.backendReady && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-2">
+              <p className="text-xs text-amber-500">
+                The webhook receiver isn&apos;t fully set up on your app&apos;s backend, so
+                purchase events can&apos;t update entitlements yet
+                {data.scaffold?.envError ? ` (${data.scaffold.envError})` : ""}
+                {data.scaffold?.filesError ? ` (${data.scaffold.filesError})` : ""}.
+              </p>
+              <Button variant="outline" size="sm" onClick={handleRepairBackend} disabled={repairing}>
+                {repairing ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
+                Re-run backend setup
+              </Button>
+            </div>
+          )}
 
           <Button onClick={openDashboard} className="w-full font-semibold">
             <ExternalLink size={16} className="mr-1.5" />
@@ -269,7 +325,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
         <div className="rounded-xl border border-border bg-elevated/60 p-4 space-y-2">
           <ChecklistRow done={Boolean(cl?.keysProvided)}>RevenueCat keys provided</ChecklistRow>
           <ChecklistRow done={Boolean(cl?.connectionValid)}>Connection verified</ChecklistRow>
-          <ChecklistRow done={Boolean(cl?.appleKeyProvided)}>Apple App Store Connect key (optional, for product automation)</ChecklistRow>
+          <ChecklistRow done={Boolean(cl?.appleKeyProvided)}>Apple App Store Connect key (optional)</ChecklistRow>
         </div>
 
         {/* Step 1 */}
@@ -303,8 +359,8 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
           {showApple && (
             <div className="space-y-3 border-l-2 border-border pl-3">
               <p className="text-xs text-muted">
-                Lets Botflow create your in-app products in App Store Connect for you.
-                You can also add this later in RevenueCat directly.
+                Stored securely for upcoming product automation — Botflow doesn&apos;t
+                use it yet. You can skip this and add the key in RevenueCat directly.
               </p>
               <Field label="Issuer ID" value={ascIssuerId} onChange={setAscIssuerId} placeholder="69a6de7e-…" mono />
               <Field label="Key ID" value={ascKeyId} onChange={setAscKeyId} placeholder="ABC123DEFG" mono />

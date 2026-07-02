@@ -126,6 +126,27 @@ export async function POST(
     .from(userRevenueCatIdentity)
     .where(eq(userRevenueCatIdentity.userId, userId))
     .limit(1);
+
+  // One RevenueCat identity per Botflow user: pasting a different RC project
+  // here silently repoints every other connected project's management calls
+  // and dashboard links. Allowed (the user may genuinely be switching), but
+  // must be surfaced — never silent.
+  let identitySwitchWarning: string | null = null;
+  if (existing?.rcProjectId && existing.rcProjectId !== rcProjectId) {
+    const others = await db
+      .select({ id: projects.id, name: projects.name })
+      .from(projects)
+      .where(and(eq(projects.userId, userId), eq(projects.revenuecatStatus, 'connected')));
+    const affected = others.filter((p) => p.id !== projectId);
+    if (affected.length > 0) {
+      const names = affected.map((p) => p.name).slice(0, 3).join(', ');
+      identitySwitchWarning =
+        `Botflow stores one RevenueCat connection per account. Connecting this RevenueCat project ` +
+        `also repoints your ${affected.length} other connected project${affected.length === 1 ? '' : 's'} ` +
+        `(${names}${affected.length > 3 ? ', …' : ''}) to it. If those apps sell products under the ` +
+        `previous RevenueCat project, reconnect them or move their products over.`;
+    }
+  }
   const rcInboundWebhookSecret =
     existing?.rcInboundWebhookSecret ?? `bfrcin_${randomBytes(24).toString('hex')}`;
   // Indexed digest so the inbound webhook can resolve the owner by O(1) lookup.
@@ -185,6 +206,14 @@ export async function POST(
     } catch (err) {
       console.error('[revenuecat/connect] background scaffold threw:', err);
     }
+    // Bake the freshly-stored public SDK key into RevenueCatConfig.swift now,
+    // so the sandbox reflects it immediately (builds re-materialize anyway).
+    try {
+      const { materializeSwiftRevenueCatConfig } = await import('@/lib/sandbox-env');
+      await materializeSwiftRevenueCatConfig(projectId);
+    } catch (err) {
+      console.error('[revenuecat/connect] RevenueCatConfig.swift write failed:', err);
+    }
   });
 
   return NextResponse.json({
@@ -192,5 +221,6 @@ export async function POST(
     status: 'connected',
     rcProjectId,
     projectName: validation.data.name,
+    ...(identitySwitchWarning ? { warning: identitySwitchWarning } : {}),
   });
 }

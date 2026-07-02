@@ -125,6 +125,11 @@ export const projects = pgTable('projects', {
   // stripeWebhookSecret). Generated when the project is enabled.
   revenuecatWebhookSecret: text('revenuecat_webhook_secret'),
   revenuecatEnvironment: text('revenuecat_environment').notNull().default('sandbox'), // 'sandbox' | 'production'
+  // Outcome of the last scaffoldRevenueCatIntoProject run, so the payments tab
+  // can surface backend health (receiver files / Convex env / route mounted)
+  // instead of showing all-green while deliveries have nowhere to land.
+  // See drizzle/0005_revenuecat_scaffold_state.sql.
+  revenuecatScaffoldState: jsonb('revenuecat_scaffold_state').$type<RevenueCatScaffoldState>(),
 }, (t) => ({
   stripeTestAccountIdIdx: index('projects_stripe_test_account_id_idx').on(t.stripeTestAccountId),
   stripeLiveAccountIdIdx: index('projects_stripe_live_account_id_idx').on(t.stripeLiveAccountId),
@@ -710,15 +715,22 @@ export const userRevenueCatIdentity = pgTable('user_revenuecat_identity', {
 export type UserRevenueCatIdentity = typeof userRevenueCatIdentity.$inferSelect;
 export type NewUserRevenueCatIdentity = typeof userRevenueCatIdentity.$inferInsert;
 
-// Dedupe table for inbound RevenueCat webhook events. RevenueCat retries up to
-// 5 times; primary-key conflict on the event id makes the handler idempotent.
-export const revenueCatWebhookEvents = pgTable('revenuecat_webhook_events', {
-  eventId: text('event_id').primaryKey(),
-  receivedAt: timestamp('received_at').defaultNow().notNull(),
-});
+// (The old revenuecat_webhook_events dedupe table is gone — dedup lives on the
+// deliveries table's (event_id, project_id) unique index below. Dropped in
+// drizzle/0005_revenuecat_scaffold_state.sql.)
 
-export type RevenueCatWebhookEvent = typeof revenueCatWebhookEvents.$inferSelect;
-export type NewRevenueCatWebhookEvent = typeof revenueCatWebhookEvents.$inferInsert;
+/** Persisted result of the last RevenueCat Convex scaffold run for a project. */
+export interface RevenueCatScaffoldState {
+  /** True when files, env vars, and the http.ts route all landed. */
+  ok: boolean;
+  filesWritten: string[];
+  envSet: boolean;
+  routeWired: boolean;
+  envError?: string;
+  filesError?: string;
+  /** ISO timestamp of the attempt. */
+  at: string;
+}
 
 // Durable outbox for fanning RevenueCat entitlement events out to each connected
 // project's Convex site. Mirrors stripe_webhook_deliveries: the inbound receiver
