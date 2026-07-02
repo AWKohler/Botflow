@@ -2,18 +2,16 @@
  * POST /api/projects/[id]/revenuecat/connect
  *
  * Called by the payments tab's setup wizard (NOT a modal). Receives the user's
- * pasted RevenueCat keys (and optionally their Apple App Store Connect API key),
- * validates the secret key against the RevenueCat API, stores everything
- * encrypted in user_revenuecat_identity (reused across the user's projects), and
- * flips this project to 'connected'.
+ * pasted RevenueCat keys, validates the secret key against the RevenueCat API,
+ * stores everything encrypted in user_revenuecat_identity (reused across the
+ * user's projects), and flips this project to 'connected'.
  *
  * Replaces Stripe's OAuth callback — here the user supplies credentials directly
  * because RevenueCat has no self-service OAuth for platforms.
  *
- * Body: {
- *   rcSecretKey, rcPublicSdkKey, rcProjectId,
- *   ascIssuerId?, ascKeyId?, ascPrivateKeyP8?
- * }
+ * Body: { rcSecretKey, rcPublicSdkKey, rcProjectId }
+ * (The wizard no longer collects an App Store Connect .p8 — ASC automation
+ * will reuse the Apple Developer credential from Settings instead.)
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
@@ -71,9 +69,6 @@ export async function POST(
     rcSecretKey?: string;
     rcPublicSdkKey?: string;
     rcProjectId?: string;
-    ascIssuerId?: string;
-    ascKeyId?: string;
-    ascPrivateKeyP8?: string;
   };
   try {
     body = await req.json();
@@ -162,11 +157,6 @@ export async function POST(
     rcProjectId,
     rcInboundWebhookSecret,
     rcInboundWebhookSecretDigest,
-    ...(body.ascIssuerId ? { ascIssuerId: body.ascIssuerId.trim() } : {}),
-    ...(body.ascKeyId ? { ascKeyId: body.ascKeyId.trim() } : {}),
-    ...(body.ascPrivateKeyP8
-      ? { ascPrivateKeyP8: encryptSecret(body.ascPrivateKeyP8) }
-      : {}),
     connectedAt: existing?.connectedAt ?? now,
     updatedAt: now,
   };

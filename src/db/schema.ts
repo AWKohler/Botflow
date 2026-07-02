@@ -701,11 +701,19 @@ export const userRevenueCatIdentity = pgTable('user_revenuecat_identity', {
   // resolve the owning user with an O(1) lookup instead of scanning every user's
   // secret (then it still constant-time-compares the secret as defense).
   rcInboundWebhookSecretDigest: text('rc_inbound_webhook_secret_digest'),
-  // Apple App Store Connect API key — reused for distribution + IAP product
-  // creation, and uploaded by the user to RevenueCat for receipt validation.
+  // Apple App Store Connect API key — LEGACY: the wizard no longer collects
+  // these (2026-07-02); ASC automation will reuse the Settings credential
+  // (Clerk privateMetadata via src/lib/user-credentials.ts) instead. Columns
+  // kept only so previously-stored values aren't destroyed.
   ascIssuerId: text('asc_issuer_id'),
   ascKeyId: text('asc_key_id'),
   ascPrivateKeyP8: text('asc_private_key_p8'), // encrypted
+  // RevenueCat Test Store (simulated purchases, no Apple setup) — discovered
+  // during scaffold via listApps + listPublicApiKeys and cached here so builds
+  // never block on the RevenueCat API. The key is a PUBLIC sandbox SDK key.
+  // See drizzle/0006_revenuecat_test_store.sql.
+  rcTestStoreAppId: text('rc_test_store_app_id'),
+  rcTestStoreSdkKey: text('rc_test_store_sdk_key'),
   connectedAt: timestamp('connected_at'),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (t) => ({

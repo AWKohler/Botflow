@@ -79,7 +79,10 @@ export async function GET(
     checklist: {
       keysProvided: Boolean(secretKey && identity?.rcPublicSdkKey && rcProjectId),
       connectionValid,
-      appleKeyProvided: Boolean(identity?.ascPrivateKeyP8 && identity?.ascKeyId && identity?.ascIssuerId),
+      // Test Store discovered + sandbox key cached → simulator test purchases
+      // work. When false, the user enables Test Store in the RC dashboard and
+      // re-runs setup.
+      testStoreReady: Boolean(identity?.rcTestStoreSdkKey),
       // The Convex-side scaffold (receiver files + env + http route) actually
       // landed — without it, entitlement events can't reach the app's backend.
       backendReady: scaffold?.ok === true,

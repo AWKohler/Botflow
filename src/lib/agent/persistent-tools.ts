@@ -613,10 +613,10 @@ export function getPersistentTools(
           }),
           createRevenueCatProduct: tool({
             description:
-              "Provision the RevenueCat side of an in-app product in ONE idempotent call: ensures the product exists and, when the optional keys are given, wires the whole paywall graph — attaches it to an entitlement, ensures the offering (made current if none is), and ensures + attaches a package inside it. Safe to re-run with the same arguments.\n\n" +
+              "Provision the RevenueCat side of an in-app product in ONE idempotent call: ensures the product exists and, when the optional keys are given, wires the whole paywall graph — attaches it to an entitlement, ensures the offering (made current if none is), and ensures + attaches a package inside it. When the RC project has a Test Store, a twin test product is provisioned automatically so SIMULATOR builds (which always run in test mode on the Test Store key) can make simulated purchases immediately — the result's testStore field says whether that happened. Safe to re-run with the same arguments.\n\n" +
               "Typical monthly subscription: { storeIdentifier: 'com.<app>.premium.monthly', type: 'subscription', entitlementLookupKey: 'premium', offeringLookupKey: 'default', packageLookupKey: '$rc_monthly' }. Package lookup keys like $rc_monthly/$rc_annual let RevenueCat's paywall templates place them by duration; plain keys also work.\n\n" +
-              "CRITICAL REALITY: this creates the product in REVENUECAT only. The storeIdentifier must EXACTLY match an in-app purchase product the user creates in App Store Connect (paid developer account required), and that product must pass App Review before real purchases work. Tell the user which App Store Connect product ids to create. The entitlement lookup_key is what you check in Swift (customerInfo.entitlements.active[\"<lookupKey>\"]) and what arrives in convex/revenueCatBilling.ts events.\n\n" +
-              "Errors: status='needs-connect' → user hasn't finished the Payments tab; 'No App Store app exists' → the user must add an App Store app to their RevenueCat project first (relay this); multiple apps → pass appId from getRevenueCatProducts.",
+              "CRITICAL REALITY: this creates products in REVENUECAT only. Test purchases work in the simulator right away, but for REAL money the storeIdentifier must EXACTLY match an in-app purchase product the user creates in App Store Connect (paid developer account required) that passes App Review — published App Store builds always run live on those products. Tell the user which App Store Connect product ids to create. The entitlement lookup_key is what you check in Swift (customerInfo.entitlements.active[\"<lookupKey>\"]) and what arrives in convex/revenueCatBilling.ts events.\n\n" +
+              "Errors: status='needs-connect' → user hasn't finished the Payments tab; 'No App Store app exists' → the user must add an App Store app to their RevenueCat project first (relay this); multiple apps → pass appId from getRevenueCatProducts. If the result says the Test Store is missing, relay its note (one-click enable in the RevenueCat dashboard).",
             inputSchema: z.object({
               storeIdentifier: z
                 .string()
@@ -642,6 +642,10 @@ export function getPersistentTools(
                 .optional()
                 .describe("Package inside the offering to ensure + attach the product to, e.g. '$rc_monthly'. Requires offeringLookupKey."),
               packageDisplayName: z.string().optional(),
+              subscriptionDuration: z
+                .enum(["P1W", "P1M", "P2M", "P3M", "P6M", "P1Y"])
+                .optional()
+                .describe("Renewal period for the Test Store twin of a subscription product (simulated renewals). Default P1M. Ignored for non-subscriptions."),
             }),
             async execute(args) {
               return safe(async () => {

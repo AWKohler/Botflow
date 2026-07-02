@@ -36,7 +36,7 @@ interface StatusResponse {
   checklist: {
     keysProvided: boolean;
     connectionValid: boolean;
-    appleKeyProvided: boolean;
+    testStoreReady: boolean;
     backendReady: boolean;
   };
   scaffold: {
@@ -49,6 +49,55 @@ interface StatusResponse {
   } | null;
   connectionError: string | null;
   webhook: { url: string; authorizationHeader: string | null };
+}
+
+interface ActivityItem {
+  id: string;
+  type: string;
+  productId: string | null;
+  price: number | null;
+  currency: string | null;
+  environment: string | null;
+  appUserId: string | null;
+  delivery: { status: string; attempts: number; lastError: string | null };
+  at: string;
+}
+
+const EVENT_LABELS: Record<string, string> = {
+  "entitlement.granted": "Access granted",
+  "entitlement.revoked": "Access ended",
+  "entitlement.cancellation": "Auto-renew turned off",
+  "billing.issue": "Billing issue",
+};
+
+/**
+ * Fixed payment model for Swift apps (unlike web's Stripe test-mode toggle):
+ * development is ALWAYS test mode, published builds are ALWAYS live. Shown in
+ * both tab states so the divergence is never a surprise.
+ */
+function PaymentModeCard() {
+  return (
+    <div className="rounded-xl border border-border bg-elevated/40 p-4 space-y-2">
+      <h3 className="text-sm font-semibold text-fg">How payments run</h3>
+      <div className="text-xs text-muted space-y-1.5">
+        <p>
+          <span className="font-medium text-fg">Development (simulator &amp; dev devices):</span>{" "}
+          always <span className="text-amber-500 font-medium">test mode</span> — purchases are
+          simulated through RevenueCat&apos;s Test Store. No Apple setup, no real money, ever.
+        </p>
+        <p>
+          <span className="font-medium text-fg">Published (App Store):</span> always{" "}
+          <span className="text-emerald-500 font-medium">live</span> — your real App Store
+          products, real money, once they pass App Review.
+        </p>
+        <p className="text-muted/80">
+          There&apos;s no toggle: Botflow bakes the right RevenueCat key into each build kind
+          automatically, so a test build can never charge anyone and a store build can never
+          ship in test mode.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 interface RevenueCatTabProps {
@@ -109,11 +158,30 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
   const [rcSecretKey, setRcSecretKey] = useState("");
   const [rcPublicSdkKey, setRcPublicSdkKey] = useState("");
   const [rcProjectId, setRcProjectId] = useState("");
-  const [showApple, setShowApple] = useState(false);
-  const [ascIssuerId, setAscIssuerId] = useState("");
-  const [ascKeyId, setAscKeyId] = useState("");
-  const [ascPrivateKeyP8, setAscPrivateKeyP8] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Activity feed (connected state): recent entitlement events routed to this
+  // project, from the platform's delivery log — no RevenueCat API calls.
+  const [activity, setActivity] = useState<ActivityItem[] | null>(null);
+  const loadActivity = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/revenuecat/activity`, { cache: "no-store" });
+      if (res.ok) {
+        const body = (await res.json()) as { ok: boolean; items?: ActivityItem[] };
+        if (body.ok && body.items) setActivity(body.items);
+      }
+    } catch {
+      /* network blip */
+    }
+  }, [projectId]);
+  useEffect(() => {
+    if (status !== "connected") return;
+    void loadActivity();
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") void loadActivity();
+    }, 12_000);
+    return () => clearInterval(interval);
+  }, [status, loadActivity]);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -146,9 +214,6 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
           rcSecretKey: rcSecretKey.trim(),
           rcPublicSdkKey: rcPublicSdkKey.trim(),
           rcProjectId: rcProjectId.trim(),
-          ...(ascIssuerId.trim() ? { ascIssuerId: ascIssuerId.trim() } : {}),
-          ...(ascKeyId.trim() ? { ascKeyId: ascKeyId.trim() } : {}),
-          ...(ascPrivateKeyP8.trim() ? { ascPrivateKeyP8: ascPrivateKeyP8.trim() } : {}),
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -162,7 +227,6 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
       // Drop all pasted credentials from client state once stored server-side.
       setRcSecretKey("");
       setRcPublicSdkKey("");
-      setAscPrivateKeyP8("");
       onChanged?.();
       await loadStatus();
     } catch (e) {
@@ -170,7 +234,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
     } finally {
       setSubmitting(false);
     }
-  }, [projectId, rcSecretKey, rcPublicSdkKey, rcProjectId, ascIssuerId, ascKeyId, ascPrivateKeyP8, toast, onChanged, loadStatus]);
+  }, [projectId, rcSecretKey, rcPublicSdkKey, rcProjectId, toast, onChanged, loadStatus]);
 
   const handleVerify = useCallback(async () => {
     setVerifying(true);
@@ -264,7 +328,31 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
                 <span className="text-amber-500">Not set up</span>
               )}
             </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted">Test Store (simulator purchases)</span>
+              {data?.checklist.testStoreReady ? (
+                <span className="flex items-center gap-1 text-emerald-500"><CircleCheck size={14} /> Ready</span>
+              ) : (
+                <span className="text-amber-500">Enable in RevenueCat</span>
+              )}
+            </div>
           </div>
+
+          <PaymentModeCard />
+
+          {data && !data.checklist.testStoreReady && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-1">
+              <p className="text-xs text-amber-500">
+                Your RevenueCat project has no Test Store, so the simulator can&apos;t make
+                test purchases yet. Enable it in RevenueCat (Project settings → Apps →
+                Test Store), then re-run setup below.
+              </p>
+              <Button variant="outline" size="sm" onClick={handleRepairBackend} disabled={repairing}>
+                {repairing ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
+                Re-run setup
+              </Button>
+            </div>
+          )}
 
           {data && !data.checklist.backendReady && (
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-2">
@@ -285,6 +373,72 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
             <ExternalLink size={16} className="mr-1.5" />
             Open RevenueCat Dashboard
           </Button>
+
+          {/* Activity feed — the platform's own delivery log, not the RC API. */}
+          <div className="rounded-xl border border-border bg-elevated/40 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-fg">Activity</h3>
+              <button onClick={() => void loadActivity()} className="text-xs text-muted hover:text-fg">
+                Refresh
+              </button>
+            </div>
+            <p className="text-xs text-muted">
+              Purchase and entitlement events routed to this app&apos;s backend.{" "}
+              <span className="text-amber-500">
+                Test-mode events are simulated — no real money changes hands.
+              </span>
+            </p>
+            {activity === null ? (
+              <div className="flex items-center gap-2 text-xs text-muted py-2">
+                <Loader2 size={13} className="animate-spin" /> Loading…
+              </div>
+            ) : activity.length === 0 ? (
+              <p className="text-xs text-muted py-2">
+                No events yet. Make a test purchase in the simulator preview — it shows
+                up here within seconds, along with whether it reached your backend.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {activity.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-2 rounded-md border border-border/60 bg-surface px-2.5 py-1.5 text-xs"
+                  >
+                    <span
+                      className={
+                        item.environment === "PRODUCTION"
+                          ? "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-500/10 text-emerald-500"
+                          : "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-500/10 text-amber-500"
+                      }
+                    >
+                      {item.environment === "PRODUCTION" ? "LIVE" : "TEST"}
+                    </span>
+                    <span className="text-fg font-medium shrink-0">
+                      {EVENT_LABELS[item.type] ?? item.type}
+                    </span>
+                    <span className="text-muted truncate">{item.productId ?? ""}</span>
+                    {typeof item.price === "number" && item.price > 0 && (
+                      <span className="text-muted shrink-0">
+                        {item.price.toFixed(2)} {item.currency ?? ""}
+                      </span>
+                    )}
+                    <span className="ml-auto shrink-0 text-muted/80" title={`Delivery: ${item.delivery.status}${item.delivery.lastError ? ` — ${item.delivery.lastError}` : ""}`}>
+                      {item.delivery.status === "delivered" ? (
+                        <CircleCheck size={13} className="text-emerald-500" />
+                      ) : item.delivery.status === "exhausted" ? (
+                        <span className="text-red-400">failed</span>
+                      ) : (
+                        <span className="text-amber-500">retrying…</span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-muted/70">
+                      {new Date(item.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {webhookUrl && webhookSecret && (
             <div className="rounded-xl border border-border bg-elevated/40 p-4 space-y-3">
@@ -325,8 +479,10 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
         <div className="rounded-xl border border-border bg-elevated/60 p-4 space-y-2">
           <ChecklistRow done={Boolean(cl?.keysProvided)}>RevenueCat keys provided</ChecklistRow>
           <ChecklistRow done={Boolean(cl?.connectionValid)}>Connection verified</ChecklistRow>
-          <ChecklistRow done={Boolean(cl?.appleKeyProvided)}>Apple App Store Connect key (optional)</ChecklistRow>
+          <ChecklistRow done={Boolean(cl?.testStoreReady)}>Test Store found (simulator test purchases)</ChecklistRow>
         </div>
+
+        <PaymentModeCard />
 
         {/* Step 1 */}
         <div className="space-y-2">
@@ -349,33 +505,6 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
           <Field label="Secret key (sk_…)" value={rcSecretKey} onChange={setRcSecretKey} placeholder="sk_xxxxxxxx" mono type="password" />
           <Field label="Public SDK key (appl_…)" value={rcPublicSdkKey} onChange={setRcPublicSdkKey} placeholder="appl_xxxxxxxx" mono />
           <Field label="Project id (proj…)" value={rcProjectId} onChange={setRcProjectId} placeholder="proj1a2b3c4d" mono />
-
-          <button
-            onClick={() => setShowApple((s) => !s)}
-            className="text-xs text-muted hover:text-fg"
-          >
-            {showApple ? "− Hide" : "+ Add"} Apple App Store Connect key (optional)
-          </button>
-          {showApple && (
-            <div className="space-y-3 border-l-2 border-border pl-3">
-              <p className="text-xs text-muted">
-                Stored securely for upcoming product automation — Botflow doesn&apos;t
-                use it yet. You can skip this and add the key in RevenueCat directly.
-              </p>
-              <Field label="Issuer ID" value={ascIssuerId} onChange={setAscIssuerId} placeholder="69a6de7e-…" mono />
-              <Field label="Key ID" value={ascKeyId} onChange={setAscKeyId} placeholder="ABC123DEFG" mono />
-              <div>
-                <label className="block text-xs text-muted mb-1">Private key (.p8 contents)</label>
-                <textarea
-                  value={ascPrivateKeyP8}
-                  onChange={(e) => setAscPrivateKeyP8(e.target.value)}
-                  placeholder="-----BEGIN PRIVATE KEY-----&#10;…&#10;-----END PRIVATE KEY-----"
-                  rows={4}
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-xs text-fg font-mono modern-scrollbar"
-                />
-              </div>
-            </div>
-          )}
 
           <div className="flex items-center gap-2 pt-1">
             <Button onClick={handleConnect} disabled={submitting} className="font-semibold">

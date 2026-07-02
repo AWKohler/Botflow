@@ -38,6 +38,7 @@ import {
   setOfferingCurrent,
   type RevenueCatProductType,
   type RevenueCatResult,
+  type RevenueCatTestDuration,
 } from '@/lib/revenuecat';
 import { REVENUECAT_ENABLED } from '@/lib/feature-flags';
 
@@ -55,7 +56,12 @@ const PRODUCT_TYPES: readonly RevenueCatProductType[] = [
 interface Ctx {
   secretKey: string;
   rcProjectId: string;
+  /** Cached Test Store app id (discovered during scaffold), null when the RC
+   *  project has no Test Store enabled. */
+  testStoreAppId: string | null;
 }
+
+const TEST_DURATIONS: readonly RevenueCatTestDuration[] = ['P1W', 'P1M', 'P2M', 'P3M', 'P6M', 'P1Y'];
 
 /** Shared preflight: flag, auth, ownership, linked + connected RevenueCat. */
 async function preflight(
@@ -106,7 +112,12 @@ async function preflight(
       ),
     };
   }
-  return { ok: true, ctx: { secretKey, rcProjectId }, projectId, userId };
+  return {
+    ok: true,
+    ctx: { secretKey, rcProjectId, testStoreAppId: identity?.rcTestStoreAppId ?? null },
+    projectId,
+    userId,
+  };
 }
 
 function rcError(step: string, result: { status: number; error: string }): NextResponse {
@@ -169,6 +180,8 @@ interface ProvisionBody {
   offeringDisplayName?: string;
   packageLookupKey?: string;
   packageDisplayName?: string;
+  /** Test Store subscription duration (P1W|P1M|P2M|P3M|P6M|P1Y). Default P1M. */
+  subscriptionDuration?: string;
 }
 
 /** On create-409 (someone else won the race), re-list and find by key. */
@@ -235,7 +248,13 @@ export async function POST(
     );
   }
 
-  const created = { product: false, entitlement: false, offering: false, package: false };
+  const created = {
+    product: false,
+    testStoreProduct: false,
+    entitlement: false,
+    offering: false,
+    package: false,
+  };
 
   // 1. Resolve the RC app the product belongs to.
   const apps = await listApps(secretKey, rcProjectId);
@@ -267,6 +286,14 @@ export async function POST(
     }
   }
 
+  const subscriptionDuration = (body.subscriptionDuration?.trim() || 'P1M') as RevenueCatTestDuration;
+  if (!TEST_DURATIONS.includes(subscriptionDuration)) {
+    return NextResponse.json(
+      { ok: false, error: `subscriptionDuration must be one of: ${TEST_DURATIONS.join(', ')}.` },
+      { status: 400 },
+    );
+  }
+
   // 2. Product (matched by store_identifier within the app).
   const product = await ensure(
     () => listProducts(secretKey, rcProjectId),
@@ -281,6 +308,32 @@ export async function POST(
   );
   if (!product.ok) return rcError('create product', product);
   created.product = product.created;
+
+  // 2b. Twin product in the Test Store, so dev builds (which run on the Test
+  // Store key) resolve the SAME offering/packages with simulated purchases.
+  // Same store_identifier; the SDK picks the product matching its store.
+  let testStoreProduct = null;
+  const { testStoreAppId } = pre.ctx;
+  if (testStoreAppId) {
+    const twin = await ensure(
+      () => listProducts(secretKey, rcProjectId),
+      (p) => p.store_identifier === storeIdentifier && p.app_id === testStoreAppId,
+      () =>
+        createProduct(secretKey, rcProjectId, {
+          store_identifier: storeIdentifier,
+          app_id: testStoreAppId,
+          type,
+          title: body.displayName?.trim() || storeIdentifier,
+          ...(body.displayName?.trim() ? { display_name: body.displayName.trim() } : {}),
+          ...(type === 'subscription' ? { subscription: { duration: subscriptionDuration } } : {}),
+        }),
+    );
+    if (!twin.ok) return rcError('create test-store product', twin);
+    created.testStoreProduct = twin.created;
+    testStoreProduct = twin.item;
+  }
+
+  const productIds = [product.item.id, ...(testStoreProduct ? [testStoreProduct.id] : [])];
 
   // 3. Entitlement + attach.
   let entitlement = null;
@@ -299,7 +352,7 @@ export async function POST(
     created.entitlement = ensured.created;
     entitlement = ensured.item;
 
-    const attached = await attachProductsToEntitlement(secretKey, rcProjectId, ensured.item.id, [product.item.id]);
+    const attached = await attachProductsToEntitlement(secretKey, rcProjectId, ensured.item.id, productIds);
     // 409 = already attached — the idempotent outcome we want.
     if (!attached.ok && attached.status !== 409) return rcError('attach product to entitlement', attached);
   }
@@ -347,12 +400,44 @@ export async function POST(
       if (!pkg.ok) return rcError('create package', pkg);
       created.package = pkg.created;
 
-      const attached = await attachProductsToPackage(secretKey, rcProjectId, pkg.item.id, [product.item.id]);
+      const attached = await attachProductsToPackage(secretKey, rcProjectId, pkg.item.id, productIds);
       if (!attached.ok && attached.status !== 409) return rcError('attach product to package', attached);
 
-      return NextResponse.json({ ok: true, created, product: product.item, entitlement, offering, package: pkg.item });
+      return NextResponse.json({
+        ok: true,
+        created,
+        product: product.item,
+        testStoreProduct,
+        testStore: testStoreNote(testStoreAppId),
+        entitlement,
+        offering,
+        package: pkg.item,
+      });
     }
   }
 
-  return NextResponse.json({ ok: true, created, product: product.item, entitlement, offering, package: null });
+  return NextResponse.json({
+    ok: true,
+    created,
+    product: product.item,
+    testStoreProduct,
+    testStore: testStoreNote(testStoreAppId),
+    entitlement,
+    offering,
+    package: null,
+  });
+}
+
+function testStoreNote(testStoreAppId: string | null): { enabled: boolean; note: string } {
+  return testStoreAppId
+    ? {
+        enabled: true,
+        note:
+          'A Test Store twin product was provisioned — simulator preview builds can make simulated purchases immediately (no real money, no Apple setup).',
+      }
+    : {
+        enabled: false,
+        note:
+          'No Test Store exists in this RevenueCat project, so simulator builds cannot make test purchases yet. Tell the user to enable the Test Store in the RevenueCat dashboard (Project settings → Apps), then re-run setup from the Payments tab.',
+      };
 }

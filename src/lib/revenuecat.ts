@@ -146,8 +146,19 @@ export interface RevenueCatApp {
   object: 'app';
   id: string;
   name: string;
-  type: string; // 'app_store' | 'play_store' | 'stripe' | 'amazon' | 'roku' | ...
+  type: string; // 'app_store' | 'test_store' | 'play_store' | 'stripe' | ...
 }
+
+export interface RevenueCatPublicApiKey {
+  object: 'public_api_key';
+  id: string;
+  key: string;
+  environment: 'production' | 'sandbox';
+  app_id: string;
+}
+
+/** Test-store subscription durations the v2 API accepts (ISO 8601 subset). */
+export type RevenueCatTestDuration = 'P1W' | 'P1M' | 'P2M' | 'P3M' | 'P6M' | 'P1Y';
 
 export interface RevenueCatProduct {
   object: 'product';
@@ -190,6 +201,22 @@ export async function listApps(
   projectId: string,
 ): Promise<RevenueCatResult<RcList<RevenueCatApp>>> {
   return rcFetch(secretKey, listPath(projectId, 'apps'));
+}
+
+/**
+ * Public SDK keys for an app (sandbox keys always included). This is how the
+ * platform fetches the TEST STORE key it bakes into dev builds — and could
+ * later fetch the appl_ key instead of making the user paste it.
+ */
+export async function listPublicApiKeys(
+  secretKey: string,
+  projectId: string,
+  appId: string,
+): Promise<RevenueCatResult<RcList<RevenueCatPublicApiKey>>> {
+  return rcFetch(
+    secretKey,
+    `/projects/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/public_api_keys?limit=100`,
+  );
 }
 
 export async function listProducts(
@@ -262,7 +289,16 @@ export async function setOfferingCurrent(
 export async function createProduct(
   secretKey: string,
   projectId: string,
-  body: { store_identifier: string; app_id: string; type: RevenueCatProductType; display_name?: string },
+  body: {
+    store_identifier: string;
+    app_id: string;
+    type: RevenueCatProductType;
+    display_name?: string;
+    /** Required by the API for Test Store products. */
+    title?: string;
+    /** Only supported for Test Store products; required there for subscriptions. */
+    subscription?: { duration: RevenueCatTestDuration };
+  },
 ): Promise<RevenueCatResult<RevenueCatProduct>> {
   return rcFetch(secretKey, `/projects/${encodeURIComponent(projectId)}/products`, {
     method: 'POST',

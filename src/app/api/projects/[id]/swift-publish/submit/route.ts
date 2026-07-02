@@ -130,7 +130,9 @@ export async function POST(
     const buildNumber = await nextBuildNumber(ascAuth, app.ascAppId);
 
     // 4. Snapshot the project source (same prep as the device-build flow).
-    await materializeSwiftBuildConfig(projectId);
+    //    'release': App Store builds always carry the production appl_ key —
+    //    never the Test Store key (dev builds are always test mode instead).
+    await materializeSwiftBuildConfig(projectId, "release");
     const tarball = await tarSandboxProject(projectId, { excludeConvex: true });
 
     // 5. Hand off to the Mac controller for archive → signed export → upload.
