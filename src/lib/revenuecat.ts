@@ -119,19 +119,116 @@ export async function getOverviewMetrics(
   );
 }
 
-// ─── Provisioning helpers (used by the agent product tools, later phase) ────────
+// ─── Provisioning (agent product tools + the /revenuecat/products route) ────────
+//
+// Endpoint paths + request bodies verified against RevenueCat's published
+// OpenAPI spec (docs/redocusaurus/openapi-v2.yaml, fetched 2026-07-02). Two
+// asymmetries worth remembering:
+//   • entitlement attach takes { product_ids: [...] }, but PACKAGE attach takes
+//     { products: [{ product_id, eligibility_criteria }] } and lives at
+//     /projects/{id}/packages/{package_id}/... (NOT nested under offerings);
+//   • offerings/packages are keyed by lookup_key (there is no `identifier`).
 
 export type RevenueCatProductType =
   | 'subscription'
   | 'one_time'
   | 'consumable'
-  | 'non_consumable';
+  | 'non_consumable'
+  | 'non_renewing_subscription';
+
+/** v2 list envelope. We request limit=100; callers get first-page items. */
+interface RcList<T> {
+  items: T[];
+  next_page: string | null;
+}
+
+export interface RevenueCatApp {
+  object: 'app';
+  id: string;
+  name: string;
+  type: string; // 'app_store' | 'play_store' | 'stripe' | 'amazon' | 'roku' | ...
+}
+
+export interface RevenueCatProduct {
+  object: 'product';
+  id: string;
+  store_identifier: string;
+  type: RevenueCatProductType;
+  display_name: string | null;
+  app_id: string;
+}
+
+export interface RevenueCatEntitlement {
+  object: 'entitlement';
+  id: string;
+  lookup_key: string;
+  display_name: string;
+}
+
+export interface RevenueCatOffering {
+  object: 'offering';
+  id: string;
+  lookup_key: string;
+  display_name: string;
+  is_current: boolean;
+}
+
+export interface RevenueCatPackage {
+  object: 'package';
+  id: string;
+  lookup_key: string;
+  display_name: string;
+  position: number | null;
+}
+
+function listPath(projectId: string, resource: string): string {
+  return `/projects/${encodeURIComponent(projectId)}/${resource}?limit=100`;
+}
+
+export async function listApps(
+  secretKey: string,
+  projectId: string,
+): Promise<RevenueCatResult<RcList<RevenueCatApp>>> {
+  return rcFetch(secretKey, listPath(projectId, 'apps'));
+}
+
+export async function listProducts(
+  secretKey: string,
+  projectId: string,
+): Promise<RevenueCatResult<RcList<RevenueCatProduct>>> {
+  return rcFetch(secretKey, listPath(projectId, 'products'));
+}
+
+export async function listEntitlements(
+  secretKey: string,
+  projectId: string,
+): Promise<RevenueCatResult<RcList<RevenueCatEntitlement>>> {
+  return rcFetch(secretKey, listPath(projectId, 'entitlements'));
+}
+
+export async function listOfferings(
+  secretKey: string,
+  projectId: string,
+): Promise<RevenueCatResult<RcList<RevenueCatOffering>>> {
+  return rcFetch(secretKey, listPath(projectId, 'offerings'));
+}
+
+export async function listPackages(
+  secretKey: string,
+  projectId: string,
+  offeringId: string,
+): Promise<RevenueCatResult<RcList<RevenueCatPackage>>> {
+  return rcFetch(
+    secretKey,
+    `/projects/${encodeURIComponent(projectId)}/offerings/${encodeURIComponent(offeringId)}/packages?limit=100`,
+  );
+}
 
 export async function createEntitlement(
   secretKey: string,
   projectId: string,
   body: { lookup_key: string; display_name: string },
-): Promise<RevenueCatResult<{ id: string }>> {
+): Promise<RevenueCatResult<RevenueCatEntitlement>> {
   return rcFetch(secretKey, `/projects/${encodeURIComponent(projectId)}/entitlements`, {
     method: 'POST',
     body,
@@ -141,23 +238,78 @@ export async function createEntitlement(
 export async function createOffering(
   secretKey: string,
   projectId: string,
-  body: { identifier: string; display_name: string },
-): Promise<RevenueCatResult<{ id: string }>> {
+  body: { lookup_key: string; display_name: string },
+): Promise<RevenueCatResult<RevenueCatOffering>> {
   return rcFetch(secretKey, `/projects/${encodeURIComponent(projectId)}/offerings`, {
     method: 'POST',
     body,
   });
 }
 
+/** Make an offering the CURRENT one — RevenueCatUI's PaywallView shows it. */
+export async function setOfferingCurrent(
+  secretKey: string,
+  projectId: string,
+  offeringId: string,
+): Promise<RevenueCatResult<RevenueCatOffering>> {
+  return rcFetch(
+    secretKey,
+    `/projects/${encodeURIComponent(projectId)}/offerings/${encodeURIComponent(offeringId)}`,
+    { method: 'POST', body: { is_current: true } },
+  );
+}
+
 export async function createProduct(
   secretKey: string,
   projectId: string,
   body: { store_identifier: string; app_id: string; type: RevenueCatProductType; display_name?: string },
-): Promise<RevenueCatResult<{ id: string }>> {
+): Promise<RevenueCatResult<RevenueCatProduct>> {
   return rcFetch(secretKey, `/projects/${encodeURIComponent(projectId)}/products`, {
     method: 'POST',
     body,
   });
+}
+
+export async function createPackage(
+  secretKey: string,
+  projectId: string,
+  offeringId: string,
+  body: { lookup_key: string; display_name: string; position?: number },
+): Promise<RevenueCatResult<RevenueCatPackage>> {
+  return rcFetch(
+    secretKey,
+    `/projects/${encodeURIComponent(projectId)}/offerings/${encodeURIComponent(offeringId)}/packages`,
+    { method: 'POST', body },
+  );
+}
+
+export async function attachProductsToEntitlement(
+  secretKey: string,
+  projectId: string,
+  entitlementId: string,
+  productIds: string[],
+): Promise<RevenueCatResult<RevenueCatEntitlement>> {
+  return rcFetch(
+    secretKey,
+    `/projects/${encodeURIComponent(projectId)}/entitlements/${encodeURIComponent(entitlementId)}/actions/attach_products`,
+    { method: 'POST', body: { product_ids: productIds } },
+  );
+}
+
+export async function attachProductsToPackage(
+  secretKey: string,
+  projectId: string,
+  packageId: string,
+  productIds: string[],
+): Promise<RevenueCatResult<RevenueCatPackage>> {
+  return rcFetch(
+    secretKey,
+    `/projects/${encodeURIComponent(projectId)}/packages/${encodeURIComponent(packageId)}/actions/attach_products`,
+    {
+      method: 'POST',
+      body: { products: productIds.map((id) => ({ product_id: id, eligibility_criteria: 'all' })) },
+    },
+  );
 }
 
 // ─── Dashboard deep-link ────────────────────────────────────────────────────────

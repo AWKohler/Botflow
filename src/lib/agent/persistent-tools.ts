@@ -593,6 +593,72 @@ export function getPersistentTools(
               }
             },
           }),
+          getRevenueCatProducts: tool({
+            description:
+              "Read the RevenueCat billing catalog for this project: apps, products, entitlements, and offerings (each with its packages). Call this BEFORE wiring entitlement checks or a paywall so you use real identifiers (entitlement lookup_keys, offering lookup_keys, product store identifiers) instead of guessing — and before createRevenueCatProduct to see what already exists. Requires the user to have finished connecting in the Payments tab (409 status='needs-connect' otherwise; continue building and tell the user to finish setup).",
+            inputSchema: z.object({}),
+            async execute() {
+              return safe(async () => {
+                const res = await fetch(`${appBaseUrl}/api/projects/${projectId}/revenuecat/products`, {
+                  headers: { ...(authHeaders ?? {}) },
+                });
+                const text = await res.text();
+                try {
+                  return JSON.parse(text);
+                } catch {
+                  return { ok: false, error: `revenuecat/products returned non-JSON (HTTP ${res.status}): ${text.slice(0, 500)}` };
+                }
+              });
+            },
+          }),
+          createRevenueCatProduct: tool({
+            description:
+              "Provision the RevenueCat side of an in-app product in ONE idempotent call: ensures the product exists and, when the optional keys are given, wires the whole paywall graph — attaches it to an entitlement, ensures the offering (made current if none is), and ensures + attaches a package inside it. Safe to re-run with the same arguments.\n\n" +
+              "Typical monthly subscription: { storeIdentifier: 'com.<app>.premium.monthly', type: 'subscription', entitlementLookupKey: 'premium', offeringLookupKey: 'default', packageLookupKey: '$rc_monthly' }. Package lookup keys like $rc_monthly/$rc_annual let RevenueCat's paywall templates place them by duration; plain keys also work.\n\n" +
+              "CRITICAL REALITY: this creates the product in REVENUECAT only. The storeIdentifier must EXACTLY match an in-app purchase product the user creates in App Store Connect (paid developer account required), and that product must pass App Review before real purchases work. Tell the user which App Store Connect product ids to create. The entitlement lookup_key is what you check in Swift (customerInfo.entitlements.active[\"<lookupKey>\"]) and what arrives in convex/revenueCatBilling.ts events.\n\n" +
+              "Errors: status='needs-connect' → user hasn't finished the Payments tab; 'No App Store app exists' → the user must add an App Store app to their RevenueCat project first (relay this); multiple apps → pass appId from getRevenueCatProducts.",
+            inputSchema: z.object({
+              storeIdentifier: z
+                .string()
+                .min(1)
+                .describe("Store product id — must exactly match the App Store Connect in-app purchase product id, e.g. com.myapp.premium.monthly"),
+              type: z
+                .enum(["subscription", "one_time", "consumable", "non_consumable", "non_renewing_subscription"])
+                .describe("RevenueCat product type"),
+              displayName: z.string().optional().describe("Human-readable product name shown in RevenueCat"),
+              appId: z.string().optional().describe("RevenueCat app id (only needed when the RC project has multiple App Store apps)"),
+              entitlementLookupKey: z
+                .string()
+                .optional()
+                .describe("Entitlement to attach the product to (created if missing), e.g. 'premium' — the key your Swift code checks"),
+              entitlementDisplayName: z.string().optional(),
+              offeringLookupKey: z
+                .string()
+                .optional()
+                .describe("Offering to ensure (created if missing; made current when none is), e.g. 'default'"),
+              offeringDisplayName: z.string().optional(),
+              packageLookupKey: z
+                .string()
+                .optional()
+                .describe("Package inside the offering to ensure + attach the product to, e.g. '$rc_monthly'. Requires offeringLookupKey."),
+              packageDisplayName: z.string().optional(),
+            }),
+            async execute(args) {
+              return safe(async () => {
+                const res = await fetch(`${appBaseUrl}/api/projects/${projectId}/revenuecat/products`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", ...(authHeaders ?? {}) },
+                  body: JSON.stringify(args),
+                });
+                const text = await res.text();
+                try {
+                  return JSON.parse(text);
+                } catch {
+                  return { ok: false, error: `revenuecat/products returned non-JSON (HTTP ${res.status}): ${text.slice(0, 500)}` };
+                }
+              });
+            },
+          }),
         }
       : {}),
   };
