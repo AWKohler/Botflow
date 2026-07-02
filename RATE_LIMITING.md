@@ -10,8 +10,11 @@ handlers.
 Implemented in [`src/lib/rate-limit.ts`](src/lib/rate-limit.ts), wired in two layers:
 
 - **Edge layer** ([`src/middleware.ts`](src/middleware.ts)): a coarse, tiered
-  limiter over every `/api/*` route, matched top-down to a bucket (first match
-  wins, `global` fallback). Runs before `auth.protect()` so unauth floods are
+  limiter over every `/api/*` route. The route→bucket table lives in
+  [`src/lib/rate-limit-classify.ts`](src/lib/rate-limit-classify.ts) (pure,
+  unit-tested, matched top-down, `global` fallback) and is **method-aware**:
+  GET/HEAD/OPTIONS on split rules go to the read-side bucket, everything else
+  to the mutate-side. Runs before `auth.protect()` so unauth floods are
   rejected cheaply. Identity is namespaced under `edge:` so it never shares a
   Redis key with the in-handler layer.
 - **In-handler layer**: precise `enforce(identifierFor(userId, req), <bucket>)`
@@ -23,6 +26,37 @@ Identity is `user:<id>` for authenticated requests, else `ip:<client-ip>`. Clien
 IP is resolved from **platform-set, non-forgeable headers first**
 (`x-vercel-forwarded-for` → `x-real-ip` → `cf-connecting-ip`), falling back to
 raw `x-forwarded-for` only when none are present.
+
+### Polling buckets (2026-07-01 incident)
+
+The original table classified by path only, so every `/api/projects/**` request
+— including the workspace's background polling GETs — consumed the `write`
+budget (60/min). One open, ready workspace polls preview-state (2s), env
+requests (2.5s), Convex OAuth status (2.5s), Stripe connect requests (2.5s) and
+the file-tree signature (3s) ≈ **120+ req/min**, so a single workspace tab
+soft-banned its own user: `GET /api/projects` and the model-select `PATCH`
+429'd for as long as any tab stayed open (eight tabs made it instant).
+
+Fix, in three parts:
+
+1. **Method-aware classification** — project GETs go to `read`, mutations to
+   `write`; they can no longer starve each other.
+2. **Dedicated polling buckets** — known polling GETs go to `poll`
+   (`RL_POLL`, default 1200/min: lightweight Redis/DB state checks) or
+   `pollHeavy` (`RL_POLL_HEAVY`, default 240/min: the file-tree signature and
+   file-content reads, which execute inside the sandbox). Background polling
+   can never consume interactive allowance.
+3. **Client-side hygiene** —
+   [`use-workspace-poll.ts`](src/components/sandboxed-web-workspace/use-workspace-poll.ts)
+   pauses all polling while the tab is hidden, jitters intervals so windows
+   don't synchronize, never overlaps ticks, and honors `Retry-After` on 429.
+   Model select and the projects page retry once after `Retry-After` instead
+   of showing a dead-end error.
+
+When adding a new client polling loop, use `useWorkspacePoll` and add the
+endpoint's GET to the `poll`/`pollHeavy` rules in `rate-limit-classify.ts` —
+**never** let a poll land in `read`/`write`, and add a classifier test pinning
+it.
 
 ### Operating it
 

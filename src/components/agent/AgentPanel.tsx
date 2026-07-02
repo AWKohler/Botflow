@@ -1676,12 +1676,29 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           <ModelSelector
             value={model}
             onChange={async (next) => {
-              try {
-                const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+              const patchModel = () =>
+                fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
                   method: 'PATCH',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ model: next }),
                 });
+              try {
+                let res = await patchModel();
+                if (res.status === 429) {
+                  // Rate-limited (e.g. bursty background traffic) — this is
+                  // transient, so say so and retry once after Retry-After
+                  // instead of a dead-end "failed".
+                  const retryAfter = Math.min(
+                    Math.max(Number(res.headers.get('Retry-After')) || 5, 1),
+                    30,
+                  );
+                  toast({
+                    title: 'Too many requests',
+                    description: `Retrying in ${retryAfter}s…`,
+                  });
+                  await new Promise((r) => setTimeout(r, retryAfter * 1000));
+                  res = await patchModel();
+                }
                 if (res.ok) setModel(next);
                 else toast({ title: 'Failed to change model' });
               } catch {
