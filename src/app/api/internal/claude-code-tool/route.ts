@@ -151,10 +151,10 @@ export async function POST(req: Request) {
           if (template) {
             const seeded = await seedSandboxIfEmpty(binding.projectId, template);
             if (seeded) {
-              const { materializeFrontendEnv, materializeSwiftConvexConfig } =
+              const { materializeFrontendEnv, materializeSwiftBuildConfig } =
                 await import("@/lib/sandbox-env");
               const materialize =
-                template === "swiftConvex" ? materializeSwiftConvexConfig : materializeFrontendEnv;
+                template === "swiftConvex" ? materializeSwiftBuildConfig : materializeFrontendEnv;
               await materialize(binding.projectId).catch(() => undefined);
               zipBlob = await buildConvexDeployZip(binding.projectId);
             }

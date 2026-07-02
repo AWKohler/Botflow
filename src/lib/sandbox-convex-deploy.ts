@@ -111,11 +111,11 @@ export async function deployConvexFromSandbox(params: {
             // Regenerate the platform-correct config so the re-created sandbox
             // keeps its backend wiring: Swift gets ConvexConfig.swift, web gets
             // .env (frontend vars + VITE_CONVEX_URL).
-            const { materializeFrontendEnv, materializeSwiftConvexConfig } =
+            const { materializeFrontendEnv, materializeSwiftBuildConfig } =
               await import("./sandbox-env");
             const regenerate =
               project?.platform === "swift"
-                ? materializeSwiftConvexConfig
+                ? materializeSwiftBuildConfig
                 : materializeFrontendEnv;
             await regenerate(projectId).catch(() => undefined);
             zipBlob = await buildConvexDeployZip(projectId);

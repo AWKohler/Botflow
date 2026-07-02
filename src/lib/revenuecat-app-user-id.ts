@@ -21,6 +21,15 @@ export function buildNamespacedAppUserId(projectId: string, appUserId: string): 
   return `${PREFIX}${projectId}${SEP}${appUserId}`;
 }
 
+/**
+ * The exact `bfp_<projectId>__` prefix a project's app must prepend to its own
+ * user id. Single source of truth for the agent tool result, the prompt, and
+ * the generated RevenueCatConfig.swift — they must never drift.
+ */
+export function namespacedAppUserIdPrefix(projectId: string): string {
+  return `${PREFIX}${projectId}${SEP}`;
+}
+
 /** Extract the Botflow projectId from a namespaced App User ID, or null. */
 export function parseProjectIdFromAppUserId(appUserId: string | null | undefined): string | null {
   if (!appUserId || !appUserId.startsWith(PREFIX)) return null;

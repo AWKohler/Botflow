@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
-import { materializeSwiftConvexConfig } from "@/lib/sandbox-env";
+import { materializeSwiftBuildConfig } from "@/lib/sandbox-env";
 import { createDeviceBuild } from "@/lib/sim-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { recordSwiftDeviceBuild } from "@/lib/swift-device-build-store";
@@ -47,7 +47,7 @@ export async function POST(
   }
 
   try {
-    await materializeSwiftConvexConfig(projectId);
+    await materializeSwiftBuildConfig(projectId);
     const tarball = await tarSandboxProject(projectId, { excludeConvex: true });
     const build = await createDeviceBuild(tarball);
     await recordSwiftDeviceBuild(build.buildId, userId, projectId);

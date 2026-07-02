@@ -63,7 +63,11 @@ export async function GET(
     if (!result.ok) connectionError = result.error;
   }
 
-  const origin = new URL(req.url).origin;
+  // Prefer the canonical public origin — behind a proxy/rewrite the request
+  // URL's origin can differ, and the user pastes this into RevenueCat.
+  const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || new URL(req.url).origin;
+
+  const scaffold = project.revenuecatScaffoldState ?? null;
 
   return NextResponse.json({
     ok: true,
@@ -75,8 +79,17 @@ export async function GET(
     checklist: {
       keysProvided: Boolean(secretKey && identity?.rcPublicSdkKey && rcProjectId),
       connectionValid,
-      appleKeyProvided: Boolean(identity?.ascPrivateKeyP8 && identity?.ascKeyId && identity?.ascIssuerId),
+      // Test Store discovered + sandbox key cached → simulator test purchases
+      // work. When false, the user enables Test Store in the RC dashboard and
+      // re-runs setup.
+      testStoreReady: Boolean(identity?.rcTestStoreSdkKey),
+      // The Convex-side scaffold (receiver files + env + http route) actually
+      // landed — without it, entitlement events can't reach the app's backend.
+      backendReady: scaffold?.ok === true,
     },
+    // Last scaffold attempt, so the tab can explain *why* backendReady is
+    // false and offer a retry (re-POST /revenuecat/initialize re-scaffolds).
+    scaffold,
     connectionError,
     // Webhook details to paste into the RevenueCat dashboard.
     webhook: {

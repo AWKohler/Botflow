@@ -2,18 +2,16 @@
  * POST /api/projects/[id]/revenuecat/connect
  *
  * Called by the payments tab's setup wizard (NOT a modal). Receives the user's
- * pasted RevenueCat keys (and optionally their Apple App Store Connect API key),
- * validates the secret key against the RevenueCat API, stores everything
- * encrypted in user_revenuecat_identity (reused across the user's projects), and
- * flips this project to 'connected'.
+ * pasted RevenueCat keys, validates the secret key against the RevenueCat API,
+ * stores everything encrypted in user_revenuecat_identity (reused across the
+ * user's projects), and flips this project to 'connected'.
  *
  * Replaces Stripe's OAuth callback — here the user supplies credentials directly
  * because RevenueCat has no self-service OAuth for platforms.
  *
- * Body: {
- *   rcSecretKey, rcPublicSdkKey, rcProjectId,
- *   ascIssuerId?, ascKeyId?, ascPrivateKeyP8?
- * }
+ * Body: { rcSecretKey, rcPublicSdkKey, rcProjectId }
+ * (The wizard no longer collects an App Store Connect .p8 — ASC automation
+ * will reuse the Apple Developer credential from Settings instead.)
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
@@ -71,9 +69,6 @@ export async function POST(
     rcSecretKey?: string;
     rcPublicSdkKey?: string;
     rcProjectId?: string;
-    ascIssuerId?: string;
-    ascKeyId?: string;
-    ascPrivateKeyP8?: string;
   };
   try {
     body = await req.json();
@@ -126,6 +121,27 @@ export async function POST(
     .from(userRevenueCatIdentity)
     .where(eq(userRevenueCatIdentity.userId, userId))
     .limit(1);
+
+  // One RevenueCat identity per Botflow user: pasting a different RC project
+  // here silently repoints every other connected project's management calls
+  // and dashboard links. Allowed (the user may genuinely be switching), but
+  // must be surfaced — never silent.
+  let identitySwitchWarning: string | null = null;
+  if (existing?.rcProjectId && existing.rcProjectId !== rcProjectId) {
+    const others = await db
+      .select({ id: projects.id, name: projects.name })
+      .from(projects)
+      .where(and(eq(projects.userId, userId), eq(projects.revenuecatStatus, 'connected')));
+    const affected = others.filter((p) => p.id !== projectId);
+    if (affected.length > 0) {
+      const names = affected.map((p) => p.name).slice(0, 3).join(', ');
+      identitySwitchWarning =
+        `Botflow stores one RevenueCat connection per account. Connecting this RevenueCat project ` +
+        `also repoints your ${affected.length} other connected project${affected.length === 1 ? '' : 's'} ` +
+        `(${names}${affected.length > 3 ? ', …' : ''}) to it. If those apps sell products under the ` +
+        `previous RevenueCat project, reconnect them or move their products over.`;
+    }
+  }
   const rcInboundWebhookSecret =
     existing?.rcInboundWebhookSecret ?? `bfrcin_${randomBytes(24).toString('hex')}`;
   // Indexed digest so the inbound webhook can resolve the owner by O(1) lookup.
@@ -141,11 +157,6 @@ export async function POST(
     rcProjectId,
     rcInboundWebhookSecret,
     rcInboundWebhookSecretDigest,
-    ...(body.ascIssuerId ? { ascIssuerId: body.ascIssuerId.trim() } : {}),
-    ...(body.ascKeyId ? { ascKeyId: body.ascKeyId.trim() } : {}),
-    ...(body.ascPrivateKeyP8
-      ? { ascPrivateKeyP8: encryptSecret(body.ascPrivateKeyP8) }
-      : {}),
     connectedAt: existing?.connectedAt ?? now,
     updatedAt: now,
   };
@@ -185,6 +196,14 @@ export async function POST(
     } catch (err) {
       console.error('[revenuecat/connect] background scaffold threw:', err);
     }
+    // Bake the freshly-stored public SDK key into RevenueCatConfig.swift now,
+    // so the sandbox reflects it immediately (builds re-materialize anyway).
+    try {
+      const { materializeSwiftRevenueCatConfig } = await import('@/lib/sandbox-env');
+      await materializeSwiftRevenueCatConfig(projectId);
+    } catch (err) {
+      console.error('[revenuecat/connect] RevenueCatConfig.swift write failed:', err);
+    }
   });
 
   return NextResponse.json({
@@ -192,5 +211,6 @@ export async function POST(
     status: 'connected',
     rcProjectId,
     projectName: validation.data.name,
+    ...(identitySwitchWarning ? { warning: identitySwitchWarning } : {}),
   });
 }

@@ -450,6 +450,8 @@ FILES WRITTEN (WRITE THESE EXACTLY AS PROVIDED IN THE files ARRAY):
                            Must exist or auth will silently fail.
   convex/auth.ts         — Configures providers. Export: auth, signIn, signOut, store.
   convex/http.ts         — Mounts auth's OAuth callback/sign-out HTTP routes.
+                           If it also mounts /revenuecat/webhook, KEEP that
+                           route — it receives the platform's payment events.
   convex/schema.ts       — Spreads authTables so built-in auth tables exist in DB.
   convex/users.ts        — viewer query: returns the current user doc (or null).
   src/lib/botflowAuth.ts — Helpers so OAuth sign-in works from the preview iframe
@@ -688,6 +690,8 @@ WHAT YOU MUST DO AFTER setupAuth RETURNS:
      auth.config.ts, http.ts, schema.ts, users.ts) with the write tool.
      NOTE: schema.ts now spreads authTables. If the project already had a
      schema, MERGE your existing tables into the new one (keep ...authTables).
+     NOTE: if the returned http.ts also mounts /revenuecat/webhook, KEEP that
+     route exactly as provided — it receives the platform's payment events.
   2. cd convex && pnpm add @convex-dev/auth @auth/core   (deps for the backend)
   3. Run convexDeploy. The sign-in page and auth functions are NOT live until you do.
   4. That is it for enabling sign-in — do NOT edit ConvexConfig.swift (platform-
@@ -858,9 +862,33 @@ export async function setupConvexAuth(
     .set({ authConfigured: true, updatedAt: new Date() })
     .where(eq(projects.id, projectId));
 
+  const files = buildAuthBoilerplate(platform);
+
+  // The boilerplate REPLACES convex/http.ts. If the RevenueCat receiver is
+  // already scaffolded into this project, its /revenuecat/webhook route must
+  // survive the replacement — otherwise the platform's signed deliveries 404
+  // and paid entitlement events are dropped after the retry budget. Wire the
+  // route into the fresh template before handing it to the agent. Keyed on the
+  // receiver file actually existing (not revenuecatStatus) so we never emit an
+  // import of a module that isn't there.
+  try {
+    const { sandboxReadFile } = await import("@/lib/vercel-sandbox");
+    const receiver = await sandboxReadFile(projectId, "/convex/revenueCatWebhook.ts").catch(() => null);
+    if (receiver?.content) {
+      const httpFile = files.find((f) => f.path === "convex/http.ts");
+      if (httpFile) {
+        const { wireRevenueCatRoute } = await import("@/lib/revenuecat-scaffold");
+        const wired = wireRevenueCatRoute(httpFile.content);
+        if (wired) httpFile.content = wired;
+      }
+    }
+  } catch (err) {
+    console.error("[convex-auth-setup] RevenueCat route preservation failed:", err);
+  }
+
   return {
     ok: true,
-    files: buildAuthBoilerplate(platform),
+    files,
     packagesToInstall: ["@convex-dev/auth", "@auth/core"],
     context:
       platform === "swift"

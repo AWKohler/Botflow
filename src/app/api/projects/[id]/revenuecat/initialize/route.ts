@@ -20,7 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import { getDb } from '@/db';
 import { projects, userRevenueCatIdentity } from '@/db/schema';
@@ -35,19 +35,26 @@ export const maxDuration = 30;
 async function setStatus(
   projectId: string,
   status: 'connecting' | 'connected',
-  ensureWebhookSecret: string | null,
-): Promise<string> {
+): Promise<void> {
   const db = getDb();
-  const webhookSecret = ensureWebhookSecret ?? `bfrc_${randomBytes(32).toString('hex')}`;
+  const webhookSecret = `bfrc_${randomBytes(32).toString('hex')}`;
   await db
     .update(projects)
     .set({
       revenuecatStatus: status,
-      revenuecatWebhookSecret: webhookSecret,
+      // COALESCE keeps this race-safe: a stale project row read moments before
+      // connect committed must never rotate a secret already handed to Convex.
+      revenuecatWebhookSecret: sql`COALESCE(${projects.revenuecatWebhookSecret}, ${webhookSecret})`,
       updatedAt: new Date(),
     })
-    .where(eq(projects.id, projectId));
-  return webhookSecret;
+    .where(
+      status === 'connecting'
+        ? // Never downgrade: if connect just flipped the project to
+          // 'connected', a concurrent initialize must not strand it back in
+          // 'connecting' (which the webhook router treats as not-deliverable).
+          and(eq(projects.id, projectId), ne(projects.revenuecatStatus, 'connected'))
+        : eq(projects.id, projectId),
+    );
 }
 
 export async function POST(
@@ -110,7 +117,7 @@ export async function POST(
   );
 
   if (hasLinkedAccount && identity) {
-    await setStatus(projectId, 'connected', project.revenuecatWebhookSecret);
+    await setStatus(projectId, 'connected');
     // Carry the user's RC project id onto this project for deep-links / proxy.
     await db
       .update(projects)
@@ -124,6 +131,14 @@ export async function POST(
       } catch (err) {
         console.error('[revenuecat/initialize] background scaffold threw:', err);
       }
+      // Bake the linked account's public SDK key into RevenueCatConfig.swift so
+      // the agent's very next build configures Purchases with the real key.
+      try {
+        const { materializeSwiftRevenueCatConfig } = await import('@/lib/sandbox-env');
+        await materializeSwiftRevenueCatConfig(projectId);
+      } catch (err) {
+        console.error('[revenuecat/initialize] RevenueCatConfig.swift write failed:', err);
+      }
     });
     return NextResponse.json({
       ok: true,
@@ -134,7 +149,7 @@ export async function POST(
   }
 
   // Not linked → open the tab with the setup wizard; don't block.
-  await setStatus(projectId, 'connecting', project.revenuecatWebhookSecret);
+  await setStatus(projectId, 'connecting');
   return NextResponse.json({
     ok: true,
     status: 'needs-connect',

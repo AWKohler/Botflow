@@ -7,11 +7,12 @@
  * user_revenuecat_identity.rc_inbound_webhook_secret). We then:
  *
  *   1. Authenticate by matching the Authorization header to a Botflow user.
- *   2. Claim the event by INSERTing into revenuecat_webhook_events. PK conflict
- *      = already processed → 200 (RevenueCat retries up to 5×, reusing the id).
- *   3. Normalize to a small canonical entitlement vocabulary.
- *   4. Fan out to each of the user's RevenueCat-connected projects' Convex HTTP
- *      endpoint, HMAC-signed with the project's revenuecat_webhook_secret.
+ *   2. Normalize to a small canonical entitlement vocabulary.
+ *   3. Route by the namespaced app_user_id (or broadcast) and claim one
+ *      revenuecat_webhook_deliveries row per (event, project) — the unique
+ *      index makes RevenueCat's retries (up to 5×, same id) idempotent.
+ *   4. Deliver to each target project's Convex HTTP endpoint, HMAC-signed with
+ *      the project's revenuecat_webhook_secret; the cron retries failures.
  *
  * Mirrors src/app/api/webhooks/stripe/route.ts. Returns 401 only when the
  * Authorization header doesn't match (so a misconfigured webhook is visible);
@@ -19,7 +20,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, ne } from 'drizzle-orm';
 import { getDb } from '@/db';
 import {
   projects,
@@ -312,6 +313,21 @@ export async function POST(req: NextRequest) {
         'projects. Set a project-scoped RevenueCat App User ID (bfp_<projectId>__…) to route to one.',
       );
     }
+  }
+
+  // First production event ratchets the project(s) out of 'sandbox' — the tab
+  // otherwise shows "sandbox" forever, since nothing else ever wrote this.
+  if (canonical.data.environment === 'PRODUCTION' && targets.length > 0) {
+    await db
+      .update(projects)
+      .set({ revenuecatEnvironment: 'production', updatedAt: new Date() })
+      .where(
+        and(
+          inArray(projects.id, targets.map((p) => p.id)),
+          ne(projects.revenuecatEnvironment, 'production'),
+        ),
+      )
+      .catch((err) => console.error('[revenuecat/webhook] environment ratchet failed:', err));
   }
 
   const payload = JSON.stringify(canonical);
