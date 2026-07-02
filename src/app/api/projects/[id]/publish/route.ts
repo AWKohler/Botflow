@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import { requireProjectAccess } from '@/lib/project-access';
 import { createHash } from 'crypto';
 import { extname, basename } from 'path';
 import { getUserTierAndLimits } from '@/lib/tier';
@@ -50,13 +51,8 @@ function computeHash(base64Content: string, filename: string): string {
 }
 
 async function getProjectWithAuth(userId: string, projectId: string) {
-  const db = getDb();
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-  return project ?? null;
+  const access = await requireProjectAccess(projectId, userId);
+  return access?.project ?? null;
 }
 
 // POST — Publish / update deployment

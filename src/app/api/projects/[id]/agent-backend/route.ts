@@ -18,6 +18,7 @@ import { randomUUID } from "node:crypto";
 
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { resolveModelId } from "@/lib/agent/models";
 import { normalizeProjectPlatform } from "@/lib/project-platform";
@@ -47,12 +48,11 @@ async function authorized(projectId: string) {
   const { userId } = await auth();
   if (!userId) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
 
-  const db = getDb();
-  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-  if (!project || project.userId !== userId) {
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) {
     return { error: NextResponse.json({ error: "Not found" }, { status: 404 }) };
   }
-  return { userId, project };
+  return { userId, project: access.project };
 }
 
 export async function GET(
