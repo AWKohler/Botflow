@@ -634,6 +634,31 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // --- AbortController for tool calls ---
   const toolAbortRef = useRef<AbortController | null>(null);
 
+  // --- Auto-continue (self-healing turn completion) ---
+  // A turn can end without endTurn for reasons that are NOT the user's
+  // problem: the model emitted a text-only step mid-work (nothing for the
+  // resubmit helper to fire on), the platform killed a long stream, or a
+  // stale resubmit hit the Claude Code replay guard. Instead of stranding
+  // the user at the "may not have finished" banner, we silently nudge the
+  // agent to continue — hard-capped per user message so a genuinely stuck
+  // agent can't loop and burn credits.
+  const MAX_AUTO_CONTINUES = 3;
+  const autoContinuesUsedRef = useRef(0);
+  // True after the user hits Stop — suppresses auto-continue until the next
+  // real user message (stopping means "I want it to stop", not "continue").
+  const userStoppedRef = useRef(false);
+  // Late-bound so useChat's onError (defined below, before sendMessage
+  // exists) can trigger a continue.
+  const maybeAutoContinueRef = useRef<() => boolean>(() => false);
+
+  // True when the LAST agent request was actually served by
+  // /api/agent/claude-code (i.e. it didn't 412-fall-back to /api/agent).
+  // Claude Code turns are single-shot — the bridge runs the whole agentic
+  // loop inside one POST — so the client must NEVER auto-resubmit them: a
+  // resubmit carries a trailing assistant message, which the route rejects
+  // with 409 ("Last message must be a user message") and the agent stops.
+  const lastTurnServedByClaudeCodeRef = useRef(false);
+
   // --- Ref that the transport's prepare/fetch closures read at request time.
   //     Holds the project's persisted agent_backend so we route every turn to
   //     the right endpoint. Updates whenever the user (or load) changes the
@@ -650,6 +675,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     body: { projectId, platform },
     prepareSendMessagesRequest: ({ body, messages, api }) => {
       const useClaudeCode = agentBackendRef.current === 'claude-code';
+      // Assume the intended endpoint serves this turn; the fetch wrapper
+      // flips this off if a 412 falls the request back to /api/agent.
+      lastTurnServedByClaudeCodeRef.current = useClaudeCode;
 
       // Scope to the current segment. Segments now only break on explicit
       // Reset (no longer on agent switch), so most of the time this is a
@@ -692,6 +720,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       // 412 from /api/agent/claude-code = "creds went stale, fall back".
       // Rare — the persisted agent_backend should match what's available.
       if (res.status === 412 && url.includes('/api/agent/claude-code')) {
+        // This turn is now Botflow-served — its tool loop needs resubmits.
+        lastTurnServedByClaudeCodeRef.current = false;
         return fetch(url.replace('/api/agent/claude-code', '/api/agent'), init);
       }
       return res;
@@ -775,6 +805,18 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       }
 
       const msg = error.message || 'An error occurred. Please try again.';
+
+      // A stale automatic resubmission hit the Claude Code replay guard
+      // (409 "Last message must be a user message"). This is a protocol
+      // hiccup, not a model/provider failure — recover silently by nudging
+      // the session to continue (it resumes via the persisted sessionId)
+      // instead of stranding the user at an error banner.
+      if (msg.includes('Last message must be a user message')) {
+        if (!endTurnCalledRef.current && !maybeAutoContinueRef.current()) {
+          setShowCompletionWarning(true);
+        }
+        return;
+      }
 
       // Check for structured limit_reached payload first
       try {
@@ -862,6 +904,14 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     // into re-POSTing — and /api/agent/claude-code replays the last user
     // prompt on every POST, so the turn looped until the user intervened.
     sendAutomaticallyWhen: ({ messages }) => {
+      // Claude Code turns are single-shot: the bridge runs the whole agentic
+      // loop inside one POST and every tool part arrives already complete, so
+      // the helper below would re-POST after EVERY turn that did real work.
+      // Worse, when a turn dies early (bridge crash, maxDuration kill) the
+      // synthetic endTurn marker never arrives and the resubmit hits the
+      // route's replay guard — 409, agent stops. Never auto-resubmit a turn
+      // that Claude Code actually served (fallback-served turns still may).
+      if (lastTurnServedByClaudeCodeRef.current) return false;
       if (!lastAssistantMessageIsCompleteWithToolCalls({ messages })) return false;
       const last = messages[messages.length - 1];
       if (!last || last.role !== 'assistant') return false;
@@ -891,6 +941,29 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   sendMessageRef.current = sendMessage;
   const endTurnCalledRef = useRef(endTurnCalled);
   endTurnCalledRef.current = endTurnCalled;
+  const agentErrorRef = useRef(agentError);
+  agentErrorRef.current = agentError;
+  const limitPayloadRef = useRef(limitPayload);
+  limitPayloadRef.current = limitPayload;
+
+  // Silently nudge the agent to finish an interrupted turn. Returns false when
+  // continuing would be wrong (user pressed Stop) or the per-message cap is
+  // spent — the caller falls back to the visible completion warning.
+  // The [system-note] prefix renders as a subtle chip instead of a user bubble.
+  const maybeAutoContinue = useCallback((): boolean => {
+    if (userStoppedRef.current) return false;
+    if (autoContinuesUsedRef.current >= MAX_AUTO_CONTINUES) return false;
+    autoContinuesUsedRef.current += 1;
+    setShowCompletionWarning(false);
+    setIsBusy(true);
+    toolAbortRef.current = new AbortController();
+    const nudge = agentBackendRef.current === 'claude-code'
+      ? '[system-note] Automatic continuation: your previous turn was interrupted before it finished. Continue from where you left off; if the task is already complete, give a brief summary of what was done.'
+      : '[system-note] Automatic continuation: the previous response ended without calling endTurn. Continue the remaining work; if everything is already complete, call endTurn now with a brief summary.';
+    sendMessageRef.current({ text: nudge });
+    return true;
+  }, [MAX_AUTO_CONTINUES]);
+  maybeAutoContinueRef.current = maybeAutoContinue;
 
   // --- Debounced busy state: goes true immediately on activity, only goes false after a delay ---
   useEffect(() => {
@@ -940,26 +1013,38 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     }
   }, [isBusy, isFirstTurn]);
 
-  // --- "Agent may not have finished" warning ---
-  // Only show when busy state truly settles to false (debounced) and endTurn wasn't called
+  // --- Interrupted-turn recovery ---
+  // When busy truly settles to false (debounced) and endTurn wasn't called,
+  // the turn was cut short (text-only step, truncated stream, killed route).
+  // Queued user messages take precedence — they continue the conversation
+  // anyway. Otherwise try a capped silent auto-continue; only when that's
+  // exhausted (or the user pressed Stop / an error banner is showing) fall
+  // back to the visible "Agent may not have finished" warning.
   const prevBusyRef = useRef(false);
   useEffect(() => {
     // Detect transition from busy → not busy (the real end of agent work)
     if (prevBusyRef.current && !isBusy) {
-      if (!endTurnCalledRef.current && messagesRef.current.some(m => m.role === 'assistant')) {
-        setShowCompletionWarning(true);
-      }
-      // Process message queue
       if (messageQueueRef.current.length > 0) {
+        // Process message queue
         const [next, ...rest] = messageQueueRef.current;
         setMessageQueue(rest);
+        autoContinuesUsedRef.current = 0;
         setTimeout(() => {
           sendMessageRef.current({ text: next });
         }, 300);
+      } else if (
+        !endTurnCalledRef.current
+        && !agentErrorRef.current
+        && !limitPayloadRef.current
+        && messagesRef.current.some(m => m.role === 'assistant')
+      ) {
+        if (!maybeAutoContinue()) {
+          setShowCompletionWarning(true);
+        }
       }
     }
     prevBusyRef.current = isBusy;
-  }, [isBusy]); // Only trigger on actual busy state transitions
+  }, [isBusy, maybeAutoContinue]); // Only trigger on actual busy state transitions
 
   // Track first response — only check when message count changes
   useEffect(() => {
@@ -1350,6 +1435,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     setEndTurnCalled(false);
     setShowCompletionWarning(false);
     setIsBusy(true);
+    // Fresh user message → fresh auto-continue budget, and any prior Stop no
+    // longer applies.
+    userStoppedRef.current = false;
+    autoContinuesUsedRef.current = 0;
     toolAbortRef.current = new AbortController();
     sendMessage({ text: input.trim(), files: fileParts.length > 0 ? fileParts : undefined });
     setInput('');
@@ -1361,6 +1450,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     setShowCompletionWarning(false);
     setEndTurnCalled(false);
     setIsBusy(true);
+    // Manual re-prompt = explicit user intent to continue: clear the Stop
+    // latch and refill the auto-continue budget.
+    userStoppedRef.current = false;
+    autoContinuesUsedRef.current = 0;
     toolAbortRef.current = new AbortController();
     sendMessage({ text: 'You stopped without calling endTurn. Please continue or call endTurn if done.' });
   }, [sendMessage]);
@@ -2214,6 +2307,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                     'flex size-6 items-center justify-center rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors duration-150 ease-out'
                   )}
                   onClick={() => {
+                    // Explicit user stop — auto-continue must not undo it.
+                    userStoppedRef.current = true;
                     stop();
                     if (toolAbortRef.current) {
                       toolAbortRef.current.abort();

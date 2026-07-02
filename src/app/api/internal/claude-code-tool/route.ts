@@ -43,8 +43,10 @@ import {
   stopSandboxDevServer,
 } from "@/lib/workspace-control";
 import {
+  formatBuildWaitOutcome,
   getSimulatorStatus,
   requestSimulatorAction,
+  waitForSimulatorBuild,
 } from "@/lib/swift-sim-control";
 import {
   abortMerge,
@@ -253,11 +255,19 @@ export async function POST(req: Request) {
       if (project.platform !== "swift") {
         return NextResponse.json({ ok: false, content: "start_simulator is only available on Swift projects." });
       }
-      await requestSimulatorAction(binding.projectId, "start");
+      const { requestedAt } = await requestSimulatorAction(binding.projectId, "start");
+      // Block until the workspace's build completes and hand the diagnostics
+      // back as the tool result (mirrors convex_deploy). 270s < the route's
+      // 300s maxDuration so we return a structured timeout instead of the
+      // platform killing the request under the bridge's fetch.
+      const outcome = await waitForSimulatorBuild(binding.projectId, {
+        requestedAt,
+        timeoutMs: 270_000,
+      });
+      const report = formatBuildWaitOutcome(outcome);
       return NextResponse.json({
-        ok: true,
-        content:
-          "Simulator start requested. The user's workspace will build the project and begin streaming within a few seconds (if their tab is open).",
+        ok: report.ok,
+        content: JSON.stringify(report),
       });
     }
 

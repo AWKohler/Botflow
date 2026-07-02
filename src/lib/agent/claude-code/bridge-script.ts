@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "23";
+export const BRIDGE_SCRIPT_VERSION = "24";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -438,8 +438,9 @@ function buildCustomTools(customTools, oauthProviderIds) {
     tools.push(
       tool(
         "start_simulator",
-        "Build the project and run it on the iOS simulator in the user's workspace. The simulator does NOT run while you work (no HMR — compiling is expensive), so call this ONCE at the END of your turn, after your changes are complete and you believe the project builds. " +
-        "The user's open workspace picks the request up within a few seconds and starts streaming; if their workspace tab is closed the request simply expires. Do NOT call this mid-work or when the build is known-broken.",
+        "Build the project and run it on the iOS simulator in the user's workspace. The simulator does NOT run while you work (no HMR — compiling is expensive), so call this ONCE at the END of your turn, after your changes are complete. " +
+        "This tool BLOCKS until the build finishes (several minutes for large projects) and returns the build outcome: on failure you get the compiler errors/warnings — fix them and call start_simulator again; on success you get any warnings and the app launches on the simulator. " +
+        "If the user's workspace tab is closed, it returns status='workspace-closed' within ~30 seconds. Do NOT call this mid-work or when the build is known-broken.",
         {},
         makeHostToolHandler("start_simulator"),
       ),
@@ -461,7 +462,7 @@ function buildCustomTools(customTools, oauthProviderIds) {
     tools.push(
       tool(
         "get_simulator_status",
-        "Check whether the iOS simulator is currently running/streaming in the user's workspace. Returns state ('stopped' | 'starting' | 'building' | 'installing' | 'live' | 'failed'), the device model, and any pending start/stop request. Cheap — call before start_simulator if unsure.",
+        "Check whether the iOS simulator is currently running/streaming in the user's workspace. Returns state ('stopped' | 'starting' | 'building' | 'installing' | 'live' | 'failed'), the device model, any pending start/stop request, and lastBuild (the most recent build's outcome + diagnostics — useful if start_simulator timed out while the build was still running). Cheap — call before start_simulator if unsure.",
         {},
         makeHostToolHandler("get_simulator_status"),
       ),
