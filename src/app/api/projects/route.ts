@@ -8,6 +8,7 @@ import { countUserProjects } from '@/lib/usage';
 import { limitReachedResponse } from '@/lib/plan-response';
 import { normalizeProjectPlatform, normalizeBackendType, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
 import { isModelDisabled, modelDisabledReason } from '@/lib/agent/models';
+import { chooseProviderForNewProject } from '@/lib/sandbox-provider';
 
 export async function GET() {
   try {
@@ -97,6 +98,10 @@ export async function POST(request: NextRequest) {
         : resolvedPlatform === 'sandboxed-web'
           ? (resolvedBackendType === 'none' ? 'vite' : 'viteConvex')
           : null;
+    // Free-tier owners get the self-hosted sandbox backend (when the rollout
+    // switch is on); paid tiers stay on Vercel Sandbox. Sticky for the life
+    // of the project — the sandbox's files live on whichever backend this picks.
+    const sandboxProvider = await chooseProviderForNewProject(userId);
     const [newProject] = await db
       .insert(projects)
       .values({
@@ -105,6 +110,7 @@ export async function POST(request: NextRequest) {
         platform: resolvedPlatform,
         backendType: resolvedBackendType,
         sandboxTemplate,
+        sandboxProvider,
         model:
           model === 'gpt-5.4'
             ? 'gpt-5.4'

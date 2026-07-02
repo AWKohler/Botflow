@@ -33,6 +33,7 @@
     "@react-three/postprocessing": "^3.0.4",
     "@sanity/client": "^7.22.0",
     "@sanity/image-url": "^2.1.1",
+    "@sandbox-host/sdk": "file:vendor/sandbox-host-sdk-0.1.0.tgz",
     "@sparticuz/chromium": "^143.0.0",
     "@stripe/connect-js": "^3.4.5",
     "@stripe/react-connect-js": "^3.4.3",

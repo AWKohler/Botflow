@@ -83,6 +83,12 @@ export const projects = pgTable('projects', {
   // empty after a true 404 from Vercel. 'swift' | 'viteConvex' | 'vite' | null.
   // Null means "don't auto-reseed" (preserves prior behavior for legacy rows).
   sandboxTemplate: text('sandbox_template'),
+  // Which sandbox backend hosts this project's persistent sandbox:
+  // 'vercel' (Vercel Sandbox) | 'sandbox-host' (self-hosted Firecracker
+  // microVM service). Stamped at project creation — free-tier owners get
+  // 'sandbox-host' when the service is configured; existing rows default to
+  // 'vercel' until moved by scripts/migrate-free-projects-to-sandbox-host.mjs.
+  sandboxProvider: text('sandbox_provider').notNull().default('vercel'),
   // Last time anything ran a command against this project's Vercel sandbox.
   // Drives the reaper's "authoring idle" clock. Distinct from lastOpened, which
   // tracks UI session opens (cheaper to update).

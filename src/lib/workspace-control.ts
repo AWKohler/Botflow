@@ -13,6 +13,7 @@
  * `vercel-sandbox.ts` helpers.
  */
 import { getOrCreatePersistentSandbox, sandboxBash } from "@/lib/vercel-sandbox";
+import { getProjectSandboxProvider } from "@/lib/sandbox-provider";
 import { materializeFrontendEnv } from "@/lib/sandbox-env";
 import { getRedis } from "@/lib/redis";
 import { sanitizeOutput } from "@/lib/output-sanitizer";
@@ -102,6 +103,16 @@ export async function verifyDevServerReachable(
   state: DevServerState | null,
 ): Promise<DevServerState | null> {
   if (!state || !state.running || !state.previewUrl) return state;
+
+  // sandbox-host preview routes are tailnet-only for now — from production
+  // this fetch can never succeed, so probing would only stall the polling
+  // route by the 3s timeout. Dead dev servers on those projects are still
+  // caught by the in-VM reconciler in isSandboxDevServerRunning.
+  try {
+    if ((await getProjectSandboxProvider(projectId)) === "sandbox-host") return state;
+  } catch {
+    return state;
+  }
 
   try {
     const redis = getRedis();
@@ -264,22 +275,46 @@ export async function startSandboxDevServer(
       env: { HOST: "0.0.0.0" },
     });
 
-    // Poll the *public* Vercel-forwarded URL — only return success when the
-    // iframe will actually work. Capture upstream headers on success so the
-    // workspace UI can surface them for diagnosing iframe-blocking directives.
+    // Poll for readiness. On Vercel, hit the *public* forwarded URL — only
+    // return success when the iframe will actually work — and capture upstream
+    // headers so the workspace UI can diagnose iframe-blocking directives.
+    // sandbox-host preview routes are tailnet-only for now (unreachable from
+    // production servers), so probe vite from inside the VM instead.
+    const provider = await getProjectSandboxProvider(projectId);
+    const probeOnce = async (): Promise<{
+      status: number;
+      headers?: Record<string, string>;
+    }> => {
+      if (provider === "sandbox-host") {
+        const res = await sandbox.runCommand({
+          cmd: "sh",
+          args: [
+            "-c",
+            `curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:${port}/`,
+          ],
+          cwd: "/vercel/sandbox",
+        });
+        const status = parseInt((await res.stdout()).trim(), 10);
+        // curl prints 000 while the port isn't accepting connections yet.
+        return { status: Number.isFinite(status) && status >= 100 ? status : 599 };
+      }
+      const probe = await fetch(previewUrl, {
+        method: "GET",
+        redirect: "manual",
+        signal: AbortSignal.timeout(3_000),
+      });
+      const headers: Record<string, string> = {};
+      probe.headers.forEach((v, k) => { headers[k] = v; });
+      return { status: probe.status, headers };
+    };
+
     const deadline = Date.now() + 45_000;
     let lastStatus = 0;
     while (Date.now() < deadline) {
       try {
-        const probe = await fetch(previewUrl, {
-          method: "GET",
-          redirect: "manual",
-          signal: AbortSignal.timeout(3_000),
-        });
-        lastStatus = probe.status;
-        if (probe.status < 500) {
-          const responseHeaders: Record<string, string> = {};
-          probe.headers.forEach((v, k) => { responseHeaders[k] = v; });
+        const { status, headers } = await probeOnce();
+        lastStatus = status;
+        if (status < 500) {
           // Publish to Redis so the workspace's poll picks up the running
           // state without needing client-side coordination. This is what
           // makes the agent's startDevServer call materialize the preview
@@ -295,7 +330,7 @@ export async function startSandboxDevServer(
             message: `Dev server started on ${previewUrl} (port ${port}).`,
             previewUrl,
             port,
-            responseHeaders,
+            responseHeaders: headers,
           };
         }
       } catch {

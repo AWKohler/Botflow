@@ -1,7 +1,24 @@
+/**
+ * Persistent per-project sandbox wrapper.
+ *
+ * Despite the filename, this module fronts TWO backends behind one call
+ * surface: Vercel Sandbox (paid tiers) and the self-hosted sandbox-host
+ * service (free tier) via its drop-in `@sandbox-host/sdk` fork. The backend
+ * is resolved per project from projects.sandbox_provider — see
+ * src/lib/sandbox-provider.ts. Both SDKs expose the same instance methods,
+ * so everything below the acquire/create/delete dispatch treats them
+ * uniformly as `Sandbox`.
+ */
 import { APIError, Sandbox } from "@vercel/sandbox";
+import { APIError as HostAPIError, Sandbox as HostSandbox } from "@sandbox-host/sdk";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
+import {
+  getProjectSandboxProvider,
+  getSandboxHostCredentials,
+  type SandboxProvider,
+} from "@/lib/sandbox-provider";
 
 const DEFAULT_RUNTIME = "node22";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
@@ -39,7 +56,12 @@ export type SandboxTemplate = keyof typeof TEMPLATE_REPOS;
 // (swift-convex-template@feat/auth merged to main, so its pin is removed.)
 const TEMPLATE_BRANCHES: Partial<Record<SandboxTemplate, string>> = {};
 
-function assertSandboxAuth(): void {
+function assertSandboxAuth(provider: SandboxProvider): void {
+  if (provider === "sandbox-host") {
+    getSandboxHostCredentials(); // throws with a precise message when unset
+    return;
+  }
+
   const hasOidcToken = Boolean(process.env.VERCEL_OIDC_TOKEN);
   const hasAccessTokenAuth =
     Boolean(process.env.VERCEL_TOKEN) &&
@@ -89,17 +111,30 @@ export function getSandboxName(projectId: string): string {
 export class SandboxRateLimitError extends Error {
   retryAfterSecs: number;
   constructor(retryAfterSecs: number, cause?: unknown) {
-    super(`Vercel Sandbox rate-limited; retry after ${retryAfterSecs}s`);
+    super(`Sandbox API rate-limited; retry after ${retryAfterSecs}s`);
     this.name = "SandboxRateLimitError";
     this.retryAfterSecs = retryAfterSecs;
     if (cause !== undefined) (this as { cause?: unknown }).cause = cause;
   }
 }
 
-function parseRetryAfter(err: APIError<unknown>): number {
+// Each SDK throws its own APIError class (the host SDK is a fork, not a
+// subclass), so a provider-agnostic probe keeps the retry/404 logic below
+// identical for both backends.
+function apiErrorResponse(err: unknown): Response | undefined {
+  if (err instanceof APIError || err instanceof HostAPIError) return err.response;
+  return undefined;
+}
+
+function apiErrorStatus(err: unknown): number | undefined {
+  return apiErrorResponse(err)?.status;
+}
+
+function parseRetryAfter(err: unknown): number {
+  const headers = apiErrorResponse(err)?.headers;
   const hdr =
-    err.response?.headers?.get?.("retry-after") ||
-    err.response?.headers?.get?.("Retry-After") ||
+    headers?.get?.("retry-after") ||
+    headers?.get?.("Retry-After") ||
     "";
   const n = parseInt(hdr, 10);
   if (Number.isFinite(n) && n > 0) return Math.min(n, 300);
@@ -122,8 +157,8 @@ export async function withSandboxRetry<T>(
       return await fn();
     } catch (err) {
       lastErr = err;
-      if (!(err instanceof APIError)) throw err;
-      const status = err.response.status;
+      const status = apiErrorStatus(err);
+      if (status === undefined) throw err;
       if (status === 429) {
         const retryAfter = parseRetryAfter(err);
         if (attempt === max - 1) throw new SandboxRateLimitError(retryAfter, err);
@@ -196,62 +231,107 @@ async function acquireSandbox(projectId: string): Promise<Sandbox> {
   return p;
 }
 
-async function doAcquireSandbox(projectId: string): Promise<Sandbox> {
-  assertSandboxAuth();
-
-  const name = getSandboxName(projectId);
-  const creds = getSandboxCredentials();
-
-  // 1. Try to resume existing sandbox.
-  try {
-    return await withSandboxRetry(() => Sandbox.get({ name, ...creds }), { label: "Sandbox.get" });
-  } catch (error) {
-    if (error instanceof APIError) {
-      const status = error.response.status;
-      // 404 / 400 = truly gone; fall through to create. Any other status:
-      // surface (withSandboxRetry has already exhausted retries for 429/5xx).
-      if (status !== 404 && status !== 400) throw error;
-      try {
-        const body = await error.response.text();
-        console.error(`Sandbox.get failed (${status}): ${body}`);
-      } catch { /* body already consumed */ }
-    } else {
-      throw error;
-    }
+// Resume an existing sandbox by name on the project's backend.
+async function getSandboxByName(
+  provider: SandboxProvider,
+  name: string,
+): Promise<Sandbox> {
+  if (provider === "sandbox-host") {
+    const creds = getSandboxHostCredentials();
+    const sandbox = await withSandboxRetry(
+      () => HostSandbox.get({ name, ...creds }),
+      { label: "HostSandbox.get" },
+    );
+    return sandbox as unknown as Sandbox;
   }
+  const creds = getSandboxCredentials();
+  return withSandboxRetry(() => Sandbox.get({ name, ...creds }), { label: "Sandbox.get" });
+}
 
-  // 2. Create a fresh sandbox with auto-snapshot retention configured.
-  //    Auto-snapshots happen on session stop (Vercel-side default for
-  //    persistent sandboxes); snapshotExpiration caps how long they retain
-  //    storage for an idle project. The `keepLastSnapshots` knob (count: 1)
-  //    is set at runtime via an `as` cast so we still pass it through to
-  //    newer SDK versions even though the local typings predate the field.
-  const sandbox = await withSandboxRetry(
-    () => Sandbox.create({
-      ...creds,
-      name,
-      runtime: DEFAULT_RUNTIME,
-      timeout: DEFAULT_TIMEOUT_MS,
-      ports: SANDBOX_PORTS,
-      snapshotExpiration: SNAPSHOT_EXPIRATION_MS,
-      ...({ keepLastSnapshots: { count: 1, deleteEvicted: true } } as object),
-    } as Parameters<typeof Sandbox.create>[0]),
-    { label: "Sandbox.create" },
-  ).catch((error) => {
-    if (error instanceof APIError) {
+// Create a fresh sandbox with auto-snapshot retention configured.
+// Auto-snapshots happen on session stop (both backends default persistent
+// sandboxes to snapshot-on-stop); snapshotExpiration caps how long they
+// retain storage for an idle project.
+async function createSandboxForProject(
+  provider: SandboxProvider,
+  name: string,
+  projectId: string,
+): Promise<Sandbox> {
+  try {
+    if (provider === "sandbox-host") {
+      const creds = getSandboxHostCredentials();
+      const sandbox = await withSandboxRetry(
+        () =>
+          HostSandbox.create({
+            ...creds,
+            name,
+            runtime: DEFAULT_RUNTIME,
+            timeout: DEFAULT_TIMEOUT_MS,
+            ports: SANDBOX_PORTS,
+            snapshotExpiration: SNAPSHOT_EXPIRATION_MS,
+            keepLastSnapshots: { count: 1, deleteEvicted: true },
+          }),
+        { label: "HostSandbox.create" },
+      );
+      return sandbox as unknown as Sandbox;
+    }
+
+    // Vercel: the `keepLastSnapshots` knob is passed via an `as` cast so we
+    // still send it to newer SDK versions even though the local typings
+    // predate the field.
+    const creds = getSandboxCredentials();
+    return await withSandboxRetry(
+      () => Sandbox.create({
+        ...creds,
+        name,
+        runtime: DEFAULT_RUNTIME,
+        timeout: DEFAULT_TIMEOUT_MS,
+        ports: SANDBOX_PORTS,
+        snapshotExpiration: SNAPSHOT_EXPIRATION_MS,
+        ...({ keepLastSnapshots: { count: 1, deleteEvicted: true } } as object),
+      } as Parameters<typeof Sandbox.create>[0]),
+      { label: "Sandbox.create" },
+    );
+  } catch (error) {
+    const status = apiErrorStatus(error);
+    if (status !== undefined) {
       const errAny = error as unknown as { text?: string; json?: unknown };
       const bodyText =
         errAny.text || (errAny.json ? JSON.stringify(errAny.json) : "");
       console.error(
-        `Sandbox.create failed (${error.response.status}) for project ${projectId}:\n` +
+        `Sandbox.create failed (${status}) for project ${projectId} [${provider}]:\n` +
           `  body: ${bodyText || "<empty>"}`,
       );
       throw new Error(
-        `Failed to create sandbox (${error.response.status}): ${bodyText || error.message}`,
+        `Failed to create sandbox (${status}): ${bodyText || (error as Error).message}`,
       );
     }
     throw error;
-  });
+  }
+}
+
+async function doAcquireSandbox(projectId: string): Promise<Sandbox> {
+  const provider = await getProjectSandboxProvider(projectId);
+  assertSandboxAuth(provider);
+
+  const name = getSandboxName(projectId);
+
+  // 1. Try to resume existing sandbox.
+  try {
+    return await getSandboxByName(provider, name);
+  } catch (error) {
+    const status = apiErrorStatus(error);
+    // 404 / 400 = truly gone; fall through to create. Any other status:
+    // surface (withSandboxRetry has already exhausted retries for 429/5xx).
+    if (status === undefined || (status !== 404 && status !== 400)) throw error;
+    try {
+      const body = await apiErrorResponse(error)?.text();
+      console.error(`Sandbox.get failed (${status}): ${body}`);
+    } catch { /* body already consumed */ }
+  }
+
+  // 2. Create a fresh sandbox.
+  const sandbox = await createSandboxForProject(provider, name, projectId);
 
   // 3. After a true 404 → create, the sandbox is empty. Auto-reseed using the
   //    project's stored template so callers don't silently get a blank VM.
@@ -294,11 +374,25 @@ export async function getOrCreatePersistentSandbox(projectId: string) {
       session?: {
         stoppedAt?: Date;
         expiresAt?: Date;
+        startedAt?: Date;
+        timeout?: number;
         extendTimeout?: (ms: number) => Promise<void>;
       };
       extendTimeout?: (ms: number) => Promise<void>;
     }).session;
-    const expiresAt: Date | undefined = session?.expiresAt;
+    // Vercel's SDK exposes session.expiresAt directly. The sandbox-host fork
+    // doesn't, but its Session has startedAt + timeout (total lifetime since
+    // start; extends are additive and capped at the deployment max, so at the
+    // cap the extend below 400s and is swallowed — the session then rolls
+    // over on its next acquire).
+    let expiresAt: Date | undefined = session?.expiresAt;
+    if (
+      !expiresAt &&
+      session?.startedAt instanceof Date &&
+      typeof session.timeout === "number"
+    ) {
+      expiresAt = new Date(session.startedAt.getTime() + session.timeout);
+    }
     const extend =
       session?.extendTimeout?.bind(session) ??
       (sandbox as unknown as { extendTimeout?: (ms: number) => Promise<void> })
@@ -481,13 +575,22 @@ export async function runPersistentSandboxSmokeTest(
  * a 404 from the SDK is treated as success.
  */
 export async function deletePersistentSandbox(projectId: string): Promise<void> {
-  assertSandboxAuth();
+  const provider = await getProjectSandboxProvider(projectId);
+  assertSandboxAuth(provider);
   const name = getSandboxName(projectId);
-  const creds = getSandboxCredentials();
   try {
-    const sandbox = await withSandboxRetry(() => Sandbox.get({ name, ...creds }), {
-      label: "Sandbox.get(reaper)",
-    });
+    // On sandbox-host, resume=false avoids booting a VM just to delete it
+    // (a plain get auto-resumes stopped sandboxes).
+    const sandbox =
+      provider === "sandbox-host"
+        ? ((await withSandboxRetry(
+            () => HostSandbox.get({ name, resume: false, ...getSandboxHostCredentials() }),
+            { label: "HostSandbox.get(reaper)" },
+          )) as unknown as Sandbox)
+        : await withSandboxRetry(
+            () => Sandbox.get({ name, ...getSandboxCredentials() }),
+            { label: "Sandbox.get(reaper)" },
+          );
     const s = sandbox as unknown as { delete?: () => Promise<void>; stop?: () => Promise<void> };
     if (typeof s.delete === "function") {
       await withSandboxRetry(() => s.delete!(), { label: "Sandbox.delete" });
@@ -510,7 +613,8 @@ export async function deletePersistentSandbox(projectId: string): Promise<void> 
       }
     } catch { /* best-effort */ }
   } catch (error) {
-    if (error instanceof APIError && (error.response.status === 404 || error.response.status === 400)) {
+    const status = apiErrorStatus(error);
+    if (status === 404 || status === 400) {
       return; // already gone
     }
     throw error;
