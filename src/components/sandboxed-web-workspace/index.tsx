@@ -23,6 +23,7 @@
  */
 import { Input } from "@/components/ui/input";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useWorkspacePoll, rateLimitDelayMs } from "./use-workspace-poll";
 import dynamic from "next/dynamic";
 import { useToast } from "@/components/ui/toast";
 import { CodeEditor } from "@/components/workspace/code-editor";
@@ -261,46 +262,31 @@ export function SandboxedWebWorkspace({
   // FileTree) and `selectedFile` are untouched, so reconciling never collapses
   // folders or steals the user's selection.
   const lastTreeSignatureRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (sandboxStatus !== "ready") return;
-    let cancelled = false;
+  useWorkspacePoll(async (signal) => {
+    // NOTE: must send a *value* (`=1`). Vercel's runtime drops value-less
+    // query params, so a bare `?signature` arrives as no param at all and
+    // the route falls through to returning the full listing.
+    const res = await fetch(
+      `/api/projects/${projectId}/sandbox/files?signature=1`,
+      { cache: "no-store", signal },
+    );
+    if (res.status === 429) return rateLimitDelayMs(res);
+    if (!res.ok) return;
+    const { signature } = (await res.json()) as { signature: string };
+    // Empty signature == probe hiccup; leave the baseline alone.
+    if (!signature || signal.aborted) return;
 
-    const poll = async () => {
-      try {
-        // NOTE: must send a *value* (`=1`). Vercel's runtime drops value-less
-        // query params, so a bare `?signature` arrives as no param at all and
-        // the route falls through to returning the full listing.
-        const res = await fetch(
-          `/api/projects/${projectId}/sandbox/files?signature=1`,
-          { cache: "no-store" },
-        );
-        if (!res.ok || cancelled) return;
-        const { signature } = (await res.json()) as { signature: string };
-        // Empty signature == probe hiccup; leave the baseline alone.
-        if (!signature || cancelled) return;
-
-        if (lastTreeSignatureRef.current === null) {
-          // First successful probe. Establish the baseline and reconcile once
-          // to close the gap between boot's snapshot and this signature (a
-          // change in that window would otherwise go unnoticed until the next).
-          lastTreeSignatureRef.current = signature;
-          await refreshFiles();
-        } else if (signature !== lastTreeSignatureRef.current) {
-          lastTreeSignatureRef.current = signature;
-          await refreshFiles();
-        }
-      } catch {
-        // Network blips are fine; the next tick catches up.
-      }
-    };
-
-    void poll();
-    const timer = setInterval(poll, 3000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [projectId, sandboxStatus, refreshFiles]);
+    if (lastTreeSignatureRef.current === null) {
+      // First successful probe. Establish the baseline and reconcile once
+      // to close the gap between boot's snapshot and this signature (a
+      // change in that window would otherwise go unnoticed until the next).
+      lastTreeSignatureRef.current = signature;
+      await refreshFiles();
+    } else if (signature !== lastTreeSignatureRef.current) {
+      lastTreeSignatureRef.current = signature;
+      await refreshFiles();
+    }
+  }, 3000, sandboxStatus === "ready");
 
   // Boot the sandbox: ensure session → seed if empty → load file tree.
   // Extracted so the retry button on the error banner can re-invoke it.
@@ -560,84 +546,70 @@ export function SandboxedWebWorkspace({
   // server but the user's iframe would still be empty.
   const lastRefreshAtRef = useRef<number | null>(null);
   const lastDevServerStateRef = useRef<{ running: boolean; previewUrl: string | null; updatedAt: number } | null>(null);
-  useEffect(() => {
-    if (sandboxStatus !== "ready") return;
-    let cancelled = false;
+  useWorkspacePoll(async (signal) => {
+    const res = await fetch(`/api/projects/${projectId}/sandbox/preview-state`, {
+      cache: "no-store",
+      signal,
+    });
+    if (res.status === 429) return rateLimitDelayMs(res);
+    if (!res.ok) return;
+    const data = (await res.json()) as {
+      refreshAt: number | null;
+      devServer: { running: boolean; previewUrl: string | null; port: number | null; updatedAt: number } | null;
+    };
+    if (signal.aborted) return;
 
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/projects/${projectId}/sandbox/preview-state`, {
-          cache: "no-store",
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          refreshAt: number | null;
-          devServer: { running: boolean; previewUrl: string | null; port: number | null; updatedAt: number } | null;
+    // ── Refresh signal ───────────────────────────────────────────
+    const nextRefresh = data.refreshAt;
+    if (lastRefreshAtRef.current === null) {
+      // First poll establishes baseline so a stale signal from before
+      // the user opened the workspace doesn't trigger an immediate reload.
+      lastRefreshAtRef.current = nextRefresh;
+    } else if (nextRefresh && nextRefresh !== lastRefreshAtRef.current) {
+      lastRefreshAtRef.current = nextRefresh;
+      setPreviewReloadKey((k) => k + 1);
+    }
+
+    // ── Dev server state ──────────────────────────────────────────
+    // Mirror Redis truth into local UI state. Only react when the
+    // updatedAt timestamp advances OR when the running/URL pair drifts
+    // from what we last applied — this prevents false-positive remounts
+    // on every poll while still catching genuine changes.
+    const ds = data.devServer;
+    const prev = lastDevServerStateRef.current;
+    const ourDevServerRunning = isDevServerRunningRef.current;
+    if (ds) {
+      const advanced = prev === null || ds.updatedAt > prev.updatedAt;
+      const drifted =
+        ds.running !== ourDevServerRunning ||
+        (ds.running && ds.previewUrl && previews[0]?.baseUrl !== ds.previewUrl);
+      if (advanced || drifted) {
+        lastDevServerStateRef.current = {
+          running: ds.running,
+          previewUrl: ds.previewUrl,
+          updatedAt: ds.updatedAt,
         };
-        if (cancelled) return;
-
-        // ── Refresh signal ───────────────────────────────────────────
-        const nextRefresh = data.refreshAt;
-        if (lastRefreshAtRef.current === null) {
-          // First poll establishes baseline so a stale signal from before
-          // the user opened the workspace doesn't trigger an immediate reload.
-          lastRefreshAtRef.current = nextRefresh;
-        } else if (nextRefresh && nextRefresh !== lastRefreshAtRef.current) {
-          lastRefreshAtRef.current = nextRefresh;
+        if (ds.running && ds.previewUrl && ds.port !== null) {
+          setPreviews([{ port: ds.port, ready: true, baseUrl: ds.previewUrl }]);
+          setActivePreviewIndex(0);
+          setIsDevServerRunning(true);
           setPreviewReloadKey((k) => k + 1);
+          // If the agent started the server while the user was on Code
+          // tab, switch them to Preview so they actually see the result.
+          if (currentView !== "preview") setCurrentView("preview");
+        } else {
+          // Stopped — clear the pane to a "stopped" empty state.
+          setPreviews([]);
+          setIsDevServerRunning(false);
         }
-
-        // ── Dev server state ──────────────────────────────────────────
-        // Mirror Redis truth into local UI state. Only react when the
-        // updatedAt timestamp advances OR when the running/URL pair drifts
-        // from what we last applied — this prevents false-positive remounts
-        // on every poll while still catching genuine changes.
-        const ds = data.devServer;
-        const prev = lastDevServerStateRef.current;
-        const ourDevServerRunning = isDevServerRunningRef.current;
-        if (ds) {
-          const advanced = prev === null || ds.updatedAt > prev.updatedAt;
-          const drifted =
-            ds.running !== ourDevServerRunning ||
-            (ds.running && ds.previewUrl && previews[0]?.baseUrl !== ds.previewUrl);
-          if (advanced || drifted) {
-            lastDevServerStateRef.current = {
-              running: ds.running,
-              previewUrl: ds.previewUrl,
-              updatedAt: ds.updatedAt,
-            };
-            if (ds.running && ds.previewUrl && ds.port !== null) {
-              setPreviews([{ port: ds.port, ready: true, baseUrl: ds.previewUrl }]);
-              setActivePreviewIndex(0);
-              setIsDevServerRunning(true);
-              setPreviewReloadKey((k) => k + 1);
-              // If the agent started the server while the user was on Code
-              // tab, switch them to Preview so they actually see the result.
-              if (currentView !== "preview") setCurrentView("preview");
-            } else {
-              // Stopped — clear the pane to a "stopped" empty state.
-              setPreviews([]);
-              setIsDevServerRunning(false);
-            }
-          }
-        } else if (prev !== null) {
-          // State key disappeared (e.g., TTL expired). Don't tear down a
-          // working preview — just forget our baseline so any future change
-          // re-triggers reconciliation.
-          lastDevServerStateRef.current = null;
-        }
-      } catch {
-        // Network blips are fine; we'll catch up on the next tick.
       }
-    };
-
-    void poll();
-    const timer = setInterval(poll, 2000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [projectId, currentView, sandboxStatus, previews]);
+    } else if (prev !== null) {
+      // State key disappeared (e.g., TTL expired). Don't tear down a
+      // working preview — just forget our baseline so any future change
+      // re-triggers reconciliation.
+      lastDevServerStateRef.current = null;
+    }
+  }, 2000, sandboxStatus === "ready");
 
   // Stable ref so the polling effect can read the latest isDevServerRunning
   // without needing to re-fire when that state flips.
@@ -653,76 +625,47 @@ export function SandboxedWebWorkspace({
   // If the user runs setupAuth then setupOAuthProvider in the same session,
   // hasAuth would still be false. Polling regardless is cheap (one indexed
   // DB read every 2.5s returning null most of the time).
-  useEffect(() => {
-    if (!hasBackend || sandboxStatus !== "ready") return;
-    let cancelled = false;
-
-    const poll = async () => {
-      try {
-        const res = await fetch(
-          `/api/projects/${projectId}/convex/oauth-provider-status`,
-          { cache: "no-store" },
-        );
-        if (!res.ok || cancelled) return;
-        const data = await res.json() as {
-          ok: boolean;
-          pending: { id: string; provider: string; convexSiteUrl: string | null } | null;
-        };
-        if (!cancelled && data.ok) {
-          setPendingOAuthRequest(data.pending);
-        }
-      } catch {
-        // Network blip — retry on next tick
-      }
+  useWorkspacePoll(async (signal) => {
+    const res = await fetch(
+      `/api/projects/${projectId}/convex/oauth-provider-status`,
+      { cache: "no-store", signal },
+    );
+    if (res.status === 429) return rateLimitDelayMs(res);
+    if (!res.ok) return;
+    const data = await res.json() as {
+      ok: boolean;
+      pending: { id: string; provider: string; convexSiteUrl: string | null } | null;
     };
-
-    void poll();
-    const timer = setInterval(poll, 2500);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [projectId, hasBackend, sandboxStatus]);
+    if (!signal.aborted && data.ok) {
+      setPendingOAuthRequest(data.pending);
+    }
+  }, 2500, hasBackend && sandboxStatus === "ready");
 
   // ── Env-var request polling ──────────────────────────────────────────
   // When the agent calls requestEnvVar, it creates a pending request in the
   // DB. We poll for it and show the EnvVarModal when one is found. Not gated
   // on hasBackend — client (Vite) env vars work on frontend-only projects.
-  useEffect(() => {
-    if (sandboxStatus !== "ready") return;
-    let cancelled = false;
-
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/projects/${projectId}/env/request`, {
-          cache: "no-store",
-        });
-        if (!res.ok || cancelled) return;
-        const data = await res.json() as {
-          ok: boolean;
-          pending: {
-            id: string;
-            target: "client" | "server";
-            key: string;
-            message: string | null;
-            isSecret: boolean;
-          } | null;
-        };
-        if (!cancelled && data.ok) {
-          setPendingEnvVarRequest(data.pending);
-        }
-      } catch {
-        // Network blip — retry on next tick
-      }
+  useWorkspacePoll(async (signal) => {
+    const res = await fetch(`/api/projects/${projectId}/env/request`, {
+      cache: "no-store",
+      signal,
+    });
+    if (res.status === 429) return rateLimitDelayMs(res);
+    if (!res.ok) return;
+    const data = await res.json() as {
+      ok: boolean;
+      pending: {
+        id: string;
+        target: "client" | "server";
+        key: string;
+        message: string | null;
+        isSecret: boolean;
+      } | null;
     };
-
-    void poll();
-    const timer = setInterval(poll, 2500);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [projectId, sandboxStatus]);
+    if (!signal.aborted && data.ok) {
+      setPendingEnvVarRequest(data.pending);
+    }
+  }, 2500, sandboxStatus === "ready");
 
   // ── Agent-stop → dismiss pending OAuth request ────────────────────────
   // When the user clicks X while setupOAuthProvider is polling, we need to:
@@ -769,37 +712,28 @@ export function SandboxedWebWorkspace({
   // server-side. On the OAuth path the user lands on this workspace with
   // ?stripe_connect=success and the effect below catches it — but on the
   // 'already-connected' path (user previously linked Stripe) there's no
-  // navigation, just a tool result. Poll the project endpoint every 4s
+  // navigation, just a tool result. Poll the project endpoint every 10s
   // while stripe is off so the tab appears without a manual refresh.
-  // Once enabled, the poller stops (effect dep guards it).
-  useEffect(() => {
-    if (stripeEnabled || sandboxStatus !== "ready") return;
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
-          cache: "no-store",
-        });
-        if (!res.ok || cancelled) return;
-        const proj = await res.json();
-        if (cancelled) return;
-        if (proj?.stripeEnabled === true) {
-          setStripeEnabled(true);
-          if (proj.stripePaymentMode === "live" || proj.stripePaymentMode === "test") {
-            setStripePaymentMode(proj.stripePaymentMode);
-          }
-        }
-      } catch {
-        /* network blip — retry on next tick */
+  // Once enabled, the poller stops (the enabled flag below guards it).
+  // 10s (not 2-4s like the others): this GET hits the generic project
+  // endpoint, which shares the interactive 'read' rate-limit budget rather
+  // than a poll bucket — and it watches a rare one-shot flip, so slow is fine.
+  useWorkspacePoll(async (signal) => {
+    const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+      cache: "no-store",
+      signal,
+    });
+    if (res.status === 429) return rateLimitDelayMs(res);
+    if (!res.ok) return;
+    const proj = await res.json();
+    if (signal.aborted) return;
+    if (proj?.stripeEnabled === true) {
+      setStripeEnabled(true);
+      if (proj.stripePaymentMode === "live" || proj.stripePaymentMode === "test") {
+        setStripePaymentMode(proj.stripePaymentMode);
       }
-    };
-    void poll();
-    const timer = setInterval(poll, 4000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [stripeEnabled, sandboxStatus, projectId]);
+    }
+  }, 10_000, !stripeEnabled && sandboxStatus === "ready");
 
   // ── Stripe checkout iframe handoff ───────────────────────────────────
   // Stripe Checkout (and the Connect dashboard) refuse to load in an iframe.
@@ -883,40 +817,25 @@ export function SandboxedWebWorkspace({
   // tool creates a pending row; we render the Connect modal when one exists.
   // Stops polling once the request resolves (server flips status), at which
   // point the response shape returns pending=null and we clear the modal.
-  useEffect(() => {
-    if (!hasBackend || sandboxStatus !== "ready") return;
-    let cancelled = false;
-
-    const poll = async () => {
-      try {
-        const res = await fetch(
-          `/api/projects/${projectId}/stripe/connect-request`,
-          { cache: "no-store" },
-        );
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as {
-          ok: boolean;
-          pending: {
-            id: string;
-            mode: "test" | "live";
-            authorizeUrl: string;
-          } | null;
-        };
-        if (!cancelled && data.ok) {
-          setPendingStripeRequest(data.pending);
-        }
-      } catch {
-        /* network blip — retry next tick */
-      }
+  useWorkspacePoll(async (signal) => {
+    const res = await fetch(
+      `/api/projects/${projectId}/stripe/connect-request`,
+      { cache: "no-store", signal },
+    );
+    if (res.status === 429) return rateLimitDelayMs(res);
+    if (!res.ok) return;
+    const data = (await res.json()) as {
+      ok: boolean;
+      pending: {
+        id: string;
+        mode: "test" | "live";
+        authorizeUrl: string;
+      } | null;
     };
-
-    void poll();
-    const timer = setInterval(poll, 2500);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [projectId, hasBackend, sandboxStatus]);
+    if (!signal.aborted && data.ok) {
+      setPendingStripeRequest(data.pending);
+    }
+  }, 2500, hasBackend && sandboxStatus === "ready");
 
   // ── Agent working state (from AgentPanel's custom event) ─────────────
   // isInitialBuild latches on while the agent's FIRST turn runs and releases

@@ -19,6 +19,8 @@ import {
   clearSimulatorDesired,
   getSimulatorDesired,
   publishSimulatorActual,
+  publishSimulatorBuild,
+  sanitizeBuildDiagnostics,
   type SimActualStatus,
 } from "@/lib/swift-sim-control";
 
@@ -82,17 +84,49 @@ export async function POST(
   const body = (await req.json().catch(() => null)) as {
     state?: string;
     deviceModel?: string | null;
+    /** Build outcome publish — consumed by the agent's blocking
+     *  startSimulator tool (see swift-sim-control.ts). */
+    build?: {
+      buildId?: string;
+      state?: string;
+      diagnostics?: unknown;
+      finalized?: boolean;
+      exitCode?: number | null;
+      message?: string | null;
+    };
   } | null;
-  if (!body || !ACTUAL_STATES.includes(body.state as SimActualStatus)) {
+  const hasState = Boolean(body && ACTUAL_STATES.includes(body.state as SimActualStatus));
+  const BUILD_STATES = ["started", "succeeded", "failed"] as const;
+  const hasBuild = Boolean(
+    body?.build
+      && typeof body.build.buildId === "string"
+      && body.build.buildId.length > 0
+      && body.build.buildId.length <= 64
+      && BUILD_STATES.includes(body.build.state as (typeof BUILD_STATES)[number]),
+  );
+  if (!body || (!hasState && !hasBuild)) {
     return NextResponse.json(
-      { error: `state must be one of: ${ACTUAL_STATES.join(", ")}` },
+      { error: `state must be one of: ${ACTUAL_STATES.join(", ")} (and/or a valid build object)` },
       { status: 400 },
     );
   }
 
-  await publishSimulatorActual(id, {
-    state: body.state as SimActualStatus,
-    deviceModel: typeof body.deviceModel === "string" ? body.deviceModel : null,
-  });
+  if (hasState) {
+    await publishSimulatorActual(id, {
+      state: body.state as SimActualStatus,
+      deviceModel: typeof body.deviceModel === "string" ? body.deviceModel : null,
+    });
+  }
+  if (hasBuild && body.build) {
+    await publishSimulatorBuild(id, {
+      buildId: body.build.buildId as string,
+      state: body.build.state as (typeof BUILD_STATES)[number],
+      diagnostics: sanitizeBuildDiagnostics(body.build.diagnostics),
+      finalized: body.build.finalized === true,
+      exitCode: typeof body.build.exitCode === "number" ? body.build.exitCode : null,
+      message:
+        typeof body.build.message === "string" ? body.build.message.slice(0, 1000) : null,
+    });
+  }
   return NextResponse.json({ ok: true });
 }

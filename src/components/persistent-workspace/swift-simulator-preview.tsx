@@ -100,6 +100,11 @@ interface SwiftSimulatorPreviewProps {
   onStop?: () => void;
   /** Pop the PIP back to full-screen Preview tab. Pip-only. */
   onExpand?: () => void;
+  /** The agent requested a start while this preview is mounted but its
+   * session is dead (ended/error) — the component can't re-provision itself,
+   * so it asks the workspace shell to remount it (fresh session → fresh
+   * build). */
+  onRestartRequested?: () => void;
   /** Last-seen simulator screenshots per device family. Shown blurred inside
    * the device screen while the session boots; de-blurs on the first frame. */
   screenshots?: { iphone?: string | null; ipad?: string | null };
@@ -128,6 +133,7 @@ export function SwiftSimulatorPreview({
   onOpenFile,
   onStop,
   onExpand,
+  onRestartRequested,
   screenshots,
 }: SwiftSimulatorPreviewProps) {
   const isPip = mode === "pip";
@@ -174,6 +180,52 @@ export function SwiftSimulatorPreview({
   // Orientation the user just asked for via the toggle; compared against what
   // the host reports back so we can tell the user when a rotate didn't apply.
   const pendingOrientationRef = useRef<OrientationUI | null>(null);
+
+  // ── Build-result publishing (agent's blocking startSimulator reads this) ──
+  // One buildId per xcodebuild attempt; the diagnostics/finalized refs mirror
+  // the equivalent state so publish callbacks always see the latest set
+  // without re-subscribing the WS handlers.
+  const buildIdRef = useRef<string | null>(null);
+  const buildStateRef = useRef<"started" | "succeeded" | "failed" | null>(null);
+  const diagnosticsRef = useRef<SimBuildDiagnostic[]>([]);
+  const diagnosticsFinalizedRef = useRef(false);
+
+  const publishBuild = useCallback(
+    (extra?: { exitCode?: number | null; message?: string | null }) => {
+      const buildId = buildIdRef.current;
+      const state = buildStateRef.current;
+      if (!buildId || !state) return;
+      // Cap client-side (errors first) so a diagnostic-heavy build can't
+      // produce an oversized body; the server re-caps defensively. Snippets
+      // are stripped — the agent only needs file:line + message.
+      const capped = [...diagnosticsRef.current]
+        .sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "error" ? -1 : 1))
+        .slice(0, 80)
+        .map((d) => ({
+          severity: d.severity,
+          file: d.file,
+          line: d.line,
+          column: d.column,
+          message: d.message.slice(0, 600),
+        }));
+      // NO keepalive: it caps the body at 64KB (diagnostics can exceed it) and
+      // a plain fetch survives component unmount anyway.
+      void fetch(`/api/projects/${projectId}/swift-preview/state`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          build: {
+            buildId,
+            state,
+            diagnostics: capped,
+            finalized: diagnosticsFinalizedRef.current,
+            ...(extra ?? {}),
+          },
+        }),
+      }).catch(() => {});
+    },
+    [projectId],
+  );
 
   // ── Last-seen screenshot overlay + capture ───────────────────────────────
   // While the session boots, the previous run's screenshot (if any) covers the
@@ -474,12 +526,25 @@ export function SwiftSimulatorPreview({
           setDiagnostics([]);
           setDiagnosticsFinalized(false);
           setIssuesOpen(false);
+          // Fresh build attempt → fresh id + reset publish mirrors.
+          buildIdRef.current = crypto.randomUUID();
+          buildStateRef.current = "started";
+          diagnosticsRef.current = [];
+          diagnosticsFinalizedRef.current = false;
+          publishBuild();
           setPill({ kind: "building", startedAt: buildStartedAtRef.current });
           break;
         case "succeeded":
+          buildStateRef.current = "succeeded";
+          publishBuild({ message: status.message ?? null });
           setPill({ kind: "installing" });
           break;
         case "failed":
+          buildStateRef.current = "failed";
+          publishBuild({
+            exitCode: status.exitCode ?? null,
+            message: status.message ?? "Build failed",
+          });
           setPill({
             kind: "failed",
             message: status.message ?? "Build failed",
@@ -501,7 +566,7 @@ export function SwiftSimulatorPreview({
           break;
       }
     },
-    [isPip, onExpand, toast],
+    [isPip, onExpand, toast, publishBuild],
   );
 
   const appendLog = useCallback((line: string, stream: SimLogStream) => {
@@ -514,32 +579,41 @@ export function SwiftSimulatorPreview({
 
   const handleBuildDiagnostics = useCallback(
     (diags: SimBuildDiagnostic[], final: boolean) => {
+      const dedupe = (prev: SimBuildDiagnostic[]): SimBuildDiagnostic[] => {
+        const key = (d: SimBuildDiagnostic): string =>
+          `${d.file}:${d.line}:${d.column}:${d.severity}:${d.message}`;
+        const seen = new Set(prev.map(key));
+        const merged = [...prev];
+        for (const d of diags) {
+          if (!seen.has(key(d))) {
+            seen.add(key(d));
+            merged.push(d);
+          }
+        }
+        return merged;
+      };
       if (final) {
         // Authoritative xcresult set: replace whatever live ones we had.
         setDiagnostics(diags);
         setDiagnosticsFinalized(true);
+        diagnosticsRef.current = diags;
+        diagnosticsFinalizedRef.current = true;
+        // Re-publish the (terminal) build result now that the authoritative
+        // diagnostics are in — the agent's waiter prefers the finalized set.
+        if (buildStateRef.current === "succeeded" || buildStateRef.current === "failed") {
+          publishBuild();
+        }
       } else {
         // Live incremental — dedupe so the regex parser firing repeatedly
         // doesn't pile up the same issue.
-        setDiagnostics((prev) => {
-          const key = (d: SimBuildDiagnostic): string =>
-            `${d.file}:${d.line}:${d.column}:${d.severity}:${d.message}`;
-          const seen = new Set(prev.map(key));
-          const merged = [...prev];
-          for (const d of diags) {
-            if (!seen.has(key(d))) {
-              seen.add(key(d));
-              merged.push(d);
-            }
-          }
-          return merged;
-        });
+        setDiagnostics(dedupe);
+        diagnosticsRef.current = dedupe(diagnosticsRef.current);
       }
       // On a successful build with warnings, auto-show the panel so the
       // warning chip isn't a silent secret.
       if (final && diags.length > 0) setIssuesOpen(true);
     },
-    [],
+    [publishBuild],
   );
 
   // Auto-scroll log to bottom of the raw-log disclosure (when the Issues panel
@@ -930,6 +1004,35 @@ export function SwiftSimulatorPreview({
       setRebuilding(false);
     }
   }, [projectId, sessionId, rebuilding]);
+
+  // ── Agent start-while-mounted ─────────────────────────────────────────────
+  // The workspace shell dispatches `swift-sim-agent-start` when the agent's
+  // startSimulator tool fires. If this preview is freshly mounting, the normal
+  // session flow already builds — nothing to do. But when we're already LIVE
+  // (or a previous build failed), the agent expects a FRESH build of its new
+  // code, so trigger a rebuild; and when the session is dead (ended/error) ask
+  // the shell to remount us.
+  const pillRef = useRef(pill);
+  pillRef.current = pill;
+  const onRebuildRef = useRef(onRebuild);
+  onRebuildRef.current = onRebuild;
+  const onRestartRequestedRef = useRef(onRestartRequested);
+  onRestartRequestedRef.current = onRestartRequested;
+  useEffect(() => {
+    const onAgentStart = (e: Event) => {
+      const d = (e as CustomEvent<{ projectId?: string }>).detail;
+      if (!d || d.projectId !== projectId) return;
+      const kind = pillRef.current.kind;
+      if (kind === "live" || kind === "failed") {
+        void onRebuildRef.current();
+      } else if (kind === "ended" || kind === "error") {
+        onRestartRequestedRef.current?.();
+      }
+      // starting / building / installing / idle: a build is already on its way.
+    };
+    window.addEventListener("swift-sim-agent-start", onAgentStart);
+    return () => window.removeEventListener("swift-sim-agent-start", onAgentStart);
+  }, [projectId]);
 
   // ────────────────────────────────────────────────────────────────────────────
   // Render
