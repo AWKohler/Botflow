@@ -377,6 +377,8 @@ export async function POST(req: Request) {
       "ask_question",
       // Env-var entry modal — agent picks the name, user types the value.
       "request_env_var",
+      // AI image generation (FAL/Krea) — backend-agnostic; bills platform credits.
+      "generate_image",
     );
     if (hasBackend) {
       customTools.push(

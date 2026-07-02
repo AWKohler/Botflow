@@ -61,6 +61,11 @@ import {
   startSandboxDevServer,
   stopSandboxDevServer,
 } from "@/lib/workspace-control";
+import {
+  generateImage,
+  IMAGE_ASPECT_RATIOS,
+  MAX_IMAGE_PROMPT_CHARS,
+} from "@/lib/agent/image-gen";
 
 const CONVEX_BLOCK_REASON =
   "This project was created with the **No Backend** option. Writing to /convex/ is not allowed because there is no Convex deployment to deploy to. " +
@@ -249,6 +254,59 @@ function getWorkspaceControlTools(projectId: string) {
           ok: result.ok,
           message: result.message,
         };
+      },
+    }),
+  } as const;
+}
+
+/**
+ * AI image generation — available regardless of backend type. Bills the
+ * user's platform credits per image (flat rate; see image-gen.ts), so the
+ * caller must pass the owning userId.
+ */
+function getImageGenTools(projectId: string, userId: string) {
+  return {
+    generateImage: tool({
+      description:
+        "Generate an image with AI (Krea 2 Medium) from a text prompt and save it into the project at the given path. " +
+        "Blocks until generation finishes (typically 10-30s) and returns { ok, path, seed } on success — the file exists in the project as soon as this returns. " +
+        "Use for hero images, backgrounds, illustrations, placeholder photos, textures, etc. " +
+        "Put web assets under public/ (e.g. public/images/hero.png) and reference them by URL path ('/images/hero.png'), or under src/assets/ for bundled imports. " +
+        "Each call costs the user credits, so batch thoughtfully — don't regenerate an image that already looks right, and don't call this speculatively.",
+      inputSchema: z.object({
+        prompt: z
+          .string()
+          .max(MAX_IMAGE_PROMPT_CHARS)
+          .describe(
+            "Text description of the image to generate. Be concrete about subject, style, lighting, and mood.",
+          ),
+        outputPath: z
+          .string()
+          .describe(
+            "Project-relative file path to save the image to, e.g. public/images/hero.png. Parent directories are created automatically. Use a .png or .jpg extension.",
+          ),
+        aspectRatio: z
+          .enum(IMAGE_ASPECT_RATIOS)
+          .optional()
+          .describe("Aspect ratio of the generated image. Defaults to '1:1'."),
+      }),
+      async execute({ prompt, outputPath, aspectRatio }) {
+        const result = await generateImage({
+          projectId,
+          userId,
+          prompt,
+          outputPath,
+          ...(aspectRatio ? { aspectRatio } : {}),
+        });
+        if (result.ok) {
+          return {
+            ok: true,
+            path: result.path,
+            seed: result.seed,
+            message: `Image generated and saved to ${result.path}.`,
+          };
+        }
+        return { ok: false, error: result.error };
       },
     }),
   } as const;
@@ -547,6 +605,8 @@ function getGitTools(opts: {
 
 export function getSandboxedWebTools(params: {
   projectId: string;
+  /** Project owner — image generation bills this user's platform credits. */
+  userId: string;
   hasBackend: boolean;
   appBaseUrl: string;
   authHeaders?: Record<string, string>;
@@ -560,9 +620,10 @@ export function getSandboxedWebTools(params: {
     autonomy: "autonomous" | "manual" | "ask-each-time" | null;
   };
 }) {
-  const { projectId, hasBackend, appBaseUrl, authHeaders, github } = params;
+  const { projectId, userId, hasBackend, appBaseUrl, authHeaders, github } = params;
   const baseTools = getPersistentTools(projectId);
   const workspaceTools = getWorkspaceControlTools(projectId);
+  const imageGenTools = getImageGenTools(projectId, userId);
   const gitTools = github
     ? getGitTools({
         projectId,
@@ -609,6 +670,7 @@ export function getSandboxedWebTools(params: {
       write: guardedWrite,
       bash: guardedBash,
       ...workspaceTools,
+      ...imageGenTools,
       ...gitTools,
     } as const;
   }
@@ -649,6 +711,7 @@ export function getSandboxedWebTools(params: {
     write: stripeGuardedWrite,
     bash: stripeGuardedBash,
     ...workspaceTools,
+    ...imageGenTools,
     ...gitTools,
     setupAuth: tool({
       description:
