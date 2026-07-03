@@ -94,6 +94,20 @@ pinned version — not docs. Re-verify on any version bump.
   `botflow_convex_deploy`, `botflow_ask_question`, … The translator strips
   the `botflow_` prefix before parts reach the UI/history.
 
+## Troubleshooting
+
+- **Host (MCP) tools fail with "HTML parsing error" / non-JSON responses** on
+  a preview deployment: Vercel Deployment Protection is intercepting the
+  sandbox's callback POSTs to `/api/internal/claude-code-tool` with its HTML
+  auth page. Fix: Project Settings → Deployment Protection → enable
+  **Protection Bypass for Automation**, then redeploy — Vercel injects
+  `VERCEL_AUTOMATION_BYPASS_SECRET` and the route forwards it (preview-only;
+  never to prod sandboxes) as the `x-vercel-protection-bypass` header.
+  Alternatively disable Vercel Authentication for previews on that project.
+  NOTE: the Claude Code bridge has the same exposure on protected previews
+  (its callHostTool sends no bypass header) — pre-existing, fix when the CC
+  bridge migrates onto the shared definitions (TODO(opencode-phase-2)).
+
 ## Still to verify live (dev-deployment e2e)
 - Codex OAuth end-to-end through opencode (token written by us → chatgpt
   backend call succeeds; refresh-token rotation behavior over multiple turns).

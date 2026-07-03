@@ -279,6 +279,16 @@ export async function POST(req: Request) {
             oauthProviderIds: customTools.includes("setup_oauth_provider")
               ? OAUTH_PROVIDER_IDS
               : [],
+            // Preview deployments sit behind Vercel Deployment Protection,
+            // which answers the sandbox's cookie-less tool callbacks with an
+            // HTML auth page. Vercel injects this secret when "Protection
+            // Bypass for Automation" is enabled; forward it ONLY on previews
+            // (prod has no wall, and the secret must not enter prod
+            // sandboxes — it's project-scoped).
+            ...(process.env.VERCEL_ENV === "preview" &&
+            process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+              ? { vercelBypass: process.env.VERCEL_AUTOMATION_BYPASS_SECRET }
+              : {}),
           },
         }
       : {}),

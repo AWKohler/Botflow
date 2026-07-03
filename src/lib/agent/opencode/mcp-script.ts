@@ -18,6 +18,13 @@
  *   BOTFLOW_TOOL_TOKEN         — per-turn bearer token
  *   BOTFLOW_TOOLS              — CSV of tool names enabled for this turn
  *   BOTFLOW_OAUTH_PROVIDER_IDS — CSV for setup_oauth_provider's enum/description
+ *   BOTFLOW_VERCEL_BYPASS      — optional; Vercel "Protection Bypass for
+ *                                Automation" secret. Preview deployments sit
+ *                                behind Deployment Protection, which answers
+ *                                cookie-less requests with an HTML auth page —
+ *                                this header is the official server-to-server
+ *                                bypass. The route sends it ONLY on preview
+ *                                deployments (VERCEL_ENV === 'preview').
  */
 import {
   HOST_TOOL_DEFINITIONS,
@@ -94,19 +101,36 @@ async function callHostTool(toolName, input) {
   if (!base || !token) {
     throw new Error("Host callback not configured (BOTFLOW_API_BASE / BOTFLOW_TOOL_TOKEN missing)");
   }
+  const headers = {
+    "authorization": "Bearer " + token,
+    "content-type": "application/json",
+  };
+  if (process.env.BOTFLOW_VERCEL_BYPASS) {
+    headers["x-vercel-protection-bypass"] = process.env.BOTFLOW_VERCEL_BYPASS;
+  }
   const response = await fetch(base + "/api/internal/claude-code-tool", {
     method: "POST",
-    headers: {
-      "authorization": "Bearer " + token,
-      "content-type": "application/json",
-    },
+    headers,
     body: JSON.stringify({ tool: toolName, input: input ?? {} }),
   });
+  const contentType = response.headers.get("content-type") || "unknown";
+  const raw = await response.text().catch(() => "");
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error("Host tool call failed (HTTP " + response.status + "): " + text);
+    throw new Error(
+      "Host tool call failed (HTTP " + response.status + ", " + contentType + "): " + raw.slice(0, 300),
+    );
   }
-  return response.json();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // A 200 that isn't JSON means something in FRONT of the app answered —
+    // on Vercel previews that's Deployment Protection's HTML auth page.
+    throw new Error(
+      "Host tool endpoint returned non-JSON (" + contentType + ") from " + base +
+      " — if this is a protected Vercel preview deployment, enable 'Protection Bypass for Automation' " +
+      "and redeploy so the bypass header is sent. Body starts: " + raw.slice(0, 200),
+    );
+  }
 }
 
 function toCallToolResult(result) {

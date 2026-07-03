@@ -55,7 +55,7 @@
  *   }
  */
 
-export const OPENCODE_SCRIPTS_VERSION = "1";
+export const OPENCODE_SCRIPTS_VERSION = "2";
 
 export const OPENCODE_BRIDGE_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -141,6 +141,9 @@ if (mcp && mcp.scriptPath) {
         BOTFLOW_TOOL_TOKEN: mcp.toolToken,
         BOTFLOW_TOOLS: (mcp.tools || []).join(","),
         BOTFLOW_OAUTH_PROVIDER_IDS: (mcp.oauthProviderIds || []).join(","),
+        // Vercel preview deployments answer cookie-less requests with an HTML
+        // auth page; this is the official automation bypass (preview-only).
+        ...(mcp.vercelBypass ? { BOTFLOW_VERCEL_BYPASS: mcp.vercelBypass } : {}),
       },
       enabled: true,
       // Tool-LIST fetch timeout (default 5000ms) — generous headroom for cold
