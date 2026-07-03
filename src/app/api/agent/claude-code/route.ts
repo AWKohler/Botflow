@@ -45,6 +45,12 @@ import {
 } from "@/lib/agent/claude-code/session-store";
 import { createTranslator, type BridgeEvent } from "@/lib/agent/claude-code/translator";
 import { mintToolToken, revokeToolToken } from "@/lib/agent/claude-code/tool-token";
+import {
+  anthropicProxyOrigin,
+  mintAnthropicProxyToken,
+  revokeAnthropicProxyToken,
+  shouldProxyAnthropic,
+} from "@/lib/agent/claude-code/anthropic-proxy-token";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -338,12 +344,39 @@ export async function POST(req: Request) {
     return jsonError(500, installResult.error);
   }
 
-  await writeClaudeCredentials(projectId, {
-    accessToken: oauthToken,
-    refreshToken: creds.claudeOAuthRefreshToken,
-    expiresAt: creds.claudeOAuthExpiresAt,
-    apiKey: creds.anthropicApiKey,
-  });
+  // ── Anthropic proxy (Phase 0 spike, flag + allowlist gated) ─────────────
+  // When active for this project, the sandbox receives a short-lived proxy
+  // token instead of the real credential, and ANTHROPIC_BASE_URL points every
+  // inference call at /api/internal/anthropic-proxy, which injects the real
+  // credential server-side. See docs/features/anthropic-proxy-token-protection-plan.md.
+  const anthropicProxyToken = shouldProxyAnthropic(projectId)
+    ? await mintAnthropicProxyToken({
+        userId,
+        projectId,
+        mode: oauthToken ? "oauth" : "byok",
+      })
+    : null;
+
+  if (anthropicProxyToken) {
+    await writeClaudeCredentials(
+      projectId,
+      oauthToken
+        ? {
+            // No refresh token in the box; expiry comfortably beyond the
+            // turn so the CLI never tries a client-side refresh.
+            accessToken: anthropicProxyToken,
+            expiresAt: Date.now() + 60 * 60 * 1000,
+          }
+        : { apiKey: anthropicProxyToken },
+    );
+  } else {
+    await writeClaudeCredentials(projectId, {
+      accessToken: oauthToken,
+      refreshToken: creds.claudeOAuthRefreshToken,
+      expiresAt: creds.claudeOAuthExpiresAt,
+      apiKey: creds.anthropicApiKey,
+    });
+  }
 
   await writeBridgeScript(projectId);
 
@@ -466,7 +499,15 @@ export async function POST(req: Request) {
     bridgeEnv.BOTFLOW_API_BASE = new URL(req.url).origin;
     bridgeEnv.BOTFLOW_TOOL_TOKEN = toolToken;
   }
-  if (oauthToken) {
+  if (anthropicProxyToken) {
+    // Proxy mode: all inference traffic routes through our proxy, carrying
+    // only the per-turn token. Same credential *shape* as the non-proxy path
+    // (credentials file for OAuth, env var for BYOK) so CLI behavior matches.
+    bridgeEnv.ANTHROPIC_BASE_URL = `${anthropicProxyOrigin(new URL(req.url).origin)}/api/internal/anthropic-proxy`;
+    if (!oauthToken && creds.anthropicApiKey) {
+      bridgeEnv.ANTHROPIC_API_KEY = anthropicProxyToken;
+    }
+  } else if (oauthToken) {
     // When OAuth is available, claude reads it from ~/.claude/.credentials.json
     // (already written above). We deliberately do NOT set ANTHROPIC_API_KEY in
     // that case — having it set takes precedence over the credentials file.
@@ -541,6 +582,9 @@ export async function POST(req: Request) {
         // Best-effort: revoke the tool-callback token + delete the config file.
         if (toolToken) {
           revokeToolToken(toolToken).catch(() => {});
+        }
+        if (anthropicProxyToken) {
+          revokeAnthropicProxyToken(anthropicProxyToken).catch(() => {});
         }
         sandbox
           .runCommand({ cmd: "sh", args: ["-c", `rm -f ${configPath}`] })

@@ -172,6 +172,13 @@ The proxy is what *makes* sharing safe, but it also forces one product decision:
 ## 8. Rollout / phasing
 
 1. **Phase 0 — spike (no user impact).** Stand up the proxy route behind a flag; point one internal test project's `ANTHROPIC_BASE_URL` at it. Verify OAuth + BYOK both stream end-to-end, session resume works, count_tokens works. Measure added latency and function duration under a long turn.
+
+   **IMPLEMENTED 2026-07-02** (`anthropic-proxy-token.ts`, `/api/internal/anthropic-proxy/[...path]`, flag-gated wiring in the turn route). Runbook:
+   - Set `ANTHROPIC_PROXY_ENABLED=true` and `ANTHROPIC_PROXY_PROJECT_IDS=<uuid>[,<uuid>…]` (explicit allowlist — no wildcard). Optional `ANTHROPIC_PROXY_ORIGIN` to point the sandbox at a different deployment; defaults to the turn request's own origin (same value the bridge uses for tool callbacks).
+   - For allowlisted projects the sandbox receives ONLY a `bfap_…` proxy token (credentials file in OAuth mode, `ANTHROPIC_API_KEY` env in BYOK mode) + `ANTHROPIC_BASE_URL`; the token is revoked in the turn's `finally` (TTL 30 min as backstop). Flag off / non-allowlisted = byte-identical legacy path.
+   - The route self-authenticates (middleware already exempts `/api/internal/*` from Clerk + edge limiting) and enforces the new `anthropicProxy` per-user bucket (120/min, `RL_ANTHROPIC_PROXY`) keyed by the binding's userId — the §5.4 stolen-token bound.
+   - Measurement (§5.1): every request logs a `{"tag":"anthropic-proxy",…,"ttfbMs"}` line and sets a `server-timing` header; total stream duration = the Vercel invocation log for the same request. Runtime: nodejs, `maxDuration = 300` (same ceiling as the turn route). What to verify per §9: OAuth + BYOK end-to-end streaming, session resume, count_tokens, a multi-minute turn, and post-turn 401 on the revoked token.
+   - Note for local dev: with Upstash unset, Redis is a no-op stub → token resolution always fails → the proxy fails closed. The spike needs a deployed env (sandbox must reach the origin anyway).
 2. **Phase 1 — proxy on, credential still in box.** Ship the proxy but keep writing the real credential too, so a proxy failure falls back. Compare behavior. (Feature-flagged, dogfood only.)
 3. **Phase 2 — credential removed from box.** Flip to proxy-token-only in `writeClaudeCredentials`; stop setting `ANTHROPIC_API_KEY`. This is the security win. Single-tenant only still.
 4. **Phase 3 — enable sharing.** Add acting/billing identity to the binding + proxy-side spend/rate caps. Turn on multi-user-per-sandbox.
