@@ -18,7 +18,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { envVarRequests, projectEnvVars, projects } from "@/db/schema";
+import { envVarRequests, projectEnvVars } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { materializeFrontendEnv } from "@/lib/sandbox-env";
 import { setConvexEnvVar } from "@/lib/convex-env";
 import { isReservedEnvKey } from "@/lib/platform-env";
@@ -27,14 +28,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function loadOwnedProject(projectId: string, userId: string) {
-  const db = getDb();
-  const [project] = await db
-    .select({ id: projects.id, userId: projects.userId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project || project.userId !== userId) return null;
-  return project;
+  const access = await requireProjectAccess(projectId, userId);
+  return access?.project ?? null;
 }
 
 export async function GET(

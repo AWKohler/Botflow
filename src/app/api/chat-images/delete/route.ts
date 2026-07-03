@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { UTApi } from 'uploadthing/server';
 import { getDb } from '@/db';
-import { chatImages, projects } from '@/db/schema';
+import { chatImages } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { requireProjectAccess } from '@/lib/project-access';
 
 const utapi = new UTApi();
 
@@ -32,8 +33,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify the project belongs to the user
-    const [proj] = await db.select({ userId: projects.userId }).from(projects).where(eq(projects.id, img.projectId));
-    if (!proj || proj.userId !== userId) {
+    const access = await requireProjectAccess(img.projectId, userId);
+    if (!access) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

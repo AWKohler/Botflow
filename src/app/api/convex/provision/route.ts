@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import { requireProjectAccess } from '@/lib/project-access';
 import { getUserCredentials, setUserCredentials } from '@/lib/user-credentials';
 import { enforce, identifierFor } from '@/lib/rate-limit';
 
@@ -28,11 +29,10 @@ export async function POST(req: NextRequest) {
   }
 
   const db = getDb();
-  const [project] = await db.select().from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
+  const access = await requireProjectAccess(projectId, userId);
 
-  if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  if (!access) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  const project = access.project;
 
   // Idempotency guard: if this project already has a user-owned Convex
   // deployment, return it instead of calling create_project again. Without this,

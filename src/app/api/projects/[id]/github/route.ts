@@ -4,6 +4,7 @@ import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { getUserCredentials } from '@/lib/user-credentials';
 import { eq } from 'drizzle-orm';
+import { requireProjectAccess } from '@/lib/project-access';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -16,8 +17,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const db = getDb();
-    const [proj] = await db.select().from(projects).where(eq(projects.id, id));
-    if (!proj || proj.userId !== userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const access = await requireProjectAccess(id, userId);
+    if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const creds = await getUserCredentials(userId);
     if (!creds.githubAccessToken) {
@@ -58,8 +59,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const db = getDb();
-    const [proj] = await db.select().from(projects).where(eq(projects.id, id));
-    if (!proj || proj.userId !== userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const access = await requireProjectAccess(id, userId);
+    if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const [updated] = await db
       .update(projects)

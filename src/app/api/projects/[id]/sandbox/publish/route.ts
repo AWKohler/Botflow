@@ -2,7 +2,8 @@ import { NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import { requireProjectAccess } from '@/lib/project-access';
 import { createHash } from 'crypto';
 import { extname, basename } from 'path';
 import {
@@ -79,13 +80,9 @@ export async function POST(
   };
   const makePublic = publishBody.public === true;
   const publicDescription = typeof publishBody.description === 'string' ? publishBody.description : null;
-  const db = getDb();
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-  if (!project) return new Response('Not found', { status: 404 });
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) return new Response('Not found', { status: 404 });
+  const { project } = access;
   if (project.platform !== 'sandboxed-web') {
     return new Response('This endpoint is only for sandboxed-web projects', { status: 400 });
   }
@@ -328,7 +325,7 @@ export async function POST(
           ? `https://${project.managedDomainHostname}`
           : `https://${projectName}.pages.dev`;
 
-        await db
+        await getDb()
           .update(projects)
           .set({
             cloudflareProjectName: projectName,

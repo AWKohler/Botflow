@@ -18,9 +18,10 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { projects, userRevenueCatIdentity } from '@/db/schema';
+import { userRevenueCatIdentity } from '@/db/schema';
+import { requireProjectAccess } from '@/lib/project-access';
 import { canUseRevenueCat } from '@/lib/tier';
 import { decryptSecret } from '@/lib/secrets';
 import {
@@ -82,14 +83,11 @@ async function preflight(
   }
   const { id: projectId } = await params;
   const db = getDb();
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-  if (!project) {
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) {
     return { ok: false, res: NextResponse.json({ ok: false, error: 'Project not found' }, { status: 404 }) };
   }
+  const project = access.project;
 
   const [identity] = await db
     .select()

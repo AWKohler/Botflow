@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import {
   getSandboxName,
   runPersistentSandboxSmokeTest,
@@ -24,12 +22,11 @@ export async function POST(
     }
 
     const { id } = await params;
-    const db = getDb();
-    const [project] = await db.select().from(projects).where(eq(projects.id, id));
-
-    if (!project || project.userId !== userId) {
+    const access = await requireProjectAccess(id, userId);
+    if (!access) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    const { project } = access;
 
     if (project.platform !== "swift" && project.platform !== "sandboxed-web") {
       return NextResponse.json(

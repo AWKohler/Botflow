@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import {
   seedSandboxIfEmpty,
   seedSandboxFromBundle,
@@ -28,12 +29,11 @@ export async function POST(
   if (blocked) return blocked;
 
   const { id } = await params;
-  const db = getDb();
-  const [project] = await db.select().from(projects).where(eq(projects.id, id));
-
-  if (!project || project.userId !== userId || (project.platform !== "swift" && project.platform !== "sandboxed-web")) {
+  const access = await requireProjectAccess(id, userId);
+  if (!access || (access.project.platform !== "swift" && access.project.platform !== "sandboxed-web")) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  const { project } = access;
   // Swift's runtime is beta-only; deny non-beta owners of legacy swift projects.
   if (await swiftRuntimeForbidden(project.platform, userId)) {
     return NextResponse.json(
@@ -58,7 +58,7 @@ export async function POST(
     let seeded: boolean;
     if (project.seedBundleUrl) {
       seeded = await seedSandboxFromBundle(project.id, project.seedBundleUrl);
-      await db.update(projects).set({ seedBundleUrl: null }).where(eq(projects.id, project.id));
+      await getDb().update(projects).set({ seedBundleUrl: null }).where(eq(projects.id, project.id));
     } else {
       seeded = await seedSandboxIfEmpty(project.id, template);
     }

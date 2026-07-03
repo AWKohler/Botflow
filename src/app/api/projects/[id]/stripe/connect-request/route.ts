@@ -13,18 +13,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { and, eq, desc } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { projects, stripeConnectRequests } from '@/db/schema';
+import { stripeConnectRequests } from '@/db/schema';
+import { requireProjectAccess } from '@/lib/project-access';
 
 export const runtime = 'nodejs';
 
 async function loadProjectForCaller(projectId: string, userId: string) {
-  const db = getDb();
-  const [project] = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-  return project ?? null;
+  const access = await requireProjectAccess(projectId, userId);
+  return access?.project ?? null;
 }
 
 export async function GET(
