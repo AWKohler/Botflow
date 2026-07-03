@@ -9,7 +9,10 @@
  *
  * Run: node --import tsx --test src/lib/agent/derive-backend.opencode-off.test.ts
  */
-delete process.env.NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED;
+// TEMP(branch preview): the flag currently defaults ON (see feature-flags.ts)
+// so "off" must be explicit. When the opt-in gate (=== 'true') is restored
+// before merge, revert this to `delete process.env.NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED;`.
+process.env.NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED = "false";
 process.env.NEXT_PUBLIC_CLAUDE_CODE_ENABLED = "true";
 process.env.NEXT_PUBLIC_ANTHROPIC_OAUTH_ENABLED = "true";
 
