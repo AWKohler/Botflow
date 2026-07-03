@@ -9,7 +9,8 @@ import { countUserConvexProjects } from '@/lib/usage';
 import { getUserCredentials, setUserCredentials, type UserCredentials } from '@/lib/user-credentials';
 import { normalizeProjectPlatform, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
 import { resolveModelId } from '@/lib/agent/models';
-import { resolveBackends, type AgentBackend } from '@/lib/agent/backend-resolution';
+import { credFlagsFromUserCredentials, resolveBackends, type AgentBackend } from '@/lib/agent/backend-resolution';
+import { USE_TOGETHER_KIMI } from '@/lib/feature-flags';
 import { randomUUID } from 'node:crypto';
 
 const CONVEX_CLI_API = 'https://api.convex.dev/api';
@@ -288,10 +289,8 @@ export async function GET(request: Request) {
     const backendResolution = resolveBackends({
       model: resolvedModel,
       platform,
-      creds: {
-        hasClaudeOAuth: Boolean(creds.claudeOAuthAccessToken),
-        hasAnthropicKey: Boolean(creds.anthropicApiKey),
-      },
+      creds: credFlagsFromUserCredentials(creds),
+      useTogetherKimi: USE_TOGETHER_KIMI,
     });
     let initialAgentBackend: AgentBackend = backendResolution.defaultBackend;
     if (
