@@ -18,6 +18,17 @@ export const ANTHROPIC_OAUTH_ENABLED =
 export const CLAUDE_CODE_ENABLED =
   process.env.NEXT_PUBLIC_CLAUDE_CODE_ENABLED === 'true';
 
+/** When true: the OpenCode agent backend drop-in replaces the Botflow agent
+ *  as the presented agent for non-Anthropic models on sandbox platforms. Turns
+ *  run inside an `opencode` subprocess in the project's Vercel Sandbox using
+ *  the USER'S OWN credentials (Codex/ChatGPT-plan OAuth or BYOK provider keys)
+ *  — platform server keys never enter the sandbox. Users with no personal
+ *  credentials keep executing on the /api/agent engine via the 412-fallback
+ *  contract (unbranded) until the provider proxy exists. Anthropic models are
+ *  unaffected (Claude OAuth → Claude Code per ToS; BYOK per preference). */
+export const OPENCODE_BACKEND_ENABLED =
+  process.env.NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED === 'true';
+
 /** When true: the Stripe Connect integration is exposed — the
  *  `initializeStripePayments` AI tool is registered, the Stripe tab can
  *  appear in workspaces, and the proxy endpoints accept requests. When
