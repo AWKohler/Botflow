@@ -184,23 +184,20 @@ export const CLAUDE_CODE_TO_BOTFLOW: Record<string, ToolRewrite | null> = {
  *    (convex_deploy → convexDeploy etc.) — no duplicate entries needed.
  */
 export const OPENCODE_TO_BOTFLOW: Record<string, ToolRewrite | null> = {
-  // Closest Botflow equivalent — directory listing.
-  list: {
-    to: "listFiles",
-    mapInput: (i) => ({ ...(i?.path ? { path: String(i.path) } : {}) }),
-  },
-  // ── No Botflow counterpart — collapse to text summary on transit ─────
+  // The full opencode@1.17.13 builtin list (verified live via
+  // /experimental/tool/ids): invalid, question, bash, read, glob, grep, edit,
+  // write, task, webfetch, todowrite, websearch, skill, apply_patch. The six
+  // file/shell natives share Botflow names and short-circuit at
+  // BOTFLOW_NATIVE_TOOLS; everything else has no Botflow counterpart —
+  // collapse to a text summary on transit.
   task: null,
   todowrite: null,
-  todoread: null,
   webfetch: null,
   websearch: null,
-  codesearch: null,
-  patch: null,
-  apply_patch: null,
-  multiedit: null,
-  question: null,
   skill: null,
+  apply_patch: null,
+  question: null,
+  invalid: null,
 };
 
 /**
