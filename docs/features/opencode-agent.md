@@ -11,10 +11,15 @@ Claude Code per ToS; Anthropic BYOK per preference). Platform server keys
 never enter the sandbox; platform-metered OpenCode requires the provider
 proxy (separate project).
 
-Pinned versions (env-overridable):
+Pinned versions (env-overridable; installed locally in the sandbox under
+`~/.botflow/opencode/`, no sudo):
 - `opencode-ai` `1.17.13` (`BOTFLOW_OPENCODE_VERSION`)
-- `@opencode-ai/sdk` `1.17.13` (locked to the same version as the server)
-- `@modelcontextprotocol/sdk` (`BOTFLOW_MCP_SDK_VERSION`)
+- `@modelcontextprotocol/sdk` `1.29.0` (`BOTFLOW_MCP_SDK_VERSION`) — used by
+  the MCP tool script only. The bridge deliberately carries NO
+  `@opencode-ai/sdk` dependency: it speaks plain fetch + SSE against four
+  endpoints (`/session`, `/session/{id}/prompt_async`, `/session/{id}/abort`,
+  `/event`) whose shapes were locked from the SDK's generated types at the
+  pinned version.
 
 Rate limit bucket: `opencode` (`RL_OPENCODE`, default 10/min).
 
