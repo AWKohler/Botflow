@@ -35,6 +35,7 @@ import {
 } from "@/lib/oauth-providers/registry";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { STRIPE_CONNECT_ENABLED } from "@/lib/feature-flags";
+import { markAgentWaiting } from "@/lib/agent/modal-wait";
 import {
   createEnvVarRequest,
   envVarOutcomeMessage,
@@ -692,9 +693,11 @@ export function getSandboxedWebTools(params: {
         "FLOW:\n" +
         "  1. This tool creates a pending request and the workspace shows a modal immediately.\n" +
         "  2. The user registers the app in the provider's console and pastes the credentials (Apple uploads a .p8).\n" +
-        "  3. This tool blocks (polls) until the user completes or dismisses the modal (up to 5 minutes).\n" +
+        "  3. This tool blocks (polls) until the user completes or dismisses the modal (a few minutes).\n" +
         "  4. On success: credentials are saved server-side. You then update convex/auth.ts and run convexDeploy.\n" +
-        "  5. On dismiss: returns an error. Stop trying — do not call this again unless the user asks.\n\n" +
+        "  5. If the user explicitly DISMISSES the modal: returns an error saying so. Stop trying — do not call this again unless the user asks.\n" +
+        "  6. If it times out, the user simply hasn't finished YET — the modal STAYS OPEN. NEVER report a timeout as the user dismissing " +
+        "or declining; you'll get a system note when they submit, and you can call this tool again later to resume waiting.\n\n" +
         "AFTER SUCCESS: add the provider to the convex/auth.ts providers array, run convexDeploy, and add a sign-in " +
         "button using startOAuthSignIn from @/lib/botflowAuth (NOT signIn(...) directly) so it works from the preview " +
         "iframe, plus resumePendingOAuthSignIn(signIn) once at app mount. The tool returns the exact per-provider snippet.",
@@ -736,35 +739,57 @@ export function getSandboxedWebTools(params: {
           ? deployUrl.replace(".convex.cloud", ".convex.site")
           : null;
 
-        // ── Cancel any stale pending requests ─────────────────────────────
-        await db
-          .update(oauthProviderRequests)
-          .set({ status: "dismissed", updatedAt: new Date() })
+        // ── Reuse a pending request for the SAME provider (the user may be
+        //    mid-typing in that very modal); replace pending ones for others ──
+        const [existingReq] = await db
+          .select({ id: oauthProviderRequests.id })
+          .from(oauthProviderRequests)
           .where(
             and(
               eq(oauthProviderRequests.projectId, projectId),
               eq(oauthProviderRequests.status, "pending"),
+              eq(oauthProviderRequests.provider, provider),
             ),
-          );
+          )
+          .limit(1);
 
-        // ── Create pending request — workspace modal appears on next poll ──
-        const [record] = await db
-          .insert(oauthProviderRequests)
-          .values({
-            projectId,
-            userId: proj.userId,
-            provider,
-            status: "pending",
-            convexSiteUrl,
-          })
-          .returning();
+        let requestId: string;
+        if (existingReq) {
+          requestId = existingReq.id;
+          await db
+            .update(oauthProviderRequests)
+            .set({ updatedAt: new Date() })
+            .where(eq(oauthProviderRequests.id, existingReq.id));
+        } else {
+          await db
+            .update(oauthProviderRequests)
+            .set({ status: "dismissed", updatedAt: new Date() })
+            .where(
+              and(
+                eq(oauthProviderRequests.projectId, projectId),
+                eq(oauthProviderRequests.status, "pending"),
+              ),
+            );
 
-        const requestId = record.id;
+          // ── Create pending request — workspace modal appears on next poll ──
+          const [record] = await db
+            .insert(oauthProviderRequests)
+            .values({
+              projectId,
+              userId: proj.userId,
+              provider,
+              status: "pending",
+              convexSiteUrl,
+            })
+            .returning();
+          requestId = record.id;
+        }
 
-        // ── Poll until completed/dismissed (270s, < route maxDuration so the
-        //    timeout-dismiss below runs before the platform kills the request) ──
+        // ── Poll until completed/dismissed (270s, bounded by the agent
+        //    route's serverless maxDuration) ──
         const deadline = Date.now() + 270 * 1000;
         while (Date.now() < deadline) {
+          void markAgentWaiting("oauth-provider", requestId);
           await new Promise<void>((r) => setTimeout(r, 3000));
 
           const [statusRow] = await db
@@ -839,24 +864,19 @@ REQUIRED NEXT STEPS:
           // status === 'pending' — keep polling
         }
 
-        // Timed out — mark this request dismissed so the workspace closes the
-        // (now-unwatched) modal instead of leaving it orphaned. Only flip it if
-        // it's still pending, so we don't clobber a just-completed submission.
-        await db
-          .update(oauthProviderRequests)
-          .set({ status: "dismissed", updatedAt: new Date() })
-          .where(
-            and(
-              eq(oauthProviderRequests.id, requestId),
-              eq(oauthProviderRequests.status, "pending"),
-            ),
-          );
-
+        // Timed out — the row stays PENDING and the modal stays open. A
+        // timeout means "the user hasn't finished yet", never "the user
+        // declined"; a late submit triggers a system-note back to the agent.
+        // Drop the wait marker NOW so that late submit notifies correctly.
+        const { clearAgentWaiting } = await import("@/lib/agent/modal-wait");
+        void clearAgentWaiting("oauth-provider", requestId);
         return {
           ok: false,
           error:
-            `Timed out waiting for ${getOAuthProvider(provider)?.displayName ?? provider} OAuth credentials (5 minutes elapsed). ` +
-            "The modal is no longer visible. You can call setupOAuthProvider again when ready.",
+            `The user has NOT finished entering ${getOAuthProvider(provider)?.displayName ?? provider} OAuth credentials yet — ` +
+            "the modal is still open in their workspace; nothing was dismissed or declined. " +
+            "Do NOT say the user dismissed or declined it. Continue with other work; you'll get a system note when they submit, " +
+            "or call setupOAuthProvider again later to resume waiting.",
         };
       },
     }),
@@ -871,7 +891,8 @@ REQUIRED NEXT STEPS:
         "Use this for third-party API keys, webhook secrets, etc. that only the user knows. " +
         "Set isSecret=true for sensitive values so they're masked in the Env panel. " +
         "Include a short `message` explaining what the value is and where to find it — it's rendered in the modal.\n\n" +
-        "Blocks until the user saves or dismisses (up to 5 minutes). On dismiss: do NOT retry automatically; continue without it.",
+        "Blocks until the user saves or dismisses (a few minutes). If the user explicitly dismisses: do NOT retry automatically; continue without it. " +
+        "If it times out, the user hasn't finished YET — the modal stays open and you'll get a system note when they save; NEVER report a timeout as a dismissal.",
       inputSchema: z.object({
         target: z.enum(["client", "server"]).describe("'client' = frontend Vite .env; 'server' = Convex deployment env."),
         key: z.string().describe("Variable name, e.g. VITE_MAPBOX_TOKEN or OPENAI_API_KEY. Shown read-only to the user."),

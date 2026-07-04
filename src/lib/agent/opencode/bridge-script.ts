@@ -55,7 +55,7 @@
  *   }
  */
 
-export const OPENCODE_SCRIPTS_VERSION = "2";
+export const OPENCODE_SCRIPTS_VERSION = "3";
 
 export const OPENCODE_BRIDGE_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */

@@ -698,6 +698,13 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const transportRef = useRef(new DefaultChatTransport({
     api: '/api/agent',
     body: { projectId, platform },
+    // resumeStream() → GET the Claude Code reattach route, which replays the
+    // current turn's event file and follows it while the bridge lives. Only
+    // claude-code turns are resumable; the recovery logic only calls
+    // resumeStream() for them. A 204 (nothing to resume) is a clean no-op.
+    prepareReconnectToStreamRequest: () => ({
+      api: `/api/agent/claude-code/reattach?projectId=${encodeURIComponent(projectId)}`,
+    }),
     prepareSendMessagesRequest: ({ body, messages, api }) => {
       const backend = agentBackendRef.current;
       const useInSandboxAgent = backend === 'claude-code' || backend === 'opencode';
@@ -761,7 +768,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     },
   }));
 
-  const { messages, sendMessage, setMessages, addToolOutput, stop, status } = useChat({
+  const { messages, sendMessage, setMessages, addToolOutput, stop, status, resumeStream } = useChat({
     transport: transportRef.current,
     // Receive Claude Code's transient data parts: real token usage + compact
     // boundaries. These never persist to message.parts (they're `transient: true`
@@ -981,6 +988,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   agentErrorRef.current = agentError;
   const limitPayloadRef = useRef(limitPayload);
   limitPayloadRef.current = limitPayload;
+  const isBusyRef = useRef(false);
+  isBusyRef.current = isBusy;
 
   // Silently nudge the agent to finish an interrupted turn. Returns false when
   // continuing would be wrong (user pressed Stop) or the per-message cap is
@@ -993,13 +1002,134 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     setShowCompletionWarning(false);
     setIsBusy(true);
     toolAbortRef.current = new AbortController();
-    const nudge = agentBackendRef.current !== 'botflow'
-      ? '[system-note] Automatic continuation: your previous turn was interrupted before it finished. Continue from where you left off; if the task is already complete, give a brief summary of what was done.'
-      : '[system-note] Automatic continuation: the previous response ended without calling endTurn. Continue the remaining work; if everything is already complete, call endTurn now with a brief summary.';
+    // Per-backend wording: Claude Code has reattach-first recovery, so its
+    // nudge only fires after a failed reattach and leans on the resumed
+    // session transcript. OpenCode has no reattach path (yet) — a plain
+    // interruption nudge. Botflow keys on endTurn.
+    const nudge = agentBackendRef.current === 'claude-code'
+      ? '[system-note] Automatic continuation: your previous turn stopped before finishing and could not be re-attached. Your resumed session transcript is the source of truth for what already happened — trust it, do not re-read files or re-verify work it already shows as done. Continue from where it leaves off; if the task is already complete, give a brief summary of what was done.'
+      : agentBackendRef.current === 'opencode'
+        ? '[system-note] Automatic continuation: your previous turn was interrupted before it finished. Continue from where you left off; if the task is already complete, give a brief summary of what was done.'
+        : '[system-note] Automatic continuation: the previous response ended without calling endTurn. Continue the remaining work; if everything is already complete, call endTurn now with a brief summary.';
     sendMessageRef.current({ text: nudge });
     return true;
   }, [MAX_AUTO_CONTINUES]);
   maybeAutoContinueRef.current = maybeAutoContinue;
+
+  // --- Reattach-first recovery (Claude Code) ---
+  // The bridge runs detached in the sandbox, so a settled stream usually
+  // means the VIEWER's pipe died (route maxDuration), not the turn. Check
+  // turn-status; if the turn is alive (or finished unseen), drop the partial
+  // assistant tail and resumeStream() — the reattach route replays the turn's
+  // event file from zero and follows it live. Only when the turn is truly
+  // dead do we fall back to the auto-continue nudge (whose spawn also clears
+  // any corpse). This is what makes a >5-minute turn a reconnect instead of
+  // a second racing agent.
+  const reattachInFlightRef = useRef(false);
+  const lastReattachSigRef = useRef<string | null>(null);
+  const attemptTurnRecovery = useCallback(async () => {
+    if (userStoppedRef.current) return;
+    if (reattachInFlightRef.current) return;
+    // Reattach exists only on the Claude Code rail; OpenCode turns (also
+    // flagged in-sandbox) fall through to the plain auto-continue nudge.
+    if (agentBackendRef.current === 'claude-code' && lastTurnServedByInSandboxAgentRef.current) {
+      reattachInFlightRef.current = true;
+      try {
+        const res = await fetch(
+          `/api/agent/claude-code/turn-status?projectId=${encodeURIComponent(projectId)}`,
+        );
+        const data = res.ok ? ((await res.json()) as { active?: boolean }) : null;
+        if (data?.active && !userStoppedRef.current) {
+          // No-progress guard: two consecutive reattach cycles with an
+          // identical last message means the turn is wedged (bridge alive but
+          // silent) — kill it and fall through to the nudge.
+          const msgs = messagesRef.current;
+          const last = msgs[msgs.length - 1];
+          const sig = `${msgs.length}:${last?.role === 'assistant' ? JSON.stringify(last.parts ?? []).length : 0}`;
+          if (lastReattachSigRef.current !== sig) {
+            lastReattachSigRef.current = sig;
+            // Drop the partial assistant tail: the replay rebuilds the whole
+            // turn's message from event zero, so keeping the partial would
+            // duplicate its parts.
+            setMessages(prev => {
+              const out = [...prev];
+              while (out.length > 0 && out[out.length - 1].role === 'assistant') out.pop();
+              return out;
+            });
+            setIsBusy(true);
+            toolAbortRef.current = new AbortController();
+            await resumeStream();
+            // Give React a beat to flush the resumed stream into state, then
+            // check whether anything actually streamed. A rebuilt assistant
+            // tail means the reattach delivered — the next busy-settle pass
+            // re-evaluates (endTurn → done; cut again → reattach again).
+            await new Promise<void>(r => setTimeout(r, 150));
+            const nowLast = messagesRef.current[messagesRef.current.length - 1];
+            if (nowLast?.role === 'assistant') return;
+            // 204 — the turn vanished between status check and reattach.
+            setIsBusy(false);
+          } else {
+            fetch('/api/agent/claude-code/stop', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ projectId }),
+            }).catch(() => {});
+          }
+        }
+      } catch {
+        // Status/reattach unavailable — fall back to the nudge.
+      } finally {
+        reattachInFlightRef.current = false;
+      }
+      if (userStoppedRef.current || endTurnCalledRef.current) return;
+    }
+    if (!maybeAutoContinue()) {
+      setShowCompletionWarning(true);
+    }
+  }, [projectId, maybeAutoContinue, resumeStream, setMessages]);
+
+  // --- Late modal completions → tell the agent ---
+  // When the user finishes a tool-opened modal (OAuth credentials, env var)
+  // AFTER the agent stopped waiting for it, the workspace fires this event
+  // (the completion route reports agentWaiting=false). Without it the agent
+  // never learns the credentials arrived and keeps reporting them missing.
+  // Busy → queue the note for after the turn; idle → send it right away.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{
+        projectId: string;
+        kind: 'oauth-provider' | 'env-var' | 'stripe-connect';
+        subject: string;
+      }>).detail;
+      if (!detail || detail.projectId !== projectId) return;
+      let note: string;
+      switch (detail.kind) {
+        case 'oauth-provider':
+          note =
+            `[system-note] The user just saved ${detail.subject} OAuth credentials in the workspace modal — it was still pending from earlier and was never dismissed. ` +
+            'Finish the wiring now: make sure convex/auth.ts registers the provider, run the Convex deploy, and confirm the sign-in button exists.';
+          break;
+        case 'env-var':
+          note =
+            `[system-note] The user just entered the ${detail.subject} environment variable in the workspace modal — it was still pending from earlier and was never dismissed. ` +
+            'Continue the work that needed it (the value is stored server-side; never ask to see it).';
+          break;
+        case 'stripe-connect':
+          note =
+            '[system-note] The user just connected their Stripe account — the earlier connect request completed. ' +
+            'Call initialize_stripe_payments again to finish setup (it will return already-connected with next steps).';
+          break;
+      }
+      if (isBusyRef.current) {
+        setMessageQueue(q => [...q, note]);
+      } else {
+        userStoppedRef.current = false;
+        sendMessageRef.current({ text: note });
+      }
+    };
+    window.addEventListener('agent-modal-completed', handler);
+    return () => window.removeEventListener('agent-modal-completed', handler);
+  }, [projectId]);
 
   // --- Debounced busy state: goes true immediately on activity, only goes false after a delay ---
   useEffect(() => {
@@ -1074,13 +1204,13 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         && !limitPayloadRef.current
         && messagesRef.current.some(m => m.role === 'assistant')
       ) {
-        if (!maybeAutoContinue()) {
-          setShowCompletionWarning(true);
-        }
+        // Reattach-first for Claude Code; falls back to the auto-continue
+        // nudge (and finally the visible warning) when there's nothing live.
+        void attemptTurnRecovery();
       }
     }
     prevBusyRef.current = isBusy;
-  }, [isBusy, maybeAutoContinue]); // Only trigger on actual busy state transitions
+  }, [isBusy, attemptTurnRecovery]); // Only trigger on actual busy state transitions
 
   // Track first response — only check when message count changes
   useEffect(() => {
@@ -1106,6 +1236,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       endTurnSeenRef.current = false;
       setEndTurnCalled(false);
       setShowCompletionWarning(false);
+      // New turn → fresh no-progress baseline for the reattach guard.
+      lastReattachSigRef.current = null;
     }
   }, [messages.length]);
 
@@ -2358,6 +2490,18 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                     }
                     setShowCompletionWarning(false);
                     setMessageQueue([]);
+                    // Claude Code runs DETACHED in the sandbox — aborting the
+                    // client stream alone leaves it working. Kill it for real.
+                    // (OpenCode is also detached but needs no extra call: the
+                    // aborted request fires its route's req.signal listener,
+                    // which touches the abort sentinel → session.abort.)
+                    if (agentBackendRef.current === 'claude-code') {
+                      fetch('/api/agent/claude-code/stop', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ projectId }),
+                      }).catch(() => {});
+                    }
                     // Signal workspace to dismiss any pending tool-driven modals
                     // (e.g. OAuthProviderModal from setupOAuthProvider) and tell
                     // the server-side polling loops to terminate early.

@@ -19,6 +19,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { envVarRequests } from "@/db/schema";
 import { isReservedEnvKey } from "@/lib/platform-env";
+import { clearAgentWaiting, markAgentWaiting } from "@/lib/agent/modal-wait";
 
 export type EnvVarTarget = "client" | "server";
 
@@ -51,7 +52,11 @@ export function validateEnvVarRequest(input: {
 }
 
 /** Insert a pending request (dismissing any stale pending ones first so the
- *  workspace modal always reflects the newest ask). Returns the request id. */
+ *  workspace modal always reflects the newest ask). Returns the request id.
+ *
+ *  If a pending request for the SAME key+target already exists, it is reused
+ *  instead of being replaced — the user may be mid-typing in that very modal,
+ *  and a retry by the agent must not yank it out from under them. */
 export async function createEnvVarRequest(params: {
   projectId: string;
   userId: string;
@@ -61,6 +66,28 @@ export async function createEnvVarRequest(params: {
   isSecret?: boolean;
 }): Promise<string> {
   const db = getDb();
+  const [existing] = await db
+    .select({ id: envVarRequests.id })
+    .from(envVarRequests)
+    .where(
+      and(
+        eq(envVarRequests.projectId, params.projectId),
+        eq(envVarRequests.status, "pending"),
+        eq(envVarRequests.key, params.key),
+        eq(envVarRequests.target, params.target),
+      ),
+    )
+    .limit(1);
+  if (existing) {
+    // Bump updatedAt: it doubles as the wait-start timestamp for the agent's
+    // wait ceiling, and a fresh tool call means the wait restarts now.
+    await db
+      .update(envVarRequests)
+      .set({ updatedAt: new Date() })
+      .where(eq(envVarRequests.id, existing.id));
+    return existing.id;
+  }
+
   await db
     .update(envVarRequests)
     .set({ status: "dismissed", updatedAt: new Date() })
@@ -88,17 +115,52 @@ export async function createEnvVarRequest(params: {
 
 export type EnvVarRequestOutcome = "completed" | "dismissed" | "timeout";
 
-/** Block until the user completes or dismisses the modal (up to 5 minutes).
- *  On timeout the row is marked dismissed so the workspace modal closes. */
+/** One short polling window (for the Claude Code tool route, whose bridge-side
+ *  caller loops until terminal). Refreshes the "agent is waiting" marker so a
+ *  late submit knows whether anyone is still listening. Returns 'pending' when
+ *  the window closes without a terminal status — the row is NOT touched. */
+export async function pollEnvVarRequestOnce(params: {
+  requestId: string;
+  projectId: string;
+  windowMs?: number;
+}): Promise<"completed" | "dismissed" | "pending"> {
+  const db = getDb();
+  const deadline = Date.now() + (params.windowMs ?? 20_000);
+  void markAgentWaiting("env-var", params.requestId);
+  for (;;) {
+    const [row] = await db
+      .select({ status: envVarRequests.status })
+      .from(envVarRequests)
+      .where(
+        and(
+          eq(envVarRequests.id, params.requestId),
+          eq(envVarRequests.projectId, params.projectId),
+        ),
+      )
+      .limit(1);
+    if (!row) return "dismissed"; // row disappeared — treat as declined
+    if (row.status === "completed") return "completed";
+    if (row.status === "dismissed") return "dismissed";
+    if (Date.now() >= deadline) return "pending";
+    await new Promise<void>((r) => setTimeout(r, 2500));
+  }
+}
+
+/** Block until the user completes or dismisses the modal (up to 4.5 minutes —
+ *  bounded by the caller's serverless maxDuration; used by the Botflow rail).
+ *
+ *  On timeout the row is left PENDING and the modal stays open: a timeout
+ *  means "the user hasn't finished yet", never "the user declined". The
+ *  workspace's lazy stale-expiry eventually clears truly abandoned rows, and
+ *  a late submit triggers a system-note back to the agent. */
 export async function pollEnvVarRequest(params: {
   requestId: string;
   projectId: string;
 }): Promise<EnvVarRequestOutcome> {
   const db = getDb();
-  // 270s (< the route's 300s maxDuration) so the timeout-dismiss below actually
-  // runs before the serverless request is killed at the platform boundary.
   const deadline = Date.now() + 270 * 1000;
   while (Date.now() < deadline) {
+    void markAgentWaiting("env-var", params.requestId);
     await new Promise<void>((r) => setTimeout(r, 2500));
     const [row] = await db
       .select({ status: envVarRequests.status })
@@ -114,18 +176,9 @@ export async function pollEnvVarRequest(params: {
     if (row.status === "completed") return "completed";
     if (row.status === "dismissed") return "dismissed";
   }
-
-  await db
-    .update(envVarRequests)
-    .set({ status: "dismissed", updatedAt: new Date() })
-    .where(
-      and(
-        eq(envVarRequests.id, params.requestId),
-        eq(envVarRequests.projectId, params.projectId),
-        eq(envVarRequests.status, "pending"),
-      ),
-    )
-    .catch(() => undefined);
+  // Giving up: drop the wait marker NOW so a submit seconds later correctly
+  // notifies the agent instead of assuming an active waiter.
+  void clearAgentWaiting("env-var", params.requestId);
   return "timeout";
 }
 
@@ -159,8 +212,9 @@ export function envVarOutcomeMessage(
       return {
         ok: false,
         content:
-          `Timed out waiting for the user to enter ${key} (5 minutes). Nothing was saved. ` +
-          `Call the tool again when the user is ready.`,
+          `The user has NOT entered ${key} yet — the modal is still open in their workspace; nothing was dismissed or declined. ` +
+          `Do NOT say the user dismissed or declined it. Continue with other work; you'll get a system note when they save it, ` +
+          `or you can call the tool again later to resume waiting.`,
       };
   }
 }

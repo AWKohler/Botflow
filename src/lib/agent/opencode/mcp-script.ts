@@ -90,12 +90,21 @@ const tools = enabled
   .map(materialize);
 
 // ---------------------------------------------------------------------------
-// Host callback — identical contract to the CC bridge's callHostTool:
+// Host callback — identical contract to the CC bridge (v25):
 // POST {BOTFLOW_API_BASE}/api/internal/claude-code-tool with a bearer token;
-// { ok: false } responses surface as isError tool results. No fetch timeout:
-// host tools legitimately block for minutes (ask_question, Stripe modal).
+// { ok: false } responses surface as isError tool results.
+//
+// Waitable-modal handshake: human-input tools (ask_question, request_env_var,
+// setup_oauth_provider, initialize_stripe_payments) return
+//   { ok: true, pending: true, wait: { requestId, pollDelayMs } }
+// after a short host-side poll window, and THIS loop — running in the
+// sandbox, where there is no execution ceiling — re-polls with waitRequestId
+// until the host returns a terminal result. From the model's perspective the
+// tool call simply blocks until the user acts (or the 30-min client cap).
 // ---------------------------------------------------------------------------
-async function callHostTool(toolName, input) {
+const WAIT_CLIENT_CAP_MS = 30 * 60 * 1000;
+
+async function postHostTool(toolName, input) {
   const base = process.env.BOTFLOW_API_BASE;
   const token = process.env.BOTFLOW_TOOL_TOKEN;
   if (!base || !token) {
@@ -131,6 +140,34 @@ async function callHostTool(toolName, input) {
       "and redeploy so the bypass header is sent. Body starts: " + raw.slice(0, 200),
     );
   }
+}
+
+async function callHostTool(toolName, input) {
+  let result = await postHostTool(toolName, input);
+  const startedWaiting = Date.now();
+  let transientFailures = 0;
+  while (result && result.pending === true && result.wait && result.wait.requestId) {
+    if (Date.now() - startedWaiting > WAIT_CLIENT_CAP_MS) {
+      return {
+        ok: false,
+        content:
+          "Stopped waiting for the user after 30 minutes. The request may STILL be pending in their workspace — " +
+          "do NOT tell the user they dismissed or declined it. Continue with other work.",
+      };
+    }
+    const delay = Number(result.wait.pollDelayMs) > 0 ? Number(result.wait.pollDelayMs) : 2500;
+    await new Promise((r) => setTimeout(r, delay));
+    try {
+      result = await postHostTool(toolName, { ...(input ?? {}), waitRequestId: result.wait.requestId });
+      transientFailures = 0;
+    } catch (err) {
+      // Don't let one blip (redeploy, network hiccup) abort a long human
+      // wait — retry a few times before surfacing the error.
+      transientFailures += 1;
+      if (transientFailures >= 5) throw err;
+    }
+  }
+  return result;
 }
 
 function toCallToolResult(result) {

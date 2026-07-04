@@ -47,6 +47,17 @@ import {
 } from "@/lib/agent/claude-code/session-store";
 import { createTranslator, type BridgeEvent } from "@/lib/agent/claude-code/translator";
 import { mintToolToken, revokeToolToken } from "@/lib/agent/claude-code/tool-token";
+import {
+  buildPrepareTurnScript,
+  turnEventFile,
+  BRIDGE_PID_FILE,
+} from "@/lib/agent/claude-code/bridge-control";
+import {
+  getTurnRecord,
+  setTurnRecord,
+  markTurnEnded,
+  markTurnDead,
+} from "@/lib/agent/claude-code/turn-registry";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 import {
   fallbackResponse as fallback,
@@ -239,8 +250,25 @@ export async function POST(req: Request) {
 
   const turnId = Math.random().toString(36).slice(2, 10);
   const configPath = `/tmp/.botflow-claude-config-${turnId}.json`;
+  const eventFile = turnEventFile(turnId);
 
   const sandbox = await getOrCreatePersistentSandbox(projectId);
+
+  // ── One bridge per project ────────────────────────────────────────────────
+  // The bridge runs detached, so a maxDuration-killed route leaves it alive
+  // (by design — see the reattach route). But a NEW turn must never race the
+  // previous one in the same sandbox: kill the old bridge (its SIGTERM handler
+  // interrupts the claude subprocess), revoke its tool token, sweep stale turn
+  // artifacts, and pre-create the new event file so tail -f attaches cleanly.
+  const prevTurn = await getTurnRecord(projectId).catch(() => null);
+  await sandbox.runCommand({
+    cmd: "sh",
+    args: ["-c", buildPrepareTurnScript(eventFile)],
+  });
+  if (prevTurn?.toolToken) {
+    revokeToolToken(prevTurn.toolToken).catch(() => {});
+  }
+
   await sandbox.writeFiles([
     {
       path: configPath,
@@ -257,6 +285,8 @@ export async function POST(req: Request) {
   // ── Spawn the bridge ────────────────────────────────────────────────────
   const bridgeEnv: Record<string, string> = {
     BOTFLOW_CONFIG_PATH: configPath,
+    BOTFLOW_EVENT_FILE: eventFile,
+    BOTFLOW_PID_FILE: BRIDGE_PID_FILE,
   };
   if (toolToken) {
     bridgeEnv.BOTFLOW_API_BASE = new URL(req.url).origin;
@@ -278,6 +308,16 @@ export async function POST(req: Request) {
     env: bridgeEnv,
     detached: true,
   });
+
+  // Register the turn so later requests can find it: the reattach route tails
+  // its event file after this route dies at maxDuration, and the next turn's
+  // spawn (or the stop route) kills the bridge + revokes the token.
+  await setTurnRecord(projectId, {
+    turnId,
+    eventFile,
+    startedAt: Date.now(),
+    ...(toolToken ? { toolToken } : {}),
+  }).catch(() => {});
 
   // ── Stream stdout NDJSON → AI SDK UIMessageStream ───────────────────────
   const stream = createUIMessageStream<UIMessage>({
@@ -307,13 +347,23 @@ export async function POST(req: Request) {
             }
             if (event.type === "session_started") {
               lastSessionIdSeen = event.sessionId;
+              // Persist EAGERLY — the `finally` below never runs when the
+              // platform hard-kills this route at maxDuration, and losing the
+              // session pointer forces the continuation turn to start a fresh
+              // session and rediscover all its context.
+              setClaudeCodeSessionId(projectId, event.sessionId).catch(() => {});
             }
             translator.push(event);
             if (event.type === "end_turn") {
               endedNormally = true;
+              markTurnEnded(projectId, turnId).catch(() => {});
               break;
             }
             if (event.type === "error") {
+              // The bridge emits `error` only when it's exiting — mark the
+              // turn dead so the client falls back to a fresh continuation
+              // instead of trying to reattach to a corpse.
+              markTurnDead(projectId, turnId).catch(() => {});
               break;
             }
           }
@@ -327,20 +377,28 @@ export async function POST(req: Request) {
       } finally {
         translator.end();
         if (lastSessionIdSeen) {
-          // Persist the session id so the next turn resumes.
+          // Backstop persist (the eager write above already ran on the happy
+          // path; this covers exotic orderings). Non-fatal.
           try {
             await setClaudeCodeSessionId(projectId, lastSessionIdSeen);
           } catch {
             // Non-fatal.
           }
         }
-        // Best-effort: revoke the tool-callback token + delete the config file.
-        if (toolToken) {
-          revokeToolToken(toolToken).catch(() => {});
+        // Deliberately NO token revocation here: the bridge runs detached and
+        // legitimately outlives this route (maxDuration kill, client
+        // disconnect) — revoking on stream teardown would cut off a live
+        // turn's tool access mid-flight. The token TTL slides on use and is
+        // revoked explicitly by the next turn's spawn or the stop route.
+        //
+        // Config cleanup only on a NORMAL end — on an early teardown the
+        // bridge may not have read it yet. Stale configs are swept by the
+        // next turn's prepare script.
+        if (endedNormally) {
+          sandbox
+            .runCommand({ cmd: "sh", args: ["-c", `rm -f ${configPath}`] })
+            .catch(() => {});
         }
-        sandbox
-          .runCommand({ cmd: "sh", args: ["-c", `rm -f ${configPath}`] })
-          .catch(() => {});
       }
     },
     onError: (err) => (err instanceof Error ? err.message : String(err)),
