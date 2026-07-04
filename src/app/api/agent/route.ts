@@ -652,6 +652,7 @@ export async function POST(req: Request) {
       const cookie = req.headers.get("cookie") ?? "";
       tools = getSandboxedWebTools({
         projectId,
+        userId,
         hasBackend,
         convexUrl,
         appBaseUrl: new URL(req.url).origin,

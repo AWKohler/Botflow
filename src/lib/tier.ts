@@ -255,6 +255,29 @@ export async function canUseStripeConnect(
   };
 }
 
+// ─── AI image generation ──────────────────────────────────────────────────────
+
+/**
+ * Whether the given user is allowed to generate images with the AI image tool
+ * (FAL / Krea 2 Medium). Pro/Max only — mirrors {@link canUseStripeConnect}.
+ * Returns a user-facing message on the deny path so callers can surface it
+ * directly in chat.
+ */
+export async function canGenerateImages(
+  userId: string
+): Promise<{ allowed: boolean; tier: Tier; reason?: string }> {
+  const tier = await getUserTier(userId);
+  if (tierMeetsRequirement(tier, 'pro')) {
+    return { allowed: true, tier };
+  }
+  return {
+    allowed: false,
+    tier,
+    reason:
+      'AI image generation is a Pro/Max feature. Upgrade your plan to generate images inside your project.',
+  };
+}
+
 // ─── RevenueCat ─────────────────────────────────────────────────────────────────
 
 /**

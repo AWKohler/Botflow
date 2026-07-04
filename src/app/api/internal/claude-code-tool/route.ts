@@ -1033,6 +1033,32 @@ REQUIRED NEXT STEPS:
       });
     }
 
+    case "generate_image": {
+      // AI image generation (FAL / Krea 2 Medium). Bills the user's platform
+      // credits per image; the FAL key stays server-side, like every other
+      // platform credential this endpoint fronts.
+      const { generateImage } = await import("@/lib/agent/image-gen");
+      const prompt = typeof body.input?.prompt === "string" ? body.input.prompt : "";
+      const outputPath =
+        typeof body.input?.output_path === "string" ? body.input.output_path : "";
+      const aspectRatio =
+        typeof body.input?.aspect_ratio === "string" ? body.input.aspect_ratio : undefined;
+      const result = await generateImage({
+        projectId: binding.projectId,
+        userId: binding.userId,
+        prompt,
+        outputPath,
+        ...(aspectRatio ? { aspectRatio } : {}),
+      });
+      if (!result.ok) {
+        return NextResponse.json({ ok: false, content: result.error });
+      }
+      return NextResponse.json({
+        ok: true,
+        content: `Image generated and saved to ${result.path}.${result.seed !== null ? ` (seed: ${result.seed})` : ""}`,
+      });
+    }
+
     case "request_env_var": {
       // Mirror of the Botflow requestEnvVar tool: open the env-var modal in
       // the workspace, block until the user saves or dismisses, report the

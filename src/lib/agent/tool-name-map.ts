@@ -137,6 +137,16 @@ export const CLAUDE_CODE_TO_BOTFLOW: Record<string, ToolRewrite | null> = {
     mapInput: identityInput,
   },
 
+  // ── Image generation ─────────────────────────────────────────────────
+  generate_image: {
+    to: "generateImage",
+    mapInput: (i) => ({
+      prompt: String(i.prompt ?? ""),
+      outputPath: String(i.output_path ?? ""),
+      ...(i.aspect_ratio ? { aspectRatio: String(i.aspect_ratio) } : {}),
+    }),
+  },
+
   // ── Convex MCP tools ─────────────────────────────────────────────────
   convex_deploy: {
     to: "convexDeploy",
@@ -204,6 +214,14 @@ export const BOTFLOW_TO_CLAUDE_CODE: Record<string, ToolRewrite | null> = {
   getDevServerLog:     passthrough("getDevServerLog"),
   getBrowserLog:       passthrough("getBrowserLog"),
   refreshPreview:      passthrough("refreshPreview"),
+  generateImage:       {
+    to: "generate_image",
+    mapInput: (i) => ({
+      prompt: i.prompt,
+      output_path: i.outputPath,
+      ...(i.aspectRatio ? { aspect_ratio: i.aspectRatio } : {}),
+    }),
+  },
   convexDeploy:        { to: "convex_deploy", mapInput: identityInput },
   setupAuth:           { to: "setup_auth", mapInput: identityInput },
   setupOAuthProvider:  { to: "setup_oauth_provider", mapInput: identityInput },
@@ -233,6 +251,7 @@ export const BOTFLOW_NATIVE_TOOLS = new Set<string>([
   "getDevServerLog",
   "getBrowserLog",
   "refreshPreview",
+  "generateImage",
   "convexDeploy",
   "setupAuth",
   "setupOAuthProvider",
