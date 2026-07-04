@@ -10,6 +10,7 @@ import { getUserCredentials, setUserCredentials, type UserCredentials } from '@/
 import { normalizeProjectPlatform, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
 import { resolveModelId } from '@/lib/agent/models';
 import { resolveBackends, type AgentBackend } from '@/lib/agent/backend-resolution';
+import { canUseSwift } from '@/lib/swift-access';
 import { randomUUID } from 'node:crypto';
 
 const CONVEX_CLI_API = 'https://api.convex.dev/api';
@@ -172,6 +173,15 @@ export async function GET(request: Request) {
 
   if (!userId) {
     return redirectToSignIn({ returnBackUrl: request.url });
+  }
+
+  // This is the landing page's primary creation path. Enforce the same Swift
+  // entitlement as the JSON projects API so direct URLs cannot create an
+  // unusable Swift project.
+  if (platform === 'swift' && !(await canUseSwift(userId))) {
+    const errUrl = new URL('/', request.url);
+    errUrl.searchParams.set('error', 'swift_requires_pro');
+    return NextResponse.redirect(errUrl);
   }
 
   try {
