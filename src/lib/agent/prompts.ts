@@ -1422,6 +1422,7 @@ const SANDBOXED_WEB_PROMPT_INTRO: string[] = [
   "- Pass `prompt`, `outputPath` (project-relative, e.g. `public/images/hero.png` — use `.png`/`.jpg`), and optional `aspectRatio` (`1:1` default; also `4:3`, `3:2`, `16:9`, `2.35:1`, `4:5`, `2:3`, `9:16`).",
   "- The call blocks until the image is saved into the project (~10-30s); then reference it like any static asset (`/images/hero.png` for files under `public/`, or import from `src/assets/`).",
   "- **Each image costs the user credits** — generate what the design needs, but don't regenerate an image that already looks right and never call it speculatively.",
+  "- **Pro/Max feature** — for Free users the tool returns a tier-blocked error; relay it and do NOT retry, falling back to CSS/gradients or existing assets.",
   "",
   "---",
   "",

@@ -272,7 +272,8 @@ function getImageGenTools(projectId: string, userId: string) {
         "Blocks until generation finishes (typically 10-30s) and returns { ok, path, seed } on success — the file exists in the project as soon as this returns. " +
         "Use for hero images, backgrounds, illustrations, placeholder photos, textures, etc. " +
         "Put web assets under public/ (e.g. public/images/hero.png) and reference them by URL path ('/images/hero.png'), or under src/assets/ for bundled imports. " +
-        "Each call costs the user credits, so batch thoughtfully — don't regenerate an image that already looks right, and don't call this speculatively.",
+        "Each call costs the user credits, so batch thoughtfully — don't regenerate an image that already looks right, and don't call this speculatively. " +
+        "Pro/Max feature: for Free users this returns a tier-blocked error — relay it to the user and do NOT retry; fall back to CSS/gradients or existing assets.",
       inputSchema: z.object({
         prompt: z
           .string()

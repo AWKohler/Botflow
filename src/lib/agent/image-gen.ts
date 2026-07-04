@@ -10,7 +10,7 @@
  * image service fails) — same pattern as app-store-readiness/app-icon.ts.
  */
 
-import { getUserTier } from "@/lib/tier";
+import { canGenerateImages } from "@/lib/tier";
 import {
   adjustWeeklyCredits,
   getMonthlyCredits,
@@ -56,7 +56,7 @@ const MAX_IMAGE_DOWNLOAD_BYTES = 30 * 1024 * 1024;
 
 export type GenerateImageResult =
   | { ok: true; path: string; seed: number | null; creditsCharged: number }
-  | { ok: false; error: string; insufficientCredits?: boolean };
+  | { ok: false; error: string; insufficientCredits?: boolean; tierBlocked?: boolean };
 
 /** Normalize + validate the output path. Returns null when unusable. */
 function sanitizeOutputPath(raw: string): string | null {
@@ -109,8 +109,16 @@ export async function generateImage(opts: {
     return { ok: false, error: "Image generation isn't configured on the server." };
   }
 
+  // ── Tier gate: Pro/Max only ──────────────────────────────────────────────
+  // Enforced here (the single shared entry point) so both agent surfaces are
+  // gated identically and a crafted request can't bypass it.
+  const gate = await canGenerateImages(opts.userId);
+  if (!gate.allowed) {
+    return { ok: false, error: gate.reason ?? "AI image generation is a Pro/Max feature.", tierBlocked: true };
+  }
+
   // ── Budget: monthly cap + atomic weekly reservation ──────────────────────
-  const tier = await getUserTier(opts.userId);
+  const tier = gate.tier;
   // Pre-check the FULL cost against the monthly cap — not merely whether the
   // user is already at it — so someone a credit under the cap can't still
   // incur a whole image's worth of credits.

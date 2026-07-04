@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "24";
+export const BRIDGE_SCRIPT_VERSION = "25";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -501,7 +501,8 @@ function buildCustomTools(customTools, oauthProviderIds) {
         "Blocks until generation finishes (typically 10-30s); on success the file exists in the project immediately. " +
         "Use for hero images, backgrounds, illustrations, placeholder photos, textures, etc. " +
         "Put web assets under public/ (e.g. public/images/hero.png) and reference them by URL path ('/images/hero.png'), or under src/assets/ for bundled imports. Use a .png or .jpg extension. " +
-        "Each call costs the user credits, so don't regenerate an image that already looks right and don't call this speculatively.",
+        "Each call costs the user credits, so don't regenerate an image that already looks right and don't call this speculatively. " +
+        "Pro/Max feature: for Free users this returns a tier-blocked error — relay it to the user and do NOT retry; fall back to CSS/gradients or existing assets.",
         {
           prompt: z.string().describe("Text description of the image to generate. Be concrete about subject, style, lighting, and mood."),
           output_path: z.string().describe("Project-relative file path to save the image to, e.g. public/images/hero.png. Parent directories are created automatically."),

@@ -98,6 +98,7 @@ export function buildClaudeCodeAppendPrompt(input: BuildAppendPromptInput): stri
     "## AI image generation (`generate_image` MCP tool)",
     "Generate real images (hero shots, backgrounds, illustrations, placeholder photos, textures) instead of shipping gray boxes or hotlinking stock URLs. Pass `prompt`, `output_path` (project-relative, e.g. `public/images/hero.png` — use `.png`/`.jpg`), and optional `aspect_ratio` (`1:1` default; also `4:3`, `3:2`, `16:9`, `2.35:1`, `4:5`, `2:3`, `9:16`). The call blocks until the image is saved into the project (~10-30s), then reference it like any static asset (`/images/hero.png` for files under `public/`).",
     "**Each image costs the user credits** — generate what the design needs, but don't regenerate an image that already looks right and never call it speculatively.",
+    "**Pro/Max feature** — for Free users the tool returns a tier-blocked error; relay it and do NOT retry, falling back to CSS/gradients or existing assets.",
   ];
 
   if (hasBackend) {
