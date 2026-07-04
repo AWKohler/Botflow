@@ -22,6 +22,7 @@ import { envVarRequests, projectEnvVars, projects } from "@/db/schema";
 import { materializeFrontendEnv } from "@/lib/sandbox-env";
 import { setConvexEnvVar } from "@/lib/convex-env";
 import { isReservedEnvKey } from "@/lib/platform-env";
+import { isAgentWaiting, MODAL_STALE_AFTER_MS } from "@/lib/agent/modal-wait";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,13 +70,40 @@ export async function GET(
         key: envVarRequests.key,
         message: envVarRequests.message,
         isSecret: envVarRequests.isSecret,
+        updatedAt: envVarRequests.updatedAt,
       })
       .from(envVarRequests)
       .where(and(eq(envVarRequests.projectId, projectId), eq(envVarRequests.status, "pending")))
       .orderBy(desc(envVarRequests.createdAt))
       .limit(1);
 
-    return NextResponse.json({ ok: true, pending: pending ?? null });
+    // Lazy stale-expiry: agent pollers no longer dismiss rows on timeout, so
+    // long-abandoned requests are retired here — never while an agent is
+    // actively waiting on them.
+    if (
+      pending &&
+      Date.now() - pending.updatedAt.getTime() > MODAL_STALE_AFTER_MS &&
+      !(await isAgentWaiting("env-var", pending.id))
+    ) {
+      await db
+        .update(envVarRequests)
+        .set({ status: "dismissed", updatedAt: new Date() })
+        .where(and(eq(envVarRequests.id, pending.id), eq(envVarRequests.status, "pending")));
+      return NextResponse.json({ ok: true, pending: null });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      pending: pending
+        ? {
+            id: pending.id,
+            target: pending.target,
+            key: pending.key,
+            message: pending.message,
+            isSecret: pending.isSecret,
+          }
+        : null,
+    });
   } catch (err) {
     console.error("[env/request] GET error:", err);
     return NextResponse.json(
@@ -209,7 +237,18 @@ export async function POST(
       .set({ status: "completed", updatedAt: new Date() })
       .where(eq(envVarRequests.id, request.id));
 
-    return NextResponse.json({ ok: true, status: "completed" });
+    // Tell the modal whether an agent poller is still actively waiting on this
+    // request (if not, the workspace sends a system-note so the agent learns
+    // the value arrived).
+    const agentWaiting = await isAgentWaiting("env-var", request.id);
+
+    return NextResponse.json({
+      ok: true,
+      status: "completed",
+      key: request.key,
+      target: request.target,
+      agentWaiting,
+    });
   } catch (err) {
     console.error("[env/request] POST error:", err);
     return NextResponse.json(
