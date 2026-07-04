@@ -1,11 +1,12 @@
 /**
  * GET /api/agent/claude-code/turn-status?projectId=...
  *
- * Lightweight (Redis-only) check the AgentPanel runs when a Claude Code
- * stream settles without an endTurn: is the turn actually still alive in the
- * sandbox (or already finished there)? If so, the client REATTACHES to the
- * turn's event stream instead of firing an auto-continue nudge — the nudge
- * would spawn a second agent against a turn that never actually stopped.
+ * Lightweight (Redis-only) check the AgentPanel runs when an in-sandbox
+ * agent stream (Claude Code or OpenCode — one shared turn registry) settles
+ * without an endTurn: is the turn actually still alive in the sandbox (or
+ * already finished there)? If so, the client REATTACHES to the turn's event
+ * stream instead of firing an auto-continue nudge — the nudge would spawn a
+ * second agent against a turn that never actually stopped.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";

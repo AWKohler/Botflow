@@ -60,6 +60,9 @@ export function buildPrepareTurnScript(newEventFile: string): string {
     // ── Sweep stale turn artifacts (>6h) — configs too ────────────────────
     `find ${BRIDGE_RUN_DIR} -name 'turn-*.ndjson' -mmin +360 -delete 2>/dev/null || true`,
     `find /tmp -maxdepth 1 -name '.botflow-claude-config-*.json' -mmin +360 -delete 2>/dev/null || true`,
+    `find /tmp -maxdepth 1 -name '.botflow-opencode-config-*.json' -mmin +360 -delete 2>/dev/null || true`,
+    // Stale abort sentinel from a previous OpenCode turn must not abort this one.
+    `rm -f ${BRIDGE_RUN_DIR}/abort`,
     // ── Pre-create the new event file so tail -f can attach immediately ───
     `: > ${newEventFile}`,
     `true`,

@@ -29,8 +29,14 @@
  *    botflow_ask_question is the question primitive (renders the platform's
  *    QuestionPrompt UI via the host callback).
  *  - A MessageAbortedError on session.error is a NORMAL end (user abort), not
- *    an error. Aborts arrive via a sentinel file the route touches; the
- *    bridge polls it and calls POST /session/{id}/abort.
+ *    an error. Aborts arrive via a sentinel file (or SIGTERM from the stop
+ *    route / next turn's prepare script); the bridge polls the sentinel and
+ *    calls POST /session/{id}/abort.
+ *  - Turn-lifecycle parity with the CC bridge (v25): events are teed to
+ *    BOTFLOW_EVENT_FILE so the host can re-attach after its streaming route
+ *    dies at maxDuration; the pid is written to BOTFLOW_PID_FILE so the host
+ *    can kill/probe this bridge across requests; SIGTERM aborts the session
+ *    and nukes the opencode server process group.
  *
  * Bump OPENCODE_SCRIPTS_VERSION whenever THIS file or mcp-script.ts changes —
  * one marker covers both (they're written together by writeOpenCodeScripts).
@@ -55,7 +61,7 @@
  *   }
  */
 
-export const OPENCODE_SCRIPTS_VERSION = "3";
+export const OPENCODE_SCRIPTS_VERSION = "4";
 
 export const OPENCODE_BRIDGE_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -65,9 +71,21 @@ export const OPENCODE_BRIDGE_SOURCE = `#!/usr/bin/env node
  */
 import { spawn } from "node:child_process";
 import { readFile, writeFile, access, unlink } from "node:fs/promises";
+import { appendFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+
+// Tee every event to BOTFLOW_EVENT_FILE (in addition to stdout) — same
+// contract as the CC bridge (v25): the file is what lets the host re-attach
+// to this turn after its streaming route dies at maxDuration. The bridge
+// (and the turn) keep going regardless.
+const EVENT_FILE = process.env.BOTFLOW_EVENT_FILE || null;
 
 function emit(event) {
-  process.stdout.write(JSON.stringify(event) + "\\n");
+  const line = JSON.stringify(event) + "\\n";
+  process.stdout.write(line);
+  if (EVENT_FILE) {
+    try { appendFileSync(EVENT_FILE, line); } catch { /* tee is best-effort */ }
+  }
 }
 
 function fail(message) {
@@ -102,6 +120,17 @@ const {
 
 if (!opencodeBin || !model || !model.providerID || !model.modelID) {
   fail("Config missing opencodeBin/model");
+}
+
+// Advertise our pid so the host can kill/probe this bridge from a later
+// request — same contract as the CC bridge (one in-sandbox agent per
+// project; the next turn's prepare script kills us first).
+const pidFile = process.env.BOTFLOW_PID_FILE;
+if (pidFile) {
+  try {
+    mkdirSync(dirname(pidFile), { recursive: true });
+    writeFileSync(pidFile, String(process.pid));
+  } catch { /* liveness probing degrades gracefully without it */ }
 }
 
 emit({ type: "ready" });
@@ -168,6 +197,24 @@ function killServer() {
   }
 }
 process.on("exit", killServer);
+
+// SIGTERM = superseded by a new turn or explicit user stop. Node's default
+// signal death would NOT fire the "exit" handler, orphaning the opencode
+// server (which keeps burning the user's own credits) — so handle it: abort
+// the session (best-effort, so opencode records a clean abort), nuke the
+// server process group, and exit.
+process.on("SIGTERM", () => {
+  try { emit({ type: "error", error: "Turn stopped (superseded by a new turn or stopped by the user)." }); } catch {}
+  try {
+    if (sessionId) {
+      api("POST", "/session/" + encodeURIComponent(sessionId) + "/abort").catch(() => {});
+    }
+  } catch {}
+  setTimeout(() => {
+    killServer();
+    process.exit(1);
+  }, 1000);
+});
 
 async function startServer() {
   let lastOutput = "";
@@ -403,11 +450,15 @@ setTimeout(() => {
   }
 }, 60000).unref();
 
-// Whole-turn watchdog: the route stops reading at its own maxDuration; this
-// keeps a wedged bridge from squatting in the sandbox afterwards.
+// Whole-turn watchdog — the LAST line of defense against a forgotten bridge
+// burning the user's own credits. Generous on purpose: turns legitimately
+// outlive the route (the client reattaches via the event file), and a modal
+// wait alone can hold the turn open for 20 minutes. Wedged bridges are
+// normally killed much earlier by the client's no-progress reattach guard or
+// the next turn's prepare script.
 setTimeout(() => {
-  if (!finished) fail("Turn watchdog expired (20 minutes)");
-}, 20 * 60 * 1000).unref();
+  if (!finished) fail("Turn watchdog expired (60 minutes)");
+}, 60 * 60 * 1000).unref();
 
 // ---------------------------------------------------------------------------
 // Abort sentinel — the route touches this file when the client aborts.

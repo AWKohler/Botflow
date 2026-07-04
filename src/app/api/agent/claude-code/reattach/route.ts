@@ -1,13 +1,15 @@
 /**
  * GET /api/agent/claude-code/reattach?projectId=...
  *
- * Re-attach to the project's current Claude Code turn. The bridge runs
- * detached in the sandbox and tees every NDJSON event to a per-turn file, so
- * when the ORIGINAL streaming route dies at maxDuration (or the client's
- * connection drops) the turn keeps going — only the viewer's pipe broke.
- * This route replays that file from the beginning and keeps following it
- * while the bridge lives, translated into the same UIMessageStream the
- * original POST produced.
+ * Re-attach to the project's current in-sandbox agent turn — Claude Code OR
+ * OpenCode (the URL predates the second backend; the turn record's `backend`
+ * field picks the right translator). Both bridges run detached in the
+ * sandbox and tee every NDJSON event to a per-turn file, so when the
+ * ORIGINAL streaming route dies at maxDuration (or the client's connection
+ * drops) the turn keeps going — only the viewer's pipe broke. This route
+ * replays that file from the beginning and keeps following it while the
+ * bridge lives, translated into the same UIMessageStream the original POST
+ * produced.
  *
  * The client (AgentPanel) calls this via useChat's resumeStream() after
  * dropping its partial assistant message, so the replay rebuilds the whole
@@ -30,6 +32,10 @@ import { getDb } from "@/db";
 import { projects } from "@/db/schema";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
 import { createTranslator, type BridgeEvent } from "@/lib/agent/claude-code/translator";
+import {
+  createOpenCodeTranslator,
+  type OpenCodeBridgeEvent,
+} from "@/lib/agent/opencode/translator";
 import { buildTailTurnScript } from "@/lib/agent/claude-code/bridge-control";
 import {
   getTurnRecord,
@@ -91,7 +97,12 @@ export async function GET(req: NextRequest) {
 
   const stream = createUIMessageStream<UIMessage>({
     execute: async ({ writer }) => {
-      const translator = createTranslator(writer);
+      // Same push/end surface on both translators; the event unions differ,
+      // so each cast matches the backend that wrote the file.
+      const isOpenCode = record.backend === "opencode";
+      const translator = isOpenCode
+        ? createOpenCodeTranslator(writer)
+        : createTranslator(writer);
       let buffer = "";
       let sawEndTurn = false;
 
@@ -103,15 +114,15 @@ export async function GET(req: NextRequest) {
           buffer = lines.pop() ?? "";
           for (const line of lines) {
             if (!line) continue;
-            let event: BridgeEvent;
+            let event: BridgeEvent | OpenCodeBridgeEvent;
             try {
-              event = JSON.parse(line) as BridgeEvent;
+              event = JSON.parse(line) as BridgeEvent | OpenCodeBridgeEvent;
             } catch {
               // A torn final line (bridge killed mid-append) is expected on
               // crashed turns — skip silently rather than alarming the UI.
               continue;
             }
-            translator.push(event);
+            (translator.push as (e: BridgeEvent | OpenCodeBridgeEvent) => void)(event);
             if (event.type === "end_turn") {
               sawEndTurn = true;
               break;

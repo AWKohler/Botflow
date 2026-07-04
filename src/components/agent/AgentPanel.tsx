@@ -698,10 +698,11 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const transportRef = useRef(new DefaultChatTransport({
     api: '/api/agent',
     body: { projectId, platform },
-    // resumeStream() → GET the Claude Code reattach route, which replays the
-    // current turn's event file and follows it while the bridge lives. Only
-    // claude-code turns are resumable; the recovery logic only calls
-    // resumeStream() for them. A 204 (nothing to resume) is a clean no-op.
+    // resumeStream() → GET the reattach route, which replays the current
+    // in-sandbox turn's event file (Claude Code or OpenCode — the turn record
+    // picks the translator) and follows it while the bridge lives. The
+    // recovery logic only calls resumeStream() for in-sandbox turns. A 204
+    // (nothing to resume) is a clean no-op.
     prepareReconnectToStreamRequest: () => ({
       api: `/api/agent/claude-code/reattach?projectId=${encodeURIComponent(projectId)}`,
     }),
@@ -1002,37 +1003,35 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     setShowCompletionWarning(false);
     setIsBusy(true);
     toolAbortRef.current = new AbortController();
-    // Per-backend wording: Claude Code has reattach-first recovery, so its
-    // nudge only fires after a failed reattach and leans on the resumed
-    // session transcript. OpenCode has no reattach path (yet) — a plain
-    // interruption nudge. Botflow keys on endTurn.
-    const nudge = agentBackendRef.current === 'claude-code'
+    // Per-backend wording: both in-sandbox agents (Claude Code + OpenCode)
+    // have reattach-first recovery, so their nudge only fires after a failed
+    // reattach and leans on the resumed session transcript. Botflow keys on
+    // endTurn.
+    const backend = agentBackendRef.current;
+    const nudge = backend === 'claude-code' || backend === 'opencode'
       ? '[system-note] Automatic continuation: your previous turn stopped before finishing and could not be re-attached. Your resumed session transcript is the source of truth for what already happened — trust it, do not re-read files or re-verify work it already shows as done. Continue from where it leaves off; if the task is already complete, give a brief summary of what was done.'
-      : agentBackendRef.current === 'opencode'
-        ? '[system-note] Automatic continuation: your previous turn was interrupted before it finished. Continue from where you left off; if the task is already complete, give a brief summary of what was done.'
-        : '[system-note] Automatic continuation: the previous response ended without calling endTurn. Continue the remaining work; if everything is already complete, call endTurn now with a brief summary.';
+      : '[system-note] Automatic continuation: the previous response ended without calling endTurn. Continue the remaining work; if everything is already complete, call endTurn now with a brief summary.';
     sendMessageRef.current({ text: nudge });
     return true;
   }, [MAX_AUTO_CONTINUES]);
   maybeAutoContinueRef.current = maybeAutoContinue;
 
-  // --- Reattach-first recovery (Claude Code) ---
-  // The bridge runs detached in the sandbox, so a settled stream usually
-  // means the VIEWER's pipe died (route maxDuration), not the turn. Check
+  // --- Reattach-first recovery (Claude Code + OpenCode) ---
+  // Both in-sandbox bridges run detached, so a settled stream usually means
+  // the VIEWER's pipe died (route maxDuration), not the turn. Check
   // turn-status; if the turn is alive (or finished unseen), drop the partial
   // assistant tail and resumeStream() — the reattach route replays the turn's
-  // event file from zero and follows it live. Only when the turn is truly
-  // dead do we fall back to the auto-continue nudge (whose spawn also clears
-  // any corpse). This is what makes a >5-minute turn a reconnect instead of
-  // a second racing agent.
+  // event file from zero (through the backend's translator) and follows it
+  // live. Only when the turn is truly dead do we fall back to the
+  // auto-continue nudge (whose spawn also clears any corpse). This is what
+  // makes a >5-minute turn a reconnect instead of a second racing agent.
   const reattachInFlightRef = useRef(false);
   const lastReattachSigRef = useRef<string | null>(null);
   const attemptTurnRecovery = useCallback(async () => {
     if (userStoppedRef.current) return;
     if (reattachInFlightRef.current) return;
-    // Reattach exists only on the Claude Code rail; OpenCode turns (also
-    // flagged in-sandbox) fall through to the plain auto-continue nudge.
-    if (agentBackendRef.current === 'claude-code' && lastTurnServedByInSandboxAgentRef.current) {
+    const backend = agentBackendRef.current;
+    if ((backend === 'claude-code' || backend === 'opencode') && lastTurnServedByInSandboxAgentRef.current) {
       reattachInFlightRef.current = true;
       try {
         const res = await fetch(
@@ -2490,12 +2489,13 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                     }
                     setShowCompletionWarning(false);
                     setMessageQueue([]);
-                    // Claude Code runs DETACHED in the sandbox — aborting the
-                    // client stream alone leaves it working. Kill it for real.
-                    // (OpenCode is also detached but needs no extra call: the
-                    // aborted request fires its route's req.signal listener,
-                    // which touches the abort sentinel → session.abort.)
-                    if (agentBackendRef.current === 'claude-code') {
+                    // Both in-sandbox agents run DETACHED in the sandbox —
+                    // aborting the client stream alone leaves them working.
+                    // Kill for real via the shared stop route (the bridges'
+                    // SIGTERM handlers stop their subprocesses cleanly:
+                    // Claude Code interrupts claude, OpenCode aborts the
+                    // session and nukes its server process group).
+                    if (agentBackendRef.current === 'claude-code' || agentBackendRef.current === 'opencode') {
                       fetch('/api/agent/claude-code/stop', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },

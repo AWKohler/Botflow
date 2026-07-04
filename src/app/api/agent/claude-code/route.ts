@@ -314,6 +314,7 @@ export async function POST(req: Request) {
   // spawn (or the stop route) kills the bridge + revokes the token.
   await setTurnRecord(projectId, {
     turnId,
+    backend: "claude-code",
     eventFile,
     startedAt: Date.now(),
     ...(toolToken ? { toolToken } : {}),

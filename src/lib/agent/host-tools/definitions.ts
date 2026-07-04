@@ -84,8 +84,11 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       "Opens a modal in the user's workspace where they register an app with the provider and paste their credentials (Apple uploads a .p8). " +
       "ONLY call this when the user EXPLICITLY asks for social sign-in; otherwise default to password sign-in via setup_auth. " +
       "PREREQUISITE: setup_auth must have run first. " +
-      "It blocks until the user completes or dismisses the modal (up to 5 minutes). On success it returns the exact " +
-      "convex/auth.ts import + providers-array line and the sign-in button to add — then run convex_deploy. On dismiss: do NOT retry.",
+      "It BLOCKS until the user finishes — provider console setup takes real time, so expect to wait up to 20 minutes; that is normal, not an error. " +
+      "On success it returns the exact convex/auth.ts import + providers-array line and the sign-in button to add — then run convex_deploy. " +
+      "Outcomes: 'dismissed' means the user explicitly closed the modal — do NOT retry, and do not treat it as failure to configure later. " +
+      "A 'still pending' result means the user simply hasn't finished YET — the modal stays open, you'll get a system note when they submit; " +
+      "NEVER report a still-pending modal as dismissed or declined.",
     inputSchema: {
       type: "object",
       properties: {
@@ -153,8 +156,10 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       "Set up Stripe payments for this project. Call when the user asks to add checkout, subscriptions, billing, a paywall, or any payment flow. " +
       "Stripe Standard Connect — the user links their own Stripe account once and reuses it across every Botflow project. " +
       "If they've already linked it: returns status='already-connected' immediately. " +
-      "Otherwise: opens a modal in the workspace and BLOCKS up to 5 minutes while the user clicks Connect with Stripe and authorizes. " +
-      "Returns status='connected' on success, 'dismissed' on cancel (do NOT retry — continue and tell the user they can connect later), 'timeout' (treat like dismiss), 'tier-blocked' (Free; relay message), 'backend-blocked' (no Convex backend).",
+      "Otherwise: opens a modal in the workspace and BLOCKS (up to 20 minutes) while the user clicks Connect with Stripe and authorizes. " +
+      "Returns status='connected' on success; 'dismissed' means the user explicitly cancelled (do NOT retry — continue and tell the user they can connect later); " +
+      "'still-pending' means the user hasn't finished YET — the modal stays open, so NEVER describe it as dismissed or declined; " +
+      "'tier-blocked' (Free; relay message); 'backend-blocked' (no Convex backend).",
     inputSchema: EMPTY_INPUT,
   },
   get_stripe_products: {
@@ -300,7 +305,9 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       "Ask the user to enter the value of an environment variable. Opens a modal in the user's workspace showing the variable NAME you chose; the user types only the VALUE. The value is stored server-side and NEVER shown to you — assume it is set and write code that reads it. " +
       "Targets: 'client' = frontend Vite .env (only VITE_-prefixed vars reach browser code); 'server' = the Convex deployment env (process.env in Convex functions; requires a backend). " +
       "Use for third-party API keys, webhook secrets, etc. Set isSecret=true for sensitive values. Include a short message explaining what the value is and where to find it — it's rendered in the modal. " +
-      "Blocks until the user saves or dismisses (up to 5 minutes). On dismiss: do NOT retry automatically; continue without it.",
+      "BLOCKS until the user saves or dismisses (up to 15 minutes — finding an API key can take a while; waiting is normal). " +
+      "'dismissed' means the user explicitly closed the modal: do NOT retry automatically; continue without it. " +
+      "'still pending' means they haven't finished YET — the modal stays open and you'll get a system note when they save; never call that dismissed.",
     inputSchema: {
       type: "object",
       properties: {

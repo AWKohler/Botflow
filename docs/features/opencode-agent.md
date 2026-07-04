@@ -116,3 +116,26 @@ pinned version — not docs. Re-verify on any version bump.
 - file:// image parts reach the model on gpt/gemini.
 - Whether opencode rewrites auth.json mid-turn (rotated refresh token needs
   persisting back — route reads it back after end_turn if so).
+
+## Turn-lifecycle parity with Claude Code (2026-07-04)
+Both in-sandbox agents now share the same durable-turn machinery (see
+`claude-code/bridge-control.ts` + `turn-registry.ts`):
+- Bridges tee NDJSON events to `/tmp/botflow-cc/turn-<id>.ndjson`, write the
+  shared pidfile, and handle SIGTERM (CC interrupts claude; OpenCode aborts
+  the session and SIGKILLs its server process group).
+- One Redis turn record per project (`claude-code:turn:<projectId>`, with a
+  `backend` field) drives `/api/agent/claude-code/{turn-status,reattach,stop}`
+  — all three are backend-agnostic despite the legacy URL; reattach picks the
+  translator from the record.
+- Every new turn's spawn runs the prepare script: kill any previous bridge
+  (either backend), revoke its tool token, sweep stale artifacts, clear the
+  abort sentinel, pre-create the event file.
+- Session ids persist EAGERLY on `session_started`; tool tokens use sliding
+  TTL and are never revoked on stream teardown.
+- The route no longer touches the abort sentinel on `req.signal` — a dropped
+  connection is a reconnect case (client reattaches), not a stop. Explicit
+  stops go through the stop route. The bridge watchdog is 60 min (was 20):
+  it's the last line of defense, not the primary lifecycle mechanism.
+- Waitable modal tools: the MCP script loops on `{pending, wait}` exactly like
+  the CC bridge; `host-tools/definitions.ts` carries the honest
+  still-pending-vs-dismissed descriptions.

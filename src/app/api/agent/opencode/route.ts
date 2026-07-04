@@ -59,6 +59,18 @@ import {
   type OpenCodeBridgeEvent,
 } from "@/lib/agent/opencode/translator";
 import { mintToolToken, revokeToolToken } from "@/lib/agent/claude-code/tool-token";
+import {
+  buildPrepareTurnScript,
+  turnEventFile,
+  BRIDGE_PID_FILE,
+  BRIDGE_RUN_DIR,
+} from "@/lib/agent/claude-code/bridge-control";
+import {
+  getTurnRecord,
+  setTurnRecord,
+  markTurnEnded,
+  markTurnDead,
+} from "@/lib/agent/claude-code/turn-registry";
 import { selectHostTools } from "@/lib/agent/host-tools/definitions";
 import {
   fallbackResponse as fallback,
@@ -177,27 +189,60 @@ export async function POST(req: Request) {
   // ── Credentials for THIS model's provider only (minimal exposure) ────────
   const provider = MODEL_CONFIGS[selectedModel].provider;
   const useCodex = provider === "openai" && Boolean(creds.codexOAuthAccessToken);
+
+  // Recover a mid-turn Codex token rotation that a killed route never
+  // persisted: the finally-block rotation sync below can't run when the
+  // platform hard-kills the route at maxDuration, so a rotation from the
+  // PREVIOUS turn may exist only in the sandbox's auth.json. Adopt it before
+  // deriving this turn's token — otherwise we'd refresh with (and re-write)
+  // a dead pair and 401.
+  let codexAuth = {
+    codexOAuthAccessToken: creds.codexOAuthAccessToken,
+    codexOAuthRefreshToken: creds.codexOAuthRefreshToken,
+    codexOAuthExpiresAt: creds.codexOAuthExpiresAt,
+  };
+  if (useCodex) {
+    try {
+      const sandboxAuth = await readOpenCodeAuth(projectId);
+      const openai = sandboxAuth?.openai as
+        | { type?: string; access?: string; refresh?: string; expires?: number }
+        | undefined;
+      if (
+        openai?.type === "oauth" &&
+        openai.refresh &&
+        openai.access &&
+        openai.refresh !== creds.codexOAuthRefreshToken
+      ) {
+        codexAuth = {
+          codexOAuthAccessToken: openai.access,
+          codexOAuthRefreshToken: openai.refresh,
+          codexOAuthExpiresAt: openai.expires ?? null,
+        };
+        await setUserCredentials(userId, {
+          codexOAuthAccessToken: openai.access,
+          codexOAuthRefreshToken: openai.refresh,
+          codexOAuthExpiresAt: openai.expires ?? null,
+        }).catch(() => {});
+      }
+    } catch {
+      // No sandbox / no auth file yet — nothing to recover.
+    }
+  }
+
   // Proactive refresh: the token is written into the sandbox at turn start
   // and must survive the whole turn.
   const codexToken = useCodex
-    ? await getFreshCodexAccessToken(
-        {
-          codexOAuthAccessToken: creds.codexOAuthAccessToken,
-          codexOAuthRefreshToken: creds.codexOAuthRefreshToken,
-          codexOAuthExpiresAt: creds.codexOAuthExpiresAt,
-        },
-        userId,
-      )
+    ? await getFreshCodexAccessToken(codexAuth, userId)
     : null;
 
-  const writtenRefreshToken = useCodex ? (creds.codexOAuthRefreshToken ?? null) : null;
+  const writtenRefreshToken = useCodex ? (codexAuth.codexOAuthRefreshToken ?? null) : null;
   const authInput = {
     codex:
       useCodex && codexToken
         ? {
             accessToken: codexToken,
-            refreshToken: creds.codexOAuthRefreshToken,
-            expiresAt: creds.codexOAuthExpiresAt,
+            refreshToken: codexAuth.codexOAuthRefreshToken,
+            expiresAt: codexAuth.codexOAuthExpiresAt,
           }
         : null,
     openaiApiKey: provider === "openai" && !useCodex ? creds.openaiApiKey : null,
@@ -258,7 +303,10 @@ export async function POST(req: Request) {
   const paths = await resolveOpenCodePaths(projectId);
   const turnId = Math.random().toString(36).slice(2, 10);
   const configPath = `/tmp/.botflow-opencode-config-${turnId}.json`;
-  const abortPath = `/tmp/.botflow-opencode-abort-${turnId}`;
+  // Fixed path inside the shared run dir so the stop route can find it
+  // without knowing the turn id; the prepare script clears any stale one.
+  const abortPath = `${BRIDGE_RUN_DIR}/abort`;
+  const eventFile = turnEventFile(turnId);
 
   const bridgeConfig = {
     prompt,
@@ -295,6 +343,22 @@ export async function POST(req: Request) {
   };
 
   const sandbox = await getOrCreatePersistentSandbox(projectId);
+
+  // ── One bridge per project ────────────────────────────────────────────────
+  // Same contract as the CC route: the bridge runs detached (it must survive
+  // this route's maxDuration so the client can reattach), so a NEW turn kills
+  // whatever bridge — Claude Code OR OpenCode, they share the pidfile — is
+  // still running, revokes its tool token, sweeps stale artifacts, clears any
+  // stale abort sentinel, and pre-creates the event file for tail -f.
+  const prevTurn = await getTurnRecord(projectId).catch(() => null);
+  await sandbox.runCommand({
+    cmd: "sh",
+    args: ["-c", buildPrepareTurnScript(eventFile)],
+  });
+  if (prevTurn?.toolToken) {
+    revokeToolToken(prevTurn.toolToken).catch(() => {});
+  }
+
   await sandbox.writeFiles([
     {
       path: configPath,
@@ -307,20 +371,30 @@ export async function POST(req: Request) {
     cmd: "node",
     args: [paths.bridgePath],
     cwd: "/vercel/sandbox",
-    env: { BOTFLOW_CONFIG_PATH: configPath },
+    env: {
+      BOTFLOW_CONFIG_PATH: configPath,
+      BOTFLOW_EVENT_FILE: eventFile,
+      BOTFLOW_PID_FILE: BRIDGE_PID_FILE,
+    },
     detached: true,
   });
 
-  // Client abort → touch the sentinel; the bridge calls session.abort and the
-  // turn closes as a normal aborted end. (A small, deliberate improvement
-  // over the CC path: opencode has a first-class abort API and these turns
-  // burn the user's own metered credits.)
-  const onAbort = () => {
-    sandbox
-      .runCommand({ cmd: "sh", args: ["-c", `touch ${abortPath}`] })
-      .catch(() => {});
-  };
-  req.signal.addEventListener("abort", onAbort, { once: true });
+  // Register the turn so later requests can find it: the reattach route tails
+  // its event file after this route dies at maxDuration, and the next turn's
+  // spawn (or the stop route) kills the bridge + revokes the token.
+  //
+  // NOTE deliberately NO req.signal abort here (an earlier iteration touched
+  // the abort sentinel on client abort): a dropped connection is usually a
+  // network blip / tab reload / this route's own teardown — killing the turn
+  // for it would defeat reattach. Explicit stops go through the stop route,
+  // whose SIGTERM the bridge answers by aborting the opencode session.
+  await setTurnRecord(projectId, {
+    turnId,
+    backend: "opencode",
+    eventFile,
+    startedAt: Date.now(),
+    ...(toolToken ? { toolToken } : {}),
+  }).catch(() => {});
 
   // ── Stream stdout NDJSON → AI SDK UIMessageStream ───────────────────────
   const stream = createUIMessageStream<UIMessage>({
@@ -350,13 +424,23 @@ export async function POST(req: Request) {
             }
             if (event.type === "session_started") {
               lastSessionIdSeen = event.sessionId;
+              // Persist EAGERLY — the `finally` below never runs when the
+              // platform hard-kills this route at maxDuration, and losing the
+              // session pointer forces the continuation turn to start a fresh
+              // session and rediscover all its context.
+              setOpenCodeSessionId(projectId, event.sessionId).catch(() => {});
             }
             translator.push(event);
             if (event.type === "end_turn") {
               endedNormally = true;
+              markTurnEnded(projectId, turnId).catch(() => {});
               break;
             }
             if (event.type === "error") {
+              // The bridge emits `error` only when it's exiting — mark the
+              // turn dead so the client falls back to a fresh continuation
+              // instead of trying to reattach to a corpse.
+              markTurnDead(projectId, turnId).catch(() => {});
               break;
             }
           }
@@ -369,8 +453,9 @@ export async function POST(req: Request) {
         });
       } finally {
         translator.end();
-        req.signal.removeEventListener("abort", onAbort);
         if (lastSessionIdSeen) {
+          // Backstop persist (the eager write above already ran on the happy
+          // path; this covers exotic orderings). Non-fatal.
           try {
             await setOpenCodeSessionId(projectId, lastSessionIdSeen);
           } catch {
@@ -402,12 +487,20 @@ export async function POST(req: Request) {
             })
             .catch(() => {});
         }
-        if (toolToken) {
-          revokeToolToken(toolToken).catch(() => {});
+        // Deliberately NO token revocation here: the bridge runs detached and
+        // legitimately outlives this route (maxDuration kill, client
+        // disconnect) — revoking on stream teardown would cut off a live
+        // turn's tool access mid-flight. The token TTL slides on use and is
+        // revoked explicitly by the next turn's spawn or the stop route.
+        //
+        // Config cleanup only on a NORMAL end — on an early teardown the
+        // bridge may not have read it yet. Stale configs are swept by the
+        // next turn's prepare script.
+        if (endedNormally) {
+          sandbox
+            .runCommand({ cmd: "sh", args: ["-c", `rm -f ${configPath} ${abortPath}`] })
+            .catch(() => {});
         }
-        sandbox
-          .runCommand({ cmd: "sh", args: ["-c", `rm -f ${configPath} ${abortPath}`] })
-          .catch(() => {});
       }
     },
     onError: (err) => (err instanceof Error ? err.message : String(err)),

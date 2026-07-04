@@ -1,5 +1,7 @@
 /**
- * Per-project registry of the CURRENT Claude Code turn.
+ * Per-project registry of the CURRENT in-sandbox agent turn (Claude Code OR
+ * OpenCode — one agent per project sandbox, so one record covers both; the
+ * `backend` field says which bridge/translator the turn belongs to).
  *
  * The bridge runs detached inside the sandbox, so it outlives the serverless
  * route that spawned it (maxDuration kills the stream, not the agent). This
@@ -25,6 +27,10 @@ const TTL_SECONDS = 60 * 60 * 6;
 
 export interface ClaudeCodeTurnRecord {
   turnId: string;
+  /** Which in-sandbox agent ran this turn. Reattach picks the matching
+   *  translator. Absent on records written before OpenCode existed —
+   *  treat as "claude-code". */
+  backend?: "claude-code" | "opencode";
   /** Absolute path (in the sandbox) of the NDJSON event tee file. */
   eventFile: string;
   /** Epoch ms when the bridge was spawned. */

@@ -1,10 +1,12 @@
 /**
  * POST /api/agent/claude-code/stop  { projectId }
  *
- * Kill the project's detached Claude Code bridge. Wired to the Stop button:
- * before this existed, Stop only aborted the client stream — the bridge (and
- * the claude subprocess) kept working in the sandbox, editing files the user
- * had just asked it to stop editing.
+ * Kill the project's detached in-sandbox agent bridge — Claude Code or
+ * OpenCode; both write the same pidfile and handle SIGTERM (CC interrupts
+ * the claude subprocess, OpenCode aborts the session and nukes its server
+ * process group). Wired to the Stop button: before this existed, Stop only
+ * aborted the client stream — the bridge kept working in the sandbox,
+ * editing files the user had just asked it to stop editing.
  *
  * Also revokes the turn's tool-callback token and marks the turn dead so the
  * recovery path won't try to reattach to it.
