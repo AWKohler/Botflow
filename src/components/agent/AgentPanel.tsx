@@ -32,6 +32,7 @@ import { QuestionPrompt, type QuestionConfig, type QuestionAnswerPayload } from 
 import {
   BOTFLOW_NATIVE_TOOLS,
   CLAUDE_CODE_TO_BOTFLOW,
+  OPENCODE_TO_BOTFLOW,
   sanitizeToolUseId,
 } from '@/lib/agent/tool-name-map';
 import type { SubagentStep } from '@/lib/agent/claude-code/translator';
@@ -273,8 +274,11 @@ function transformPartForBotflow(part: AnyPart): AnyPart | AnyPart[] | null {
     return part;
   }
 
-  // Look up in the cross-agent map.
-  const rule = CLAUDE_CODE_TO_BOTFLOW[rawName];
+  // Look up in the cross-agent maps: Claude Code names first (PascalCase +
+  // MCP snake_case), then OpenCode-only natives (lowercase). The key spaces
+  // are disjoint, and platform (MCP) tools arrive pre-stripped by the
+  // OpenCode translator under the exact names the CC map already rewrites.
+  const rule = CLAUDE_CODE_TO_BOTFLOW[rawName] ?? OPENCODE_TO_BOTFLOW[rawName];
 
   // No mapping — could be a tool we don't know about. Collapse to a text
   // summary so the receiving agent has prose context but doesn't try to
@@ -396,6 +400,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
   const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
   const [hasGoogleKey, setHasGoogleKey] = useState<boolean | null>(null);
+  const [hasTogetherKey, setHasTogetherKey] = useState<boolean | null>(null);
   // Server flag (USE_TOGETHER_KIMI): Kimi K2.7 is served by Together AI, not Fireworks.
   const [useTogetherKimi, setUseTogetherKimi] = useState(false);
   // BYOK user's per-account preference for which agent runs Claude models.
@@ -577,11 +582,30 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         creds: {
           hasClaudeOAuth: Boolean(hasClaudeOAuth),
           hasAnthropicKey: Boolean(hasAnthropicKey),
+          hasCodexOAuth: Boolean(hasCodexOAuth),
+          hasOpenAIKey: Boolean(hasOpenAIKey),
+          hasFireworksKey: Boolean(hasFireworksKey),
+          hasGoogleKey: Boolean(hasGoogleKey),
+          hasTogetherKey: Boolean(hasTogetherKey),
         },
         preferredAnthropicBackend,
         tier: userTier,
+        useTogetherKimi,
       }),
-    [model, platform, hasClaudeOAuth, hasAnthropicKey, preferredAnthropicBackend, userTier],
+    [
+      model,
+      platform,
+      hasClaudeOAuth,
+      hasAnthropicKey,
+      hasCodexOAuth,
+      hasOpenAIKey,
+      hasFireworksKey,
+      hasGoogleKey,
+      hasTogetherKey,
+      preferredAnthropicBackend,
+      userTier,
+      useTogetherKimi,
+    ],
   );
   const agentBackend = derivedBackend.backend;
 
@@ -651,13 +675,14 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // exists) can trigger a continue.
   const maybeAutoContinueRef = useRef<() => boolean>(() => false);
 
-  // True when the LAST agent request was actually served by
-  // /api/agent/claude-code (i.e. it didn't 412-fall-back to /api/agent).
-  // Claude Code turns are single-shot — the bridge runs the whole agentic
-  // loop inside one POST — so the client must NEVER auto-resubmit them: a
-  // resubmit carries a trailing assistant message, which the route rejects
-  // with 409 ("Last message must be a user message") and the agent stops.
-  const lastTurnServedByClaudeCodeRef = useRef(false);
+  // True when the LAST agent request was actually served by an in-sandbox
+  // agent route — /api/agent/claude-code OR /api/agent/opencode — (i.e. it
+  // didn't 412-fall-back to /api/agent). In-sandbox turns are single-shot:
+  // the bridge runs the whole agentic loop inside one POST, so the client
+  // must NEVER auto-resubmit them: a resubmit carries a trailing assistant
+  // message, which both routes reject with 409 ("Last message must be a user
+  // message") and the agent stops.
+  const lastTurnServedByInSandboxAgentRef = useRef(false);
 
   // --- Ref that the transport's prepare/fetch closures read at request time.
   //     Holds the project's persisted agent_backend so we route every turn to
@@ -681,10 +706,11 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       api: `/api/agent/claude-code/reattach?projectId=${encodeURIComponent(projectId)}`,
     }),
     prepareSendMessagesRequest: ({ body, messages, api }) => {
-      const useClaudeCode = agentBackendRef.current === 'claude-code';
+      const backend = agentBackendRef.current;
+      const useInSandboxAgent = backend === 'claude-code' || backend === 'opencode';
       // Assume the intended endpoint serves this turn; the fetch wrapper
       // flips this off if a 412 falls the request back to /api/agent.
-      lastTurnServedByClaudeCodeRef.current = useClaudeCode;
+      lastTurnServedByInSandboxAgentRef.current = useInSandboxAgent;
 
       // Scope to the current segment. Segments now only break on explicit
       // Reset (no longer on agent switch), so most of the time this is a
@@ -699,16 +725,18 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           })
         : messages;
 
-      // For Botflow outgoing: rewrite any foreign (Claude Code) tool_use
-      // parts into Botflow's tool vocabulary so Anthropic doesn't reject
-      // the request with `messages.X.content.Y.tool_use` errors. Unmapped
-      // tool parts are collapsed into text summaries. Also defensively
-      // sanitize any tool_use IDs that don't match Anthropic's regex.
+      // For Botflow outgoing: rewrite any foreign (Claude Code / OpenCode)
+      // tool_use parts into Botflow's tool vocabulary so Anthropic doesn't
+      // reject the request with `messages.X.content.Y.tool_use` errors.
+      // Unmapped tool parts are collapsed into text summaries. Also
+      // defensively sanitize any tool_use IDs that don't match Anthropic's
+      // regex.
       //
-      // For Claude Code outgoing: the bridge takes only the user prompt
-      // (it doesn't accept a messages array), so we pass `scoped` through
-      // unchanged — the route does its own prior-conversation preamble.
-      const transformed = useClaudeCode
+      // For in-sandbox outgoing (Claude Code / OpenCode): the bridges take
+      // only the user prompt (no messages array), so we pass `scoped`
+      // through unchanged — the routes build their own prior-conversation
+      // preamble.
+      const transformed = useInSandboxAgent
         ? scoped
         : scoped.map(transformMessageForBotflow);
 
@@ -718,18 +746,23 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
 
       return {
         body: { ...(body ?? {}), messages: finalMessages },
-        ...(useClaudeCode ? { api: '/api/agent/claude-code' } : { api }),
+        ...(backend === 'claude-code'
+          ? { api: '/api/agent/claude-code' }
+          : backend === 'opencode'
+            ? { api: '/api/agent/opencode' }
+            : { api }),
       };
     },
     fetch: async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const res = await fetch(input, init);
-      // 412 from /api/agent/claude-code = "creds went stale, fall back".
-      // Rare — the persisted agent_backend should match what's available.
-      if (res.status === 412 && url.includes('/api/agent/claude-code')) {
+      // 412 from an in-sandbox route = "not eligible / creds went stale" —
+      // transparently land the turn on /api/agent. Rare: the derivation
+      // should already match what's available server-side.
+      if (res.status === 412 && /\/api\/agent\/(claude-code|opencode)/.test(url)) {
         // This turn is now Botflow-served — its tool loop needs resubmits.
-        lastTurnServedByClaudeCodeRef.current = false;
-        return fetch(url.replace('/api/agent/claude-code', '/api/agent'), init);
+        lastTurnServedByInSandboxAgentRef.current = false;
+        return fetch(url.replace(/\/api\/agent\/(claude-code|opencode)/, '/api/agent'), init);
       }
       return res;
     },
@@ -743,7 +776,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     // local state.
     onData(part) {
       const p = part as { type: string; data?: unknown };
-      if (p.type === 'data-claude-code-usage') {
+      if (p.type === 'data-claude-code-usage' || p.type === 'data-opencode-usage') {
         const data = p.data as {
           tokens?: number;
           breakdown?: { input: number; output: number; cacheCreate: number; cacheRead: number };
@@ -756,7 +789,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           // Receiving fresh usage means compaction (if any) is done.
           setIsCompacting(false);
         }
-      } else if (p.type === 'data-claude-code-compact-boundary') {
+      } else if (p.type === 'data-claude-code-compact-boundary' || p.type === 'data-opencode-compact-boundary') {
         const data = p.data as { trigger?: 'manual' | 'auto'; preTokens?: number } | undefined;
         // Reset the bar — claude just compacted; the next usage event will
         // show the new (much smaller) size.
@@ -772,6 +805,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         const data = p.data as { status?: string } | undefined;
         if (data?.status === 'compacting') setIsCompacting(true);
       }
+      // data-opencode-status ("retrying") is deliberately not surfaced yet —
+      // opencode retries transparently and the busy spinner already covers it.
     },
     onFinish({ message, isAbort }) {
       // Don't clear busy on finish — let debounce handle it
@@ -911,14 +946,15 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     // into re-POSTing — and /api/agent/claude-code replays the last user
     // prompt on every POST, so the turn looped until the user intervened.
     sendAutomaticallyWhen: ({ messages }) => {
-      // Claude Code turns are single-shot: the bridge runs the whole agentic
-      // loop inside one POST and every tool part arrives already complete, so
-      // the helper below would re-POST after EVERY turn that did real work.
-      // Worse, when a turn dies early (bridge crash, maxDuration kill) the
-      // synthetic endTurn marker never arrives and the resubmit hits the
-      // route's replay guard — 409, agent stops. Never auto-resubmit a turn
-      // that Claude Code actually served (fallback-served turns still may).
-      if (lastTurnServedByClaudeCodeRef.current) return false;
+      // In-sandbox turns (Claude Code / OpenCode) are single-shot: the bridge
+      // runs the whole agentic loop inside one POST and every tool part
+      // arrives already complete, so the helper below would re-POST after
+      // EVERY turn that did real work. Worse, when a turn dies early (bridge
+      // crash, maxDuration kill) the synthetic endTurn marker never arrives
+      // and the resubmit hits the route's replay guard — 409, agent stops.
+      // Never auto-resubmit a turn an in-sandbox agent actually served
+      // (fallback-served turns still may).
+      if (lastTurnServedByInSandboxAgentRef.current) return false;
       if (!lastAssistantMessageIsCompleteWithToolCalls({ messages })) return false;
       const last = messages[messages.length - 1];
       if (!last || last.role !== 'assistant') return false;
@@ -966,9 +1002,15 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     setShowCompletionWarning(false);
     setIsBusy(true);
     toolAbortRef.current = new AbortController();
+    // Per-backend wording: Claude Code has reattach-first recovery, so its
+    // nudge only fires after a failed reattach and leans on the resumed
+    // session transcript. OpenCode has no reattach path (yet) — a plain
+    // interruption nudge. Botflow keys on endTurn.
     const nudge = agentBackendRef.current === 'claude-code'
       ? '[system-note] Automatic continuation: your previous turn stopped before finishing and could not be re-attached. Your resumed session transcript is the source of truth for what already happened — trust it, do not re-read files or re-verify work it already shows as done. Continue from where it leaves off; if the task is already complete, give a brief summary of what was done.'
-      : '[system-note] Automatic continuation: the previous response ended without calling endTurn. Continue the remaining work; if everything is already complete, call endTurn now with a brief summary.';
+      : agentBackendRef.current === 'opencode'
+        ? '[system-note] Automatic continuation: your previous turn was interrupted before it finished. Continue from where you left off; if the task is already complete, give a brief summary of what was done.'
+        : '[system-note] Automatic continuation: the previous response ended without calling endTurn. Continue the remaining work; if everything is already complete, call endTurn now with a brief summary.';
     sendMessageRef.current({ text: nudge });
     return true;
   }, [MAX_AUTO_CONTINUES]);
@@ -988,7 +1030,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const attemptTurnRecovery = useCallback(async () => {
     if (userStoppedRef.current) return;
     if (reattachInFlightRef.current) return;
-    if (agentBackendRef.current === 'claude-code' && lastTurnServedByClaudeCodeRef.current) {
+    // Reattach exists only on the Claude Code rail; OpenCode turns (also
+    // flagged in-sandbox) fall through to the plain auto-continue nudge.
+    if (agentBackendRef.current === 'claude-code' && lastTurnServedByInSandboxAgentRef.current) {
       reattachInFlightRef.current = true;
       try {
         const res = await fetch(
@@ -1411,6 +1455,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           setHasMoonshotKey(Boolean(data?.hasMoonshotKey));
           setHasFireworksKey(Boolean(data?.hasFireworksKey));
           setHasGoogleKey(Boolean(data?.hasGoogleKey));
+          setHasTogetherKey(Boolean(data?.hasTogetherKey));
           setUseTogetherKimi(Boolean(data?.useTogetherKimi));
           const pref = data?.preferredAnthropicBackend;
           if (pref === 'botflow' || pref === 'claude-code') {
@@ -1435,6 +1480,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           setHasMoonshotKey(Boolean(data?.hasMoonshotKey));
           setHasFireworksKey(Boolean(data?.hasFireworksKey));
           setHasGoogleKey(Boolean(data?.hasGoogleKey));
+          setHasTogetherKey(Boolean(data?.hasTogetherKey));
           setUseTogetherKimi(Boolean(data?.useTogetherKimi));
           const pref = data?.preferredAnthropicBackend;
           if (pref === 'botflow' || pref === 'claude-code') {
@@ -1586,7 +1632,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // For Claude Code projects we have authoritative usage from the SDK; use it
   // when present so the bar reflects the real (post-compaction) context size.
   // Falls back to our char/4 estimate before the first turn completes.
-  const displayedTokens = agentBackend === 'claude-code' && claudeCodeUsage
+  const displayedTokens = (agentBackend === 'claude-code' || agentBackend === 'opencode') && claudeCodeUsage
     ? claudeCodeUsage.tokens
     : tokenEstimate;
   const tokenRatio = maxTokens > 0 ? displayedTokens / maxTokens : 0;
@@ -2446,6 +2492,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                     setMessageQueue([]);
                     // Claude Code runs DETACHED in the sandbox — aborting the
                     // client stream alone leaves it working. Kill it for real.
+                    // (OpenCode is also detached but needs no extra call: the
+                    // aborted request fires its route's req.signal listener,
+                    // which touches the abort sentinel → session.abort.)
                     if (agentBackendRef.current === 'claude-code') {
                       fetch('/api/agent/claude-code/stop', {
                         method: 'POST',
