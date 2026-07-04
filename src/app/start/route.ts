@@ -10,6 +10,7 @@ import { getUserCredentials, setUserCredentials, type UserCredentials } from '@/
 import { normalizeProjectPlatform, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
 import { resolveModelId } from '@/lib/agent/models';
 import { resolveBackends, type AgentBackend } from '@/lib/agent/backend-resolution';
+import { chooseProviderForNewProject } from '@/lib/sandbox-provider';
 import { randomUUID } from 'node:crypto';
 
 const CONVEX_CLI_API = 'https://api.convex.dev/api';
@@ -303,6 +304,10 @@ export async function GET(request: Request) {
       initialAgentBackend = creds.preferredAnthropicBackend;
     }
 
+    // Free-tier owners get the self-hosted sandbox backend (when the rollout
+    // switch is on); paid tiers stay on Vercel. Sticky for the project's life.
+    const sandboxProvider = await chooseProviderForNewProject(userId);
+
     const [project] = await db
       .insert(projects)
       .values({
@@ -311,6 +316,7 @@ export async function GET(request: Request) {
         platform,
         model,
         backendType,
+        sandboxProvider,
         agentBackend: initialAgentBackend,
         currentSegmentId: randomUUID(),
         // Template fork: seed the sandbox from the source bundle on first open
