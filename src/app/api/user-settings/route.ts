@@ -27,7 +27,9 @@ export async function GET() {
       hasCodexOAuth: Boolean(creds.codexOAuthAccessToken),
       hasConvexOAuth: Boolean(creds.convexOAuthAccessToken),
       convexBackendPreference: creds.convexBackendPreference ?? 'platform',
-      preferredAnthropicBackend: creds.preferredAnthropicBackend ?? 'botflow',
+      // Retired (Anthropic BYOK locks to Claude Code) — static value kept one
+      // release so stale clients hydrate harmlessly. Remove after proxy GA.
+      preferredAnthropicBackend: 'botflow',
     });
   } catch (e) {
     console.error('GET /api/user-settings failed:', e);
@@ -49,7 +51,6 @@ export async function POST(req: NextRequest) {
       togetherApiKey,
       googleApiKey,
       convexBackendPreference,
-      preferredAnthropicBackend,
     } = body as {
       openaiApiKey?: string | null;
       anthropicApiKey?: string | null;
@@ -58,7 +59,6 @@ export async function POST(req: NextRequest) {
       togetherApiKey?: string | null;
       googleApiKey?: string | null;
       convexBackendPreference?: 'platform' | 'user' | 'none';
-      preferredAnthropicBackend?: 'botflow' | 'claude-code';
     };
 
     // Read existing credentials to preserve fields not being updated
@@ -78,10 +78,6 @@ export async function POST(req: NextRequest) {
     ) {
       updates.convexBackendPreference = convexBackendPreference;
     }
-    if (preferredAnthropicBackend === 'botflow' || preferredAnthropicBackend === 'claude-code') {
-      updates.preferredAnthropicBackend = preferredAnthropicBackend;
-    }
-
     await setUserCredentials(userId, updates);
 
     // Re-read to return accurate has* flags

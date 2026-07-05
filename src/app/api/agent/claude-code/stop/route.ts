@@ -20,6 +20,7 @@ import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
 import { buildKillBridgeScript } from "@/lib/agent/claude-code/bridge-control";
 import { getTurnRecord, markTurnDead } from "@/lib/agent/claude-code/turn-registry";
 import { revokeToolToken } from "@/lib/agent/claude-code/tool-token";
+import { revokeLlmProxyToken } from "@/lib/agent/llm-proxy/token";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -64,6 +65,7 @@ export async function POST(req: NextRequest) {
   }
   if (record) {
     if (record.toolToken) revokeToolToken(record.toolToken).catch(() => {});
+    if (record.llmProxyToken) revokeLlmProxyToken(record.llmProxyToken).catch(() => {});
     await markTurnDead(projectId, record.turnId).catch(() => {});
   }
 

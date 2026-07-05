@@ -28,9 +28,18 @@ import { projects } from "@/db/schema";
 import { getUserCredentials, setUserCredentials } from "@/lib/user-credentials";
 import { getFreshCodexAccessToken } from "@/lib/codex-oauth";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
-import { resolveModelId, MODEL_CONFIGS, isAnthropicModel } from "@/lib/agent/models";
+import { resolveModelId, MODEL_CONFIGS } from "@/lib/agent/models";
 import { isSandboxPlatform } from "@/lib/project-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { getUserTier } from "@/lib/tier";
+import {
+  getMonthlyCredits,
+  getMonthlyLimit,
+  getWeeklyCredits,
+  getWeeklyLimit,
+} from "@/lib/credits";
+import { limitReachedResponse } from "@/lib/plan-response";
+import { recordTokenUsage } from "@/lib/usage";
 
 import {
   OPENCODE_BACKEND_ENABLED,
@@ -40,7 +49,16 @@ import {
 import { OAUTH_PROVIDER_IDS } from "@/lib/oauth-providers/registry";
 import { deriveAgentBackend } from "@/lib/agent/derive-backend";
 import { credFlagsFromUserCredentials } from "@/lib/agent/backend-resolution";
-import { resolveOpenCodeModel } from "@/lib/agent/opencode/models";
+import { resolveOpenCodeModel, openCodeCredModeForModel } from "@/lib/agent/opencode/models";
+import {
+  mintLlmProxyToken,
+  revokeLlmProxyToken,
+  llmProxyOrigin,
+} from "@/lib/agent/llm-proxy/token";
+import {
+  LLM_PROXY_PROVIDERS,
+  proxyProviderForOpenCodeId,
+} from "@/lib/agent/llm-proxy/providers";
 import {
   ensureOpenCodeInstalled,
   writeOpenCodeAuth,
@@ -142,22 +160,19 @@ export async function POST(req: Request) {
   }
 
   const selectedModel = resolveModelId(project.model);
-  // Hard invariant: Anthropic never rides OpenCode. Claude-plan OAuth must
-  // flow through the official Claude Code client (ToS), and Anthropic BYOK
-  // keeps its existing botflow/claude-code routing.
-  if (isAnthropicModel(selectedModel)) {
-    return fallback("anthropic_model");
-  }
 
   const creds = await getUserCredentials(userId);
+  const credFlags = credFlagsFromUserCredentials(creds);
+  const userTier = await getUserTier(userId);
   // Single source of truth: re-derive the backend server-side so the routing
-  // decision is tamper-proof — a client can't force OpenCode without the
-  // personal credentials that make it eligible.
+  // decision is tamper-proof. With the LLM proxy, this is also what keeps
+  // personal-credential Anthropic traffic OFF OpenCode (it derives to
+  // claude-code) and enforces the platform-mode tier gate.
   const derived = deriveAgentBackend({
     model: selectedModel,
     platform,
-    creds: credFlagsFromUserCredentials(creds),
-    preferredAnthropicBackend: creds.preferredAnthropicBackend,
+    creds: credFlags,
+    tier: userTier,
     useTogetherKimi: USE_TOGETHER_KIMI,
   });
   if (derived.backend !== "opencode" || !derived.runnable) {
@@ -165,9 +180,6 @@ export async function POST(req: Request) {
   }
 
   const modelRef = resolveOpenCodeModel(selectedModel, { useTogetherKimi: USE_TOGETHER_KIMI });
-  if (!modelRef) {
-    return fallback("anthropic_model");
-  }
 
   const userPrompt = extractCurrentUserText(messages);
   // Resolve attached images server-side (self-contained payload; the sandbox
@@ -186,9 +198,17 @@ export async function POST(req: Request) {
     ? `[Prior conversation context — earlier turns from this session. The project filesystem reflects everything that happened.]\n\n${preamble}\n\n[End of context. The user's current message:]\n\n${userPrompt}`
     : userPrompt;
 
-  // ── Credentials for THIS model's provider only (minimal exposure) ────────
-  const provider = MODEL_CONFIGS[selectedModel].provider;
-  const useCodex = provider === "openai" && Boolean(creds.codexOAuthAccessToken);
+  // ── Credential mode + surface ─────────────────────────────────────────────
+  // codex-oauth: the ONE documented stay-in-sandbox exception (opencode's
+  //   ChatGPT-plan plugin can't be redirected at 1.17.13) — real tokens,
+  //   existing rotation machinery, no proxy.
+  // byok/platform: the sandbox gets a bfap_ LLM-proxy token; the real key
+  //   (the user's or the platform's) is injected server-side at
+  //   /api/internal/llm-proxy/<provider>, which also meters + bills
+  //   platform-mode requests.
+  const turnId = Math.random().toString(36).slice(2, 10);
+  const credMode = openCodeCredModeForModel(selectedModel, credFlags, USE_TOGETHER_KIMI);
+  const useCodex = credMode === "codex-oauth";
 
   // Recover a mid-turn Codex token rotation that a killed route never
   // persisted: the finally-block rotation sync below can't run when the
@@ -234,38 +254,59 @@ export async function POST(req: Request) {
   const codexToken = useCodex
     ? await getFreshCodexAccessToken(codexAuth, userId)
     : null;
-
   const writtenRefreshToken = useCodex ? (codexAuth.codexOAuthRefreshToken ?? null) : null;
-  const authInput = {
-    codex:
-      useCodex && codexToken
-        ? {
-            accessToken: codexToken,
-            refreshToken: codexAuth.codexOAuthRefreshToken,
-            expiresAt: codexAuth.codexOAuthExpiresAt,
-          }
-        : null,
-    openaiApiKey: provider === "openai" && !useCodex ? creds.openaiApiKey : null,
-    fireworksApiKey:
-      provider === "fireworks" && modelRef.providerID === "fireworks-ai"
-        ? creds.fireworksApiKey
-        : null,
-    togetherApiKey:
-      provider === "fireworks" && modelRef.providerID === "togetherai"
-        ? creds.togetherApiKey
-        : null,
-    googleApiKey: provider === "google" ? creds.googleApiKey : null,
-  };
-  const hasAnyCred =
-    Boolean(authInput.codex) ||
-    Boolean(authInput.openaiApiKey) ||
-    Boolean(authInput.fireworksApiKey) ||
-    Boolean(authInput.togetherApiKey) ||
-    Boolean(authInput.googleApiKey);
-  if (!hasAnyCred) {
-    // The derivation says eligible but the concrete credential is missing —
-    // creds changed mid-flight. Fall back rather than 500.
+  if (useCodex && !codexToken) {
+    // Codex creds present but unusable (refresh failed) — fall back rather
+    // than 500; the legacy engine can still serve via its own paths.
     return fallback("no_provider_credentials");
+  }
+
+  const proxyProvider = proxyProviderForOpenCodeId(modelRef.providerID);
+  let llmProxyToken: string | null = null;
+  if (!useCodex) {
+    if (!proxyProvider) {
+      return fallback("no_provider_credentials"); // unmappable — cannot happen for registry models
+    }
+    if (credMode === null) {
+      // Platform mode pre-flight (the same split /api/agent uses: slow
+      // aggregate checks at turn start, the atomic weekly reservation per
+      // request at the proxy). The tier gate already ran inside the
+      // derivation above.
+      const monthlyLimit = getMonthlyLimit(userTier);
+      const monthlyUsed = await getMonthlyCredits(userId);
+      if (monthlyUsed >= monthlyLimit) {
+        return limitReachedResponse({
+          limitType: "monthly_credits",
+          current: monthlyUsed,
+          limit: monthlyLimit,
+          tier: userTier,
+        });
+      }
+      const weeklyLimit = getWeeklyLimit(userTier);
+      const weeklyUsed = await getWeeklyCredits(userId);
+      if (weeklyUsed >= weeklyLimit) {
+        return limitReachedResponse({
+          limitType: "weekly_credits",
+          current: weeklyUsed,
+          limit: weeklyLimit,
+          tier: userTier,
+        });
+      }
+      if (!process.env[LLM_PROXY_PROVIDERS[proxyProvider].platformKeyEnv]) {
+        // Platform key not configured on this deployment — 412 keeps the
+        // legacy engine serving during the bake.
+        return fallback("no_provider_credentials");
+      }
+    }
+    llmProxyToken = await mintLlmProxyToken({
+      userId,
+      projectId,
+      turnId,
+      provider: proxyProvider,
+      credMode: credMode === "byok" ? "byok" : "platform",
+      modelId: selectedModel,
+      modelAllowlist: [modelRef.modelID],
+    });
   }
 
   // ── Sandbox setup (idempotent, fast on warm boots) ───────────────────────
@@ -274,7 +315,19 @@ export async function POST(req: Request) {
     return jsonError(500, installResult.error);
   }
 
-  await writeOpenCodeAuth(projectId, authInput);
+  await writeOpenCodeAuth(projectId, {
+    codex:
+      useCodex && codexToken
+        ? {
+            accessToken: codexToken,
+            refreshToken: codexAuth.codexOAuthRefreshToken,
+            expiresAt: codexAuth.codexOAuthExpiresAt,
+          }
+        : null,
+    proxy: llmProxyToken
+      ? { providerID: modelRef.providerID, token: llmProxyToken }
+      : null,
+  });
   await writeOpenCodeScripts(projectId);
 
   const hasBackend = project.backendType !== "none";
@@ -301,7 +354,6 @@ export async function POST(req: Request) {
     : null;
 
   const paths = await resolveOpenCodePaths(projectId);
-  const turnId = Math.random().toString(36).slice(2, 10);
   const configPath = `/tmp/.botflow-opencode-config-${turnId}.json`;
   // Fixed path inside the shared run dir so the stop route can find it
   // without knowing the turn id; the prepare script clears any stale one.
@@ -317,6 +369,26 @@ export async function POST(req: Request) {
     appendPromptPath: paths.appendPromptPath,
     opencodeBin: paths.binPath,
     abortPath,
+    // Proxied modes point the provider at /api/internal/llm-proxy with the
+    // bfap_ token as the api key; codex-oauth mode omits this (auth.json
+    // carries the real ChatGPT tokens — the documented exception).
+    ...(llmProxyToken && proxyProvider
+      ? {
+          provider: {
+            id: modelRef.providerID,
+            baseURL: `${llmProxyOrigin(new URL(req.url).origin)}/api/internal/llm-proxy/${proxyProvider}${LLM_PROXY_PROVIDERS[proxyProvider].sandboxBasePath}`,
+            apiKey: llmProxyToken,
+            ...(process.env.VERCEL_ENV === "preview" &&
+            process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+              ? {
+                  headers: {
+                    "x-vercel-protection-bypass": process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+                  },
+                }
+              : {}),
+          },
+        }
+      : {}),
     ...(toolToken
       ? {
           mcp: {
@@ -358,6 +430,9 @@ export async function POST(req: Request) {
   if (prevTurn?.toolToken) {
     revokeToolToken(prevTurn.toolToken).catch(() => {});
   }
+  if (prevTurn?.llmProxyToken) {
+    revokeLlmProxyToken(prevTurn.llmProxyToken).catch(() => {});
+  }
 
   await sandbox.writeFiles([
     {
@@ -394,7 +469,13 @@ export async function POST(req: Request) {
     eventFile,
     startedAt: Date.now(),
     ...(toolToken ? { toolToken } : {}),
+    ...(llmProxyToken ? { llmProxyToken } : {}),
   }).catch(() => {});
+
+  // Turn marker: proxied usage rows are per-REQUEST (countTurn:false at the
+  // proxy), so the turn itself is counted once here — codex turns included,
+  // for a consistent agentTurns meaning across backends.
+  recordTokenUsage(userId, selectedModel, 0, 0, 0, 0, 0).catch(() => {});
 
   // ── Stream stdout NDJSON → AI SDK UIMessageStream ───────────────────────
   const stream = createUIMessageStream<UIMessage>({

@@ -403,11 +403,6 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [hasTogetherKey, setHasTogetherKey] = useState<boolean | null>(null);
   // Server flag (USE_TOGETHER_KIMI): Kimi K2.7 is served by Together AI, not Fireworks.
   const [useTogetherKimi, setUseTogetherKimi] = useState(false);
-  // BYOK user's per-account preference for which agent runs Claude models.
-  // Honored by the derivation only when the user has a genuine choice
-  // (BYOK with no OAuth). OAuth users are ToS-locked to Claude Code regardless.
-  const [preferredAnthropicBackend, setPreferredAnthropicBackend] =
-    useState<'botflow' | 'claude-code'>('botflow');
   const [showSettings, setShowSettings] = useState(false);
   const [agentError, setAgentError] = useState<StructuredError | null>(null);
   const [retryCountdown, setRetryCountdown] = useState<number | null>(null);
@@ -570,10 +565,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // Single source of truth lives in deriveAgentBackend(). Both the chip badge
   // and the transport's routing decision read from this memo. No more separate
   // useState, no more auto-coerce effect, no more confirmation modal — when
-  // the user picks a different model, the agent flips silently.
-  //
-  // BYOK users who want to override the default (Botflow) to Claude Code use
-  // the preference in Connections → preferredAnthropicBackend.
+  // the user picks a different model, the agent flips silently. Credentials
+  // pick the MODE (codex-oauth / byok / platform via the LLM proxy); the
+  // backend itself is fully determined by model + platform + flag.
   const derivedBackend = useMemo(
     () =>
       deriveAgentBackend({
@@ -588,7 +582,6 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           hasGoogleKey: Boolean(hasGoogleKey),
           hasTogetherKey: Boolean(hasTogetherKey),
         },
-        preferredAnthropicBackend,
         tier: userTier,
         useTogetherKimi,
       }),
@@ -602,7 +595,6 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       hasFireworksKey,
       hasGoogleKey,
       hasTogetherKey,
-      preferredAnthropicBackend,
       userTier,
       useTogetherKimi,
     ],
@@ -1456,10 +1448,6 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           setHasGoogleKey(Boolean(data?.hasGoogleKey));
           setHasTogetherKey(Boolean(data?.hasTogetherKey));
           setUseTogetherKimi(Boolean(data?.useTogetherKimi));
-          const pref = data?.preferredAnthropicBackend;
-          if (pref === 'botflow' || pref === 'claude-code') {
-            setPreferredAnthropicBackend(pref);
-          }
         }
       } catch {}
     })();
@@ -1481,10 +1469,6 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           setHasGoogleKey(Boolean(data?.hasGoogleKey));
           setHasTogetherKey(Boolean(data?.hasTogetherKey));
           setUseTogetherKimi(Boolean(data?.useTogetherKimi));
-          const pref = data?.preferredAnthropicBackend;
-          if (pref === 'botflow' || pref === 'claude-code') {
-            setPreferredAnthropicBackend(pref as 'botflow' | 'claude-code');
-          }
         })
         .catch(() => {});
     };

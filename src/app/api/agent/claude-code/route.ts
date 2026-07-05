@@ -48,6 +48,13 @@ import {
 import { createTranslator, type BridgeEvent } from "@/lib/agent/claude-code/translator";
 import { mintToolToken, revokeToolToken } from "@/lib/agent/claude-code/tool-token";
 import {
+  mintLlmProxyToken,
+  revokeLlmProxyToken,
+  llmProxyOrigin,
+} from "@/lib/agent/llm-proxy/token";
+import { OPENCODE_BACKEND_ENABLED } from "@/lib/feature-flags";
+import { recordTokenUsage } from "@/lib/usage";
+import {
   buildPrepareTurnScript,
   turnEventFile,
   BRIDGE_PID_FILE,
@@ -151,7 +158,6 @@ export async function POST(req: Request) {
       hasClaudeOAuth: Boolean(creds.claudeOAuthAccessToken),
       hasAnthropicKey: Boolean(creds.anthropicApiKey),
     },
-    preferredAnthropicBackend: creds.preferredAnthropicBackend,
     // Tier is fetched lazily — only matters for the platform-key fallback
     // which never picks claude-code anyway.
   });
@@ -200,18 +206,57 @@ export async function POST(req: Request) {
     return fallback("no_anthropic_credentials");
   }
 
+  // Hoisted above the credential write: the proxy token binds to this turn.
+  const turnId = Math.random().toString(36).slice(2, 10);
+
+  // ── Credential surface ────────────────────────────────────────────────────
+  // Flag ON: the sandbox gets a bfap_ proxy token instead of the real
+  // credential — Claude Code sends it to /api/internal/llm-proxy/anthropic,
+  // which injects the real OAuth token / API key server-side (and refreshes
+  // OAuth mid-turn there). Sharing-readiness: co-tenants with sandbox shell
+  // access can never read a usable Anthropic credential. Flag OFF: legacy
+  // real-credential path, byte-identical to before the proxy existed.
+  const llmProxyToken = OPENCODE_BACKEND_ENABLED
+    ? await mintLlmProxyToken({
+        userId,
+        projectId,
+        turnId,
+        provider: "anthropic",
+        credMode: oauthToken ? "oauth" : "byok",
+        modelId: selectedModel,
+        // Advisory in personal modes — Claude Code legitimately calls
+        // Haiku-class background models on the user's own credential.
+        modelAllowlist: [MODEL_CONFIGS[selectedModel].apiModelId],
+      })
+    : null;
+
   // ── Sandbox setup (idempotent, fast on warm boots) ───────────────────────
   const installResult = await ensureClaudeInstalled(projectId);
   if (!installResult.ok) {
     return jsonError(500, installResult.error);
   }
 
-  await writeClaudeCredentials(projectId, {
-    accessToken: oauthToken,
-    refreshToken: creds.claudeOAuthRefreshToken,
-    expiresAt: creds.claudeOAuthExpiresAt,
-    apiKey: creds.anthropicApiKey,
-  });
+  if (llmProxyToken) {
+    await writeClaudeCredentials(
+      projectId,
+      oauthToken
+        ? {
+            // OAuth shape: the CLI treats the proxy token as its access
+            // token. Far-future expiry so it never attempts its own refresh
+            // (the proxy refreshes the REAL token server-side).
+            accessToken: llmProxyToken,
+            expiresAt: Date.now() + 60 * 60 * 1000,
+          }
+        : { apiKey: llmProxyToken },
+    );
+  } else {
+    await writeClaudeCredentials(projectId, {
+      accessToken: oauthToken,
+      refreshToken: creds.claudeOAuthRefreshToken,
+      expiresAt: creds.claudeOAuthExpiresAt,
+      apiKey: creds.anthropicApiKey,
+    });
+  }
 
   await writeBridgeScript(projectId);
 
@@ -248,7 +293,6 @@ export async function POST(req: Request) {
       : {}),
   };
 
-  const turnId = Math.random().toString(36).slice(2, 10);
   const configPath = `/tmp/.botflow-claude-config-${turnId}.json`;
   const eventFile = turnEventFile(turnId);
 
@@ -267,6 +311,9 @@ export async function POST(req: Request) {
   });
   if (prevTurn?.toolToken) {
     revokeToolToken(prevTurn.toolToken).catch(() => {});
+  }
+  if (prevTurn?.llmProxyToken) {
+    revokeLlmProxyToken(prevTurn.llmProxyToken).catch(() => {});
   }
 
   await sandbox.writeFiles([
@@ -292,7 +339,20 @@ export async function POST(req: Request) {
     bridgeEnv.BOTFLOW_API_BASE = new URL(req.url).origin;
     bridgeEnv.BOTFLOW_TOOL_TOKEN = toolToken;
   }
-  if (oauthToken) {
+  if (llmProxyToken) {
+    bridgeEnv.ANTHROPIC_BASE_URL = `${llmProxyOrigin(new URL(req.url).origin)}/api/internal/llm-proxy/anthropic`;
+    if (!oauthToken) {
+      // BYOK shape rides the env var (takes precedence over the credentials
+      // file); the value is the proxy token, never the real key.
+      bridgeEnv.ANTHROPIC_API_KEY = llmProxyToken;
+    }
+    // Preview deployments answer cookie-less requests with the Deployment
+    // Protection HTML page — same wall the MCP callbacks hit. The CLI
+    // forwards ANTHROPIC_CUSTOM_HEADERS on every API request.
+    if (process.env.VERCEL_ENV === "preview" && process.env.VERCEL_AUTOMATION_BYPASS_SECRET) {
+      bridgeEnv.ANTHROPIC_CUSTOM_HEADERS = `x-vercel-protection-bypass: ${process.env.VERCEL_AUTOMATION_BYPASS_SECRET}`;
+    }
+  } else if (oauthToken) {
     // When OAuth is available, claude reads it from ~/.claude/.credentials.json
     // (already written above). We deliberately do NOT set ANTHROPIC_API_KEY in
     // that case — having it set takes precedence over the credentials file.
@@ -318,7 +378,15 @@ export async function POST(req: Request) {
     eventFile,
     startedAt: Date.now(),
     ...(toolToken ? { toolToken } : {}),
+    ...(llmProxyToken ? { llmProxyToken } : {}),
   }).catch(() => {});
+
+  // Turn marker: proxied usage rows are per-REQUEST (countTurn:false at the
+  // proxy), so the turn itself is counted once here — this also brings CC
+  // turns into usage_records for the first time (zero tokens, zero credits).
+  if (llmProxyToken) {
+    recordTokenUsage(userId, selectedModel, 0, 0, 0, 0, 0).catch(() => {});
+  }
 
   // ── Stream stdout NDJSON → AI SDK UIMessageStream ───────────────────────
   const stream = createUIMessageStream<UIMessage>({

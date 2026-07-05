@@ -38,6 +38,9 @@ export interface ClaudeCodeTurnRecord {
   /** The turn's tool-callback bearer token, so a later request (next turn's
    *  spawn, or the stop route) can revoke it when it kills the bridge. */
   toolToken?: string;
+  /** The turn's LLM-proxy token (bfap_) — same revocation rail: killing the
+   *  bridge must also cut off its inference access. */
+  llmProxyToken?: string;
   /** True once an end_turn event has been observed for this turn. */
   endedNormally?: boolean;
   /** Epoch ms when end_turn was observed. */
