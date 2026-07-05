@@ -1800,7 +1800,7 @@ export function Preview({
               away once the real preview has painted (the "lazy switch"). */}
           {showSnapshot && snapshotHtml && (
             <div
-              className="absolute inset-0 flex items-center justify-center pointer-events-none"
+              className="absolute inset-0 flex items-center justify-center pointer-events-none rounded-xl overflow-hidden"
               style={{
                 opacity: veilClearing ? 0 : 1,
                 transition: "opacity 700ms ease",
@@ -1833,7 +1833,7 @@ export function Preview({
               preview for the curious. */}
           {showInitialVeil && !initialVeilDismissed && isDevServerRunning && (
             <div
-              className="absolute inset-0 z-10 flex items-center justify-center"
+              className="absolute inset-0 z-10 flex items-center justify-center rounded-xl overflow-hidden"
               style={{
                 opacity: initialVeilClearing ? 0 : 1,
                 backdropFilter: initialVeilClearing ? "blur(0px)" : "blur(8px)",
