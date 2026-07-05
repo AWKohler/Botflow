@@ -23,6 +23,7 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { AgentBackend } from "@/lib/agent/backend-resolution";
 import { describeDerivation, type DerivationReason } from "@/lib/agent/derive-backend";
+import { OPENCODE_BACKEND_ENABLED } from "@/lib/feature-flags";
 
 interface GlyphProps {
   size?: number;
@@ -55,14 +56,38 @@ function AnthropicGlyph({ size = 14, className }: GlyphProps) {
   );
 }
 
+/** Inline terminal-prompt mark for OpenCode — self-contained SVG (no asset),
+ *  drawn in currentColor so it inherits the pill's text color. */
+function OpenCodeGlyph({ size = 14, className }: GlyphProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={cn("shrink-0", className)}
+      aria-hidden
+    >
+      <rect x="1" y="1" width="14" height="14" rx="3" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M4.5 5.5 7 8l-2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8.5 10.5h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function BackendGlyph({ backend, size = 14, className }: { backend: AgentBackend; size?: number; className?: string }) {
-  return backend === "claude-code"
-    ? <AnthropicGlyph size={size} className={className} />
-    : <BotflowGlyph size={size} className={className} />;
+  if (backend === "claude-code") return <AnthropicGlyph size={size} className={className} />;
+  if (backend === "opencode") return <OpenCodeGlyph size={size} className={className} />;
+  return <BotflowGlyph size={size} className={className} />;
 }
 
 function backendLabel(backend: AgentBackend): string {
-  return backend === "claude-code" ? "Claude Code" : "Botflow";
+  if (backend === "claude-code") return "Claude Code";
+  if (backend === "opencode") return "OpenCode";
+  // Under the OpenCode flag, "Botflow" is retired as a presented agent
+  // identity — botflow-served turns (platform-key paths) read neutrally.
+  return OPENCODE_BACKEND_ENABLED ? "Assistant" : "Botflow";
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -75,8 +100,11 @@ function backendLabel(backend: AgentBackend): string {
 const BACKEND_DETAIL: Record<AgentBackend, string> = {
   "claude-code":
     "Anthropic's agentic coding harness, running the model directly inside your project sandbox.",
-  botflow:
-    "Botflow's native agent — the harness powering every model outside of Claude Code.",
+  opencode:
+    "The open-source OpenCode agent, running the model directly inside your project sandbox with your own credentials.",
+  botflow: OPENCODE_BACKEND_ENABLED
+    ? "The built-in server-side engine that runs models covered by your plan's credits."
+    : "Botflow's native agent — the harness powering every model outside of Claude Code.",
 };
 
 export function BackendGlyphInfo({ backend }: { backend: AgentBackend }) {
@@ -133,10 +161,14 @@ export function BackendBadge({ backend }: { backend: AgentBackend }) {
  */
 const CHIP_VISIBLE_REASONS: ReadonlySet<DerivationReason> = new Set<DerivationReason>([
   "oauth_claude_code",
+  "byok_claude_code",
   "byok_botflow",
-  "byok_preference_claude_code",
   "oauth_no_path",
   "no_credentials",
+  "codex_oauth_opencode",
+  "byok_opencode",
+  // Error state: the model exists but this plan can't run it on credits.
+  "tier_too_low",
 ]);
 
 export interface BackendChipProps {

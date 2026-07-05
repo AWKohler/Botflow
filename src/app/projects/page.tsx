@@ -38,25 +38,44 @@ export default function ProjectsPage() {
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadProjects() {
+    let cancelled = false;
+    async function loadProjects(allowRetry: boolean) {
       try {
         const res = await fetch('/api/projects');
+        if (cancelled) return;
         if (res.ok) {
           const data = (await res.json()) as Project[];
+          if (cancelled) return;
           setProjects(data);
           setLoadError(null);
+        } else if (res.status === 429 && allowRetry) {
+          // Rate-limited — transient by definition, so retry once after the
+          // server's Retry-After before showing an error. Return early WITHOUT
+          // clearing `loading`, so the skeleton (not "No projects yet") shows
+          // while we wait.
+          const retryAfter = Math.min(
+            Math.max(Number(res.headers.get('Retry-After')) || 5, 1),
+            30,
+          );
+          setTimeout(() => void loadProjects(false), retryAfter * 1000);
+          return;
+        } else if (res.status === 429) {
+          setLoadError('Too many requests right now — wait a few seconds and retry.');
         } else {
           const body = await res.json().catch(() => ({}));
           setLoadError(body.error ?? 'Failed to load projects');
         }
       } catch (error) {
         console.error('Failed to load projects:', error);
+        if (cancelled) return;
         setLoadError('Failed to load projects');
-      } finally {
-        setLoading(false);
       }
+      if (!cancelled) setLoading(false);
     }
-    loadProjects();
+    loadProjects(true);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleDeleteProject = async (projectId: string) => {

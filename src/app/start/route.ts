@@ -9,7 +9,9 @@ import { countUserConvexProjects } from '@/lib/usage';
 import { getUserCredentials, setUserCredentials, type UserCredentials } from '@/lib/user-credentials';
 import { normalizeProjectPlatform, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
 import { resolveModelId } from '@/lib/agent/models';
-import { resolveBackends, type AgentBackend } from '@/lib/agent/backend-resolution';
+import { credFlagsFromUserCredentials, resolveBackends, type AgentBackend } from '@/lib/agent/backend-resolution';
+import { USE_TOGETHER_KIMI } from '@/lib/feature-flags';
+import { canUseSwift } from '@/lib/swift-access';
 import { randomUUID } from 'node:crypto';
 
 const CONVEX_CLI_API = 'https://api.convex.dev/api';
@@ -174,6 +176,15 @@ export async function GET(request: Request) {
     return redirectToSignIn({ returnBackUrl: request.url });
   }
 
+  // This is the landing page's primary creation path. Enforce the same Swift
+  // entitlement as the JSON projects API so direct URLs cannot create an
+  // unusable Swift project.
+  if (platform === 'swift' && !(await canUseSwift(userId))) {
+    const errUrl = new URL('/', request.url);
+    errUrl.searchParams.set('error', 'swift_requires_pro');
+    return NextResponse.redirect(errUrl);
+  }
+
   try {
     const db = getDb();
     const requestedName = url.searchParams.get('name');
@@ -288,20 +299,10 @@ export async function GET(request: Request) {
     const backendResolution = resolveBackends({
       model: resolvedModel,
       platform,
-      creds: {
-        hasClaudeOAuth: Boolean(creds.claudeOAuthAccessToken),
-        hasAnthropicKey: Boolean(creds.anthropicApiKey),
-      },
+      creds: credFlagsFromUserCredentials(creds),
+      useTogetherKimi: USE_TOGETHER_KIMI,
     });
-    let initialAgentBackend: AgentBackend = backendResolution.defaultBackend;
-    if (
-      backendResolution.locked === null &&
-      backendResolution.available.length >= 2 &&
-      creds.preferredAnthropicBackend &&
-      backendResolution.available.includes(creds.preferredAnthropicBackend)
-    ) {
-      initialAgentBackend = creds.preferredAnthropicBackend;
-    }
+    const initialAgentBackend: AgentBackend = backendResolution.defaultBackend;
 
     const [project] = await db
       .insert(projects)

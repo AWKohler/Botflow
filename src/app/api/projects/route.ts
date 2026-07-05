@@ -8,6 +8,7 @@ import { countUserProjects } from '@/lib/usage';
 import { limitReachedResponse } from '@/lib/plan-response';
 import { normalizeProjectPlatform, normalizeBackendType, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
 import { isModelDisabled, modelDisabledReason } from '@/lib/agent/models';
+import { canUseSwift } from '@/lib/swift-access';
 
 export async function GET() {
   try {
@@ -77,14 +78,12 @@ export async function POST(request: NextRequest) {
 
     const db = getDb();
     const resolvedPlatform = normalizeProjectPlatform(platform);
-    // Swift is a beta-only platform. normalizeProjectPlatform already enforces
-    // the global kill-switch (NEXT_PUBLIC_ALLOW_PERSISTENT_EXP); this adds the
-    // per-user gate. Only runs when swift is actually requested, so it costs
-    // nothing on the common web-project path — and the getUserTierAndLimits call
-    // above has already warmed the beta cache for free users.
-    if (resolvedPlatform === 'swift' && !(await isBetaUser(userId))) {
+    // normalizeProjectPlatform enforces the global kill switch. The entitlement
+    // gate allows Pro/Max subscribers plus invited beta users (whose effective
+    // tier is automatically raised to Pro).
+    if (resolvedPlatform === 'swift' && !(await canUseSwift(userId))) {
       return NextResponse.json(
-        { error: 'Swift projects are currently in private beta.' },
+        { error: 'Swift projects require a Pro or Max plan, or beta access.' },
         { status: 403 },
       );
     }

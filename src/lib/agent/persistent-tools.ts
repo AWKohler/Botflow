@@ -419,18 +419,23 @@ export function getPersistentTools(
       ? {
           startSimulator: tool({
             description:
-              "Build the project and run it on the iOS simulator in the user's workspace. The simulator does NOT run while you work (no HMR — compiling is expensive), so call this ONCE at the END of your turn, after your changes are complete and you believe the project builds. " +
-              "The user's open workspace picks the request up within a few seconds and starts streaming; if their workspace tab is closed the request simply expires. Do NOT call this mid-work or when the build is known-broken.",
+              "Build the project and run it on the iOS simulator in the user's workspace. The simulator does NOT run while you work (no HMR — compiling is expensive), so call this ONCE at the END of your turn, after your changes are complete. " +
+              "This tool BLOCKS until the build finishes (several minutes for large projects) and returns the build outcome: on failure you get the compiler errors/warnings — fix them and call startSimulator again; on success you get any warnings and the app launches on the simulator. " +
+              "If the user's workspace tab is closed, it returns status='workspace-closed' within ~30 seconds. Do NOT call this mid-work or when the build is known-broken.",
             inputSchema: z.object({}),
             async execute() {
               return safe(async () => {
-                const { requestSimulatorAction } = await import("@/lib/swift-sim-control");
-                await requestSimulatorAction(projectId, "start");
-                return {
-                  ok: true,
-                  message:
-                    "Simulator start requested. The user's workspace will build the project and begin streaming within a few seconds (if their tab is open).",
-                };
+                const { requestSimulatorAction, waitForSimulatorBuild, formatBuildWaitOutcome } =
+                  await import("@/lib/swift-sim-control");
+                const { requestedAt } = await requestSimulatorAction(projectId, "start");
+                // Block until the workspace's build completes (mirrors the
+                // convexDeploy tool). Budget stays under the agent route's
+                // 300s maxDuration, leaving headroom for the rest of the turn.
+                const outcome = await waitForSimulatorBuild(projectId, {
+                  requestedAt,
+                  timeoutMs: 240_000,
+                });
+                return formatBuildWaitOutcome(outcome);
               });
             },
           }),
@@ -448,7 +453,7 @@ export function getPersistentTools(
           }),
           getSimulatorStatus: tool({
             description:
-              "Check whether the iOS simulator is currently running/streaming in the user's workspace. Returns state ('stopped' | 'starting' | 'building' | 'installing' | 'live' | 'failed'), the device model, and any pending start/stop request. Cheap — call before startSimulator if unsure.",
+              "Check whether the iOS simulator is currently running/streaming in the user's workspace. Returns state ('stopped' | 'starting' | 'building' | 'installing' | 'live' | 'failed'), the device model, any pending start/stop request, and lastBuild (the most recent build's outcome + diagnostics — useful if startSimulator timed out while the build was still running). Cheap — call before startSimulator if unsure.",
             inputSchema: z.object({}),
             async execute() {
               return safe(async () => {

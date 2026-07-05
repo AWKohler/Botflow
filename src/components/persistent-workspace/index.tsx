@@ -87,6 +87,9 @@ export function PersistentWorkspace({
   // provisions when the user presses Play or the agent requests a start via
   // the simulator tools.
   const [previewStopped, setPreviewStopped] = useState<boolean>(true);
+  // Bumped to force a full remount of the simulator preview (fresh session +
+  // build) when the agent requests a start while the mounted session is dead.
+  const [previewEpoch, setPreviewEpoch] = useState(0);
 
   const initializedRef = useRef(false);
 
@@ -152,6 +155,14 @@ export function PersistentWorkspace({
         if (data.desired.action === "start") {
           setPreviewStopped(false);
           setCurrentView("preview");
+          // If the preview is ALREADY mounted (live or failed), it must
+          // rebuild so the agent's new code actually runs — the mounted
+          // component listens for this and rebuilds/asks for a remount.
+          // Harmless when the preview is only now mounting (no listener yet;
+          // the fresh session builds anyway).
+          window.dispatchEvent(
+            new CustomEvent("swift-sim-agent-start", { detail: { projectId } }),
+          );
         } else {
           setPreviewStopped(true);
           // Pick up the screenshot the unmounting preview just uploaded.
@@ -718,9 +729,11 @@ export function PersistentWorkspace({
               mode={currentView === "preview" ? "full" : "pip"}
             >
               <SwiftSimulatorPreview
+                key={previewEpoch}
                 projectId={projectId}
                 mode={currentView === "preview" ? "full" : "pip"}
                 onOpenFile={handleOpenFromIssues}
+                onRestartRequested={() => setPreviewEpoch((e) => e + 1)}
                 onStop={() => {
                   setPreviewStopped(true);
                   // The Stop grab uploads a fresh screenshot — refetch the

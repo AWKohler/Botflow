@@ -212,3 +212,63 @@ export async function detachPagesCustomDomain(pagesProjectName: string, hostname
     }
   }
 }
+
+// ─── White-label branded deployment domain ─────────────────────────────────
+// Every deployment is fronted by `<project>.<CLOUDFLARE_BRANDED_DOMAIN>` instead
+// of the raw `<project>.pages.dev`. This is a plain white-label of Pages, not the
+// user-supplied custom-domain perk — it applies to all tiers.
+
+let brandedZoneIdCache: string | null | undefined;
+
+/**
+ * Zone id for the platform's white-label domain (CLOUDFLARE_BRANDED_DOMAIN).
+ * Cached for the lifetime of the server process. Prefer CLOUDFLARE_BRANDED_ZONE_ID
+ * when set to avoid a zone lookup; otherwise resolve it by name once.
+ * Returns null when no branded domain is configured or no matching zone exists.
+ */
+export async function getBrandedZoneId(): Promise<string | null> {
+  const branded = process.env.CLOUDFLARE_BRANDED_DOMAIN;
+  if (!branded) return null;
+  if (brandedZoneIdCache !== undefined) return brandedZoneIdCache;
+  if (process.env.CLOUDFLARE_BRANDED_ZONE_ID) {
+    brandedZoneIdCache = process.env.CLOUDFLARE_BRANDED_ZONE_ID;
+    return brandedZoneIdCache;
+  }
+  const zone = await findZoneByName(branded);
+  brandedZoneIdCache = zone?.id ?? null;
+  return brandedZoneIdCache;
+}
+
+/**
+ * Point a branded subdomain (e.g. `bf-xxxxxxxx.botflow-site.app`) at a Pages
+ * project. Attaches the custom domain AND creates the proxied CNAME the hostname
+ * needs to resolve. Cloudflare does NOT auto-create that DNS record when you attach
+ * a Pages custom domain — without it the domain sits in "initializing" forever and
+ * the cert never validates. Both steps are idempotent.
+ */
+export async function attachBrandedSubdomain(
+  pagesProjectName: string,
+  hostname: string,
+  zoneId: string,
+): Promise<void> {
+  await attachPagesCustomDomain(pagesProjectName, hostname);
+  await upsertDnsRecord(zoneId, {
+    type: 'CNAME',
+    name: hostname,
+    content: `${pagesProjectName}.pages.dev`,
+    proxied: true,
+    comment: 'Botflow white-label deployment domain',
+  });
+}
+
+/** Tear down a branded subdomain: detach the Pages custom domain and remove its CNAME. */
+export async function removeBrandedSubdomain(
+  pagesProjectName: string,
+  hostname: string,
+  zoneId: string,
+): Promise<void> {
+  await detachPagesCustomDomain(pagesProjectName, hostname).catch(() => {});
+  const records = await listDnsRecords(zoneId).catch(() => [] as CfDnsRecord[]);
+  const match = records.find(r => r.type === 'CNAME' && r.name === hostname);
+  if (match) await deleteDnsRecord(zoneId, match.id).catch(() => {});
+}

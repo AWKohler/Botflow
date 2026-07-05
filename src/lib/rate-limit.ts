@@ -26,8 +26,9 @@ import { redis } from './redis';
 
 export type RateLimitBucket =
   | 'read' | 'write' | 'upload' | 'expensive' | 'deploy'
+  | 'poll' | 'pollHeavy'
   | 'oauthStart' | 'oauthExchange' | 'oauthPoll'
-  | 'agent' | 'claudeCode' | 'toolCallback'
+  | 'agent' | 'claudeCode' | 'opencode' | 'toolCallback' | 'llmProxy'
   | 'public' | 'publicHeavy' | 'webhook' | 'global';
 
 export interface RateLimitResult {
@@ -61,13 +62,25 @@ export const RATE_LIMIT_BUCKETS: Record<RateLimitBucket, { tokens: number; windo
   write:         { tokens: envInt('RL_WRITE', 60),          window: '60 s' }, // generic mutation writes
   upload:        { tokens: envInt('RL_UPLOAD', 20),          window: '60 s' }, // UploadThing-backed (images, snapshot)
   expensive:     { tokens: envInt('RL_EXPENSIVE', 15),       window: '60 s' }, // sandbox exec/search/session, domain provisioning
+  // Workspace background polling — isolated from read/write so a wall of open
+  // workspace tabs can never starve interactive traffic. Budget derivation:
+  // one visible ready workspace polls preview-state (2s=30/min) + env request
+  // (2.5s=24/min) + convex oauth status (2.5s=24/min) + stripe connect
+  // (2.5s=24/min) ≈ ~105/min; sized for ~8 simultaneously VISIBLE workspaces
+  // plus jitter (hidden tabs pause — see use-workspace-poll.ts).
+  poll:          { tokens: envInt('RL_POLL', 1200),          window: '60 s' }, // lightweight Redis/DB state polls
+  // File-tree signature runs find|cksum INSIDE the sandbox (3s=20/min per
+  // workspace) and file-content GETs cat from sandbox disk — heavier, tighter.
+  pollHeavy:     { tokens: envInt('RL_POLL_HEAVY', 240),     window: '60 s' }, // sandbox-executing polls (files signature/content)
   deploy:        { tokens: envInt('RL_DEPLOY', 5),           window: '60 s' }, // strictest: publish, convex/deploy, swift build
   oauthStart:    { tokens: envInt('RL_OAUTH_START', 10),     window: '60 s' }, // oauth */start, stripe oauth start
   oauthExchange: { tokens: envInt('RL_OAUTH_EXCHANGE', 5),   window: '60 s' }, // oauth */callback + exchange (token/code grinding)
   oauthPoll:     { tokens: envInt('RL_OAUTH_POLL', 45),      window: '60 s' }, // codex/poll client loop (~1/2s = 30/min); headroom for jitter/retry/clock-drift
   agent:         { tokens: envInt('RL_AGENT', 12),           window: '60 s' }, // /api/agent LLM turn
   claudeCode:    { tokens: envInt('RL_CLAUDE_CODE', 10),     window: '60 s' }, // /api/agent/claude-code subprocess+sandbox
+  opencode:      { tokens: envInt('RL_OPENCODE', 10),        window: '60 s' }, // /api/agent/opencode subprocess+sandbox
   toolCallback:  { tokens: envInt('RL_TOOL_CALLBACK', 90),   window: '60 s' }, // /api/internal/claude-code-tool (fans out per turn)
+  llmProxy:      { tokens: envInt('RL_LLM_PROXY', 120),      window: '60 s' }, // /api/internal/llm-proxy (one call per agent-loop step, all providers; keyed by binding userId)
   public:        { tokens: envInt('RL_PUBLIC', 30),          window: '60 s' }, // unauth IP-keyed gallery/detail, og
   publicHeavy:   { tokens: envInt('RL_PUBLIC_HEAVY', 10),    window: '60 s' }, // public source-bundle download (gunzip+tar)
   webhook:       { tokens: envInt('RL_WEBHOOK', 100),        window: '60 s' }, // coarse IP backstop (default middleware SKIPS webhooks)

@@ -156,7 +156,16 @@ export function DeviceFrame({
             // Pin the intrinsic size explicitly.
             maxWidth: "none",
             maxHeight: "none",
-            transform: rotated ? "rotate(90deg)" : "none",
+            // Landscape display (natural-portrait bezel, i.e. iPhone) counter-
+            // rotates CCW to match the video in blitToCanvas; portrait display
+            // (natural-landscape bezel, i.e. iPad) keeps CW — its video isn't
+            // rotated. Both assets have symmetric screen insets, so the screen
+            // rect mapping above is direction-agnostic.
+            transform: rotated
+              ? orientation === "landscape"
+                ? "rotate(-90deg)"
+                : "rotate(90deg)"
+              : "none",
             transformOrigin: "center center",
             pointerEvents: "none",
             userSelect: "none",

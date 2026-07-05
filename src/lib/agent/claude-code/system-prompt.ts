@@ -63,10 +63,10 @@ export function buildClaudeCodeAppendPrompt(input: BuildAppendPromptInput): stri
       "",
       "## iOS Simulator (MCP tools — your run button)",
       "The user's workspace can stream a live iOS simulator running this project. It does NOT run while you work — Swift has no hot reload, and every start costs a full remote compile plus a simulator slot.",
-      "- **`start_simulator`** — build + run in the user's workspace. Call ONCE, as your LAST action before finishing, after your changes are complete and you believe the project compiles. Never mid-work, never on a known-broken build.",
+      "- **`start_simulator`** — build + run in the user's workspace. Call ONCE, after your changes are complete and you believe the project compiles. The call BLOCKS until the build finishes (can take minutes) and returns the outcome: `build-succeeded` (with any warnings), `build-failed` (with compiler errors), `workspace-closed` (user's tab isn't open — tell them to open it), or `timeout` (build still running — check `get_simulator_status.lastBuild`). Never call it mid-work or on a known-broken build.",
       "- **`stop_simulator`** — stop the stream (user asked, or you're about to make the running build stale with a long edit batch).",
-      "- **`get_simulator_status`** — cheap state check ('stopped' | 'starting' | 'building' | 'installing' | 'live' | 'failed').",
-      "If the build fails after a start, the workspace surfaces diagnostics to the user; fix the errors and start it again.",
+      "- **`get_simulator_status`** — cheap state check ('stopped' | 'starting' | 'building' | 'installing' | 'live' | 'failed') + `lastBuild` outcome/diagnostics.",
+      "If `start_simulator` returns `build-failed`, FIX the reported errors and call it again — do not finish your turn on a broken build.",
       "",
       "Always restate the user's request, plan minimally, edit, verify with `Grep`/`Read`. Don't add comments unless the *why* is non-obvious. When you finish runnable work, call `start_simulator` so the user sees the result.",
     ].join("\n");
