@@ -13,7 +13,6 @@
  * can transparently retry against /api/agent.
  */
 import { auth } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,
@@ -21,8 +20,7 @@ import {
   type UIMessageChunk,
 } from "ai";
 
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { getFreshAnthropicAccessToken } from "@/lib/anthropic-oauth";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
@@ -128,11 +126,11 @@ export async function POST(req: Request) {
     return fallback("non_sandbox_platform");
   }
 
-  const db = getDb();
-  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-  if (!project || project.userId !== userId) {
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) {
     return jsonError(404, "Project not found");
   }
+  const { project } = access;
   // Swift's runtime is beta-only. Gate on the STORED platform (not the request
   // param) so a non-beta owner of a legacy swift project can't drive the agent's
   // sandbox tools — and can't mint the tool token the internal tool route trusts.

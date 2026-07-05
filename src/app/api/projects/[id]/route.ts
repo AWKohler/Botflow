@@ -3,6 +3,7 @@ import { getDb } from '@/db';
 import { projects, chatImages, projectAssets } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
+import { requireProjectAccess } from '@/lib/project-access';
 import { deleteConvexBackend } from '@/lib/convex-platform';
 import { isModelDisabled, modelDisabledReason } from '@/lib/agent/models';
 import { UTApi } from 'uploadthing/server';
@@ -14,10 +15,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const db = getDb();
-    const [proj] = await db.select().from(projects).where(eq(projects.id, resolvedParams.id));
-    if (!proj || proj.userId !== userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    return NextResponse.json(proj);
+    const access = await requireProjectAccess(resolvedParams.id, userId);
+    if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json(access.project);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: 'Failed to fetch project' }, { status: 500 });
@@ -30,8 +30,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const db = getDb();
-    const [proj] = await db.select().from(projects).where(eq(projects.id, resolvedParams.id));
-    if (!proj || proj.userId !== userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const access = await requireProjectAccess(resolvedParams.id, userId);
+    if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const body = await req.json();
     // Public visibility is no longer toggled here — it's gated on deployment and
     // set by the deploy flow (see src/lib/public-bundle.ts). This route only
@@ -77,7 +77,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (model && isModelDisabled(model)) {
       return NextResponse.json({ error: modelDisabledReason(model) }, { status: 403 });
     }
-    const updateData: Partial<typeof proj> = {
+    const updateData: Partial<typeof access.project> = {
       updatedAt: new Date(),
     };
     if (model) updateData.model = model;
@@ -103,8 +103,9 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const db = getDb();
-    const [proj] = await db.select().from(projects).where(eq(projects.id, resolvedParams.id));
-    if (!proj || proj.userId !== userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const access = await requireProjectAccess(resolvedParams.id, userId);
+    if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const proj = access.project;
 
     // Delete Convex backend if it exists
     if (proj.convexProjectId) {

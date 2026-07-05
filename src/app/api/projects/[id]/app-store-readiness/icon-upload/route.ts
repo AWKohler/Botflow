@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { MAX_ICON_UPLOAD_BYTES, setUploadedAppIcon } from "@/lib/app-store-readiness/app-icon";
 
@@ -26,11 +24,11 @@ export async function POST(
   }
 
   const { id: projectId } = await params;
-  const db = getDb();
-  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-  if (!project || project.userId !== userId) {
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  const { project } = access;
   if (project.platform !== "swift") {
     return NextResponse.json({ error: "Project platform must be 'swift'." }, { status: 400 });
   }

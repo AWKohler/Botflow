@@ -3,6 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '@/db';
 import { chatMessages, chatSessions, projects } from '@/db/schema';
+import { requireProjectAccess } from '@/lib/project-access';
 import { auth } from '@clerk/nextjs/server';
 
 // Chat endpoints are IO-bound and may stream/persist large payloads; extend limits
@@ -49,10 +50,10 @@ export async function GET(req: NextRequest) {
     const includeAllSegments = req.nextUrl.searchParams.get('includeAllSegments') === 'true';
 
     const db = getDb();
-    const [proj] = await db.select().from(projects).where(eq(projects.id, projectId));
-    if (!proj || proj.userId !== userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const access = await requireProjectAccess(projectId, userId);
+    if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const session = await getOrCreateSession(db, projectId);
-    const currentSegmentId = await ensureProjectSegment(db, proj);
+    const currentSegmentId = await ensureProjectSegment(db, access.project);
 
     const whereClause = includeAllSegments
       ? eq(chatMessages.sessionId, session.id)
@@ -100,10 +101,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'projectId and full message are required' }, { status: 400 });
     }
     const db = getDb();
-    const [proj] = await db.select().from(projects).where(eq(projects.id, projectId));
-    if (!proj || proj.userId !== userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const access = await requireProjectAccess(projectId, userId);
+    if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const session = await getOrCreateSession(db, projectId);
-    const currentSegmentId = await ensureProjectSegment(db, proj);
+    const currentSegmentId = await ensureProjectSegment(db, access.project);
 
     const storedContent = message.parts
       ? { parts: message.parts }
@@ -144,8 +145,8 @@ export async function DELETE(req: NextRequest) {
     const projectId = req.nextUrl.searchParams.get('projectId');
     if (!projectId) return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
     const db = getDb();
-    const [proj] = await db.select().from(projects).where(eq(projects.id, projectId));
-    if (!proj || proj.userId !== userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const access = await requireProjectAccess(projectId, userId);
+    if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const session = await getOrCreateSession(db, projectId);
     // Reset deletes EVERY segment's messages and mints a fresh segment id
     // so the next message starts a clean slate.

@@ -5,9 +5,7 @@ import { createFireworks } from "@ai-sdk/fireworks";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { z } from "zod";
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { requireProjectAccess } from "@/lib/project-access";
 import { auth } from "@clerk/nextjs/server";
 
 import { SYSTEM_PROMPT_MOBILE, SYSTEM_PROMPT_MULTIPLATFORM, buildSwiftSystemPrompt, buildSandboxedWebSystemPrompt, buildWebSystemPrompt } from "@/lib/agent/prompts";
@@ -519,8 +517,6 @@ export async function POST(req: Request) {
     }: { messages: unknown; projectId?: string; platform?: ProjectPlatform } =
       await req.json();
 
-    const db = getDb();
-
     // Determine selected model for project and ensure ownership
     let selectedModel: ModelId = "fireworks-kimi-k2p7";
     // Default to true so non-project agent requests still get the full toolset.
@@ -533,16 +529,14 @@ export async function POST(req: Request) {
       autonomy: "autonomous" | "manual" | "ask-each-time" | null;
     } | undefined;
     if (projectId) {
-      const [proj] = await db
-        .select()
-        .from(projects)
-        .where(eq(projects.id, projectId));
-      if (!proj || proj.userId !== userId) {
+      const access = await requireProjectAccess(projectId, userId);
+      if (!access) {
         return new Response(JSON.stringify({ error: "Not found" }), {
           status: 404,
           headers: { "Content-Type": "application/json" },
         });
       }
+      const proj = access.project;
       // Swift's runtime is beta-only. Gate on the STORED platform so a non-beta
       // owner of a legacy swift project can't drive the native agent's sandbox
       // tools against the swift sandbox.

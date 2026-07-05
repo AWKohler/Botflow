@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects, userDomains } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
+import { requireProjectAccess } from '@/lib/project-access';
 import { getUserTierAndLimits } from '@/lib/tier';
 import {
   attachPagesCustomDomain,
@@ -14,13 +15,8 @@ import {
 } from '@/lib/cloudflare-zones';
 
 async function getProject(userId: string, projectId: string) {
-  const db = getDb();
-  const [p] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-  return p ?? null;
+  const access = await requireProjectAccess(projectId, userId);
+  return access?.project ?? null;
 }
 
 /** Build the fully-qualified hostname from a (sub, apex) pair. "" / "@" / apex → apex. */

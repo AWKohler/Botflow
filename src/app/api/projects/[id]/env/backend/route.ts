@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/db';
-import { projects } from '@/db/schema';
-import { eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
+import { requireProjectAccess } from '@/lib/project-access';
 import { listConvexEnvVars, setConvexEnvVar, deleteConvexEnvVar } from '@/lib/convex-env';
 
 export const runtime = 'nodejs';
@@ -19,10 +17,8 @@ export const dynamic = 'force-dynamic';
  */
 
 async function loadOwnedProject(projectId: string, userId: string) {
-  const db = getDb();
-  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-  if (!project || project.userId !== userId) return null;
-  return project;
+  const access = await requireProjectAccess(projectId, userId);
+  return access?.project ?? null;
 }
 
 /** GET - list the deployment's env vars (reserved keys flagged read-only). */

@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { chatQuestions, projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { resolveToolToken, touchToolToken } from "@/lib/agent/claude-code/tool-token";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 import {
@@ -119,10 +120,11 @@ export async function POST(req: Request) {
 
   // ── Project lookup + ownership re-check ─────────────────────────────────
   const db = getDb();
-  const [project] = await db.select().from(projects).where(eq(projects.id, binding.projectId));
-  if (!project || project.userId !== binding.userId) {
+  const access = await requireProjectAccess(binding.projectId, binding.userId);
+  if (!access) {
     return NextResponse.json({ ok: false, error: "Project not found" }, { status: 404 });
   }
+  const { project } = access;
 
   // ── Dispatch ─────────────────────────────────────────────────────────────
   switch (tool) {

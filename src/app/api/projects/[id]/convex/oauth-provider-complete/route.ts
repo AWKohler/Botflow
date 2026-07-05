@@ -17,7 +17,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eq, and } from "drizzle-orm";
 import { getDb } from "@/db";
-import { projects, oauthProviderRequests } from "@/db/schema";
+import { oauthProviderRequests } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { applyOAuthProvider } from "@/lib/convex-auth-setup";
 import { isAgentWaiting } from "@/lib/agent/modal-wait";
 
@@ -51,13 +52,9 @@ export async function POST(
     const db = getDb();
 
     // Ownership check
-    const [project] = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-      .limit(1);
+    const access = await requireProjectAccess(projectId, userId);
 
-    if (!project) {
+    if (!access) {
       return NextResponse.json({ ok: false, error: "Project not found." }, { status: 404 });
     }
 

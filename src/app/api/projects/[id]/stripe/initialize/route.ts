@@ -18,10 +18,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import { getDb } from '@/db';
 import { projects, userStripeIdentity } from '@/db/schema';
+import { requireProjectAccess } from '@/lib/project-access';
 import { canUseStripeConnect } from '@/lib/tier';
 import { isConnectOAuthConfigured } from '@/lib/stripe';
 import {
@@ -125,15 +126,11 @@ export async function POST(
   const { id: projectId } = await params;
   const db = getDb();
 
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-
-  if (!project) {
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) {
     return NextResponse.json({ ok: false, error: 'Project not found' }, { status: 404 });
   }
+  const project = access.project;
 
   if (project.backendType === 'none') {
     return NextResponse.json(

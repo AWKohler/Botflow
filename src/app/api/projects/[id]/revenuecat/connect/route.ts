@@ -20,6 +20,7 @@ import { and, eq } from 'drizzle-orm';
 import { randomBytes, createHash } from 'node:crypto';
 import { getDb } from '@/db';
 import { projects, userRevenueCatIdentity } from '@/db/schema';
+import { requireProjectAccess } from '@/lib/project-access';
 import { canUseRevenueCat } from '@/lib/tier';
 import { encryptSecret } from '@/lib/secrets';
 import { validateConnection } from '@/lib/revenuecat';
@@ -48,14 +49,11 @@ export async function POST(
   const { id: projectId } = await params;
   const db = getDb();
 
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-  if (!project) {
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) {
     return NextResponse.json({ ok: false, error: 'Project not found' }, { status: 404 });
   }
+  const project = access.project;
 
   const gate = await canUseRevenueCat(userId);
   if (!gate.allowed) {

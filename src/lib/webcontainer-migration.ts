@@ -16,6 +16,7 @@
  */
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
+import { requireProjectAccess } from "@/lib/project-access";
 import {
   projects,
   projectFiles,
@@ -138,8 +139,9 @@ export async function migrateWebContainerProjectToSandbox(
   userId: string,
 ): Promise<MigrationResult> {
   const db = getDb();
-  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-  if (!project || project.userId !== userId) return { migrated: false, reason: "not-found" };
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) return { migrated: false, reason: "not-found" };
+  const { project } = access;
   if (project.platform !== "web") return { migrated: false, reason: "not-web" };
 
   const template: SandboxTemplate = project.backendType === "none" ? "vite" : "viteConvex";

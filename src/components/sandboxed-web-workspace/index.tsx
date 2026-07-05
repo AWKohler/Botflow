@@ -36,6 +36,7 @@ import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabOption } from "@/components/ui/tabs";
 import { UserButton } from "@clerk/nextjs";
+import { ShareControls } from "@/components/sharing/share-controls";
 
 const PersistentTerminal = dynamic(
   () => import("@/components/persistent-workspace/terminal").then((m) => m.PersistentTerminal),
@@ -1241,6 +1242,7 @@ export function SandboxedWebWorkspace({
                 </button>
               </div>
             )}
+            <ShareControls projectId={projectId} />
             <UserButton />
             <div className="relative">
               <Button

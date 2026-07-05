@@ -11,9 +11,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import {
   clearBrowserLog,
   pushBrowserLogEntries,
@@ -26,9 +24,9 @@ export const dynamic = "force-dynamic";
 const MAX_ENTRIES_PER_BATCH = 100;
 
 async function authorizedProject(projectId: string, userId: string) {
-  const db = getDb();
-  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-  if (!project || project.userId !== userId) return null;
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) return null;
+  const { project } = access;
   if (project.platform !== "sandboxed-web") return null;
   return project;
 }

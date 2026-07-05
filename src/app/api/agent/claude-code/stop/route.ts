@@ -13,11 +13,9 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { and, eq } from "drizzle-orm";
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
 import { buildKillBridgeScript } from "@/lib/agent/claude-code/bridge-control";
+import { requireProjectAccess } from "@/lib/project-access";
 import { getTurnRecord, markTurnDead } from "@/lib/agent/claude-code/turn-registry";
 import { revokeToolToken } from "@/lib/agent/claude-code/tool-token";
 import { revokeLlmProxyToken } from "@/lib/agent/llm-proxy/token";
@@ -46,13 +44,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "projectId required" }, { status: 400 });
   }
 
-  const db = getDb();
-  const [project] = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-  if (!project) {
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) {
     return NextResponse.json({ ok: false, error: "Project not found" }, { status: 404 });
   }
 

@@ -10,6 +10,7 @@ import { AgentPanel } from "@/components/agent/AgentPanel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabOption } from "@/components/ui/tabs";
 import { UserButton } from "@clerk/nextjs";
+import { ShareControls } from "@/components/sharing/share-controls";
 import { cn } from "@/lib/utils";
 import { FileSearch } from "./file-search";
 import { SwiftSimulatorPreview } from "./swift-simulator-preview";
@@ -508,6 +509,7 @@ export function PersistentWorkspace({
               <IPhoneDeviceRunner projectId={projectId} />
             )}
 
+            <ShareControls projectId={projectId} />
             <UserButton
               afterSignOutUrl="/"
               appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }}

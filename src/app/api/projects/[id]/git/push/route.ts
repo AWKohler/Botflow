@@ -4,6 +4,7 @@ import { getDb } from '@/db';
 import { projects, pendingGitCommits } from '@/db/schema';
 import { getUserCredentials } from '@/lib/user-credentials';
 import { eq, asc } from 'drizzle-orm';
+import { requireProjectAccess } from '@/lib/project-access';
 import type { ConflictFile } from '../pull/route';
 
 export const dynamic = 'force-dynamic';
@@ -71,8 +72,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     const db = getDb();
-    const [proj] = await db.select().from(projects).where(eq(projects.id, id));
-    if (!proj || proj.userId !== userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const access = await requireProjectAccess(id, userId);
+    if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const { project: proj } = access;
 
     if (!proj.githubRepoOwner || !proj.githubRepoName) {
       return NextResponse.json({ error: 'No GitHub repo connected' }, { status: 400 });

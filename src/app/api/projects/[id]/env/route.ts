@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/db';
-import { projects, projectEnvVars } from '@/db/schema';
+import { projectEnvVars } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
+import { requireProjectAccess } from '@/lib/project-access';
 import { materializeFrontendEnv, platformConvexEnvVar } from '@/lib/sandbox-env';
 import { isReservedEnvKey } from '@/lib/platform-env';
 
@@ -18,10 +19,8 @@ import { isReservedEnvKey } from '@/lib/platform-env';
  */
 
 async function loadOwnedProject(projectId: string, userId: string) {
-  const db = getDb();
-  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-  if (!project || project.userId !== userId) return null;
-  return project;
+  const access = await requireProjectAccess(projectId, userId);
+  return access?.project ?? null;
 }
 
 /**

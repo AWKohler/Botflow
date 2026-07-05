@@ -22,14 +22,12 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { and, eq } from "drizzle-orm";
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,
   type UIMessage,
 } from "ai";
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
 import { createTranslator, type BridgeEvent } from "@/lib/agent/claude-code/translator";
 import {
@@ -61,13 +59,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "projectId required" }, { status: 400 });
   }
 
-  const db = getDb();
-  const [project] = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-  if (!project) {
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) {
     return NextResponse.json({ ok: false, error: "Project not found" }, { status: 404 });
   }
 

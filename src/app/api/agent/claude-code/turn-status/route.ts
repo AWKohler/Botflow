@@ -10,9 +10,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { and, eq } from "drizzle-orm";
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { getTurnRecord } from "@/lib/agent/claude-code/turn-registry";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
@@ -32,13 +30,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "projectId required" }, { status: 400 });
   }
 
-  const db = getDb();
-  const [project] = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-  if (!project) {
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) {
     return NextResponse.json({ ok: false, error: "Project not found" }, { status: 404 });
   }
 

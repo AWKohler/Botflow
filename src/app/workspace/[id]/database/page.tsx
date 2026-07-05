@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { auth } from '@clerk/nextjs/server';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { ConvexDashboard } from '@/components/convex/ConvexDashboard';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
+import { requireProjectAccess } from '@/lib/project-access';
 
 export default async function DatabasePage({
   params,
@@ -17,11 +18,7 @@ export default async function DatabasePage({
     return redirectToSignIn({ returnBackUrl: `/workspace/${id}/database` });
   }
 
-  const db = getDb();
-  const [project] = await db
-    .select({ id: projects.id, backendType: projects.backendType })
-    .from(projects)
-    .where(and(eq(projects.id, id), eq(projects.userId, userId)));
+  const project = (await requireProjectAccess(id, userId))?.project;
 
   if (!project) {
     return (
@@ -68,7 +65,7 @@ export default async function DatabasePage({
     );
   }
 
-  await db
+  await getDb()
     .update(projects)
     .set({ lastOpened: new Date() })
     .where(eq(projects.id, id));

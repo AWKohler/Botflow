@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import { requireProjectAccess } from '@/lib/project-access';
 import { provisionConvexBackend, getConvexPlatformClient } from '@/lib/convex-platform';
 import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
 import { countUserConvexProjects } from '@/lib/usage';
@@ -31,15 +32,12 @@ export async function POST(
 
     // 2. Verify project ownership and get deploy key
     const db = getDb();
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-      .limit(1);
+    const access = await requireProjectAccess(projectId, userId);
 
-    if (!project) {
+    if (!access) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
+    const project = access.project;
 
     // No-backend projects intentionally have no Convex deployment. Reject the
     // call so we don't silently provision one behind the user's back.

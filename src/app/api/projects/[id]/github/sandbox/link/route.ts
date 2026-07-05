@@ -15,6 +15,7 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { getUserCredentials } from "@/lib/user-credentials";
 import {
   cloneRepoIntoSandbox,
@@ -84,10 +85,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const db = getDb();
-    const [proj] = await db.select().from(projects).where(eq(projects.id, id));
-    if (!proj || proj.userId !== userId) {
+    const access = await requireProjectAccess(id, userId);
+    if (!access) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    const { project: proj } = access;
     if (proj.platform !== "sandboxed-web") {
       return NextResponse.json(
         { error: "This endpoint is for sandboxed-web projects only." },
@@ -242,8 +244,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const db = getDb();
-    const [proj] = await db.select().from(projects).where(eq(projects.id, id));
-    if (!proj || proj.userId !== userId) {
+    const access = await requireProjectAccess(id, userId);
+    if (!access) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 

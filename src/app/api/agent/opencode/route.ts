@@ -15,7 +15,6 @@
  * tool-token minting so their contracts can't drift.
  */
 import { auth } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,
@@ -23,8 +22,7 @@ import {
   type UIMessageChunk,
 } from "ai";
 
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { getUserCredentials, setUserCredentials } from "@/lib/user-credentials";
 import { getFreshCodexAccessToken } from "@/lib/codex-oauth";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
@@ -148,11 +146,11 @@ export async function POST(req: Request) {
     return fallback("non_sandbox_platform");
   }
 
-  const db = getDb();
-  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-  if (!project || project.userId !== userId) {
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) {
     return jsonError(404, "Project not found");
   }
+  const { project } = access;
   // Swift's runtime is beta-only — gate on the STORED platform (see the CC
   // route's rationale: this also protects the tool-token mint below).
   if (await swiftRuntimeForbidden(project.platform, userId)) {
