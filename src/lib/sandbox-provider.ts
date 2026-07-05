@@ -26,11 +26,17 @@
  *                                can be configured and smoke-tested (by
  *                                flipping one project's column manually)
  *                                before any traffic is routed.
+ *   SANDBOX_HOST_STRICT        — "1" makes chooseProviderForNewProject THROW
+ *                                (instead of silently returning "vercel") when
+ *                                a free-tier project can't be placed on
+ *                                sandbox-host. Temporary rollout-testing aid so
+ *                                misconfiguration is loud, not a silent Vercel
+ *                                sandbox. Leave OFF in production.
  */
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
-import { getUserTier } from "@/lib/tier";
+import { getUserTier, type Tier } from "@/lib/tier";
 
 export type SandboxProvider = "vercel" | "sandbox-host";
 
@@ -121,11 +127,44 @@ export function invalidateProviderCache(projectId: string): void {
 export async function chooseProviderForNewProject(
   userId: string,
 ): Promise<SandboxProvider> {
-  if (!sandboxHostFreeTierEnabled()) return "vercel";
-  try {
-    const tier = await getUserTier(userId);
-    return tier === "free" ? "sandbox-host" : "vercel";
-  } catch {
+  // In-dev strict switch: surface every reason a free-tier project would fall
+  // back to Vercel as a hard error instead of a silent downgrade.
+  const strict = process.env.SANDBOX_HOST_STRICT === "1";
+
+  if (!sandboxHostFreeTierEnabled()) {
+    if (strict) {
+      throw new Error(
+        "[sandbox-host strict] rollout not active: " +
+          `SANDBOX_HOST_FOR_FREE_TIER=${process.env.SANDBOX_HOST_FOR_FREE_TIER ?? "unset"}, ` +
+          `SANDBOX_API_URL=${process.env.SANDBOX_API_URL ? "set" : "unset"}, ` +
+          `SANDBOX_HOST_TOKEN=${process.env.SANDBOX_HOST_TOKEN ? "set" : "unset"}`,
+      );
+    }
     return "vercel";
   }
+
+  let tier: Tier;
+  try {
+    tier = await getUserTier(userId);
+  } catch (e) {
+    if (strict) {
+      throw new Error(
+        `[sandbox-host strict] tier lookup failed for ${userId}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+    return "vercel";
+  }
+
+  if (tier !== "free") {
+    // Misclassifying a paid user onto the self-hosted box is worse than missing
+    // a free user, so non-strict stays on Vercel here.
+    if (strict) {
+      throw new Error(
+        `[sandbox-host strict] user ${userId} resolved to tier '${tier}', not free`,
+      );
+    }
+    return "vercel";
+  }
+
+  return "sandbox-host";
 }
