@@ -114,7 +114,7 @@ describe("reservation estimate", () => {
     assert.equal(huge, atContext);
   });
 
-  test("estimate is a strict upper bound for the settled cost of the same request", () => {
+  test("estimate is an upper bound for typical settled cost of the same request", () => {
     const bodyBytes = 40_000; // ~10K tokens estimated
     const reserved = estimateRequestCredits("fireworks-minimax-m3", bodyBytes, 32_000);
     const settled = computeSettlementCredits(
@@ -123,6 +123,19 @@ describe("reservation estimate", () => {
       "platform",
     );
     assert.ok(reserved >= settled);
+  });
+
+  test("free tier can afford a typical opencode request (32K inserted cap must NOT reserve the whole weekly budget)", () => {
+    // opencode sets no max_tokens; the rewrite inserts the 32K cap. The
+    // reservation must use the realistic output estimate, not the cap —
+    // otherwise MiniMax's 4.0 output multiplier alone (128K credits) exceeds
+    // the free tier's default 125K weekly budget and every call 402s.
+    const reserved = estimateRequestCredits("fireworks-minimax-m3", 20_000, 32_000);
+    const FREE_WEEKLY_DEFAULT = 500_000 / 4;
+    assert.ok(
+      reserved < FREE_WEEKLY_DEFAULT,
+      `reservation ${reserved} would exceed the free weekly budget ${FREE_WEEKLY_DEFAULT}`,
+    );
   });
 });
 

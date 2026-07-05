@@ -34,9 +34,20 @@ import type { ObservedUsage } from "./usage-meter";
 
 /* ------------------------------ pure helpers ------------------------------ */
 
-/** Worst-case credit estimate for a request about to be forwarded: input from
- *  body size (chars/4, bounded by the model's context window — base64 images
- *  over-count ~3x, the bound keeps that sane) + the post-clamp output cap. */
+/** Output-token figure used for RESERVATION math. Deliberately smaller than
+ *  the hard output CAP (PLATFORM_MAX_OUTPUT_TOKENS): reserving the full 32K
+ *  cap would exceed the free tier's entire default weekly budget on
+ *  high-output-multiplier models (32K × MiniMax's 4.0 ≈ 128K credits vs a
+ *  125K weekly default) and 402 every request. Typical agent-loop responses
+ *  are far below the cap; when one runs long, settlement adjusts UP — the
+ *  overshoot is bounded to (cap − estimate) × outputPrice for the one
+ *  in-flight request. */
+const RESERVE_OUTPUT_TOKENS =
+  Number(process.env.LLM_PROXY_RESERVE_OUTPUT_TOKENS) || 8_192;
+
+/** Credit estimate for a request about to be forwarded: input from body size
+ *  (chars/4, bounded by the model's context window — base64 images over-count
+ *  ~3x, the bound keeps that sane) + the reservation output estimate. */
 export function estimateRequestCredits(
   modelId: ModelId,
   bodyBytes: number,
@@ -47,7 +58,7 @@ export function estimateRequestCredits(
   return calculateCredits({
     model: modelId,
     inputTokens: inputEstimate,
-    outputTokens: effectiveMaxOutput,
+    outputTokens: Math.min(effectiveMaxOutput, RESERVE_OUTPUT_TOKENS),
     cachedReadTokens: 0,
     cacheWriteTokens: 0,
   });
