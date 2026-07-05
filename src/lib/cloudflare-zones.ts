@@ -261,6 +261,32 @@ export async function attachBrandedSubdomain(
   });
 }
 
+/**
+ * The canonical live URL for a deployment: `https://<project>.<branded domain>`,
+ * attaching the branded subdomain (idempotent) so the URL actually serves.
+ * Falls back to the raw `.pages.dev` URL when no branded domain is configured
+ * or attachment fails — that host always works.
+ */
+export async function ensureBrandedDeploymentUrl(pagesProjectName: string): Promise<string> {
+  const branded = process.env.CLOUDFLARE_BRANDED_DOMAIN;
+  if (branded) {
+    const hostname = `${pagesProjectName}.${branded}`;
+    try {
+      const zoneId = await getBrandedZoneId();
+      if (zoneId) {
+        await attachBrandedSubdomain(pagesProjectName, hostname, zoneId);
+        return `https://${hostname}`;
+      }
+      console.warn(
+        `CLOUDFLARE_BRANDED_DOMAIN=${branded} set but no matching CF zone found; using .pages.dev`,
+      );
+    } catch (err) {
+      console.warn('Branded domain attachment error:', err);
+    }
+  }
+  return `https://${pagesProjectName}.pages.dev`;
+}
+
 /** Tear down a branded subdomain: detach the Pages custom domain and remove its CNAME. */
 export async function removeBrandedSubdomain(
   pagesProjectName: string,
