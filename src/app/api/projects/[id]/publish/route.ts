@@ -10,6 +10,7 @@ import { countUserCfPagesDeployments } from '@/lib/usage';
 import { limitReachedResponse } from '@/lib/plan-response';
 import { refreshAuthSiteUrl } from '@/lib/convex-auth-setup';
 import { enforce, identifierFor } from '@/lib/rate-limit';
+import { getBrandedZoneId, attachBrandedSubdomain, removeBrandedSubdomain } from '@/lib/cloudflare-zones';
 
 function getCfConfig() {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -91,12 +92,6 @@ export async function POST(
           limit: limits.maxCfPagesDeployments,
           tier: limits.tier,
         });
-      }
-
-      // Custom domain gating
-      if (!limits.customDomain && process.env.CLOUDFLARE_BRANDED_DOMAIN) {
-        // Free users get .pages.dev only — skip branded domain attachment
-        // (handled below by checking limits.customDomain before the domain attach call)
       }
     }
 
@@ -260,30 +255,32 @@ export async function POST(
       );
     }
 
-    // Step 5: Optionally attach branded custom domain (Pro/Max only)
-    const tierLimits = await getUserTierAndLimits(userId);
-    const brandedDomain = tierLimits.customDomain ? process.env.CLOUDFLARE_BRANDED_DOMAIN : null;
+    // Step 5: Front the deployment with the white-label branded domain
+    // (<project>.botflow-site.app) instead of the raw .pages.dev host. This is a
+    // plain white-label of Pages and applies to every deployment on every tier —
+    // it is NOT the user-supplied custom-domain perk (that stays tier-gated).
+    //
+    // Attaching the Pages custom domain alone is not enough: Cloudflare does not
+    // auto-create the DNS record, so attachBrandedSubdomain also upserts the proxied
+    // CNAME the hostname needs to resolve and get its cert. .pages.dev remains a
+    // working fallback if any of this fails.
     let deploymentUrl = `https://${projectName}.pages.dev`;
-
+    const brandedDomain = process.env.CLOUDFLARE_BRANDED_DOMAIN;
     if (brandedDomain) {
-      const customDomain = `${projectName}.${brandedDomain}`;
+      const hostname = `${projectName}.${brandedDomain}`;
       try {
-        const domainRes = await cfFetch(
-          `/accounts/${cf.accountId}/pages/projects/${projectName}/domains`,
-          cf.apiToken,
-          { body: { name: customDomain } }
-        );
-        // 409 = domain already attached, that's fine
-        if (!domainRes.success) {
-          const is409 = domainRes.errors?.some(e => e.code === 8000040 || e.message?.includes('already'));
-          if (!is409) {
-            console.warn('Failed to attach custom domain:', domainRes.errors);
-          }
+        const zoneId = await getBrandedZoneId();
+        if (zoneId) {
+          await attachBrandedSubdomain(projectName, hostname, zoneId);
+          deploymentUrl = `https://${hostname}`;
+        } else {
+          console.warn(
+            `CLOUDFLARE_BRANDED_DOMAIN=${brandedDomain} set but no matching CF zone found; using .pages.dev`,
+          );
         }
-        deploymentUrl = `https://${customDomain}`;
       } catch (err) {
-        // Non-fatal — fall back to .pages.dev URL
-        console.warn('Custom domain attachment error:', err);
+        // Non-fatal — fall back to the .pages.dev URL.
+        console.warn('Branded domain attachment error:', err);
       }
     }
 
@@ -336,6 +333,20 @@ export async function DELETE(
     }
 
     const cf = getCfConfig();
+
+    // Remove the white-label branded domain first. Deleting the Pages project drops
+    // the custom-domain attachment on the project side, but the zone's CNAME record
+    // would be left orphaned — so clean it up explicitly.
+    const brandedDomain = process.env.CLOUDFLARE_BRANDED_DOMAIN;
+    if (brandedDomain) {
+      const hostname = `${project.cloudflareProjectName}.${brandedDomain}`;
+      try {
+        const zoneId = await getBrandedZoneId();
+        if (zoneId) await removeBrandedSubdomain(project.cloudflareProjectName, hostname, zoneId);
+      } catch (err) {
+        console.warn('Branded domain cleanup error:', err);
+      }
+    }
 
     await cfFetch(
       `/accounts/${cf.accountId}/pages/projects/${project.cloudflareProjectName}`,
