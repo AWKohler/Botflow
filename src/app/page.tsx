@@ -1019,6 +1019,8 @@ import { cn } from '@/lib/utils';
 import { WorkspaceMockup } from '@/components/landing/WorkspaceMockup';
 import { CardSpotlight } from '@/components/landing/CardSpotlight';
 import { ModelCloud } from '@/components/landing/ModelCloud';
+import { AuthProviderArc } from '@/components/landing/AuthProviderArc';
+import { FeatureBento } from '@/components/landing/FeatureBento';
 import { MobileFeatureGrid } from '@/components/landing/MobileFeatureGrid';
 import { LandingFooter, LandingNav, MarginHatch, MarginBg } from '@/components/landing/shared';
 import { LandingShowcase } from '@/components/showcase/LandingShowcase';
@@ -2489,9 +2491,60 @@ export default function LandingV2() {
       </section> */}
 
       {/* ================================================================ */}
-      {/* INTEGRATIONS                                                     */}
+      {/* AUTHENTICATION                                                   */}
       {/* ================================================================ */}
       <LineDivider />
+      <section className="relative">
+        <MarginHatch />
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-24 lg:py-28">
+          <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:gap-16">
+            <Reveal className="px-4">
+              <div className="max-w-xl">
+                <SectionLabel>Authentication</SectionLabel>
+                <h2
+                  className={cn(
+                    serif.className,
+                    'text-4xl sm:text-5xl lg:text-6xl tracking-tight',
+                  )}
+                >
+                  Auth in <em className={serif.className}>one ask</em>
+                </h2>
+                <p className="mt-4 text-lg text-[var(--sand-text-muted)] leading-relaxed">
+                  Email &amp; password ships with every app. Want social sign-in? Just ask —
+                  the agent wires the OAuth flow, callback URLs, and sessions into your
+                  backend, then walks you through the couple of keys each provider needs.
+                </p>
+                <div className="mt-8 grid gap-3">
+                  {[
+                    'Google, GitHub, Microsoft & Apple',
+                    'Guided, field-by-field credential setup',
+                    'Apple secrets signed & auto-rotated',
+                  ].map((item) => (
+                    <span
+                      key={item}
+                      className="flex items-center gap-2.5 text-sm text-[var(--sand-text-muted)]"
+                    >
+                      <span
+                        className="h-1.5 w-1.5 rounded-full shrink-0"
+                        style={{ background: 'var(--sand-accent)' }}
+                      />
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </Reveal>
+
+            {/* mx (not px) so the panel's measured clientWidth stays the true
+                panel width for the wheel geometry */}
+            <AuthProviderArc serifClassName={serif.className} className="mx-4" />
+          </div>
+        </div>
+      </section>
+
+      {/* ================================================================ */}
+      {/* INTEGRATIONS                                                     */}
+      {/* ================================================================ */}
       {/* <section className="relative bg-[var(--sand-surface)]">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
           <Reveal>
@@ -2561,8 +2614,7 @@ export default function LandingV2() {
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative">
-        <MarginHatch />
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-24">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             {/* <Reveal className='max-md:px-4'> */}
             <Reveal className='px-4'>
@@ -2619,13 +2671,42 @@ export default function LandingV2() {
       )}
 
       {/* ================================================================ */}
+      {/* FEATURE BENTO                                                    */}
+      {/* ================================================================ */}
+      <LineDivider />
+      <section className="relative bg-[var(--sand-elevated)]">
+        <MarginHatch />
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-24">
+          <Reveal>
+            <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-16 px-4">
+              <SectionLabel>Swift</SectionLabel>
+              <h2
+                className={cn(
+                  serif.className,
+                  'text-4xl sm:text-5xl md:text-6xl tracking-tight',
+                )}
+              >
+                Native Swift.{' '}
+                <em className={serif.className}>Built from a prompt.</em>
+              </h2>
+              <p className="mt-4 text-lg text-[var(--sand-text-muted)] leading-relaxed">
+                Describe the iPhone app you want. Botflow writes real Swift,
+                connects the backend, and builds the native iOS features web
+                wrappers can&apos;t reach.
+              </p>
+            </div>
+          </Reveal>
+          <FeatureBento serifClassName={serif.className} className="px-4 lg:px-0" />
+        </div>
+      </section>
+
+      {/* ================================================================ */}
       {/* CTA                                                              */}
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative">
-        <MarginHatch />
         <div className="pointer-events-none absolute inset-0 -z-10 landing-gradient opacity-60" />
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-28 sm:py-36">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-28">
           <Reveal>
             <div className="text-center max-w-2xl mx-auto">
               <h2
