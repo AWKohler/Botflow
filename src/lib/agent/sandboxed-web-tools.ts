@@ -21,21 +21,15 @@
  */
 import { tool } from "ai";
 import { z } from "zod";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getPersistentTools } from "./persistent-tools";
 import { deployConvexFromSandbox } from "@/lib/sandbox-convex-deploy";
 import { refreshAuthSiteUrl } from "@/lib/convex-auth-setup";
 import { getDb } from "@/db";
-import { projects, oauthProviderRequests } from "@/db/schema";
-import {
-  OAUTH_PROVIDER_IDS,
-  getOAuthProvider,
-  oauthProviderNameList,
-  oauthProviderIdList,
-} from "@/lib/oauth-providers/registry";
+import { projects } from "@/db/schema";
+import { createSetupOAuthProviderTool } from "@/lib/agent/oauth-provider-tool";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { STRIPE_CONNECT_ENABLED } from "@/lib/feature-flags";
-import { markAgentWaiting } from "@/lib/agent/modal-wait";
 import {
   createEnvVarRequest,
   envVarOutcomeMessage,
@@ -746,204 +740,7 @@ export function getSandboxedWebTools(params: {
         }
       },
     }),
-    setupOAuthProvider: tool({
-      description:
-        `Add a social sign-in provider (${oauthProviderNameList()}) to Convex Auth on this project. ` +
-        "Calling this tool opens a modal in the user's workspace where they register an app and paste their credentials.\n\n" +
-        "ONLY call this when the user EXPLICITLY asks for social sign-in. Each provider requires them to own a " +
-        "developer account and complete a console setup, so never add it proactively — default to the Password provider when auth is needed.\n\n" +
-        "PREREQUISITES:\n" +
-        "  • setupAuth must have been called first.\n\n" +
-        "FLOW:\n" +
-        "  1. This tool creates a pending request and the workspace shows a modal immediately.\n" +
-        "  2. The user registers the app in the provider's console and pastes the credentials (Apple uploads a .p8).\n" +
-        "  3. This tool blocks (polls) until the user completes or dismisses the modal (a few minutes).\n" +
-        "  4. On success: credentials are saved server-side. You then update convex/auth.ts and run convexDeploy.\n" +
-        "  5. If the user explicitly DISMISSES the modal: returns an error saying so. Stop trying — do not call this again unless the user asks.\n" +
-        "  6. If it times out, the user simply hasn't finished YET — the modal STAYS OPEN. NEVER report a timeout as the user dismissing " +
-        "or declining; you'll get a system note when they submit, and you can call this tool again later to resume waiting.\n\n" +
-        "AFTER SUCCESS: add the provider to the convex/auth.ts providers array, run convexDeploy, and add a sign-in " +
-        "button using startOAuthSignIn from @/lib/botflowAuth (NOT signIn(...) directly) so it works from the preview " +
-        "iframe, plus resumePendingOAuthSignIn(signIn) once at app mount. The tool returns the exact per-provider snippet.",
-      inputSchema: z.object({
-        provider: z
-          .enum(OAUTH_PROVIDER_IDS as [string, ...string[]])
-          .describe(`Provider to add (required, no default): ${oauthProviderIdList()}.`),
-      }),
-      async execute({ provider }) {
-        // Direct DB access — avoids the Clerk auth problem that would arise
-        // from server→server fetch calls which carry no session cookies.
-        const db = getDb();
-
-        // ── Verify project has auth configured ────────────────────────────
-        const [proj] = await db
-          .select({
-            userId: projects.userId,
-            authConfigured: projects.authConfigured,
-            userConvexUrl: projects.userConvexUrl,
-            convexDeployUrl: projects.convexDeployUrl,
-          })
-          .from(projects)
-          .where(eq(projects.id, projectId))
-          .limit(1);
-
-        if (!proj) {
-          return { ok: false, error: "Project not found." };
-        }
-        if (!proj.authConfigured) {
-          return {
-            ok: false,
-            error:
-              "Auth must be set up before adding OAuth providers. Call setupAuth first.",
-          };
-        }
-
-        const deployUrl = proj.userConvexUrl ?? proj.convexDeployUrl ?? null;
-        const convexSiteUrl = deployUrl
-          ? deployUrl.replace(".convex.cloud", ".convex.site")
-          : null;
-
-        // ── Reuse a pending request for the SAME provider (the user may be
-        //    mid-typing in that very modal); replace pending ones for others ──
-        const [existingReq] = await db
-          .select({ id: oauthProviderRequests.id })
-          .from(oauthProviderRequests)
-          .where(
-            and(
-              eq(oauthProviderRequests.projectId, projectId),
-              eq(oauthProviderRequests.status, "pending"),
-              eq(oauthProviderRequests.provider, provider),
-            ),
-          )
-          .limit(1);
-
-        let requestId: string;
-        if (existingReq) {
-          requestId = existingReq.id;
-          await db
-            .update(oauthProviderRequests)
-            .set({ updatedAt: new Date() })
-            .where(eq(oauthProviderRequests.id, existingReq.id));
-        } else {
-          await db
-            .update(oauthProviderRequests)
-            .set({ status: "dismissed", updatedAt: new Date() })
-            .where(
-              and(
-                eq(oauthProviderRequests.projectId, projectId),
-                eq(oauthProviderRequests.status, "pending"),
-              ),
-            );
-
-          // ── Create pending request — workspace modal appears on next poll ──
-          const [record] = await db
-            .insert(oauthProviderRequests)
-            .values({
-              projectId,
-              userId: proj.userId,
-              provider,
-              status: "pending",
-              convexSiteUrl,
-            })
-            .returning();
-          requestId = record.id;
-        }
-
-        // ── Poll until completed/dismissed (270s, bounded by the agent
-        //    route's serverless maxDuration) ──
-        const deadline = Date.now() + 270 * 1000;
-        while (Date.now() < deadline) {
-          void markAgentWaiting("oauth-provider", requestId);
-          await new Promise<void>((r) => setTimeout(r, 3000));
-
-          const [statusRow] = await db
-            .select({ status: oauthProviderRequests.status })
-            .from(oauthProviderRequests)
-            .where(
-              and(
-                eq(oauthProviderRequests.id, requestId),
-                eq(oauthProviderRequests.projectId, projectId),
-              ),
-            )
-            .limit(1);
-
-          if (!statusRow) break; // Record disappeared — bail
-
-          if (statusRow.status === "completed") {
-            const def = getOAuthProvider(provider)!;
-            const imp = def.authImport.default
-              ? `import ${def.authImport.symbol} from "${def.authImport.from}";`
-              : `import { ${def.authImport.symbol} } from "${def.authImport.from}";`;
-            const appleNote =
-              provider === "apple"
-                ? "\n\nAPPLE NOTE: the user's name/email are returned ONLY on the first sign-in — capture them then. Apple can't be tested on localhost; use the deployed preview."
-                : "";
-            return {
-              ok: true,
-              provider,
-              context: `=== ${def.displayName.toUpperCase()} OAUTH CREDENTIALS SAVED ===
-
-${def.envVars.join(", ")} now set on your Convex deployment.
-
-REQUIRED NEXT STEPS:
-
-1. Update convex/auth.ts — add the provider (pass NO arguments; extra config such
-   as the Microsoft issuer or Apple client secret is read from env automatically):
-
-   import { convexAuth } from "@convex-dev/auth/server";
-   import { Password } from "@convex-dev/auth/providers/Password";
-   ${imp}
-
-   export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-     providers: [Password, ${def.providerExpr}],
-     // keep the existing callbacks.redirect block intact
-   });
-
-2. Run convexDeploy to push the updated auth config.
-
-3. Add a sign-in button using the preview-safe helper (NOT signIn("${provider}") directly):
-
-   import { useAuthActions } from "@convex-dev/auth/react";
-   import { startOAuthSignIn } from "@/lib/botflowAuth";
-
-   const { signIn } = useAuthActions();
-   <button onClick={() => void startOAuthSignIn(signIn, "${provider}")}>Sign in</button>
-
-   Also call resumePendingOAuthSignIn(signIn) once at app mount so the new-tab
-   handoff resumes the flow. On return, Convex Auth creates or merges the user
-   account automatically and <Authenticated> updates reactively.${appleNote}`,
-            };
-          }
-
-          if (statusRow.status === "dismissed") {
-            const name = getOAuthProvider(provider)?.displayName ?? provider;
-            return {
-              ok: false,
-              error:
-                `User declined to set up ${name} sign-in. The modal was dismissed and no credentials were saved. ` +
-                "Do not retry automatically. Continue with the rest of the implementation and tell the user " +
-                "they can add it later from the workspace.",
-            };
-          }
-          // status === 'pending' — keep polling
-        }
-
-        // Timed out — the row stays PENDING and the modal stays open. A
-        // timeout means "the user hasn't finished yet", never "the user
-        // declined"; a late submit triggers a system-note back to the agent.
-        // Drop the wait marker NOW so that late submit notifies correctly.
-        const { clearAgentWaiting } = await import("@/lib/agent/modal-wait");
-        void clearAgentWaiting("oauth-provider", requestId);
-        return {
-          ok: false,
-          error:
-            `The user has NOT finished entering ${getOAuthProvider(provider)?.displayName ?? provider} OAuth credentials yet — ` +
-            "the modal is still open in their workspace; nothing was dismissed or declined. " +
-            "Do NOT say the user dismissed or declined it. Continue with other work; you'll get a system note when they submit, " +
-            "or call setupOAuthProvider again later to resume waiting.",
-        };
-      },
-    }),
+    setupOAuthProvider: createSetupOAuthProviderTool(projectId, "web"),
     requestEnvVar: tool({
       description:
         "Ask the user to enter the value of an environment variable. " +

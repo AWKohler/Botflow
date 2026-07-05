@@ -12,6 +12,7 @@ import {
 import { applyDiff } from "@/lib/agent/diff";
 import { getDb } from "@/db";
 import { chatQuestions, projects } from "@/db/schema";
+import { createSetupOAuthProviderTool } from "@/lib/agent/oauth-provider-tool";
 import { REVENUECAT_ENABLED } from "@/lib/feature-flags";
 import { namespacedAppUserIdPrefix } from "@/lib/revenuecat-app-user-id";
 
@@ -532,7 +533,8 @@ export function getPersistentTools(
         "2. Install backend deps: `cd convex && pnpm add @convex-dev/auth @auth/core` (use bash).\n" +
         "3. Run convexDeploy — sign-in is not live until you do.\n" +
         "4. Protect per-user data with getAuthUserId in your queries/mutations (see the returned context). Do NOT edit Sources/Core/ConvexConfig.swift (platform-managed) and do NOT write a native login screen.\n\n" +
-        "Read the `context` field in the result for the full reference. Calling again just rotates the signing keys.",
+        "Social sign-in (Google/GitHub/Microsoft/Apple) can be added AFTER this via setupOAuthProvider — only when the user explicitly asks.\n\n" +
+        "Read the `context` field in the result for the full reference. Calling again just rotates the signing keys (and re-emits the hosted sign-in page files).",
       inputSchema: z.object({}),
       async execute() {
         const url = `${appBaseUrl}/api/projects/${projectId}/convex/setup-auth`;
@@ -554,6 +556,9 @@ export function getPersistentTools(
         }
       },
     }),
+    // Social sign-in — same modal/credential flow as the web agent; the Swift
+    // flavor's guidance points at the hosted sign-in page instead of React.
+    setupOAuthProvider: createSetupOAuthProviderTool(projectId, "swift"),
     ...(REVENUECAT_ENABLED
       ? {
           initializeRevenueCatPayments: tool({

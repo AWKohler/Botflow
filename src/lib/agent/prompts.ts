@@ -1093,12 +1093,12 @@ const SWIFT_CONVEX_SECTION: string[] = [
   "- Convex numbers need property wrappers on the Swift side: `@ConvexInt var n: Int`, `@ConvexFloat var x: Double`.",
   "- To deploy backend changes, use the `convexDeploy` tool — never hand-edit `convex/_generated/`.",
   "",
-  "### Auth (email + password)",
+  "### Auth (email + password, plus optional social sign-in)",
   "When the user wants sign-in / accounts / login / sign-up / per-user data, call the **`setupAuth`** tool. It uses Convex Auth (`@convex-dev/auth`) — the same backend the web template uses — and an **in-app browser** sign-in flow that already ships in this template (BotflowAuthProvider, Keychain, AuthStore, SignInView). You do NOT write a native login form or any Swift auth code.",
   "- After `setupAuth` returns: write every file in its `files` array (merge `...authTables` into an existing `convex/schema.ts` if present), run `cd convex && pnpm add @convex-dev/auth @auth/core`, then `convexDeploy`. Sign-in is not live until you deploy.",
   "- The tool flips the app into authenticated mode automatically (it sets `ConvexConfig.authEnabled`, which is **platform-managed — never edit**). `ContentView` then shows `SignInView` until the user signs in.",
   "- Protect per-user data with `getAuthUserId(ctx)` (returns null when signed out — null-check, never throws) using the **tolerant-reads, strict-writes** convention: queries (anything subscribed) return `[]`/`null` when unauthenticated — NEVER throw, because live subscriptions can fire before the SDK attaches the auth token and a throw surfaces as a generic ServerError in the app. Mutations/actions stay strict (throw when unauthenticated). Read the current user from Swift via the `users:viewer` query.",
-  "- **Password only.** Do NOT add Google/OAuth or other providers — there is no Swift OAuth path yet. Read the tool's `context` result for the full reference.",
+  "- **Social sign-in (Google/GitHub/Microsoft/Apple):** available via the `setupOAuthProvider` tool, but ONLY when the user explicitly asks — never proactively; password is the default. After it succeeds: add the provider to `convex/auth.ts` (the tool returns the snippet) and run `convexDeploy` — the hosted sign-in page shows the provider button automatically; there is NO Swift code to write. When the user enables Google/GitHub/Microsoft, remind them App Store guideline 4.8 also requires Sign in with Apple in apps offering third-party login and recommend adding it — but do NOT force it or block on it; proceed if they decline. Read the tool's `context` result for the full reference.",
   "",
 ];
 
