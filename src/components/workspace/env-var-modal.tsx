@@ -65,10 +65,23 @@ export function EnvVarModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requestId, value }),
       });
-      const data = (await res.json()) as { ok: boolean; error?: string };
+      const data = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        agentWaiting?: boolean;
+      };
       if (!data.ok) {
         setError(data.error ?? "Failed to save. Please try again.");
         return;
+      }
+      // Agent no longer waiting on this request → send it a system-note so
+      // it learns the value arrived (see AgentPanel's listener).
+      if (data.agentWaiting === false) {
+        window.dispatchEvent(
+          new CustomEvent("agent-modal-completed", {
+            detail: { projectId, kind: "env-var", subject: envKey },
+          }),
+        );
       }
       onClose();
     } catch {

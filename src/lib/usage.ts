@@ -153,7 +153,13 @@ export async function getMonthlyTokenUsage(userId: string, model: string): Promi
   };
 }
 
-/** Upsert token usage after a completed agent call */
+/** Upsert token usage after a completed agent call.
+ *
+ * `opts.countTurn` (default true) controls the agentTurns increment: the
+ * legacy /api/agent path records once per TURN so turn-counting rides along;
+ * the LLM proxy records once per provider REQUEST (N per turn) and passes
+ * false — the agent routes record a zero-token turn marker at spawn instead,
+ * keeping agentTurns' meaning stable. */
 export async function recordTokenUsage(
   userId: string,
   model: string,
@@ -162,7 +168,9 @@ export async function recordTokenUsage(
   credits: number = 0,
   cachedTokensRead: number = 0,
   cachedTokensWrite: number = 0,
+  opts: { countTurn?: boolean } = {},
 ): Promise<void> {
+  const countTurn = opts.countTurn !== false;
   const db = getDb();
   await db
     .insert(usageRecords)
@@ -175,7 +183,7 @@ export async function recordTokenUsage(
       cachedTokensRead,
       cachedTokensWrite,
       credits,
-      agentTurns: 1,
+      agentTurns: countTurn ? 1 : 0,
     })
     .onConflictDoUpdate({
       target: [usageRecords.userId, usageRecords.period, usageRecords.model],
@@ -185,7 +193,9 @@ export async function recordTokenUsage(
         cachedTokensRead: sql`usage_records.cached_tokens_read + excluded.cached_tokens_read`,
         cachedTokensWrite: sql`usage_records.cached_tokens_write + excluded.cached_tokens_write`,
         credits: sql`usage_records.credits + excluded.credits`,
-        agentTurns: sql`usage_records.agent_turns + 1`,
+        agentTurns: countTurn
+          ? sql`usage_records.agent_turns + 1`
+          : sql`usage_records.agent_turns`,
         updatedAt: new Date(),
       },
     });

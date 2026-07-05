@@ -1,6 +1,6 @@
 # Anthropic Traffic Proxy — Credential Protection for Shared Sandboxes
 
-Status: **PROPOSED — planning only, no implementation.** Prerequisite for any future multi-user project-sharing feature.
+Status: **SUPERSEDED (2026-07-04).** The Phase-0 spike this plan produced was generalized into the universal LLM proxy on main — see `docs/features/llm-proxy.md` and `src/lib/agent/llm-proxy/` (all providers, all credential modes incl. BYOK/OAuth, proxy-side metering; sole exception: Codex OAuth, tracked there as a pre-sharing-GA blocker). The spike files were removed from this branch when main was merged in; the threat model and phase framing below remain the reference for the sharing rollout (acting/billing identity at the proxy = this plan's Phase 3).
 
 Owner-facing goal: **no user's Anthropic credential (OAuth access/refresh token or BYOK API key) should ever be readable by a co-tenant with a shell in the sandbox.** Today it is — this plan closes that.
 

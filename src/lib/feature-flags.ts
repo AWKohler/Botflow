@@ -18,6 +18,19 @@ export const ANTHROPIC_OAUTH_ENABLED =
 export const CLAUDE_CODE_ENABLED =
   process.env.NEXT_PUBLIC_CLAUDE_CODE_ENABLED === 'true';
 
+/** When true: the OpenCode agent backend drop-in replaces the Botflow agent
+ *  as the presented agent, and BOTH in-sandbox agents route ALL provider
+ *  traffic through the platform's LLM proxy (/api/internal/llm-proxy) —
+ *  sandboxes hold turn-scoped bfap_ tokens, never real credentials, and
+ *  platform-metered billing happens at the proxy. Because this flag now gates
+ *  billing-relevant behavior it is STRICTLY opt-in and must never default on.
+ *  Deployments that want OpenCode (including branch previews) must set
+ *  NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED=true explicitly. When false: legacy
+ *  routing — Botflow agent via /api/agent, Claude Code with real credentials
+ *  written to the sandbox. */
+export const OPENCODE_BACKEND_ENABLED =
+  process.env.NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED === 'true';
+
 /** When true: the Stripe Connect integration is exposed — the
  *  `initializeStripePayments` AI tool is registered, the Stripe tab can
  *  appear in workspaces, and the proxy endpoints accept requests. When

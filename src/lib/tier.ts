@@ -10,7 +10,8 @@
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { redis } from './redis';
 
-export type Tier = 'free' | 'pro' | 'max';
+export type { Tier } from './tier-shared';
+import type { Tier } from './tier-shared';
 
 export interface TierLimits {
   tier: Tier;
@@ -212,26 +213,11 @@ export async function invalidateBetaCache(userId: string): Promise<void> {
 }
 
 // ─── Model → tier requirement ─────────────────────────────────────────────────
+// Moved to tier-shared.ts (client-safe — the backend derivation needs it in
+// the browser); imported + re-exported here so server imports are untouched.
 
-/** Which tier is required to use a model on server-side keys */
-export const MODEL_TIER_REQUIREMENT: Record<string, Tier> = {
-  'fireworks-minimax-m3': 'free',
-  'fireworks-glm-5p2': 'free',
-  'fireworks-kimi-k2p7': 'free',
-  'gpt-5.3-codex': 'pro',            // Pro+ for server key; free requires BYOK/OAuth
-  'gpt-5.4': 'pro',                  // Pro+ for server key
-  'gpt-5.5': 'pro',                  // Pro+ for server key
-  'claude-sonnet-5': 'pro',          // Pro+ for server key
-  'claude-opus-4-8': 'pro',          // Pro+ for server key
-  'claude-fable-5': 'max',           // Max-only on server key; free/pro require BYOK/OAuth
-  'gemini-3.1-pro-preview': 'pro',   // Pro+ for server key; free requires BYOK
-};
-
-const TIER_RANK: Record<Tier, number> = { free: 0, pro: 1, max: 2 };
-
-export function tierMeetsRequirement(userTier: Tier, required: Tier): boolean {
-  return TIER_RANK[userTier] >= TIER_RANK[required];
-}
+import { MODEL_TIER_REQUIREMENT, tierMeetsRequirement } from './tier-shared';
+export { MODEL_TIER_REQUIREMENT, tierMeetsRequirement };
 
 // ─── Stripe Connect ───────────────────────────────────────────────────────────
 

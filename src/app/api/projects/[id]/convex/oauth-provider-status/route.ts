@@ -16,6 +16,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { getDb } from "@/db";
 import { oauthProviderRequests } from "@/db/schema";
 import { requireProjectAccess } from "@/lib/project-access";
+import { isAgentWaiting, MODAL_STALE_AFTER_MS } from "@/lib/agent/modal-wait";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,6 +67,7 @@ export async function GET(
           id: oauthProviderRequests.id,
           provider: oauthProviderRequests.provider,
           convexSiteUrl: oauthProviderRequests.convexSiteUrl,
+          updatedAt: oauthProviderRequests.updatedAt,
         })
         .from(oauthProviderRequests)
         .where(
@@ -77,7 +79,33 @@ export async function GET(
         .orderBy(desc(oauthProviderRequests.createdAt))
         .limit(1);
 
-      return NextResponse.json({ ok: true, pending: pending ?? null });
+      // Lazy stale-expiry: agent pollers no longer dismiss rows on timeout
+      // (the modal is meant to survive the agent's wait), so long-abandoned
+      // requests are retired here — but never while an agent is actively
+      // waiting on them.
+      if (
+        pending &&
+        Date.now() - pending.updatedAt.getTime() > MODAL_STALE_AFTER_MS &&
+        !(await isAgentWaiting("oauth-provider", pending.id))
+      ) {
+        await db
+          .update(oauthProviderRequests)
+          .set({ status: "dismissed", updatedAt: new Date() })
+          .where(
+            and(
+              eq(oauthProviderRequests.id, pending.id),
+              eq(oauthProviderRequests.status, "pending"),
+            ),
+          );
+        return NextResponse.json({ ok: true, pending: null });
+      }
+
+      return NextResponse.json({
+        ok: true,
+        pending: pending
+          ? { id: pending.id, provider: pending.provider, convexSiteUrl: pending.convexSiteUrl }
+          : null,
+      });
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

@@ -53,6 +53,7 @@ import {
   compactMessages,
 } from "@/lib/agent/compaction";
 import { getUserCredentials, setUserCredentials } from "@/lib/user-credentials";
+import { refreshCodexOAuthToken } from "@/lib/codex-oauth";
 import { getUserTier, MODEL_TIER_REQUIREMENT, tierMeetsRequirement } from "@/lib/tier";
 import { recordTokenUsage } from "@/lib/usage";
 import { redis } from "@/lib/redis";
@@ -438,47 +439,6 @@ async function refreshAnthropicOAuthToken(
       claudeOAuthAccessToken: refreshed.access_token,
       claudeOAuthRefreshToken: refreshed.refresh_token ?? creds.claudeOAuthRefreshToken,
       claudeOAuthExpiresAt: newExpiresAt,
-    });
-
-    return refreshed.access_token;
-  } catch {
-    return null;
-  }
-}
-
-async function refreshCodexOAuthToken(
-  creds: { codexOAuthRefreshToken?: string | null },
-  userId: string
-): Promise<string | null> {
-  if (!creds.codexOAuthRefreshToken) return null;
-
-  try {
-    const refreshRes = await fetch('https://auth.openai.com/oauth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: creds.codexOAuthRefreshToken,
-        client_id: 'app_EMoamEEZ73f0CkXaXp7hrann',
-      }).toString(),
-    });
-
-    if (!refreshRes.ok) return null;
-
-    const refreshed = await refreshRes.json() as {
-      access_token: string;
-      refresh_token?: string;
-      expires_in?: number;
-    };
-
-    const newExpiresAt = refreshed.expires_in
-      ? Date.now() + refreshed.expires_in * 1000 - 5 * 60 * 1000
-      : null;
-
-    await setUserCredentials(userId, {
-      codexOAuthAccessToken: refreshed.access_token,
-      codexOAuthRefreshToken: refreshed.refresh_token ?? creds.codexOAuthRefreshToken,
-      codexOAuthExpiresAt: newExpiresAt,
     });
 
     return refreshed.access_token;

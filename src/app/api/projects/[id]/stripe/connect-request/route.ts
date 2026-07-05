@@ -15,6 +15,7 @@ import { and, eq, desc } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { stripeConnectRequests } from '@/db/schema';
 import { requireProjectAccess } from '@/lib/project-access';
+import { isAgentWaiting, MODAL_STALE_AFTER_MS } from '@/lib/agent/modal-wait';
 
 export const runtime = 'nodejs';
 
@@ -43,6 +44,7 @@ export async function GET(
       mode: stripeConnectRequests.mode,
       authorizeUrl: stripeConnectRequests.authorizeUrl,
       createdAt: stripeConnectRequests.createdAt,
+      updatedAt: stripeConnectRequests.updatedAt,
     })
     .from(stripeConnectRequests)
     .where(
@@ -56,7 +58,37 @@ export async function GET(
     .orderBy(desc(stripeConnectRequests.createdAt))
     .limit(1);
 
-  return NextResponse.json({ ok: true, pending: pending ?? null });
+  // Lazy stale-expiry: agent pollers no longer dismiss rows on timeout, so
+  // long-abandoned requests are retired here — never while an agent is
+  // actively waiting on them.
+  if (
+    pending &&
+    Date.now() - pending.updatedAt.getTime() > MODAL_STALE_AFTER_MS &&
+    !(await isAgentWaiting('stripe-connect', pending.id))
+  ) {
+    await db
+      .update(stripeConnectRequests)
+      .set({ status: 'dismissed', updatedAt: new Date() })
+      .where(
+        and(
+          eq(stripeConnectRequests.id, pending.id),
+          eq(stripeConnectRequests.status, 'pending'),
+        ),
+      );
+    return NextResponse.json({ ok: true, pending: null });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    pending: pending
+      ? {
+          id: pending.id,
+          mode: pending.mode,
+          authorizeUrl: pending.authorizeUrl,
+          createdAt: pending.createdAt,
+        }
+      : null,
+  });
 }
 
 export async function DELETE(

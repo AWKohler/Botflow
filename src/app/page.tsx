@@ -1335,12 +1335,10 @@ interface LandingPendingImage {
 export default function LandingV2() {
   const router = useRouter();
   const { isSignedIn, user } = useUser();
-  // Beta flag lives in Clerk publicMetadata, which already rides along on the
-  // client user object — no extra fetch. Gates the Swift platform toggle below;
-  // the projects API enforces the same rule server-side.
+  // Beta access is available immediately from Clerk metadata. Paid access is
+  // resolved from the same authoritative tier endpoint used by server gates.
   const isBetaUser = (user?.publicMetadata as { isBeta?: boolean } | undefined)?.isBeta === true;
   const SWIFT_ORANGE = '#f46a13';
-  const hasSwiftAccess = isSwiftPlatformEnabled() && isBetaUser;
   const [prompt, setPrompt] = useState('');
   const [platform, setPlatform] = useState<ProjectPlatform>('sandboxed-web');
   // Accent that frames the prompt box for the selected platform: neutral sand
@@ -1356,6 +1354,9 @@ export default function LandingV2() {
   const [hasCodexOAuth, setHasCodexOAuth] = useState<boolean | null>(null);
   const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'max'>('free');
+  const hasSwiftAccess =
+    isSwiftPlatformEnabled() &&
+    (isBetaUser || userTier === 'pro' || userTier === 'max');
   const [hasConvexOAuth, setHasConvexOAuth] = useState<boolean | null>(null);
   const [convexBackendType, setConvexBackendType] = useState<'platform' | 'user' | 'none'>('platform');
   const [showConvexSelector, setShowConvexSelector] = useState(false);
@@ -1676,6 +1677,7 @@ export default function LandingV2() {
         convex_not_connected: { title: 'Convex not connected', description: 'Please connect your Convex account before creating a BYOC project.' },
         convex_provision_failed: { title: 'Convex provisioning failed', description: 'Failed to create a Convex backend in your account. Please try again or check your Convex dashboard.' },
         convex_quota: { title: 'Convex project limit reached', description: 'Your Convex account has reached its project quota. Delete unused projects at dashboard.convex.dev or upgrade your Convex plan.' },
+        swift_requires_pro: { title: 'Swift requires Pro or Max', description: 'Upgrade to Pro or Max to create native Swift projects.' },
       };
       const errMsg = errorMessages[errorParam] ?? { title: 'Error', description: 'Something went wrong creating your project.' };
       toast(errMsg);
@@ -1885,8 +1887,8 @@ export default function LandingV2() {
               <div className="w-full mt-8">
                 {/* Platform tabs — sit on top of the prompt box; the selected
                     tab's accent color frames the box. Web is the default; Swift
-                    is gated to beta users (shows a lock until unlocked, then
-                    lights up in Swift orange #f46a13). */}
+                    is available to Pro/Max and beta users (shows a lock until
+                    unlocked, then lights up in Swift orange #f46a13). */}
                 <div
                   className="flex items-end gap-1 pl-4 sm:pl-6 relative z-10"
                   style={{ marginBottom: -promptFrameWidth }}
@@ -1923,14 +1925,14 @@ export default function LandingV2() {
                         setPlatform('swift');
                       } else {
                         toast({
-                          title: 'Swift is in private beta',
+                          title: 'Swift requires Pro or Max',
                           description:
-                            'Native Swift apps are rolling out to beta users — access is coming soon.',
+                            'Upgrade to Pro or Max to create native Swift projects.',
                         });
                       }
                     }}
                     aria-disabled={!hasSwiftAccess}
-                    title={hasSwiftAccess ? 'Build a native Swift app' : 'Swift is in private beta'}
+                    title={hasSwiftAccess ? 'Build a native Swift app' : 'Swift requires Pro or Max'}
                     className={cn(
                       'relative inline-flex items-center gap-1.5 rounded-t-xl px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-medium transition',
                       platform === 'swift'

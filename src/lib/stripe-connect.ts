@@ -8,6 +8,7 @@ import { getDb } from '@/db';
 import { stripeConnectRequests, stripeOauthStates } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { getConnectClientId, type StripeMode } from '@/lib/stripe';
+import { markAgentWaiting } from '@/lib/agent/modal-wait';
 
 const STATE_TTL_MS = 60 * 60_000;
 
@@ -86,7 +87,12 @@ export async function createConnectRequest(opts: {
   return { id: row.id };
 }
 
-/** Poll the request row up to deadlineMs, returning the resolved status. */
+/** Poll the request row up to deadlineMs, returning the resolved status.
+ *
+ *  Timing out leaves the row PENDING and the modal open: a timeout means "the
+ *  user hasn't finished yet", never "the user declined". The workspace's lazy
+ *  stale-expiry clears truly abandoned rows, and a late completion notifies
+ *  the agent via a system note. */
 export async function pollConnectRequest(opts: {
   requestId: string;
   projectId: string;
@@ -96,6 +102,7 @@ export async function pollConnectRequest(opts: {
   const interval = opts.intervalMs ?? 3000;
   const db = getDb();
   while (Date.now() < opts.deadlineMs) {
+    void markAgentWaiting('stripe-connect', opts.requestId);
     await new Promise<void>((r) => setTimeout(r, interval));
     const [row] = await db
       .select({ status: stripeConnectRequests.status })
@@ -112,18 +119,35 @@ export async function pollConnectRequest(opts: {
     if (row.status === 'dismissed') return 'dismissed';
     // pending — keep polling
   }
-  // Timed out — mark this request dismissed (only if still pending) so the
-  // workspace closes the now-unwatched modal instead of orphaning it, matching
-  // the env-var and OAuth-provider flows.
-  await db
-    .update(stripeConnectRequests)
-    .set({ status: 'dismissed', updatedAt: new Date() })
-    .where(
-      and(
-        eq(stripeConnectRequests.id, opts.requestId),
-        eq(stripeConnectRequests.status, 'pending'),
-      ),
-    )
-    .catch(() => undefined);
   return 'timeout';
+}
+
+/** One short polling window (for the Claude Code tool route, whose bridge-side
+ *  caller loops until terminal). Returns 'pending' when the window closes
+ *  without a terminal status; the row is not touched. */
+export async function pollConnectRequestOnce(opts: {
+  requestId: string;
+  projectId: string;
+  windowMs?: number;
+}): Promise<'completed' | 'dismissed' | 'gone' | 'pending'> {
+  const db = getDb();
+  const deadline = Date.now() + (opts.windowMs ?? 20_000);
+  void markAgentWaiting('stripe-connect', opts.requestId);
+  for (;;) {
+    const [row] = await db
+      .select({ status: stripeConnectRequests.status })
+      .from(stripeConnectRequests)
+      .where(
+        and(
+          eq(stripeConnectRequests.id, opts.requestId),
+          eq(stripeConnectRequests.projectId, opts.projectId),
+        ),
+      )
+      .limit(1);
+    if (!row) return 'gone';
+    if (row.status === 'completed') return 'completed';
+    if (row.status === 'dismissed') return 'dismissed';
+    if (Date.now() >= deadline) return 'pending';
+    await new Promise<void>((r) => setTimeout(r, 3000));
+  }
 }
