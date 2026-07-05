@@ -19,21 +19,17 @@ export const CLAUDE_CODE_ENABLED =
   process.env.NEXT_PUBLIC_CLAUDE_CODE_ENABLED === 'true';
 
 /** When true: the OpenCode agent backend drop-in replaces the Botflow agent
- *  as the presented agent for non-Anthropic models on sandbox platforms. Turns
- *  run inside an `opencode` subprocess in the project's Vercel Sandbox using
- *  the USER'S OWN credentials (Codex/ChatGPT-plan OAuth or BYOK provider keys)
- *  — platform server keys never enter the sandbox. Users with no personal
- *  credentials keep executing on the /api/agent engine via the 412-fallback
- *  contract (unbranded) until the provider proxy exists. Anthropic models are
- *  unaffected (Claude OAuth → Claude Code per ToS; BYOK per preference). */
-// ┌─────────────────────────────────────────────────────────────────────┐
-// │ TEMP(branch preview): defaulted ON so branch previews need no env   │
-// │ config. RESTORE the opt-in gate (=== 'true') before merging to main │
-// │ — as written, a main deployment without the env var set would ship  │
-// │ with OpenCode enabled.                                              │
-// └─────────────────────────────────────────────────────────────────────┘
+ *  as the presented agent, and BOTH in-sandbox agents route ALL provider
+ *  traffic through the platform's LLM proxy (/api/internal/llm-proxy) —
+ *  sandboxes hold turn-scoped bfap_ tokens, never real credentials, and
+ *  platform-metered billing happens at the proxy. Because this flag now gates
+ *  billing-relevant behavior it is STRICTLY opt-in and must never default on.
+ *  Deployments that want OpenCode (including branch previews) must set
+ *  NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED=true explicitly. When false: legacy
+ *  routing — Botflow agent via /api/agent, Claude Code with real credentials
+ *  written to the sandbox. */
 export const OPENCODE_BACKEND_ENABLED =
-  process.env.NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED !== 'false';
+  process.env.NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED === 'true';
 
 /** When true: the Stripe Connect integration is exposed — the
  *  `initializeStripePayments` AI tool is registered, the Stripe tab can
