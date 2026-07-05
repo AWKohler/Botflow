@@ -68,10 +68,6 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
   const [appleSaving, setAppleSaving] = useState(false);
   const [appleDisconnecting, setAppleDisconnecting] = useState(false);
   const [appleError, setAppleError] = useState('');
-  // Per-user default agent backend for Anthropic models (BYOK choice only).
-  // OAuth users are locked to claude-code regardless of this.
-  const [preferredAnthropicBackend, setPreferredAnthropicBackend] = useState<'botflow' | 'claude-code'>('botflow');
-  const [savingBackendPref, setSavingBackendPref] = useState(false);
 
   // Codex OAuth device flow state
   const [codexOAuthStep, setCodexOAuthStep] = useState<'idle' | 'polling' | 'success'>('idle');
@@ -135,10 +131,6 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
             setHasClaudeOAuth(Boolean(data?.hasClaudeOAuth));
             setHasCodexOAuth(Boolean(data?.hasCodexOAuth));
             setHasConvexOAuth(Boolean(data?.hasConvexOAuth));
-            const pref = data?.preferredAnthropicBackend;
-            if (pref === 'botflow' || pref === 'claude-code') {
-              setPreferredAnthropicBackend(pref);
-            }
           }
         }
       } catch {
@@ -847,77 +839,6 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                         </div>
                       )}
                     </div>}
-
-                    {/* ── Default Anthropic agent backend (BYOK choice) ── */}
-                    {/* Only meaningful when:                                    */}
-                    {/*   • Claude Code flag is on                               */}
-                    {/*   • The user has an Anthropic API key (BYOK)             */}
-                    {/*   • The user does NOT have Claude OAuth (which would    */}
-                    {/*     force claude-code regardless)                        */}
-                    {CLAUDE_CODE_ENABLED && hasKey.anthropic && !hasClaudeOAuth && (
-                      <div>
-                        <div className="mb-2">
-                          <h3 className="text-sm font-semibold text-fg">Default agent for Anthropic models</h3>
-                          <p className="text-xs text-muted mt-0.5">
-                            Applies to new sandbox projects. You can still switch per-project from the agent panel.
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          {([
-                            {
-                              value: 'botflow' as const,
-                              label: 'Botflow',
-                              desc: 'Our agent and tools, charged to your Anthropic key. Same flow as other models.',
-                            },
-                            {
-                              value: 'claude-code' as const,
-                              label: 'Claude Code',
-                              desc: 'Anthropic’s official agent runs inside the project sandbox. More autonomous; same Anthropic billing.',
-                            },
-                          ]).map((opt) => {
-                            const active = preferredAnthropicBackend === opt.value;
-                            return (
-                              <button
-                                key={opt.value}
-                                type="button"
-                                disabled={savingBackendPref}
-                                onClick={async () => {
-                                  if (opt.value === preferredAnthropicBackend) return;
-                                  setSavingBackendPref(true);
-                                  const prev = preferredAnthropicBackend;
-                                  setPreferredAnthropicBackend(opt.value);
-                                  try {
-                                    const res = await fetch('/api/user-settings', {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ preferredAnthropicBackend: opt.value }),
-                                    });
-                                    if (!res.ok) throw new Error('Failed to save preference');
-                                    toast({ title: 'Default agent updated', description: `New Anthropic projects will use ${opt.label}.` });
-                                  } catch {
-                                    setPreferredAnthropicBackend(prev);
-                                    toast({ title: 'Could not save preference' });
-                                  } finally {
-                                    setSavingBackendPref(false);
-                                  }
-                                }}
-                                className={`w-full text-left rounded-xl border p-3 transition ${
-                                  active
-                                    ? 'border-accent bg-accent/10'
-                                    : 'border-border bg-bg hover:bg-surface'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <span className={`size-3 rounded-full border-2 ${active ? 'border-accent bg-accent' : 'border-border'}`} />
-                                  <span className="text-sm font-medium text-fg">{opt.label}</span>
-                                </div>
-                                <p className="text-xs text-muted mt-1.5 ml-5 leading-snug">{opt.desc}</p>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
 
                     {/* ── BYOK API Keys ── */}
                     <div>

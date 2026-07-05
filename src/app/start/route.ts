@@ -302,15 +302,7 @@ export async function GET(request: Request) {
       creds: credFlagsFromUserCredentials(creds),
       useTogetherKimi: USE_TOGETHER_KIMI,
     });
-    let initialAgentBackend: AgentBackend = backendResolution.defaultBackend;
-    if (
-      backendResolution.locked === null &&
-      backendResolution.available.length >= 2 &&
-      creds.preferredAnthropicBackend &&
-      backendResolution.available.includes(creds.preferredAnthropicBackend)
-    ) {
-      initialAgentBackend = creds.preferredAnthropicBackend;
-    }
+    const initialAgentBackend: AgentBackend = backendResolution.defaultBackend;
 
     const [project] = await db
       .insert(projects)

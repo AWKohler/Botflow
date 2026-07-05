@@ -30,7 +30,7 @@ import {
   CLAUDE_CODE_ENABLED,
   OPENCODE_BACKEND_ENABLED,
 } from "@/lib/feature-flags";
-import { isAnthropicModel, MODEL_CONFIGS, type ModelId } from "./models";
+import { isAnthropicModel, type ModelId } from "./models";
 import { isSandboxPlatform } from "@/lib/project-platform";
 import type { AgentBackend } from "./backend-resolution";
 import { openCodeCredModeForModel, type OpenCodeCredFlags } from "./opencode/models";

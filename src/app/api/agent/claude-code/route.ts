@@ -158,7 +158,6 @@ export async function POST(req: Request) {
       hasClaudeOAuth: Boolean(creds.claudeOAuthAccessToken),
       hasAnthropicKey: Boolean(creds.anthropicApiKey),
     },
-    preferredAnthropicBackend: creds.preferredAnthropicBackend,
     // Tier is fetched lazily — only matters for the platform-key fallback
     // which never picks claude-code anyway.
   });
