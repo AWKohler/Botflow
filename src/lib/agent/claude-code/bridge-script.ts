@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "25";
+export const BRIDGE_SCRIPT_VERSION = "26";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -570,6 +570,26 @@ function buildCustomTools(customTools, oauthProviderIds) {
           })),
         },
         makeHostToolHandler("ask_question"),
+      ),
+    );
+  }
+
+  if (customTools.includes("generate_image")) {
+    tools.push(
+      tool(
+        "generate_image",
+        "Generate an image with AI (Krea 2 Medium) from a text prompt and save it into the project at the given path. " +
+        "Blocks until generation finishes (typically 10-30s); on success the file exists in the project immediately. " +
+        "Use for hero images, backgrounds, illustrations, placeholder photos, textures, etc. " +
+        "Put web assets under public/ (e.g. public/images/hero.png) and reference them by URL path ('/images/hero.png'), or under src/assets/ for bundled imports. Use a .png or .jpg extension. " +
+        "Each call costs the user credits, so don't regenerate an image that already looks right and don't call this speculatively. " +
+        "Pro/Max feature: for Free users this returns a tier-blocked error — relay it to the user and do NOT retry; fall back to CSS/gradients or existing assets.",
+        {
+          prompt: z.string().describe("Text description of the image to generate. Be concrete about subject, style, lighting, and mood."),
+          output_path: z.string().describe("Project-relative file path to save the image to, e.g. public/images/hero.png. Parent directories are created automatically."),
+          aspect_ratio: z.enum(["1:1", "4:3", "3:2", "16:9", "2.35:1", "4:5", "2:3", "9:16"]).optional().describe("Aspect ratio of the generated image. Defaults to '1:1'."),
+        },
+        makeHostToolHandler("generate_image"),
       ),
     );
   }

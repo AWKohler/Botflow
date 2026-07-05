@@ -319,6 +319,35 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       required: ["target", "key"],
     },
   },
+  generate_image: {
+    name: "generate_image",
+    description:
+      "Generate an image with AI (Krea 2 Medium) from a text prompt and save it into the project at the given path. " +
+      "Blocks until generation finishes (typically 10-30s); on success the file exists in the project immediately. " +
+      "Use for hero images, backgrounds, illustrations, placeholder photos, textures, etc. " +
+      "Put web assets under public/ (e.g. public/images/hero.png) and reference them by URL path ('/images/hero.png'), or under src/assets/ for bundled imports. Use a .png or .jpg extension. " +
+      "Each call costs the user credits, so don't regenerate an image that already looks right and don't call this speculatively. " +
+      "Pro/Max feature: for Free users this returns a tier-blocked error — relay it to the user and do NOT retry; fall back to CSS/gradients or existing assets.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        prompt: {
+          type: "string",
+          description: "Text description of the image to generate. Be concrete about subject, style, lighting, and mood.",
+        },
+        output_path: {
+          type: "string",
+          description: "Project-relative file path to save the image to, e.g. public/images/hero.png. Parent directories are created automatically.",
+        },
+        aspect_ratio: {
+          type: "string",
+          enum: ["1:1", "4:3", "3:2", "16:9", "2.35:1", "4:5", "2:3", "9:16"],
+          description: "Aspect ratio of the generated image. Defaults to '1:1'.",
+        },
+      },
+      required: ["prompt", "output_path"],
+    },
+  },
 
   // ── Git tools (only offered when the project has a linked GitHub repo) ──
   git_status: {
@@ -440,6 +469,8 @@ export function selectHostTools(input: SelectHostToolsInput): string[] {
       "ask_question",
       // Env-var entry modal — agent picks the name, user types the value.
       "request_env_var",
+      // AI image generation (FAL/Krea) — backend-agnostic; bills platform credits.
+      "generate_image",
     );
     if (hasBackend) {
       customTools.push(
