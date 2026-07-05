@@ -31,19 +31,19 @@ export interface OpenCodeModelRef {
 }
 
 /**
- * Map a Botflow ModelId to OpenCode's { providerID, modelID }. Returns null
- * for models OpenCode never serves (all Anthropic models — Claude-plan OAuth
- * must flow through Claude Code per Anthropic's ToS, and Anthropic BYOK keeps
- * its existing botflow/claude-code routing).
+ * Map a Botflow ModelId to OpenCode's { providerID, modelID }. Every model
+ * maps: Anthropic models ride OpenCode in PLATFORM mode (server key via the
+ * LLM proxy) — personal-credential Anthropic traffic never reaches OpenCode
+ * (OAuth per ToS and BYOK both route to Claude Code; see derive-backend).
  */
 export function resolveOpenCodeModel(
   model: ModelId,
   opts: { useTogetherKimi: boolean },
-): OpenCodeModelRef | null {
+): OpenCodeModelRef {
   const config = MODEL_CONFIGS[model];
   switch (config.provider) {
     case "anthropic":
-      return null;
+      return { providerID: "anthropic", modelID: config.apiModelId };
     case "openai":
       return { providerID: "openai", modelID: config.apiModelId };
     case "google":
@@ -56,34 +56,43 @@ export function resolveOpenCodeModel(
   }
 }
 
+export type OpenCodeCredMode = "byok" | "codex-oauth" | null;
+
 /**
- * The single eligibility predicate for the OpenCode backend: does this user
- * hold a PERSONAL credential that can run this model inside their sandbox?
+ * Which CREDENTIAL MODE an OpenCode turn runs in — no longer an eligibility
+ * gate (with the LLM proxy, eligibility is just flag + sandbox platform):
+ *   "codex-oauth" — ChatGPT-plan OAuth (the documented stay-in-sandbox
+ *                   exception; real tokens, no proxy).
+ *   "byok"        — the user's own provider key, injected by the proxy.
+ *   null          — platform mode: the platform's server key, injected by
+ *                   the proxy, billed per request.
+ * Anthropic always returns null here: personal-credential Anthropic traffic
+ * routes to Claude Code, so an Anthropic model reaching OpenCode is by
+ * definition platform-mode.
  *
- * Deliberately ignores server-key presence (process.env.FIREWORKS_API_KEY
- * etc.): the client must derive the identical answer and can't see server
- * env — and personal-creds-only routing is the point of the feature. Platform
- * keys never enter the sandbox; those turns stay on /api/agent until the
- * provider proxy exists.
+ * Deliberately ignores server-key presence (the client must derive the
+ * identical answer and can't see server env; the route 412-falls-back when
+ * the platform key is genuinely missing).
  */
-export function hasOpenCodeCredsForModel(
+export function openCodeCredModeForModel(
   model: ModelId,
   creds: OpenCodeCredFlags | null | undefined,
   useTogetherKimi: boolean,
-): boolean {
-  if (!creds) return false;
+): OpenCodeCredMode {
+  if (!creds) return null;
   const config = MODEL_CONFIGS[model];
   switch (config.provider) {
     case "anthropic":
-      return false;
+      return null;
     case "openai":
-      return Boolean(creds.hasCodexOAuth || creds.hasOpenAIKey);
+      if (creds.hasCodexOAuth) return "codex-oauth";
+      return creds.hasOpenAIKey ? "byok" : null;
     case "google":
-      return Boolean(creds.hasGoogleKey);
+      return creds.hasGoogleKey ? "byok" : null;
     case "fireworks":
       if (model === "fireworks-kimi-k2p7" && useTogetherKimi) {
-        return Boolean(creds.hasTogetherKey);
+        return creds.hasTogetherKey ? "byok" : null;
       }
-      return Boolean(creds.hasFireworksKey);
+      return creds.hasFireworksKey ? "byok" : null;
   }
 }

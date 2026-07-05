@@ -161,12 +161,14 @@ export function BackendBadge({ backend }: { backend: AgentBackend }) {
  */
 const CHIP_VISIBLE_REASONS: ReadonlySet<DerivationReason> = new Set<DerivationReason>([
   "oauth_claude_code",
+  "byok_claude_code",
   "byok_botflow",
-  "byok_preference_claude_code",
   "oauth_no_path",
   "no_credentials",
   "codex_oauth_opencode",
   "byok_opencode",
+  // Error state: the model exists but this plan can't run it on credits.
+  "tier_too_low",
 ]);
 
 export interface BackendChipProps {

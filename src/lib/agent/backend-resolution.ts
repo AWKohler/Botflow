@@ -37,7 +37,7 @@
 import { CLAUDE_CODE_ENABLED, OPENCODE_BACKEND_ENABLED } from "@/lib/feature-flags";
 import { isAnthropicModel, type ModelId } from "@/lib/agent/models";
 import { isSandboxPlatform } from "@/lib/project-platform";
-import { hasOpenCodeCredsForModel, type OpenCodeCredFlags } from "@/lib/agent/opencode/models";
+import { type OpenCodeCredFlags } from "@/lib/agent/opencode/models";
 
 export type AgentBackend = "botflow" | "claude-code" | "opencode";
 
@@ -127,19 +127,12 @@ export function resolveBackends(input: BackendResolutionInput): BackendResolutio
     };
   }
 
-  // Hard rule #2: Claude Code only runs Anthropic models. Non-Anthropic
-  // models are OpenCode's territory: with the flag on, a sandbox platform,
-  // and a personal credential for the model's provider, OpenCode drop-in
-  // replaces Botflow (locked — no user choice by design). Without those,
-  // the Botflow engine keeps serving the turn (platform key stays on our
-  // server; the sandbox env is unsafe for it).
+  // Hard rule #2: Claude Code only runs Anthropic models. With the LLM
+  // proxy, non-Anthropic models are OpenCode's territory UNCONDITIONALLY
+  // (flag + sandbox): credentials only decide the MODE (codex-oauth / byok /
+  // platform via the proxy), never the backend.
   if (!isAnthropicModel(model)) {
-    if (
-      OPENCODE_BACKEND_ENABLED &&
-      platform &&
-      isSandboxPlatform(platform) &&
-      hasOpenCodeCredsForModel(model, input.creds, input.useTogetherKimi === true)
-    ) {
+    if (OPENCODE_BACKEND_ENABLED && platform && isSandboxPlatform(platform)) {
       return {
         available: ["opencode"],
         locked: "opencode",
@@ -181,8 +174,17 @@ export function resolveBackends(input: BackendResolutionInput): BackendResolutio
   }
 
   if (creds.hasAnthropicKey) {
-    // BYOK: both backends work; user can pick. Default is Botflow because
-    // it's simpler / no install latency.
+    // BYOK is locked to Claude Code exactly like OAuth — one Anthropic agent
+    // (the preference toggle is retired; the key rides the LLM proxy). The
+    // lock rides the OpenCode flag so the kill-switch state stays legacy.
+    if (OPENCODE_BACKEND_ENABLED) {
+      return {
+        available: ["claude-code"],
+        locked: "claude-code",
+        defaultBackend: "claude-code",
+        reason: "byok_choice",
+      };
+    }
     return {
       available: ["botflow", "claude-code"],
       locked: null,
@@ -191,9 +193,17 @@ export function resolveBackends(input: BackendResolutionInput): BackendResolutio
     };
   }
 
-  // No Anthropic creds. Falls through to Botflow + platform key. We
-  // CANNOT use Claude Code here — passing our platform key into the
-  // sandbox env exposes it to the user/agent.
+  // No personal Anthropic creds: platform mode. With the proxy that's
+  // OpenCode (the server key is injected server-side, never in the sandbox);
+  // without the flag, the legacy Botflow engine.
+  if (OPENCODE_BACKEND_ENABLED) {
+    return {
+      available: ["opencode"],
+      locked: "opencode",
+      defaultBackend: "opencode",
+      reason: "opencode_replaces_botflow",
+    };
+  }
   return {
     available: ["botflow"],
     locked: "botflow",

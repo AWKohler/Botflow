@@ -148,29 +148,32 @@ export async function ensureOpenCodeInstalled(projectId: string): Promise<
 }
 
 export interface OpenCodeAuthInput {
-  /** Codex (ChatGPT-plan) OAuth tokens — wins over the OpenAI API key when
-   *  present (opencode prefers an oauth entry over an api entry, so we write
-   *  exactly one `openai` entry). */
+  /** Codex (ChatGPT-plan) OAuth tokens — THE one documented exception where
+   *  a real credential enters the sandbox: opencode 1.17.13's codex plugin
+   *  hardcodes its endpoint and self-refreshes, so it can't ride the proxy.
+   *  Pre-sharing-GA blocker; see docs/features/llm-proxy.md. */
   codex?: {
     accessToken: string;
     refreshToken?: string | null;
     /** Epoch ms. */
     expiresAt?: number | null;
   } | null;
-  openaiApiKey?: string | null;
-  fireworksApiKey?: string | null;
-  googleApiKey?: string | null;
-  togetherApiKey?: string | null;
+  /** Every other mode: a bfap_ LLM-proxy token masquerading as the
+   *  provider's api key. The real key (the user's BYOK or the platform's)
+   *  is injected server-side at /api/internal/llm-proxy — NEVER written
+   *  here. */
+  proxy?: {
+    /** opencode catalog provider id (anthropic/openai/google/fireworks-ai/togetherai). */
+    providerID: string;
+    token: string;
+  } | null;
 }
 
 /**
- * Write the user's credentials into OpenCode's auth store. Only providers the
- * user actually holds credentials for get an entry, and NEVER `anthropic` —
- * Claude plans flow exclusively through Claude Code (ToS), and Anthropic BYOK
- * keeps its existing botflow/claude-code routing.
- *
- * Provider ids verified against opencode 1.17.13's catalog:
- * openai / google / fireworks-ai / togetherai.
+ * Write the turn's credential surface into OpenCode's auth store. With the
+ * LLM proxy this is a bfap_ token, never a real key — the sole exception is
+ * the Codex OAuth entry (see OpenCodeAuthInput). Provider ids verified
+ * against opencode 1.17.13's catalog.
  */
 export async function writeOpenCodeAuth(
   projectId: string,
@@ -187,17 +190,9 @@ export async function writeOpenCodeAuth(
       refresh: input.codex.refreshToken ?? "",
       expires: input.codex.expiresAt ?? 0,
     };
-  } else if (input.openaiApiKey) {
-    payload.openai = { type: "api", key: input.openaiApiKey };
   }
-  if (input.fireworksApiKey) {
-    payload["fireworks-ai"] = { type: "api", key: input.fireworksApiKey };
-  }
-  if (input.googleApiKey) {
-    payload.google = { type: "api", key: input.googleApiKey };
-  }
-  if (input.togetherApiKey) {
-    payload.togetherai = { type: "api", key: input.togetherApiKey };
+  if (input.proxy?.token) {
+    payload[input.proxy.providerID] = { type: "api", key: input.proxy.token };
   }
   if (Object.keys(payload).length === 0) {
     throw new Error("writeOpenCodeAuth: no credentials provided");

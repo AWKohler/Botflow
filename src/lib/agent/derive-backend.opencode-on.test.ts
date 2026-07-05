@@ -3,10 +3,15 @@
  * OpenCode backend flag ON (plus the Claude Code + Anthropic OAuth flags, so
  * the Anthropic tree is exercised in its production shape).
  *
+ * The LLM-proxy decision table: non-Anthropic → OpenCode unconditionally
+ * (credentials pick the MODE, tier gates platform mode); Anthropic personal
+ * creds (OAuth or BYOK) → Claude Code locked; Anthropic platform-key (paid)
+ * → OpenCode platform mode.
+ *
  * Env is set BEFORE the modules under test load: static imports hoist, so the
  * modules are pulled in lazily via dynamic import inside the tests. The
- * flag-OFF matrix lives in a separate file — node --test runs each file in its
- * own process, which is what makes the module-level flag consts testable.
+ * flag-OFF matrix lives in a separate file — node --test runs each file in
+ * its own process, which is what makes the module-level flag consts testable.
  *
  * Run: node --import tsx --test src/lib/agent/derive-backend.opencode-on.test.ts
  */
@@ -33,7 +38,7 @@ async function load() {
   return { ...derive, ...resolution };
 }
 
-describe("deriveAgentBackend — OpenCode arm (flag on)", () => {
+describe("deriveAgentBackend — non-Anthropic models (flag on)", () => {
   test("openai model + Codex OAuth → opencode (codex_oauth_opencode)", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
@@ -59,7 +64,7 @@ describe("deriveAgentBackend — OpenCode arm (flag on)", () => {
     assert.equal(out.reason, "byok_opencode");
   });
 
-  test("openai model + no personal creds → botflow engine (platform key stays server-side)", async () => {
+  test("openai model + NO personal creds → opencode PLATFORM mode for paid tiers", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
       model: "gpt-5.4",
@@ -68,41 +73,55 @@ describe("deriveAgentBackend — OpenCode arm (flag on)", () => {
       tier: "pro",
     });
     assert.deepEqual(out, {
-      backend: "botflow",
+      backend: "opencode",
       runnable: true,
-      reason: "non_anthropic_model",
+      reason: "platform_key_opencode",
     });
   });
 
-  test("google model routes by Google key", async () => {
+  test("tier gate: free tier can't run pro platform models (tier_too_low, hidden); free models pass", async () => {
+    const { deriveAgentBackend } = await load();
+    const gated = deriveAgentBackend({
+      model: "gpt-5.4",
+      platform: "sandboxed-web",
+      creds: { ...NO_CREDS },
+      tier: "free",
+    });
+    assert.equal(gated.backend, "opencode");
+    assert.equal(gated.runnable, false);
+    assert.equal(gated.reason, "tier_too_low");
+
+    const freeModel = deriveAgentBackend({
+      model: "fireworks-minimax-m3",
+      platform: "sandboxed-web",
+      creds: { ...NO_CREDS },
+      tier: "free",
+    });
+    assert.equal(freeModel.backend, "opencode");
+    assert.equal(freeModel.runnable, true);
+    assert.equal(freeModel.reason, "platform_key_opencode");
+  });
+
+  test("google model: key → byok mode; no key → platform mode", async () => {
     const { deriveAgentBackend } = await load();
     const withKey = deriveAgentBackend({
       model: "gemini-3.1-pro-preview",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasGoogleKey: true },
     });
-    assert.equal(withKey.backend, "opencode");
     assert.equal(withKey.reason, "byok_opencode");
 
-    const withOtherKeys = deriveAgentBackend({
+    const withoutKey = deriveAgentBackend({
       model: "gemini-3.1-pro-preview",
       platform: "sandboxed-web",
-      creds: { ...NO_CREDS, hasOpenAIKey: true, hasFireworksKey: true },
+      creds: { ...NO_CREDS, hasOpenAIKey: true, hasFireworksKey: true }, // wrong providers
+      tier: "pro",
     });
-    assert.equal(withOtherKeys.backend, "botflow");
+    assert.equal(withoutKey.backend, "opencode");
+    assert.equal(withoutKey.reason, "platform_key_opencode");
   });
 
-  test("fireworks model routes by Fireworks key", async () => {
-    const { deriveAgentBackend } = await load();
-    const out = deriveAgentBackend({
-      model: "fireworks-glm-5p2",
-      platform: "sandboxed-web",
-      creds: { ...NO_CREDS, hasFireworksKey: true },
-    });
-    assert.equal(out.backend, "opencode");
-  });
-
-  test("kimi honors USE_TOGETHER_KIMI: Together key required when on, Fireworks key when off", async () => {
+  test("kimi honors USE_TOGETHER_KIMI for the BYOK mode; missing key falls to platform, never botflow", async () => {
     const { deriveAgentBackend } = await load();
     const togetherOnWithTogetherKey = deriveAgentBackend({
       model: "fireworks-kimi-k2p7",
@@ -110,15 +129,17 @@ describe("deriveAgentBackend — OpenCode arm (flag on)", () => {
       creds: { ...NO_CREDS, hasTogetherKey: true },
       useTogetherKimi: true,
     });
-    assert.equal(togetherOnWithTogetherKey.backend, "opencode");
+    assert.equal(togetherOnWithTogetherKey.reason, "byok_opencode");
 
     const togetherOnWithOnlyFireworksKey = deriveAgentBackend({
       model: "fireworks-kimi-k2p7",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasFireworksKey: true },
       useTogetherKimi: true,
+      tier: "free",
     });
-    assert.equal(togetherOnWithOnlyFireworksKey.backend, "botflow");
+    assert.equal(togetherOnWithOnlyFireworksKey.backend, "opencode");
+    assert.equal(togetherOnWithOnlyFireworksKey.reason, "platform_key_opencode");
 
     const togetherOffWithFireworksKey = deriveAgentBackend({
       model: "fireworks-kimi-k2p7",
@@ -126,7 +147,7 @@ describe("deriveAgentBackend — OpenCode arm (flag on)", () => {
       creds: { ...NO_CREDS, hasFireworksKey: true },
       useTogetherKimi: false,
     });
-    assert.equal(togetherOffWithFireworksKey.backend, "opencode");
+    assert.equal(togetherOffWithFireworksKey.reason, "byok_opencode");
   });
 
   test("non-sandbox platform never routes to opencode", async () => {
@@ -141,7 +162,7 @@ describe("deriveAgentBackend — OpenCode arm (flag on)", () => {
   });
 });
 
-describe("deriveAgentBackend — Anthropic tree unchanged by the OpenCode flag", () => {
+describe("deriveAgentBackend — Anthropic tree (flag on)", () => {
   test("Claude OAuth on sandbox → claude-code", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
@@ -157,27 +178,27 @@ describe("deriveAgentBackend — Anthropic tree unchanged by the OpenCode flag",
     });
   });
 
-  test("Anthropic BYOK defaults to botflow, preference picks claude-code", async () => {
+  test("Anthropic BYOK is LOCKED to claude-code (preference retired)", async () => {
     const { deriveAgentBackend } = await load();
     const byok = deriveAgentBackend({
       model: "claude-opus-4-8",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasAnthropicKey: true },
     });
-    assert.equal(byok.backend, "botflow");
-    assert.equal(byok.reason, "byok_botflow");
+    assert.equal(byok.backend, "claude-code");
+    assert.equal(byok.reason, "byok_claude_code");
 
-    const pref = deriveAgentBackend({
+    // The deprecated preference input is ignored entirely.
+    const withStalePreference = deriveAgentBackend({
       model: "claude-opus-4-8",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasAnthropicKey: true },
-      preferredAnthropicBackend: "claude-code",
+      preferredAnthropicBackend: "botflow",
     });
-    assert.equal(pref.backend, "claude-code");
-    assert.equal(pref.reason, "byok_preference_claude_code");
+    assert.equal(withStalePreference.backend, "claude-code");
   });
 
-  test("no Anthropic creds: paid tier → botflow runnable; free tier → not runnable", async () => {
+  test("no Anthropic creds: paid tier → opencode PLATFORM mode; free tier → not runnable", async () => {
     const { deriveAgentBackend } = await load();
     const paid = deriveAgentBackend({
       model: "claude-sonnet-5",
@@ -185,8 +206,18 @@ describe("deriveAgentBackend — Anthropic tree unchanged by the OpenCode flag",
       creds: { ...NO_CREDS },
       tier: "pro",
     });
-    assert.equal(paid.backend, "botflow");
+    assert.equal(paid.backend, "opencode");
     assert.equal(paid.runnable, true);
+    assert.equal(paid.reason, "platform_key_opencode");
+
+    const maxOnly = deriveAgentBackend({
+      model: "claude-fable-5",
+      platform: "sandboxed-web",
+      creds: { ...NO_CREDS },
+      tier: "pro", // fable requires max on platform credits
+    });
+    assert.equal(maxOnly.runnable, false);
+    assert.equal(maxOnly.reason, "tier_too_low");
 
     const free = deriveAgentBackend({
       model: "claude-sonnet-5",
@@ -195,43 +226,45 @@ describe("deriveAgentBackend — Anthropic tree unchanged by the OpenCode flag",
       tier: "free",
     });
     assert.equal(free.runnable, false);
+    assert.equal(free.reason, "no_credentials");
   });
 });
 
 describe("resolveBackends — drop-in replacement semantics (flag on)", () => {
-  test("eligible non-Anthropic → locked to opencode, no user choice", async () => {
+  test("non-Anthropic → locked to opencode regardless of creds", async () => {
     const { resolveBackends } = await load();
-    const res = resolveBackends({
-      model: "gpt-5.4",
-      platform: "sandboxed-web",
-      creds: { ...NO_CREDS, hasCodexOAuth: true },
-    });
-    assert.deepEqual(res.available, ["opencode"]);
-    assert.equal(res.locked, "opencode");
-    assert.equal(res.defaultBackend, "opencode");
-    assert.equal(res.reason, "opencode_replaces_botflow");
+    for (const creds of [{ ...NO_CREDS, hasCodexOAuth: true }, { ...NO_CREDS }]) {
+      const res = resolveBackends({
+        model: "gpt-5.4",
+        platform: "sandboxed-web",
+        creds,
+      });
+      assert.deepEqual(res.available, ["opencode"]);
+      assert.equal(res.locked, "opencode");
+      assert.equal(res.reason, "opencode_replaces_botflow");
+    }
   });
 
-  test("non-eligible non-Anthropic → botflow-locked", async () => {
-    const { resolveBackends } = await load();
-    const res = resolveBackends({
-      model: "gpt-5.4",
-      platform: "sandboxed-web",
-      creds: { ...NO_CREDS },
-    });
-    assert.deepEqual(res.available, ["botflow"]);
-    assert.equal(res.locked, "botflow");
-  });
-
-  test("Anthropic BYOK matrix unchanged: user picks between botflow and claude-code", async () => {
+  test("Anthropic BYOK → claude-code locked (no more two-backend choice)", async () => {
     const { resolveBackends } = await load();
     const res = resolveBackends({
       model: "claude-sonnet-5",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasAnthropicKey: true },
     });
-    assert.deepEqual(res.available, ["botflow", "claude-code"]);
-    assert.equal(res.locked, null);
+    assert.deepEqual(res.available, ["claude-code"]);
+    assert.equal(res.locked, "claude-code");
+  });
+
+  test("Anthropic no personal creds → opencode locked (platform via proxy)", async () => {
+    const { resolveBackends } = await load();
+    const res = resolveBackends({
+      model: "claude-sonnet-5",
+      platform: "sandboxed-web",
+      creds: { ...NO_CREDS },
+    });
+    assert.deepEqual(res.available, ["opencode"]);
+    assert.equal(res.locked, "opencode");
   });
 
   test("isAgentBackend accepts the new value and still rejects junk", async () => {
@@ -242,18 +275,19 @@ describe("resolveBackends — drop-in replacement semantics (flag on)", () => {
   });
 });
 
-describe("describeDerivation — copy for the new reasons (flag on)", () => {
-  test("opencode reasons have OpenCode-branded copy", async () => {
+describe("describeDerivation — copy (flag on)", () => {
+  test("opencode + claude-code reasons carry their agent branding", async () => {
     const { describeDerivation } = await load();
     assert.match(describeDerivation("codex_oauth_opencode").title, /OpenCode/);
     assert.match(describeDerivation("byok_opencode").title, /OpenCode/);
+    assert.match(describeDerivation("platform_key_opencode").body, /OpenCode/);
+    assert.match(describeDerivation("byok_claude_code").title, /Claude Code/);
   });
 
-  test("fallback-engine copy drops the Botflow agent brand under the flag", async () => {
+  test("proxied copy never claims keys enter the sandbox; Botflow brand stays out of fallback copy", async () => {
     const { describeDerivation } = await load();
-    const nonAnthropic = describeDerivation("non_anthropic_model");
-    assert.doesNotMatch(nonAnthropic.title, /Botflow/);
-    const platformKey = describeDerivation("platform_key_botflow");
-    assert.doesNotMatch(platformKey.title, /Botflow/);
+    assert.match(describeDerivation("platform_key_opencode").body, /never enter the sandbox/);
+    assert.doesNotMatch(describeDerivation("non_anthropic_model").title, /Botflow/);
+    assert.doesNotMatch(describeDerivation("platform_key_botflow").title, /Botflow/);
   });
 });

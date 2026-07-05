@@ -61,7 +61,7 @@
  *   }
  */
 
-export const OPENCODE_SCRIPTS_VERSION = "4";
+export const OPENCODE_SCRIPTS_VERSION = "5";
 
 export const OPENCODE_BRIDGE_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -116,6 +116,7 @@ const {
   opencodeBin,
   abortPath,
   mcp,
+  provider: providerConfig,
 } = config;
 
 if (!opencodeBin || !model || !model.providerID || !model.modelID) {
@@ -152,8 +153,23 @@ const ocConfig = {
     external_directory: "allow",
   },
   instructions: [appendPromptPath],
+  // Pin the small model (title generation etc.) to the turn's model: its
+  // calls transit the same proxied provider and must be priced/allowlisted.
+  small_model: model.providerID + "/" + model.modelID,
   provider: {
     [model.providerID]: {
+      // Proxied modes route the provider through /api/internal/llm-proxy
+      // with the bfap_ token as the api key; codex-oauth mode has no
+      // providerConfig (auth.json carries the real ChatGPT tokens).
+      ...(providerConfig && providerConfig.baseURL
+        ? {
+            options: {
+              baseURL: providerConfig.baseURL,
+              apiKey: providerConfig.apiKey,
+              ...(providerConfig.headers ? { headers: providerConfig.headers } : {}),
+            },
+          }
+        : {}),
       models: {
         [model.modelID]: {},
       },
