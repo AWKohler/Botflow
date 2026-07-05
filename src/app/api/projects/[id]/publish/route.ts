@@ -10,7 +10,7 @@ import { countUserCfPagesDeployments } from '@/lib/usage';
 import { limitReachedResponse } from '@/lib/plan-response';
 import { refreshAuthSiteUrl } from '@/lib/convex-auth-setup';
 import { enforce, identifierFor } from '@/lib/rate-limit';
-import { getBrandedZoneId, attachBrandedSubdomain, removeBrandedSubdomain } from '@/lib/cloudflare-zones';
+import { getBrandedZoneId, ensureBrandedDeploymentUrl, removeBrandedSubdomain } from '@/lib/cloudflare-zones';
 
 function getCfConfig() {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -256,33 +256,12 @@ export async function POST(
     }
 
     // Step 5: Front the deployment with the white-label branded domain
-    // (<project>.botflow-site.app) instead of the raw .pages.dev host. This is a
-    // plain white-label of Pages and applies to every deployment on every tier —
-    // it is NOT the user-supplied custom-domain perk (that stays tier-gated).
-    //
-    // Attaching the Pages custom domain alone is not enough: Cloudflare does not
-    // auto-create the DNS record, so attachBrandedSubdomain also upserts the proxied
-    // CNAME the hostname needs to resolve and get its cert. .pages.dev remains a
-    // working fallback if any of this fails.
-    let deploymentUrl = `https://${projectName}.pages.dev`;
-    const brandedDomain = process.env.CLOUDFLARE_BRANDED_DOMAIN;
-    if (brandedDomain) {
-      const hostname = `${projectName}.${brandedDomain}`;
-      try {
-        const zoneId = await getBrandedZoneId();
-        if (zoneId) {
-          await attachBrandedSubdomain(projectName, hostname, zoneId);
-          deploymentUrl = `https://${hostname}`;
-        } else {
-          console.warn(
-            `CLOUDFLARE_BRANDED_DOMAIN=${brandedDomain} set but no matching CF zone found; using .pages.dev`,
-          );
-        }
-      } catch (err) {
-        // Non-fatal — fall back to the .pages.dev URL.
-        console.warn('Branded domain attachment error:', err);
-      }
-    }
+    // (<project>.botflow-site.app) instead of the raw .pages.dev host. Applies to
+    // every deployment on every tier — it is NOT the user-supplied custom-domain
+    // perk (that stays tier-gated). Attaching alone isn't enough: CF doesn't
+    // auto-create the DNS record, so the helper also upserts the proxied CNAME.
+    // Non-fatal — .pages.dev remains a working fallback.
+    const deploymentUrl = await ensureBrandedDeploymentUrl(projectName);
 
     // Update DB
     const db = getDb();

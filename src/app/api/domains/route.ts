@@ -6,17 +6,30 @@ import { eq, desc } from 'drizzle-orm';
 import { getUserTierAndLimits } from '@/lib/tier';
 import { createZone } from '@/lib/cloudflare-zones';
 
+/**
+ * The platform's white-label deployment domain (e.g. botflow-site.app) lives in
+ * the same CF account but is infrastructure, not a user domain — it must never
+ * be listable or addable as a managed domain.
+ */
+function isPlatformDomain(apex: string): boolean {
+  const branded = process.env.CLOUDFLARE_BRANDED_DOMAIN?.toLowerCase();
+  if (!branded) return false;
+  const a = apex.toLowerCase();
+  return a === branded || a.endsWith(`.${branded}`);
+}
+
 // GET /api/domains — list user's managed domains
 export async function GET() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const db = getDb();
-  const rows = await db
+  const allRows = await db
     .select()
     .from(userDomains)
     .where(eq(userDomains.userId, userId))
     .orderBy(desc(userDomains.createdAt));
+  const rows = allRows.filter((r) => !isPlatformDomain(r.apexDomain));
 
   const limits = await getUserTierAndLimits(userId);
   return NextResponse.json({
@@ -50,6 +63,9 @@ export async function POST(req: NextRequest) {
     .replace(/^www\./, '');
   if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(apex)) {
     return NextResponse.json({ error: 'Invalid domain name' }, { status: 400 });
+  }
+  if (isPlatformDomain(apex)) {
+    return NextResponse.json({ error: 'This domain is reserved by the platform.' }, { status: 400 });
   }
 
   const db = getDb();

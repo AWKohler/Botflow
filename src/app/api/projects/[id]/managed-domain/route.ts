@@ -10,6 +10,7 @@ import {
   upsertDnsRecord,
   deleteDnsRecord,
   listDnsRecords,
+  ensureBrandedDeploymentUrl,
 } from '@/lib/cloudflare-zones';
 
 async function getProject(userId: string, projectId: string) {
@@ -206,15 +207,20 @@ export async function DELETE(
     if (mirror) await detachOne(domain.cfZoneId, project.cloudflareProjectName, mirror).catch(() => {});
   }
 
+  // Fall back to the white-label branded URL (or .pages.dev when unconfigured).
+  const fallbackUrl = project.cloudflareProjectName
+    ? await ensureBrandedDeploymentUrl(project.cloudflareProjectName)
+    : null;
+
   await db
     .update(projects)
     .set({
       managedDomainId: null,
       managedDomainHostname: null,
-      cloudflareDeploymentUrl: project.cloudflareProjectName ? `https://${project.cloudflareProjectName}.pages.dev` : null,
+      cloudflareDeploymentUrl: fallbackUrl,
       updatedAt: new Date(),
     })
     .where(eq(projects.id, project.id));
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, url: fallbackUrl });
 }
