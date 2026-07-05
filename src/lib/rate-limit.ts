@@ -28,7 +28,7 @@ export type RateLimitBucket =
   | 'read' | 'write' | 'upload' | 'expensive' | 'deploy'
   | 'poll' | 'pollHeavy'
   | 'oauthStart' | 'oauthExchange' | 'oauthPoll'
-  | 'agent' | 'claudeCode' | 'opencode' | 'toolCallback'
+  | 'agent' | 'claudeCode' | 'opencode' | 'toolCallback' | 'llmProxy'
   | 'public' | 'publicHeavy' | 'webhook' | 'global';
 
 export interface RateLimitResult {
@@ -80,6 +80,7 @@ export const RATE_LIMIT_BUCKETS: Record<RateLimitBucket, { tokens: number; windo
   claudeCode:    { tokens: envInt('RL_CLAUDE_CODE', 10),     window: '60 s' }, // /api/agent/claude-code subprocess+sandbox
   opencode:      { tokens: envInt('RL_OPENCODE', 10),        window: '60 s' }, // /api/agent/opencode subprocess+sandbox
   toolCallback:  { tokens: envInt('RL_TOOL_CALLBACK', 90),   window: '60 s' }, // /api/internal/claude-code-tool (fans out per turn)
+  llmProxy:      { tokens: envInt('RL_LLM_PROXY', 120),      window: '60 s' }, // /api/internal/llm-proxy (one call per agent-loop step, all providers; keyed by binding userId)
   public:        { tokens: envInt('RL_PUBLIC', 30),          window: '60 s' }, // unauth IP-keyed gallery/detail, og
   publicHeavy:   { tokens: envInt('RL_PUBLIC_HEAVY', 10),    window: '60 s' }, // public source-bundle download (gunzip+tar)
   webhook:       { tokens: envInt('RL_WEBHOOK', 100),        window: '60 s' }, // coarse IP backstop (default middleware SKIPS webhooks)
