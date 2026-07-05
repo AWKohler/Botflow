@@ -312,11 +312,12 @@ export function SandboxPublishPanel({
     if (!confirm("Detach this domain from the project?")) return;
     const res = await fetch(`/api/projects/${projectId}/managed-domain`, { method: "DELETE" });
     if (res.ok) {
-      const j = await res.json().catch(() => ({}));
+      const j = (await res.json().catch(() => ({}))) as { url?: string | null };
       onManagedDomainChanged(null, null);
-      const fallback = cloudflareProjectName ? `https://${cloudflareProjectName}.pages.dev` : "";
+      // The server decides the fallback URL (white-label branded domain, or
+      // .pages.dev when unconfigured) — don't reconstruct it client-side.
+      const fallback = j.url ?? (cloudflareProjectName ? `https://${cloudflareProjectName}.pages.dev` : "");
       onPublished(cloudflareProjectName ?? "", fallback);
-      void j;
     }
   };
 

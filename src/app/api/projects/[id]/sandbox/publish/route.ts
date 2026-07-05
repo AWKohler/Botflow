@@ -16,6 +16,7 @@ import { countUserCfPagesDeployments } from '@/lib/usage';
 import { reconcilePublicState } from '@/lib/public-bundle';
 import { refreshAuthSiteUrl } from '@/lib/convex-auth-setup';
 import { enforce, identifierFor } from '@/lib/rate-limit';
+import { ensureBrandedDeploymentUrl } from '@/lib/cloudflare-zones';
 
 // SSE endpoint — Vercel Pro plans allow up to 300s. Builds can be slow.
 export const maxDuration = 300;
@@ -323,10 +324,11 @@ export async function POST(
           return;
         }
 
-        // Preserve managed-domain hostname if already attached; otherwise use *.pages.dev
+        // Preserve managed-domain hostname if already attached; otherwise use the
+        // white-label branded domain (falls back to *.pages.dev when unconfigured).
         const deploymentUrl = project.managedDomainHostname
           ? `https://${project.managedDomainHostname}`
-          : `https://${projectName}.pages.dev`;
+          : await ensureBrandedDeploymentUrl(projectName);
 
         await db
           .update(projects)
