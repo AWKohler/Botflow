@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/toast';
 import { X, ExternalLink, AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { UsageTab } from './UsageTab';
-import { ANTHROPIC_OAUTH_ENABLED, CLAUDE_CODE_ENABLED } from '@/lib/feature-flags';
+import { ANTHROPIC_OAUTH_ENABLED } from '@/lib/feature-flags';
 
 interface SettingsModalProps {
   open: boolean;
