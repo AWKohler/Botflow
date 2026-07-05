@@ -173,7 +173,7 @@ Requirement: collaborators spin up their **own** agents concurrently. Rejected a
 Design:
 
 1. **Multiple chat threads per project — private-to-creator for prompting.** Generalize `chat_sessions` → N per project: add `ownerUserId`, `title`, and move active-segment tracking from `projects.currentSegmentId` to the session row. **Only a thread's creator can prompt it** — collaborators never send into each other's threads, so the "prompting a busy shared thread" case cannot arise by construction (a double-send into your *own* busy thread is rejected with a message). Other members get **read-only visibility** of threads for awareness/audit of what changed the shared files *(interpretation to confirm — flip to fully-private threads if preferred)*. Messages carry `userId`. Concurrent turns always run in different threads, so `useChat`/stream state never interleaves.
-2. **Cross-agent awareness.** When a turn spawns while another is live, inject into its system prompt: "Another agent is currently active in this workspace, working on: <thread title / first user message>. Avoid unrelated refactors and re-read files before editing." Cheap and effective; not a guarantee.
+2. **Cross-agent awareness.** When a turn spawns while another is live, inject into its system prompt: "Another agent is currently active in this workspace, working on: `<thread title / first user message>`. Avoid unrelated refactors and re-read files before editing." Cheap and effective; not a guarantee.
 3. **Infra ops stay serialized.** Dev-server restart, package installs, and git operations (`index.lock`) take short per-project Redis locks (existing run-state machinery). File edits interleave; infrastructure does not.
 4. **CC session state per thread.** Claude Code session-resume state becomes keyed per thread (per-thread session ids → separate `~/.claude` session files), so concurrent bridges don't fight over one session.
 5. Idle-sleep/keepalive/resume routes move onto `requireProjectAccess` so any member's interaction resumes the sandbox; visibility-aware polling semantics unchanged.
@@ -286,7 +286,7 @@ Phases 1–2 are prerequisites from §8; conflict safety intentionally lands **w
 
 ## 10. Testing
 
-- **Authz:** every migrated route × {owner, active editor, revoked editor, pending invitee, stranger} — expect exact today-behavior for owner, 404 for non-members; secret-bearing responses filtered for editors.
+- **Authz:** every migrated route × `{owner, active editor, revoked editor, pending invitee, stranger}` — expect exact today-behavior for owner, 404 for non-members; secret-bearing responses filtered for editors.
 - **Invites:** existing-user instant add; pending → webhook claim; webhook-missed → lazy login claim; unverified-email must NOT match; revoke mid-session cuts next request; re-invite after revoke.
 - **CAS:** stale save → 409; force overwrite; save racing an agent write (server re-hash catches it); two tabs same user.
 - **Concurrency:** two threads, two turns, same project — streams don't cross; infra-op lock contention (both agents restart dev server); git `index.lock` never surfaces to users.
