@@ -13,6 +13,7 @@ import { UserButton } from "@clerk/nextjs";
 import { ShareControls } from "@/components/sharing/share-controls";
 import { cn } from "@/lib/utils";
 import { FileSearch } from "./file-search";
+import { SandboxGitHubPanel } from "@/components/sandboxed-web-workspace/github-panel";
 import { SwiftSimulatorPreview } from "./swift-simulator-preview";
 import { SwiftPipWindow } from "./swift-pip-window";
 import { IPhoneDeviceRunner } from "./iphone-device-runner";
@@ -49,6 +50,9 @@ type ProjectRow = {
   revenuecatStatus?: string;
   swiftScreenshotIphoneUrl?: string | null;
   swiftScreenshotIpadUrl?: string | null;
+  githubRepoOwner?: string | null;
+  githubRepoName?: string | null;
+  githubDefaultBranch?: string | null;
 };
 
 interface PersistentWorkspaceProps {
@@ -72,7 +76,7 @@ export function PersistentWorkspace({
   const [fileContent, setFileContent] = useState<string>("");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [sidebarTab, setSidebarTab] = useState<"files" | "search" | "env">("files");
+  const [sidebarTab, setSidebarTab] = useState<"files" | "search" | "env" | "git">("files");
   const [currentView, setCurrentView] = useState<WorkspaceView>("code");
   // When a build-error row is clicked, we open the file and ask the editor to
   // reveal a specific line. The counter is bumped on every click so that
@@ -554,10 +558,11 @@ export function PersistentWorkspace({
                           { value: "files", text: "Files" },
                           { value: "search", text: "Search" },
                           { value: "env", text: "ENV" },
-                        ] as TabOption<"files" | "search" | "env">[]
+                          { value: "git", text: "Git" },
+                        ] as TabOption<"files" | "search" | "env" | "git">[]
                       }
                       selected={sidebarTab}
-                      onSelect={(v) => setSidebarTab(v as "files" | "search" | "env")}
+                      onSelect={(v) => setSidebarTab(v as "files" | "search" | "env" | "git")}
                       stretch
                     />
                   </div>
@@ -583,8 +588,39 @@ export function PersistentWorkspace({
                           handleFileSelect(path);
                         }}
                       />
-                    ) : (
+                    ) : sidebarTab === "env" ? (
                       <EnvPanel projectId={projectId} />
+                    ) : (
+                      <SandboxGitHubPanel
+                        projectId={projectId}
+                        githubRepoOwner={project?.githubRepoOwner ?? null}
+                        githubRepoName={project?.githubRepoName ?? null}
+                        githubDefaultBranch={project?.githubDefaultBranch ?? null}
+                        onRepoLinked={(owner, name, branch) => {
+                          setProject((p) =>
+                            p
+                              ? {
+                                  ...p,
+                                  githubRepoOwner: owner,
+                                  githubRepoName: name,
+                                  githubDefaultBranch: branch,
+                                }
+                              : p,
+                          );
+                        }}
+                        onRepoUnlinked={() => {
+                          setProject((p) =>
+                            p
+                              ? {
+                                  ...p,
+                                  githubRepoOwner: null,
+                                  githubRepoName: null,
+                                  githubDefaultBranch: null,
+                                }
+                              : p,
+                          );
+                        }}
+                      />
                     )}
                   </div>
                 </div>

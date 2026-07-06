@@ -521,6 +521,21 @@ export function selectHostTools(input: SelectHostToolsInput): string[] {
       // frontend language; setup_auth is platform-aware in the host route).
       customTools.push("convex_deploy", "get_convex_logs", "setup_auth");
     }
+    // Git tools — same surface as sandboxed-web. The host route executes them
+    // via sandbox-git against the persistent sandbox, which is platform-
+    // agnostic, and re-checks project.githubRepoOwner at execution time.
+    if (hasGithub) {
+      customTools.push(
+        "git_status",
+        "git_diff",
+        "git_commit",
+        "git_push",
+        "git_pull",
+        "git_resolve_conflict",
+        "set_git_autonomy",
+        "open_pull_request",
+      );
+    }
   }
   return customTools;
 }

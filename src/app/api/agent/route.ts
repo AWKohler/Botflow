@@ -12,7 +12,7 @@ import { SYSTEM_PROMPT_MOBILE, SYSTEM_PROMPT_MULTIPLATFORM, buildSwiftSystemProm
 import { isSandboxPlatform } from "@/lib/project-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { getPersistentTools } from "@/lib/agent/persistent-tools";
-import { getSandboxedWebTools } from "@/lib/agent/sandboxed-web-tools";
+import { getGitTools, getSandboxedWebTools } from "@/lib/agent/sandboxed-web-tools";
 import { MODEL_CONFIGS, resolveModelId, isModelDisabled, modelDisabledReason, type ModelId } from "@/lib/agent/models";
 import { agentLog, generateRequestId, setRequestId } from "@/lib/agent/logger";
 import { classifyError, formatErrorResponse } from "@/lib/agent/errors";
@@ -599,7 +599,7 @@ export async function POST(req: Request) {
 
     // Sandbox platforms: tools execute server-side against the user's Vercel
     // sandbox. Client never sees onToolCall — keeps platform creds off-browser.
-    let tools: ReturnType<typeof getTools> | ReturnType<typeof getPersistentTools> | ReturnType<typeof getSandboxedWebTools>;
+    let tools: ReturnType<typeof getTools> | ReturnType<typeof getPersistentTools> | ReturnType<typeof getSandboxedWebTools> | (ReturnType<typeof getPersistentTools> & ReturnType<typeof getGitTools>);
     if (platform === "sandboxed-web" && projectId) {
       // Forward Cookie so the internal /api/projects/:id/convex/deploy call
       // sees the same Clerk session.
@@ -620,12 +620,26 @@ export async function POST(req: Request) {
       // Convex deploy/logs when the project has a backend. Forward Cookie so the
       // internal /api/projects/:id/convex/deploy call sees the same Clerk session.
       const cookie = req.headers.get("cookie") ?? "";
-      tools = getPersistentTools(projectId, {
+      const persistentTools = getPersistentTools(projectId, {
         hasBackend,
         appBaseUrl: new URL(req.url).origin,
         ...(platform ? { platform } : {}),
         ...(cookie ? { authHeaders: { cookie } } : {}),
       });
+      // Same git tool surface as sandboxed-web — the sandbox has a real .git
+      // once a repo is linked, and sandbox-git is platform-agnostic.
+      tools = githubLink
+        ? {
+            ...persistentTools,
+            ...getGitTools({
+              projectId,
+              ownerName: { owner: githubLink.owner, name: githubLink.name },
+              branch: githubLink.branch,
+              userId,
+              autonomy: githubLink.autonomy,
+            }),
+          }
+        : persistentTools;
     } else {
       tools = getTools({ hasBackend });
     }

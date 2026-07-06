@@ -316,8 +316,10 @@ function getImageGenTools(projectId: string, userId: string) {
 
 /**
  * Git tools — only registered when the project has a GitHub repository
- * linked. Caller (getSandboxedWebTools) checks `proj.githubRepoOwner` and
- * passes the resolved metadata so the tools don't have to re-query per call.
+ * linked. Callers (getSandboxedWebTools, and the agent route for swift
+ * projects) check `proj.githubRepoOwner` and pass the resolved metadata so
+ * the tools don't have to re-query per call. Everything here operates on the
+ * persistent sandbox via sandbox-git, so it is platform-agnostic.
  *
  * The autonomy-mode hint in each tool's description is what tells the agent
  * "commit yourself" vs. "wait for the user." The descriptions are static —
@@ -325,7 +327,7 @@ function getImageGenTools(projectId: string, userId: string) {
  * content; the autonomy hint here is part of the per-request tool list so
  * caching of the system prompt is preserved.
  */
-function getGitTools(opts: {
+export function getGitTools(opts: {
   projectId: string;
   ownerName: { owner: string; name: string };
   branch: string;

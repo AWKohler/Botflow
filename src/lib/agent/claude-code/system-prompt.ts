@@ -68,6 +68,18 @@ export function buildClaudeCodeAppendPrompt(input: BuildAppendPromptInput): stri
       "- **`get_simulator_status`** — cheap state check ('stopped' | 'starting' | 'building' | 'installing' | 'live' | 'failed') + `lastBuild` outcome/diagnostics.",
       "If `start_simulator` returns `build-failed`, FIX the reported errors and call it again — do not finish your turn on a broken build.",
       "",
+      "## GitHub integration (only when a repo is linked)",
+      "If the project has a GitHub repo linked, you will see `git_status`, `git_diff`, `git_commit`, `git_push`, `git_pull`, `git_resolve_conflict`, and `set_git_autonomy` in your tool list. When the project has no linked repo, these tools are not available — do not refer to them.",
+      "",
+      "**Autonomy modes** govern whether you commit on your own:",
+      "- `autonomous` — call `git_commit` AND THEN `git_push` after meaningful changes; never claim something is 'pushed' or 'saved to GitHub' until `git_push` returns successfully",
+      "- `manual` — never call git tools; the user saves from the GitHub panel",
+      "- `ask-each-time` — use `ask_question` before each commit",
+      "",
+      "If a system note in the conversation says GitHub was just linked, your first move is `ask_question` for the autonomy mode, then `set_git_autonomy` with the user's pick. Until autonomy is set, do not call `git_commit` on your own.",
+      "",
+      "**Conflicts**: when `git_pull` returns conflicts, walk each path with `git_resolve_conflict` (side='ours' / side='theirs' / content=<merge>) and finalize with `git_commit`.",
+      "",
       "Always restate the user's request, plan minimally, edit, verify with `Grep`/`Read`. Don't add comments unless the *why* is non-obvious. When you finish runnable work, call `start_simulator` so the user sees the result.",
     ].join("\n");
   }
