@@ -64,6 +64,7 @@ import {
   markTurnDead,
 } from "@/lib/agent/claude-code/turn-registry";
 import { enforce, identifierFor } from "@/lib/rate-limit";
+import { sharedTurnBlockReason } from "@/lib/sharing";
 import {
   fallbackResponse as fallback,
   jsonError,
@@ -136,6 +137,13 @@ export async function POST(req: Request) {
   // sandbox tools — and can't mint the tool token the internal tool route trusts.
   if (await swiftRuntimeForbidden(project.platform, userId)) {
     return jsonError(403, "Swift projects are currently in private beta.");
+  }
+
+  // Sharing (Phase 3): one live agent per project across ALL collaborators —
+  // never kill another user's bridge; tell this user to wait instead.
+  const sharedBlock = await sharedTurnBlockReason(projectId, userId);
+  if (sharedBlock) {
+    return jsonError(409, sharedBlock);
   }
 
   const selectedModel = resolveModelId(project.model);
@@ -372,6 +380,7 @@ export async function POST(req: Request) {
   // spawn (or the stop route) kills the bridge + revokes the token.
   await setTurnRecord(projectId, {
     turnId,
+    userId,
     backend: "claude-code",
     eventFile,
     startedAt: Date.now(),

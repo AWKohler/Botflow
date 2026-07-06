@@ -81,7 +81,7 @@ export async function POST(
   };
   const makePublic = publishBody.public === true;
   const publicDescription = typeof publishBody.description === 'string' ? publishBody.description : null;
-  const access = await requireProjectAccess(projectId, userId);
+  const access = await requireProjectAccess(projectId, userId, "owner");
   if (!access) return new Response('Not found', { status: 404 });
   const { project } = access;
   if (project.platform !== 'sandboxed-web') {

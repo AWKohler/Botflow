@@ -52,7 +52,7 @@ function computeHash(base64Content: string, filename: string): string {
 }
 
 async function getProjectWithAuth(userId: string, projectId: string) {
-  const access = await requireProjectAccess(projectId, userId);
+  const access = await requireProjectAccess(projectId, userId, "owner");
   return access?.project ?? null;
 }
 

@@ -6,6 +6,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { z } from "zod";
 import { requireProjectAccess } from "@/lib/project-access";
+import { sharedTurnBlockReason } from "@/lib/sharing";
 import { auth } from "@clerk/nextjs/server";
 
 import { SYSTEM_PROMPT_MOBILE, SYSTEM_PROMPT_MULTIPLATFORM, buildSwiftSystemPrompt, buildSandboxedWebSystemPrompt, buildWebSystemPrompt } from "@/lib/agent/prompts";
@@ -540,6 +541,15 @@ export async function POST(req: Request) {
       // Swift's runtime is beta-only. Gate on the STORED platform so a non-beta
       // owner of a legacy swift project can't drive the native agent's sandbox
       // tools against the swift sandbox.
+      // Sharing (Phase 3): one live in-sandbox agent per project across ALL
+      // collaborators (CC/OpenCode turns register; this route only checks).
+      const sharedBlock = await sharedTurnBlockReason(projectId, userId);
+      if (sharedBlock) {
+        return new Response(JSON.stringify({ error: sharedBlock }), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (await swiftRuntimeForbidden(proj.platform, userId)) {
         return new Response(
           JSON.stringify({ error: "Swift projects are currently in private beta." }),
@@ -622,6 +632,7 @@ export async function POST(req: Request) {
       const cookie = req.headers.get("cookie") ?? "";
       const persistentTools = getPersistentTools(projectId, {
         hasBackend,
+        actingUserId: userId,
         appBaseUrl: new URL(req.url).origin,
         ...(platform ? { platform } : {}),
         ...(cookie ? { authHeaders: { cookie } } : {}),

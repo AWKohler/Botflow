@@ -17,7 +17,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const db = getDb();
-    const access = await requireProjectAccess(id, userId);
+    const access = await requireProjectAccess(id, userId, "owner");
     if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const creds = await getUserCredentials(userId);
@@ -59,7 +59,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const db = getDb();
-    const access = await requireProjectAccess(id, userId);
+    const access = await requireProjectAccess(id, userId, "owner");
     if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const [updated] = await db

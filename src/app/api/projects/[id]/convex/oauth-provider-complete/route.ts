@@ -52,7 +52,7 @@ export async function POST(
     const db = getDb();
 
     // Ownership check
-    const access = await requireProjectAccess(projectId, userId);
+    const access = await requireProjectAccess(projectId, userId, "owner");
 
     if (!access) {
       return NextResponse.json({ ok: false, error: "Project not found." }, { status: 404 });

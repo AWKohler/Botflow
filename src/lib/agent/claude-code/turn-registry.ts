@@ -27,6 +27,10 @@ const TTL_SECONDS = 60 * 60 * 6;
 
 export interface ClaudeCodeTurnRecord {
   turnId: string;
+  /** Clerk id of the user whose prompt spawned this turn. Under sharing, the
+   *  shared-turn guard uses this to refuse spawns that would kill ANOTHER
+   *  collaborator's live bridge (src/lib/sharing.ts). Absent on old records. */
+  userId?: string;
   /** Which in-sandbox agent ran this turn. Reattach picks the matching
    *  translator. Absent on records written before OpenCode existed —
    *  treat as "claude-code". */

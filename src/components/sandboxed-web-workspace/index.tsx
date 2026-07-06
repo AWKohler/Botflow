@@ -99,6 +99,12 @@ export function SandboxedWebWorkspace({
   const [files, setFiles] = useState<Record<string, FileEntry>>({});
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
+  // CAS base for the open file (plan §6.1) + conflict flag when a save 409s.
+  const [fileBaseHash, setFileBaseHash] = useState<string | null>(null);
+  const [saveConflict, setSaveConflict] = useState(false);
+  // Set after the handlers exist; the tree-signature poll (declared earlier)
+  // calls through it to silently reload a CLEAN buffer on remote change (§6.2).
+  const autoReloadCleanBufferRef = useRef<() => void>(() => {});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [imageBlobUrl, setImageBlobUrl] = useState<string | null>(null);
   const [imageByteLength, setImageByteLength] = useState<number | undefined>(undefined);
@@ -286,6 +292,7 @@ export function SandboxedWebWorkspace({
     } else if (signature !== lastTreeSignatureRef.current) {
       lastTreeSignatureRef.current = signature;
       await refreshFiles();
+      autoReloadCleanBufferRef.current();
     }
   }, 3000, sandboxStatus === "ready");
 
@@ -357,7 +364,7 @@ export function SandboxedWebWorkspace({
             toast({ title: "Failed to read image", description: await res.text() });
             return;
           }
-          const data = (await res.json()) as { content: string; binary: boolean };
+          const data = (await res.json()) as { content: string; binary: boolean; hash?: string };
           if (!data.binary) return;
           const bytes = Uint8Array.from(atob(data.content), (c) => c.charCodeAt(0));
           const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
@@ -380,7 +387,7 @@ export function SandboxedWebWorkspace({
           toast({ title: "Failed to read file", description: await res.text() });
           return;
         }
-        const data = (await res.json()) as { content: string; binary: boolean };
+        const data = (await res.json()) as { content: string; binary: boolean; hash?: string };
         if (data.binary) {
           toast({ title: "Binary file", description: "Binary files cannot be edited here." });
           return;
@@ -391,6 +398,8 @@ export function SandboxedWebWorkspace({
         }
         setSelectedFile(filePath);
         setFileContent(data.content);
+        setFileBaseHash(data.hash ?? null);
+        setSaveConflict(false);
         setHasUnsavedChanges(false);
       } catch (e) {
         console.error("Failed to read file:", e);
@@ -404,15 +413,35 @@ export function SandboxedWebWorkspace({
     setHasUnsavedChanges(true);
   }, []);
 
-  const handleSaveFile = useCallback(async () => {
+  const handleSaveFile = useCallback(async (force?: boolean) => {
     if (!selectedFile) return;
+    // Guard against event objects when used directly as a handler.
+    const forceWrite = force === true;
     try {
       const res = await fetch(`/api/projects/${projectId}/sandbox/files`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: selectedFile, content: fileContent }),
+        body: JSON.stringify({
+          path: selectedFile,
+          content: fileContent,
+          // CAS (plan §6.1): reject the save if the file moved underneath us.
+          ...(fileBaseHash && !forceWrite ? { baseHash: fileBaseHash } : {}),
+          ...(forceWrite ? { force: true } : {}),
+        }),
       });
+      if (res.status === 409) {
+        setSaveConflict(true);
+        toast({
+          title: "File changed on disk",
+          description:
+            "Someone — or an agent — modified this file since you opened it. Reload to see their version, or Overwrite to keep yours.",
+        });
+        return;
+      }
       if (!res.ok) throw new Error(await res.text());
+      const data = (await res.json().catch(() => ({}))) as { hash?: string };
+      if (data.hash) setFileBaseHash(data.hash);
+      setSaveConflict(false);
       setHasUnsavedChanges(false);
     } catch (err) {
       toast({
@@ -420,7 +449,17 @@ export function SandboxedWebWorkspace({
         description: err instanceof Error ? err.message : "Unknown error",
       });
     }
-  }, [projectId, selectedFile, fileContent, toast]);
+  }, [projectId, selectedFile, fileContent, fileBaseHash, toast]);
+
+  // Silent reload of a CLEAN buffer when the tree-signature poll sees remote
+  // changes (§6.2). Never touches a dirty buffer or an unresolved conflict.
+  useEffect(() => {
+    autoReloadCleanBufferRef.current = () => {
+      if (selectedFile && !hasUnsavedChanges && !saveConflict) {
+        void handleFileSelect(selectedFile);
+      }
+    };
+  }, [selectedFile, hasUnsavedChanges, saveConflict, handleFileSelect]);
 
   // Cmd/Ctrl+S to save
   useEffect(() => {
@@ -1146,15 +1185,26 @@ export function SandboxedWebWorkspace({
                   />
                 )}
               </span>
+              {saveConflict && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => selectedFile && void handleFileSelect(selectedFile)}
+                  className="text-amber-600 hover:text-amber-700 bolt-hover"
+                  title="Discard your buffer and load the file's current content"
+                >
+                  Reload
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleSaveFile}
-                className="text-muted hover:text-fg bolt-hover"
-                title="Save file"
+                onClick={() => void handleSaveFile(saveConflict)}
+                className={cn("bolt-hover", saveConflict ? "text-amber-600 hover:text-amber-700" : "text-muted hover:text-fg")}
+                title={saveConflict ? "Write your buffer over the changed file" : "Save file"}
               >
                 <Save size={16} />
-                <span className="ml-1">Save</span>
+                <span className="ml-1">{saveConflict ? "Overwrite" : "Save"}</span>
               </Button>
             </div>
           )}

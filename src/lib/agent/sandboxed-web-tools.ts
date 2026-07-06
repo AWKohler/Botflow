@@ -625,7 +625,7 @@ export function getSandboxedWebTools(params: {
   };
 }) {
   const { projectId, userId, hasBackend, appBaseUrl, authHeaders, github } = params;
-  const baseTools = getPersistentTools(projectId);
+  const baseTools = getPersistentTools(projectId, { actingUserId: userId });
   const workspaceTools = getWorkspaceControlTools(projectId);
   const imageGenTools = getImageGenTools(projectId, userId);
   const gitTools = github

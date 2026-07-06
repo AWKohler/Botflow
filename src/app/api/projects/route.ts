@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/db';
-import { projects } from '@/db/schema';
-import { desc, eq, isNull, and } from 'drizzle-orm';
+import { projects, projectMembers } from '@/db/schema';
+import { desc, eq, isNull, and, inArray } from 'drizzle-orm';
+import { SHARING_ENABLED } from '@/lib/feature-flags';
+import { sanitizeProjectForRole } from '@/lib/project-access';
+import { claimPendingInvites, verifiedEmailsForUser } from '@/lib/sharing';
 import { auth } from '@clerk/nextjs/server';
 import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
 import { countUserProjects } from '@/lib/usage';
@@ -20,7 +23,37 @@ export async function GET() {
       .from(projects)
       .where(and(eq(projects.userId, userId), isNull(projects.deletedAt)))
       .orderBy(desc(projects.lastOpened), desc(projects.createdAt));
-    return NextResponse.json(allProjects);
+
+    if (!SHARING_ENABLED) return NextResponse.json(allProjects);
+
+    // Lazy invite claim — fallback for a missed user.created webhook. Cheap
+    // when there's nothing pending for this user's emails.
+    try {
+      const emails = await verifiedEmailsForUser(userId);
+      await claimPendingInvites(userId, emails);
+    } catch {
+      // Best-effort; the webhook is the primary claim path.
+    }
+
+    // "Shared with me": projects where this user is an ACTIVE member. Secret
+    // fields are stripped (editor role); `shared: true` lets the projects page
+    // badge them.
+    const memberships = await db
+      .select({ projectId: projectMembers.projectId })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.userId, userId), eq(projectMembers.status, 'active')));
+    if (memberships.length === 0) return NextResponse.json(allProjects);
+
+    const shared = await db
+      .select()
+      .from(projects)
+      .where(and(inArray(projects.id, memberships.map((m) => m.projectId)), isNull(projects.deletedAt)))
+      .orderBy(desc(projects.lastOpened));
+    const sharedSanitized = shared.map((p) => ({
+      ...sanitizeProjectForRole(p, 'editor'),
+      shared: true,
+    }));
+    return NextResponse.json([...allProjects, ...sharedSanitized]);
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: 'Failed to fetch projects' }, { status: 500 });

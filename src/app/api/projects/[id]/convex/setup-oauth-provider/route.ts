@@ -39,7 +39,7 @@ export async function DELETE(
     const db = getDb();
 
     // Lightweight ownership check
-    const access = await requireProjectAccess(projectId, userId);
+    const access = await requireProjectAccess(projectId, userId, "owner");
 
     if (!access) {
       return NextResponse.json({ ok: false, error: "Project not found." }, { status: 404 });
@@ -95,7 +95,7 @@ export async function POST(
     }
 
     const db = getDb();
-    const access = await requireProjectAccess(projectId, userId);
+    const access = await requireProjectAccess(projectId, userId, "owner");
 
     if (!access) {
       return NextResponse.json({ ok: false, error: "Project not found." }, { status: 404 });

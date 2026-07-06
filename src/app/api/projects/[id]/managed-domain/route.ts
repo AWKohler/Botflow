@@ -15,7 +15,7 @@ import {
 } from '@/lib/cloudflare-zones';
 
 async function getProject(userId: string, projectId: string) {
-  const access = await requireProjectAccess(projectId, userId);
+  const access = await requireProjectAccess(projectId, userId, "owner");
   return access?.project ?? null;
 }
 
