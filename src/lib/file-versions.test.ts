@@ -15,6 +15,8 @@ describe("sha256Hex", () => {
   });
 
   test("unicode hashes by utf-8 bytes, not code units", () => {
+    // NFC (composed) vs NFD (combining accent): same rendered text,
+    // different bytes — CAS must treat them as different content.
     assert.notEqual(sha256Hex("café"), sha256Hex("café"));
   });
 });
