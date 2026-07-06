@@ -59,7 +59,7 @@ export async function POST(
   const mode: StripeMode = body.mode === 'live' ? 'live' : 'test';
 
   const db = getDb();
-  const access = await requireProjectAccess(projectId, userId);
+  const access = await requireProjectAccess(projectId, userId, "owner");
   if (!access) {
     return NextResponse.json({ ok: false, error: 'Project not found' }, { status: 404 });
   }

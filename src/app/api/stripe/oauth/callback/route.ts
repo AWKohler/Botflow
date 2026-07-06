@@ -135,7 +135,7 @@ export async function GET(req: NextRequest) {
 
   // Re-verify the project still belongs to this user (could have been deleted
   // or transferred while the popup was open).
-  const access = await requireProjectAccess(stateRow.projectId, userId);
+  const access = await requireProjectAccess(stateRow.projectId, userId, "owner");
   if (!access) {
     return workspaceRedirect(url.origin, stateRow.projectId, {
       stripe_connect: 'error',

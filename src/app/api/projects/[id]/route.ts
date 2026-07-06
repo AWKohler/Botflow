@@ -3,7 +3,7 @@ import { getDb } from '@/db';
 import { projects, chatImages, projectAssets } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
-import { requireProjectAccess } from '@/lib/project-access';
+import { requireProjectAccess, sanitizeProjectForRole } from '@/lib/project-access';
 import { deleteConvexBackend } from '@/lib/convex-platform';
 import { isModelDisabled, modelDisabledReason } from '@/lib/agent/models';
 import { UTApi } from 'uploadthing/server';
@@ -17,7 +17,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const access = await requireProjectAccess(resolvedParams.id, userId);
     if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    return NextResponse.json(access.project);
+    // Editors never receive secret-bearing fields (deploy keys, webhook secrets).
+    return NextResponse.json(sanitizeProjectForRole(access.project, access.role));
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: 'Failed to fetch project' }, { status: 500 });
@@ -103,7 +104,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const db = getDb();
-    const access = await requireProjectAccess(resolvedParams.id, userId);
+    const access = await requireProjectAccess(resolvedParams.id, userId, 'owner');
     if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const proj = access.project;
 

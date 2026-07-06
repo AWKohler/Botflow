@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const access = await requireProjectAccess(projectId, userId);
+  const access = await requireProjectAccess(projectId, userId, "owner");
   if (!access) {
     return NextResponse.json({ ok: false, error: 'Project not found' }, { status: 404 });
   }

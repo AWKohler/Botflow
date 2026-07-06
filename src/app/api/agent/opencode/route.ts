@@ -23,6 +23,7 @@ import {
 } from "ai";
 
 import { requireProjectAccess } from "@/lib/project-access";
+import { sharedTurnBlockReason } from "@/lib/sharing";
 import { getUserCredentials, setUserCredentials } from "@/lib/user-credentials";
 import { getFreshCodexAccessToken } from "@/lib/codex-oauth";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
@@ -155,6 +156,13 @@ export async function POST(req: Request) {
   // route's rationale: this also protects the tool-token mint below).
   if (await swiftRuntimeForbidden(project.platform, userId)) {
     return jsonError(403, "Swift projects are currently in private beta.");
+  }
+
+  // Sharing (Phase 3): one live agent per project across ALL collaborators —
+  // never kill another user's bridge; tell this user to wait instead.
+  const sharedBlock = await sharedTurnBlockReason(projectId, userId);
+  if (sharedBlock) {
+    return jsonError(409, sharedBlock);
   }
 
   const selectedModel = resolveModelId(project.model);
@@ -463,6 +471,7 @@ export async function POST(req: Request) {
   // whose SIGTERM the bridge answers by aborting the opencode session.
   await setTurnRecord(projectId, {
     turnId,
+    userId,
     backend: "opencode",
     eventFile,
     startedAt: Date.now(),
