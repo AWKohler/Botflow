@@ -190,6 +190,28 @@ export const projectMembers = pgTable('project_members', {
 export type ProjectMember = typeof projectMembers.$inferSelect;
 export type NewProjectMember = typeof projectMembers.$inferInsert;
 
+// Per-file version history for INSTRUMENTED writes (editor saves + Botflow
+// agent write tools) — the conflict-safety backstop (plan §6.5). In-sandbox
+// writes (CC/OpenCode/terminal/build) are not captured; restore UIs must say
+// "instrumented writes only". Hash-deduped; capped per file in code.
+export const projectFileVersions = pgTable('project_file_versions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  path: text('path').notNull(),
+  content: text('content').notNull(),
+  hash: text('hash').notNull(), // sha256 hex of content
+  size: integer('size').notNull(),
+  actorType: text('actor_type').notNull(), // 'user' | 'agent' | 'system'
+  actorUserId: text('actor_user_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  projectPathCreatedIdx: index('project_file_versions_project_path_created_idx')
+    .on(t.projectId, t.path, t.createdAt),
+}));
+
+export type ProjectFileVersion = typeof projectFileVersions.$inferSelect;
+export type NewProjectFileVersion = typeof projectFileVersions.$inferInsert;
+
 // Project stars — join table for public project stars
 export const projectStars = pgTable('project_stars', {
   id: uuid('id').primaryKey().defaultRandom(),

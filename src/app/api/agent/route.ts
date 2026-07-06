@@ -632,6 +632,7 @@ export async function POST(req: Request) {
       const cookie = req.headers.get("cookie") ?? "";
       tools = getPersistentTools(projectId, {
         hasBackend,
+        actingUserId: userId,
         appBaseUrl: new URL(req.url).origin,
         ...(platform ? { platform } : {}),
         ...(cookie ? { authHeaders: { cookie } } : {}),
