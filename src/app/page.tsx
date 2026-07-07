@@ -1529,6 +1529,10 @@ export default function LandingV2() {
       params.set('backendType', 'none');
     } else if (convexBackendType === 'user' || params.get('backendType') === 'user') {
       params.set('backendType', 'user');
+    } else if (convexBackendType === 'platform') {
+      // Explicitly transmit the managed choice; otherwise /start falls back to
+      // the sticky saved preference (often 'none') and provisions no backend.
+      params.set('backendType', 'platform');
     }
     if (pendingImages.length > 0) {
       try {
