@@ -268,7 +268,17 @@ export async function GET(request: Request) {
       }
 
       if (!allowed) {
-        if (!supportsNoBackend || seedSlug) {
+        // Did the user EXPLICITLY ask for managed Convex — either by picking it
+        // this session (?backendType=platform) or via their sticky preference —
+        // vs. platform merely being the resolution default? When it was explicit
+        // we must surface the limit, not silently hand them a no-backend project
+        // (the bug: over-cap users selected "Managed" and got no backend, no
+        // error). We only fall back to 'none' when the user never asked for a
+        // backend AND the platform has a no-backend template.
+        const explicitlyRequestedPlatform =
+          backendTypeParam === 'platform' ||
+          creds.convexBackendPreference === 'platform';
+        if (!supportsNoBackend || seedSlug || explicitlyRequestedPlatform) {
           const errUrl = new URL('/', request.url);
           errUrl.searchParams.set(
             'error',

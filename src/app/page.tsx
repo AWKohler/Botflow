@@ -1683,6 +1683,8 @@ export default function LandingV2() {
         convex_not_connected: { title: 'Convex not connected', description: 'Please connect your Convex account before creating a BYOC project.' },
         convex_provision_failed: { title: 'Convex provisioning failed', description: 'Failed to create a Convex backend in your account. Please try again or check your Convex dashboard.' },
         convex_quota: { title: 'Convex project limit reached', description: 'Your Convex account has reached its project quota. Delete unused projects at dashboard.convex.dev or upgrade your Convex plan.' },
+        convex_limit_reached: { title: 'Managed Convex limit reached', description: "You've reached your plan's managed Convex project limit. Delete an existing project to free a slot, then try again." },
+        convex_requires_pro: { title: 'Managed Convex requires Pro or Max', description: 'Upgrade to Pro or Max to create projects with a Botflow-managed Convex backend, or choose "No Backend".' },
         swift_requires_pro: { title: 'Swift requires Pro or Max', description: 'Upgrade to Pro or Max to create native Swift projects.' },
       };
       const errMsg = errorMessages[errorParam] ?? { title: 'Error', description: 'Something went wrong creating your project.' };
