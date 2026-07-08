@@ -291,6 +291,7 @@ export async function startSandboxDevServer(
     const probeOnce = async (): Promise<{
       status: number;
       headers?: Record<string, string>;
+      body?: string;
     }> => {
       if (!previewUrl.startsWith("https://")) {
         const res = await sandbox.runCommand({
@@ -312,15 +313,34 @@ export async function startSandboxDevServer(
       });
       const headers: Record<string, string> = {};
       probe.headers.forEach((v, k) => { headers[k] = v; });
-      return { status: probe.status, headers };
+      // Capture a snippet of error bodies so the loop can tell the preview
+      // router's own 403 apart from the user's app returning 403.
+      const body =
+        probe.status >= 400 ? (await probe.text().catch(() => "")).slice(0, 256) : undefined;
+      return { status: probe.status, headers, body };
     };
 
     const deadline = Date.now() + 45_000;
     let lastStatus = 0;
     while (Date.now() < deadline) {
       try {
-        const { status, headers } = await probeOnce();
+        const { status, headers, body } = await probeOnce();
         lastStatus = status;
+        // The sandbox-host preview router's own 403 means our token was
+        // missing or didn't verify — retrying can't fix that, and treating it
+        // as "up" would publish a preview the user can't render. Fail loudly
+        // with the actual misconfiguration.
+        if (status === 403 && body?.includes("preview access denied")) {
+          return {
+            ok: false,
+            message:
+              "The preview router rejected this deployment's token. " +
+              (previewUrl.includes("_bft=")
+                ? "PREVIEW_SIGNING_SECRET does not match the sandbox-host previewSigningSecret."
+                : "The host requires signed preview tokens but PREVIEW_SIGNING_SECRET is not set in this environment."),
+            previewUrl,
+          };
+        }
         if (status < 500) {
           // Publish to Redis so the workspace's poll picks up the running
           // state without needing client-side coordination. This is what
