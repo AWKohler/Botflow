@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
-import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
+import { getOrCreatePersistentSandbox, SandboxAtCapacityError, SandboxRateLimitError } from "@/lib/vercel-sandbox";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
@@ -12,6 +12,28 @@ export const dynamic = "force-dynamic";
 // Cold-start sandbox creation (with ports declared) can take ~30-90s; the
 // previous 60s cap occasionally tripped right at the finish line.
 export const maxDuration = 180;
+
+// Map sandbox-acquire failures to responses. Capacity / rate-limit become a
+// clean 503 (with Retry-After) carrying a user-facing message so the workspace
+// toast reads sensibly instead of showing raw JSON or a 15s-hung 500.
+function sandboxErrorResponse(error: unknown, fallback: string): NextResponse {
+  if (error instanceof SandboxAtCapacityError) {
+    return NextResponse.json(
+      { error: "We're temporarily at capacity for free-tier workspaces. Please try again in a few minutes." },
+      { status: 503, headers: { "Retry-After": "60" } },
+    );
+  }
+  if (error instanceof SandboxRateLimitError) {
+    return NextResponse.json(
+      { error: "The sandbox service is busy. Please try again shortly." },
+      { status: 503, headers: { "Retry-After": String(error.retryAfterSecs) } },
+    );
+  }
+  return NextResponse.json(
+    { error: error instanceof Error ? error.message : fallback },
+    { status: 500 },
+  );
+}
 
 async function getAuthorizedProject(projectId: string, userId: string) {
   const db = getDb();
@@ -48,10 +70,7 @@ export async function GET(
       runtime: sandbox.runtime,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to get sandbox" },
-      { status: 500 },
-    );
+    return sandboxErrorResponse(error, "Failed to get sandbox");
   }
 }
 
@@ -79,9 +98,6 @@ export async function POST(
       runtime: sandbox.runtime,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to start sandbox" },
-      { status: 500 },
-    );
+    return sandboxErrorResponse(error, "Failed to start sandbox");
   }
 }

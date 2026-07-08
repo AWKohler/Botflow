@@ -118,6 +118,19 @@ export class SandboxRateLimitError extends Error {
   }
 }
 
+// The backend is at its concurrent-session ceiling (sandbox-host returns 429
+// `concurrency_limit` when running VMs >= the token's maxSessions). Distinct
+// from SandboxRateLimitError: retrying in-request is pointless — capacity
+// won't free within the request — so we throw this immediately and let the
+// caller surface a clean "try again shortly" instead of hanging on retries.
+export class SandboxAtCapacityError extends Error {
+  constructor(cause?: unknown) {
+    super("Sandbox host is at capacity (concurrent session limit reached)");
+    this.name = "SandboxAtCapacityError";
+    if (cause !== undefined) (this as { cause?: unknown }).cause = cause;
+  }
+}
+
 // Each SDK throws its own APIError class (the host SDK is a fork, not a
 // subclass), so a provider-agnostic probe keeps the retry/404 logic below
 // identical for both backends.
@@ -128,6 +141,16 @@ function apiErrorResponse(err: unknown): Response | undefined {
 
 function apiErrorStatus(err: unknown): number | undefined {
   return apiErrorResponse(err)?.status;
+}
+
+// True for a 429 whose structured body is sandbox-host's concurrency ceiling
+// (as opposed to a generic/rate-limit 429). Both SDKs parse the JSON error
+// body onto `.json` as `{ error: { code, message } }`.
+function isConcurrencyLimit(err: unknown): boolean {
+  if (!(err instanceof APIError || err instanceof HostAPIError)) return false;
+  if (err.response.status !== 429) return false;
+  const body = err.json as { error?: { code?: string } } | undefined;
+  return body?.error?.code === "concurrency_limit";
 }
 
 function parseRetryAfter(err: unknown): number {
@@ -160,6 +183,9 @@ export async function withSandboxRetry<T>(
       const status = apiErrorStatus(err);
       if (status === undefined) throw err;
       if (status === 429) {
+        // Capacity ceiling: fail fast, don't burn ~15s retrying something that
+        // won't clear within the request.
+        if (isConcurrencyLimit(err)) throw new SandboxAtCapacityError(err);
         const retryAfter = parseRetryAfter(err);
         if (attempt === max - 1) throw new SandboxRateLimitError(retryAfter, err);
         await sleep(retryAfter * 1000);
