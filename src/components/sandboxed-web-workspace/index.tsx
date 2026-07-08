@@ -57,6 +57,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import type { PreviewInfo } from "@/lib/preview-store";
+import { buildPreviewUrl } from "@/lib/preview-url";
 import { cn } from "@/lib/utils";
 import {
   normalizeBackendType,
@@ -1223,7 +1224,7 @@ export function SandboxedWebWorkspace({
                       ? previewPath
                       : "/" + previewPath;
                     window.open(
-                      `/preview-popup?url=${encodeURIComponent(baseUrl + path)}`,
+                      `/preview-popup?url=${encodeURIComponent(buildPreviewUrl(baseUrl, path))}`,
                       "_blank",
                     );
                   }}

@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { VisualEditorPanel } from "@/components/workspace/VisualEditorPanel";
 import { renderHtmlThumbnail } from "@/lib/html-thumbnail";
 import { PreviewInfo } from "@/lib/preview-store";
+import { buildPreviewUrl } from "@/lib/preview-url";
 import {
   isWebLikePlatform,
   type ProjectPlatform,
@@ -906,7 +907,7 @@ export function Preview({
 
   const openInNewTab = useCallback(() => {
     if (activePreview?.baseUrl) {
-      const previewUrl = activePreview.baseUrl + (currentPath ?? internalPath ?? "/");
+      const previewUrl = buildPreviewUrl(activePreview.baseUrl, currentPath ?? internalPath);
       window.open(
         `/preview-popup?url=${encodeURIComponent(previewUrl)}`,
         "_blank"
@@ -925,7 +926,7 @@ export function Preview({
 
         if (activePreview) {
           // Add cache-busting to ensure fresh content
-          const url = new URL(activePreview.baseUrl + normalizedPath);
+          const url = new URL(buildPreviewUrl(activePreview.baseUrl, normalizedPath));
           url.searchParams.set("_t", Date.now().toString());
           setIframeUrl(url.toString());
         }
@@ -939,7 +940,7 @@ export function Preview({
     const path = (currentPath ?? internalPath) || "/";
     if (activePreview) {
       // Add cache-busting to prevent stale content from being displayed
-      const url = new URL(activePreview.baseUrl + path);
+      const url = new URL(buildPreviewUrl(activePreview.baseUrl, path));
       url.searchParams.set("_t", Date.now().toString());
       setIframeUrl(url.toString());
       // Reset loaded state when URL changes so we wait for new content
@@ -1757,10 +1758,10 @@ export function Preview({
       ) : effectiveDevice === "figma" && onFetchHtml ? (
         <div className="flex-1 overflow-hidden relative">
           <FigmaCanvas
-            previewUrl={
-              activePreview.baseUrl +
-              ((currentPath ?? internalPath) || "/")
-            }
+            previewUrl={buildPreviewUrl(
+              activePreview.baseUrl,
+              (currentPath ?? internalPath) || "/",
+            )}
             reloadKey={reloadKey ?? 0}
             fetchHtml={onFetchHtml}
           />
