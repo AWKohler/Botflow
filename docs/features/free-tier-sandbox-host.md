@@ -44,6 +44,8 @@ To update: `cd ~/Documents/sandbox-host/sdk && pnpm build && npm pack
 | `SANDBOX_HOST_TOKEN` | Bearer token (in `~ai-club-pc/sandbox-host-credentials` on the host). |
 | `SANDBOX_HOST_TEAM_ID` / `SANDBOX_HOST_PROJECT_ID` | Tenant scoping; default `default`. |
 | `SANDBOX_HOST_FOR_FREE_TIER` | `"1"` routes **new** free-tier projects to sandbox-host. Off by default. |
+| `SANDBOX_HOST_STRICT` | `"1"` makes free-tier provider selection THROW instead of silently falling back to Vercel. Testing aid — leave off in production. |
+| `PREVIEW_SIGNING_SECRET` | Shared with the host's `previewSigningSecret`; when set, sandbox-host preview URLs get a signed `?_bft` token. Unset = no-op (host running capability-URL-only). |
 
 Credentials are always passed per-call — never via the SDK's own
 `SANDBOX_TOKEN`/`SANDBOX_TEAM_ID` env fallback — to avoid any ambient
@@ -68,17 +70,21 @@ ambiguity with `@vercel/sandbox` in the same process.
 
 ## Behavioral differences vs Vercel Sandbox
 
-- **Previews are tailnet-only for now.** Host preview routes are
-  `http://…ts.net:<20000-40000>`; Tailscale Funnel only exposes the control
-  plane. Consequences handled in `workspace-control.ts`:
-  - `startSandboxDevServer` probes vite **from inside the VM** (curl
-    localhost) instead of fetching the public URL;
-  - `verifyDevServerReachable` skips the external probe for host projects
-    (the in-VM reconciler still catches dead dev servers).
-  The iframe URL published to the workspace only loads for a browser on the
-  tailnet (and over http). Public previews need the subdomain router + real
-  tunnel on the sandbox-host side (SPEC §10). **This is the main gap before
-  free-tier users get working previews in prod.**
+- **Previews: Cloudflare tunnel (implemented) or tailnet-only (fallback).**
+  With `previewDomain` configured on the host (sandbox-host branch
+  `feat/preview-tunnel`, runbook `sandbox-host/docs/preview-tunnel.md`),
+  preview routes become public `https://p-<24hex>-<port>.<domain>` URLs
+  served by the host's subdomain router behind cloudflared — embeddable in
+  the workspace iframe with no mixed-content block. Access control: signed
+  tokens minted here (`src/lib/preview-token.ts`, shared
+  `PREVIEW_SIGNING_SECRET` env) appended as `?_bft=…`; the router exchanges
+  the query token for a host-only `__bf_preview` cookie covering
+  subresources and the Vite HMR websocket. `workspace-control.ts` picks the
+  probe strategy by URL scheme: `https://` → external probe (Vercel and
+  tunneled host previews alike), plain `http://` (tailnet-only host route,
+  no tunnel configured) → in-VM curl probe, and `verifyDevServerReachable`
+  skips non-https URLs. Without the tunnel, iframes stay white from an
+  HTTPS frontend (mixed content) — local dev on the tailnet still works.
 - **Sessions cap at 45 min.** `extend-timeout` is additive but the host caps
   total session lifetime at `MaxTimeoutMs` (2 700 000 ms). Sessions are
   created at 30 min; the wrapper heartbeat extends toward the cap (expiry is

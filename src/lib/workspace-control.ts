@@ -14,6 +14,7 @@
  */
 import { getOrCreatePersistentSandbox, sandboxBash } from "@/lib/vercel-sandbox";
 import { getProjectSandboxProvider } from "@/lib/sandbox-provider";
+import { signPreviewUrl } from "@/lib/preview-token";
 import { materializeFrontendEnv } from "@/lib/sandbox-env";
 import { getRedis } from "@/lib/redis";
 import { sanitizeOutput } from "@/lib/output-sanitizer";
@@ -104,15 +105,13 @@ export async function verifyDevServerReachable(
 ): Promise<DevServerState | null> {
   if (!state || !state.running || !state.previewUrl) return state;
 
-  // sandbox-host preview routes are tailnet-only for now — from production
-  // this fetch can never succeed, so probing would only stall the polling
-  // route by the 3s timeout. Dead dev servers on those projects are still
-  // caught by the in-VM reconciler in isSandboxDevServerRunning.
-  try {
-    if ((await getProjectSandboxProvider(projectId)) === "sandbox-host") return state;
-  } catch {
-    return state;
-  }
+  // Plain-http preview URLs are tailnet-only sandbox-host routes (the
+  // Cloudflare-tunneled ones are https, as are all Vercel *.vercel.run
+  // URLs) — from production this fetch can never succeed, so probing would
+  // only stall the polling route by the 3s timeout. Dead dev servers on
+  // those projects are still caught by the in-VM reconciler in
+  // isSandboxDevServerRunning.
+  if (!state.previewUrl.startsWith("https://")) return state;
 
   try {
     const redis = getRedis();
@@ -193,6 +192,7 @@ export async function startSandboxDevServer(
 
   try {
     const sandbox = await getOrCreatePersistentSandbox(projectId);
+    const provider = await getProjectSandboxProvider(projectId);
 
     let previewUrl: string;
     try {
@@ -202,6 +202,12 @@ export async function startSandboxDevServer(
         ok: false,
         message: `Port ${port} was not declared at sandbox creation. Allowed: 3000, 5173, 4173, 8000.`,
       };
+    }
+    // sandbox-host previews served via the Cloudflare tunnel require a signed
+    // token; append it before the URL is probed, published, or iframed.
+    // No-op when PREVIEW_SIGNING_SECRET is unset.
+    if (provider === "sandbox-host") {
+      previewUrl = signPreviewUrl(previewUrl);
     }
 
     // Kill any prior vite/dev server.
@@ -275,17 +281,18 @@ export async function startSandboxDevServer(
       env: { HOST: "0.0.0.0" },
     });
 
-    // Poll for readiness. On Vercel, hit the *public* forwarded URL — only
-    // return success when the iframe will actually work — and capture upstream
-    // headers so the workspace UI can diagnose iframe-blocking directives.
-    // sandbox-host preview routes are tailnet-only for now (unreachable from
-    // production servers), so probe vite from inside the VM instead.
-    const provider = await getProjectSandboxProvider(projectId);
+    // Poll for readiness. For https URLs (Vercel's forwarded domain, or a
+    // sandbox-host preview behind the Cloudflare tunnel) hit the *public*
+    // URL — only return success when the iframe will actually work — and
+    // capture upstream headers so the workspace UI can diagnose
+    // iframe-blocking directives. Plain-http sandbox-host routes are
+    // tailnet-only (unreachable from production servers), so probe vite from
+    // inside the VM instead.
     const probeOnce = async (): Promise<{
       status: number;
       headers?: Record<string, string>;
     }> => {
-      if (provider === "sandbox-host") {
+      if (!previewUrl.startsWith("https://")) {
         const res = await sandbox.runCommand({
           cmd: "sh",
           args: [
