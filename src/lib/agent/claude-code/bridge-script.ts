@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "26";
+export const BRIDGE_SCRIPT_VERSION = "27";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -127,19 +127,32 @@ async function postHostTool(toolName, input) {
   if (!base || !token) {
     throw new Error("Host callback not configured (BOTFLOW_API_BASE / BOTFLOW_TOOL_TOKEN missing)");
   }
-  const response = await fetch(base + "/api/internal/claude-code-tool", {
-    method: "POST",
-    headers: {
-      "authorization": "Bearer " + token,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ tool: toolName, input: input ?? {} }),
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error("Host tool call failed (HTTP " + response.status + "): " + text);
+  // A 429 from the host limiter is transient and self-clearing: the response
+  // carries Retry-After, so pace against it instead of surfacing a turn-killing
+  // "rate_limited" error the user has to manually retry. Bounded attempts so a
+  // genuinely stuck limiter still eventually errors out.
+  const MAX_429_RETRIES = 6;
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(base + "/api/internal/claude-code-tool", {
+      method: "POST",
+      headers: {
+        "authorization": "Bearer " + token,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ tool: toolName, input: input ?? {} }),
+    });
+    if (response.status === 429 && attempt < MAX_429_RETRIES) {
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const waitSec = retryAfter > 0 ? retryAfter : Math.min(30, Math.pow(2, attempt));
+      await new Promise((r) => setTimeout(r, waitSec * 1000));
+      continue;
+    }
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error("Host tool call failed (HTTP " + response.status + "): " + text);
+    }
+    return response.json();
   }
-  return response.json();
 }
 
 async function callHostTool(toolName, input) {
