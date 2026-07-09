@@ -14,7 +14,7 @@ import { isSandboxPlatform } from "@/lib/project-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { getPersistentTools } from "@/lib/agent/persistent-tools";
 import { getGitTools, getSandboxedWebTools } from "@/lib/agent/sandboxed-web-tools";
-import { MODEL_CONFIGS, resolveModelId, isModelDisabled, modelDisabledReason, type ModelId } from "@/lib/agent/models";
+import { MODEL_CONFIGS, resolveModelId, isModelDisabled, modelDisabledReason, isOpenAIModel, type ModelId } from "@/lib/agent/models";
 import { agentLog, generateRequestId, setRequestId } from "@/lib/agent/logger";
 import { classifyError, formatErrorResponse } from "@/lib/agent/errors";
 import { USE_TOGETHER_KIMI } from "@/lib/feature-flags";
@@ -449,7 +449,9 @@ async function refreshAnthropicOAuthToken(
 }
 
 // ============================================================================
-// GPT-5.4: inject prompt_cache_retention: "24h" for extended caching
+// GPT-5.5: inject prompt_cache_retention: "24h" for extended caching.
+// NB: this param is deprecated on GPT-5.6+ (which use prompt_cache_options.ttl,
+// default 30m) — do NOT send it for 5.6 models or the request may be rejected.
 // ============================================================================
 
 async function injectOpenAICacheRetention(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -474,8 +476,9 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
   'fireworks-minimax-m3', // free tier
   'fireworks-glm-5p2',         // free tier
   'fireworks-kimi-k2p7',     // free tier
-  'gpt-5.3-codex',           // pro+
-  'gpt-5.4',                 // pro+
+  'gpt-5.6-sol',             // pro+
+  'gpt-5.6-terra',           // pro+
+  'gpt-5.6-luna',            // pro+
   'gpt-5.5',                 // pro+
   'claude-sonnet-5',         // pro+
   'claude-opus-4-8',         // pro+
@@ -658,7 +661,7 @@ export async function POST(req: Request) {
     // ── Tier enforcement for server-key models ──────────────────────────────
     // Detect if this request uses personal BYOK/OAuth credentials (skip credit checks)
     const isUsingPersonalCredentials = ((): boolean => {
-      if (selectedModel === 'gpt-5.3-codex' || selectedModel === 'gpt-5.4' || selectedModel === 'gpt-5.5') {
+      if (isOpenAIModel(selectedModel)) {
         return Boolean(creds.codexOAuthAccessToken || creds.openaiApiKey);
       }
       if (selectedModel === 'fireworks-kimi-k2p7' && USE_TOGETHER_KIMI) {
@@ -910,7 +913,7 @@ export async function POST(req: Request) {
         agentLog.apiComplete({ model: selectedModel, durationMs });
       };
 
-      if (selectedModel === "gpt-5.3-codex" || selectedModel === "gpt-5.4" || selectedModel === "gpt-5.5") {
+      if (isOpenAIModel(selectedModel)) {
         // Path A: Codex OAuth (priority)
         if (creds.codexOAuthAccessToken) {
           let accessToken = creds.codexOAuthAccessToken;
@@ -988,7 +991,7 @@ export async function POST(req: Request) {
 
         // Path B: OpenAI BYOK API key
         if (creds.openaiApiKey) {
-          const openai = createOpenAI((selectedModel === 'gpt-5.4' || selectedModel === 'gpt-5.5')
+          const openai = createOpenAI(selectedModel === 'gpt-5.5'
             ? { apiKey: creds.openaiApiKey, fetch: injectOpenAICacheRetention }
             : { apiKey: creds.openaiApiKey });
           const result = streamText({
@@ -1011,7 +1014,7 @@ export async function POST(req: Request) {
         // Path C: Server-side OpenAI key for Pro/Max tiers
         const serverOpenAIKey = process.env.OPENAI_API_KEY;
         if (isServerKeyModel(selectedModel) && serverOpenAIKey) {
-          const openai = createOpenAI((selectedModel === 'gpt-5.4' || selectedModel === 'gpt-5.5')
+          const openai = createOpenAI(selectedModel === 'gpt-5.5'
             ? { apiKey: serverOpenAIKey, fetch: injectOpenAICacheRetention }
             : { apiKey: serverOpenAIKey });
           const result = streamText({

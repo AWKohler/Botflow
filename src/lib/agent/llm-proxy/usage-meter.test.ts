@@ -110,6 +110,29 @@ describe("openai-chat dialect", () => {
     assert.equal(u.complete, true);
   });
 
+  test("GPT-5.6: cache_write_tokens reported separately from prompt_tokens → added back to total-in", () => {
+    const p = createUsageParser("openai-chat", true);
+    p.push(sse([
+      {
+        choices: [],
+        usage: {
+          prompt_tokens: 12000,
+          completion_tokens: 300,
+          // 5.6 reports writes OUTSIDE prompt_tokens; reads stay a subset of it.
+          prompt_tokens_details: { cached_tokens: 11500, cache_write_tokens: 800 },
+        },
+      },
+      "data: [DONE]",
+    ]));
+    const u = p.finish();
+    assert.equal(u.inputTokens, 12800);        // 12000 + 800 write
+    assert.equal(u.cachedReadTokens, 11500);
+    assert.equal(u.cacheWriteTokens, 800);
+    assert.equal(u.explicitCacheReport, true);
+    // Billing derives uncached = in − read − write = plain input (prompt−read).
+    assert.equal(u.inputTokens - u.cachedReadTokens - u.cacheWriteTokens, 500);
+  });
+
   test("stream with NO usage frame (fireworks-style silence): zeros, complete:false, no explicit report", () => {
     const p = createUsageParser("openai-chat", true);
     p.push(sse([
@@ -157,6 +180,27 @@ describe("openai-responses dialect", () => {
     assert.equal(u.complete, true);
   });
 
+  test("GPT-5.6: input_tokens_details.cache_write_tokens added back to total-in", () => {
+    const p = createUsageParser("openai-responses", true);
+    p.push(sse([
+      {
+        type: "response.completed",
+        response: {
+          usage: {
+            input_tokens: 5000,
+            input_tokens_details: { cached_tokens: 4096, cache_write_tokens: 512 },
+            output_tokens: 250,
+          },
+        },
+      },
+    ]));
+    const u = p.finish();
+    assert.equal(u.inputTokens, 5512);         // 5000 + 512 write
+    assert.equal(u.cachedReadTokens, 4096);
+    assert.equal(u.cacheWriteTokens, 512);
+    assert.equal(u.explicitCacheReport, true);
+  });
+
   test("truncated before response.completed: complete:false", () => {
     const p = createUsageParser("openai-responses", true);
     p.push(sse([{ type: "response.output_text.delta", delta: "partial" }]));
@@ -192,7 +236,7 @@ describe("rewriteRequestBody", () => {
   test("platform mode rejects off-allowlist models", () => {
     const out = rewriteRequestBody(JSON.stringify({ model: "gpt-4o", stream: true }), {
       dialect: "openai-chat",
-      enforceModelAllowlist: ["gpt-5.4"],
+      enforceModelAllowlist: ["gpt-5.6-terra"],
       capOutputTokens: 32000,
     });
     assert.ok("rejected" in out);
@@ -200,8 +244,8 @@ describe("rewriteRequestBody", () => {
 
   test("injects include_usage even when the client disabled it, and inserts the output cap when absent", () => {
     const out = rewriteRequestBody(
-      JSON.stringify({ model: "gpt-5.4", stream: true, stream_options: { include_usage: false } }),
-      { dialect: "openai-chat", enforceModelAllowlist: ["gpt-5.4"], capOutputTokens: 32000 },
+      JSON.stringify({ model: "gpt-5.6-terra", stream: true, stream_options: { include_usage: false } }),
+      { dialect: "openai-chat", enforceModelAllowlist: ["gpt-5.6-terra"], capOutputTokens: 32000 },
     );
     assert.ok(!("rejected" in out));
     const body = JSON.parse(out.body);
@@ -213,8 +257,8 @@ describe("rewriteRequestBody", () => {
 
   test("clamps an oversized requested cap (responses dialect field name)", () => {
     const out = rewriteRequestBody(
-      JSON.stringify({ model: "gpt-5.3-codex", stream: true, max_output_tokens: 900000 }),
-      { dialect: "openai-responses", enforceModelAllowlist: ["gpt-5.3-codex"], capOutputTokens: 32000 },
+      JSON.stringify({ model: "gpt-5.6-luna", stream: true, max_output_tokens: 900000 }),
+      { dialect: "openai-responses", enforceModelAllowlist: ["gpt-5.6-luna"], capOutputTokens: 32000 },
     );
     assert.ok(!("rejected" in out));
     assert.equal(JSON.parse(out.body).max_output_tokens, 32000);

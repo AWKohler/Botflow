@@ -42,7 +42,7 @@ describe("deriveAgentBackend — non-Anthropic models (flag on)", () => {
   test("openai model + Codex OAuth → opencode (codex_oauth_opencode)", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
-      model: "gpt-5.4",
+      model: "gpt-5.6-terra",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasCodexOAuth: true },
     });
@@ -67,7 +67,7 @@ describe("deriveAgentBackend — non-Anthropic models (flag on)", () => {
   test("openai model + NO personal creds → opencode PLATFORM mode for paid tiers", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
-      model: "gpt-5.4",
+      model: "gpt-5.6-terra",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS },
       tier: "pro",
@@ -82,7 +82,7 @@ describe("deriveAgentBackend — non-Anthropic models (flag on)", () => {
   test("tier gate: free tier can't run pro platform models (tier_too_low, hidden); free models pass", async () => {
     const { deriveAgentBackend } = await load();
     const gated = deriveAgentBackend({
-      model: "gpt-5.4",
+      model: "gpt-5.6-terra",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS },
       tier: "free",
@@ -153,7 +153,7 @@ describe("deriveAgentBackend — non-Anthropic models (flag on)", () => {
   test("non-sandbox platform never routes to opencode", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
-      model: "gpt-5.4",
+      model: "gpt-5.6-terra",
       platform: "web",
       creds: { ...NO_CREDS, hasCodexOAuth: true, hasOpenAIKey: true },
     });
@@ -235,7 +235,7 @@ describe("resolveBackends — drop-in replacement semantics (flag on)", () => {
     const { resolveBackends } = await load();
     for (const creds of [{ ...NO_CREDS, hasCodexOAuth: true }, { ...NO_CREDS }]) {
       const res = resolveBackends({
-        model: "gpt-5.4",
+        model: "gpt-5.6-terra",
         platform: "sandboxed-web",
         creds,
       });

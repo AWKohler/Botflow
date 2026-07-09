@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { LiveActions } from '@/components/agent/LiveActions';
 import { useToast } from '@/components/ui/toast';
 import type { ToolCallData } from '@/lib/agent/ui-types';
-import { MODEL_CONFIGS, modelSupportsImages, resolveModelId, type ModelId } from '@/lib/agent/models';
+import { MODEL_CONFIGS, modelSupportsImages, resolveModelId, isOpenAIModel, type ModelId } from '@/lib/agent/models';
 import { ModelSelector } from '@/components/ui/ModelSelector';
 import { LimitModal, parseLimitPayload, type LimitReachedPayload } from '@/components/ui/LimitModal';
 import { CreditGauge } from '@/components/ui/CreditGauge';
@@ -1544,8 +1544,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     // block free-tier users who have no personal credentials for these providers.
     const isPayingTier = userTier === 'pro' || userTier === 'max';
     if (!isPayingTier) {
-      if ((model === 'gpt-5.3-codex' && hasOpenAICreds === false) || (usingAnthropic && hasAnthropicCreds === false)) {
-        toast({ title: 'Missing API key', description: `Please add your ${model === 'gpt-5.3-codex' ? 'OpenAI' : 'Anthropic'} API key in Settings, or upgrade to Pro.` });
+      if ((isOpenAIModel(model) && hasOpenAICreds === false) || (usingAnthropic && hasAnthropicCreds === false)) {
+        toast({ title: 'Missing API key', description: `Please add your ${isOpenAIModel(model) ? 'OpenAI' : 'Anthropic'} API key in Settings, or upgrade to Pro.` });
         return;
       }
     }
