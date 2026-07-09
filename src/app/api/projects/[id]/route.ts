@@ -69,7 +69,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       model !== 'fireworks-glm-5p1' && // backwards compat → resolved to glm-5p2
       model !== 'fireworks-kimi-k2p7' &&
       model !== 'fireworks-kimi-k2p6' && // backwards compat → resolved to k2p7
-      model !== 'gemini-3.1-pro-preview'
+      model !== 'gemini-3.1-pro-preview' &&
+      model !== 'grok-4.5'
     ) {
       return NextResponse.json({ error: 'Invalid model' }, { status: 400 });
     }

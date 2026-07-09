@@ -105,6 +105,16 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     output:     12.00 / BASE_PRICE,   // 40.0
     cacheWrite:  2.00 / BASE_PRICE,   // 6.67 — cache write billed at full input price
   },
+  // xAI Grok 4.5. Pricing verified live against the API's cost_in_usd_ticks
+  // (1 tick = 1e-10 USD): $2 uncached / $0.50 cached / $6 output per MTok.
+  // Cache is passive/read-only (openai-chat cached_tokens, a subset of
+  // prompt_tokens) — no cache-write billing, so no cacheWrite field. Note the
+  // discount is only 75% ($2→$0.50), less than the 90% on most other models.
+  'grok-4.5': {
+    input:       2.00 / BASE_PRICE,   // 6.67
+    cachedInput: 0.50 / BASE_PRICE,   // 1.67
+    output:      6.00 / BASE_PRICE,   // 20.0
+  },
 };
 
 // Gemini 3.1 Pro pricing at >200K context length
@@ -153,6 +163,7 @@ export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = {
   'fireworks-minimax-m3': 1,
   'fireworks-glm-5p2': 3,
   'fireworks-kimi-k2p7': 3,
+  'grok-4.5': 4,
   'gpt-5.3-codex': 4,
   'gemini-3.1-pro-preview': 5,
   'claude-sonnet-5': 5,

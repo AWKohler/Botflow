@@ -55,6 +55,7 @@ const MODEL_DISPLAY: Record<string, string> = {
   'gpt-5.4': 'GPT-5.4',
   'gpt-5.5': 'GPT-5.5',
   'gemini-3.1-pro-preview': 'Gemini 3.1 Pro',
+  'grok-4.5': 'Grok 4.5',
 };
 
 export function UsageTab() {

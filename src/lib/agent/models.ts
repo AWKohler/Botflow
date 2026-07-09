@@ -10,11 +10,12 @@ export type ModelId =
   | "claude-opus-4-8"
   | "claude-fable-5"
   | "gemini-3.1-pro-preview"
+  | "grok-4.5"
   | "fireworks-minimax-m3"
   | "fireworks-glm-5p2"
   | "fireworks-kimi-k2p7";
 
-export type Provider = "openai" | "anthropic" | "google" | "fireworks";
+export type Provider = "openai" | "anthropic" | "google" | "xai" | "fireworks";
 
 export interface ModelConfig {
   id: ModelId;
@@ -108,6 +109,16 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     apiModelId: "gemini-3.1-pro-preview",
     displayName: "Gemini 3.1 Pro",
     maxContextTokens: 1_000_000,
+    warnThreshold: 0.7,
+    criticalThreshold: 0.9,
+    supportsImages: true,
+  },
+  "grok-4.5": {
+    id: "grok-4.5",
+    provider: "xai",
+    apiModelId: "grok-4.5",
+    displayName: "Grok 4.5",
+    maxContextTokens: 500_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
@@ -209,6 +220,7 @@ export function getProviderKeyName(model: ModelId): string {
     openai: "OpenAI",
     anthropic: "Anthropic",
     google: "Google",
+    xai: "xAI",
     fireworks: "Fireworks",
   };
   return map[MODEL_CONFIGS[model].provider];

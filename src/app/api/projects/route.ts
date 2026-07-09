@@ -79,7 +79,8 @@ export async function POST(request: NextRequest) {
         | 'fireworks-minimax-m3'
         | 'fireworks-glm-5p2'
         | 'fireworks-kimi-k2p7'
-        | 'gemini-3.1-pro-preview';
+        | 'gemini-3.1-pro-preview'
+        | 'grok-4.5';
     };
 
     if (!name) {
@@ -156,6 +157,8 @@ export async function POST(request: NextRequest) {
             ? 'fireworks-kimi-k2p7'
             : model === 'gemini-3.1-pro-preview'
             ? 'gemini-3.1-pro-preview'
+            : model === 'grok-4.5'
+            ? 'grok-4.5'
             : 'fireworks-kimi-k2p7',
       })
       .returning();
