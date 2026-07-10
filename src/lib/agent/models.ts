@@ -160,8 +160,10 @@ export function resolveModelId(stored: string | null | undefined): ModelId {
   if (stored === "claude-sonnet-4.5" || stored === "claude-sonnet-4.6" || stored === "claude-sonnet-4-6") return "claude-sonnet-5";
   if (stored === "claude-opus-4.5" || stored === "claude-opus-4.6" || stored === "claude-opus-4.7" || stored === "claude-opus-4-7" || stored === "claude-opus-4-1") return "claude-opus-4-8";
   if (stored === "gpt-4.1" || stored === "gpt-5.2") return "gpt-5.3-codex";
-  // GLM retired — replaced by Grok 4.5 (removes Kimi/GLM/Grok redundancy).
-  if (stored === "fireworks-glm-5" || stored === "fireworks-glm-5p1" || stored === "fireworks-glm-5p2") return "grok-4.5";
+  // GLM retired — Grok 4.5 replaces it in the lineup, but existing GLM-pinned
+  // projects fall back to Kimi (both free tier) so free users aren't paywalled
+  // onto pro Grok. [[grok-glm-replacement]]
+  if (stored === "fireworks-glm-5" || stored === "fireworks-glm-5p1" || stored === "fireworks-glm-5p2") return "fireworks-kimi-k2p7";
   if (stored === "fireworks-minimax-m2p7" || stored === "fireworks-minimax-m2p5") return "fireworks-minimax-m3";
   if (stored === "fireworks-kimi-k2p6") return "fireworks-kimi-k2p7";
   // Still-valid model: pass through

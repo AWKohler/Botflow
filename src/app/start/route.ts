@@ -164,8 +164,8 @@ export async function GET(request: Request) {
     modelParam === 'kimi-k2.5' ? 'fireworks-minimax-m3' : // removed model
     modelParam === 'kimi-k2-thinking-turbo' ? 'fireworks-minimax-m3' : // removed model
     modelParam === 'fireworks-minimax-m3' ? 'fireworks-minimax-m3' :
-    modelParam === 'fireworks-glm-5p2' ? 'grok-4.5' : // GLM retired → Grok 4.5
-    modelParam === 'fireworks-glm-5p1' ? 'grok-4.5' : // GLM retired → Grok 4.5
+    modelParam === 'fireworks-glm-5p2' ? 'fireworks-kimi-k2p7' : // GLM retired → Kimi (both free)
+    modelParam === 'fireworks-glm-5p1' ? 'fireworks-kimi-k2p7' : // GLM retired → Kimi (both free)
     modelParam === 'fireworks-kimi-k2p6' ? 'fireworks-kimi-k2p7' : // updated model
     modelParam === 'fireworks-kimi-k2p7' ? 'fireworks-kimi-k2p7' :
     modelParam === 'gemini-3.1-pro-preview' ? 'gemini-3.1-pro-preview' :

@@ -14,10 +14,12 @@ export default function SettingsPage() {
   const [anthropicKey, setAnthropicKey] = useState('');
   const [moonshotKey, setMoonshotKey] = useState('');
   const [fireworksKey, setFireworksKey] = useState('');
+  const [xaiKey, setXaiKey] = useState('');
   const [hasOpenai, setHasOpenai] = useState(false);
   const [hasAnthropic, setHasAnthropic] = useState(false);
   const [hasMoonshot, setHasMoonshot] = useState(false);
   const [hasFireworks, setHasFireworks] = useState(false);
+  const [hasXai, setHasXai] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,6 +33,7 @@ export default function SettingsPage() {
             setHasAnthropic(Boolean(data?.hasAnthropicKey));
             setHasMoonshot(Boolean(data?.hasMoonshotKey));
             setHasFireworks(Boolean(data?.hasFireworksKey));
+            setHasXai(Boolean(data?.hasXaiKey));
           }
         }
       } catch {
@@ -53,6 +56,7 @@ export default function SettingsPage() {
           anthropicApiKey: anthropicKey.trim() || null,
           moonshotApiKey: moonshotKey.trim() || null,
           fireworksApiKey: fireworksKey.trim() || null,
+          xaiApiKey: xaiKey.trim() || null,
         }),
       });
       if (res.ok) {
@@ -61,10 +65,12 @@ export default function SettingsPage() {
         setHasAnthropic(Boolean(data?.hasAnthropicKey));
         setHasMoonshot(Boolean(data?.hasMoonshotKey));
         setHasFireworks(Boolean(data?.hasFireworksKey));
+        setHasXai(Boolean(data?.hasXaiKey));
         setOpenaiKey('');
         setAnthropicKey('');
         setMoonshotKey('');
         setFireworksKey('');
+        setXaiKey('');
         toast({ title: 'Settings saved', description: 'Your API keys have been updated.' });
       } else {
         toast({ title: 'Save failed', description: 'Could not save settings.' });
@@ -175,6 +181,26 @@ export default function SettingsPage() {
                     placeholder={hasFireworks ? '●●●●●●●● saved' : 'fw-...'}
                     value={fireworksKey}
                     onChange={(e) => setFireworksKey(e.target.value)}
+                    className="flex-1 rounded-lg border border-black/10 px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-200"
+                  />
+                  <button
+                    onClick={save}
+                    disabled={saving}
+                    className="inline-flex items-center rounded-lg bg-black px-3.5 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">xAI (Grok) API Key</label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="password"
+                    placeholder={hasXai ? '●●●●●●●● saved' : 'xai-...'}
+                    value={xaiKey}
+                    onChange={(e) => setXaiKey(e.target.value)}
                     className="flex-1 rounded-lg border border-black/10 px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-200"
                   />
                   <button
