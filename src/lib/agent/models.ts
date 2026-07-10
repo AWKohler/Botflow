@@ -11,11 +11,11 @@ export type ModelId =
   | "claude-opus-4-8"
   | "claude-fable-5"
   | "gemini-3.1-pro-preview"
+  | "grok-4.5"
   | "fireworks-minimax-m3"
-  | "fireworks-glm-5p2"
   | "fireworks-kimi-k2p7";
 
-export type Provider = "openai" | "anthropic" | "google" | "fireworks";
+export type Provider = "openai" | "anthropic" | "google" | "xai" | "fireworks";
 
 export interface ModelConfig {
   id: ModelId;
@@ -107,7 +107,7 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     id: "claude-fable-5",
     provider: "anthropic",
     apiModelId: "claude-fable-5",
-    displayName: "Claude Fable 5 (Mythos)",
+    displayName: "Claude Fable 5",
     maxContextTokens: 1_000_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
@@ -119,6 +119,16 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     apiModelId: "gemini-3.1-pro-preview",
     displayName: "Gemini 3.1 Pro",
     maxContextTokens: 1_000_000,
+    warnThreshold: 0.7,
+    criticalThreshold: 0.9,
+    supportsImages: true,
+  },
+  "grok-4.5": {
+    id: "grok-4.5",
+    provider: "xai",
+    apiModelId: "grok-4.5",
+    displayName: "Grok 4.5",
+    maxContextTokens: 500_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
@@ -143,16 +153,6 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
   //   criticalThreshold: 0.9,
   //   supportsImages: false,
   // },
-  "fireworks-glm-5p2": {
-    id: "fireworks-glm-5p2",
-    provider: "fireworks",
-    apiModelId: "accounts/fireworks/models/glm-5p2",
-    displayName: "GLM-5.2",
-    maxContextTokens: 202_800,
-    warnThreshold: 0.7,
-    criticalThreshold: 0.9,
-    supportsImages: false,
-  },
   "fireworks-kimi-k2p7": {
     id: "fireworks-kimi-k2p7",
     provider: "fireworks",
@@ -173,7 +173,10 @@ export function resolveModelId(stored: string | null | undefined): ModelId {
   // OpenAI retired IDs → GPT-5.6 successors (Terra succeeds 5.4, Luna succeeds 5.3)
   if (stored === "gpt-5.4") return "gpt-5.6-terra";
   if (stored === "gpt-5.3-codex" || stored === "gpt-5.2" || stored === "gpt-4.1") return "gpt-5.6-luna";
-  if (stored === "fireworks-glm-5" || stored === "fireworks-glm-5p1") return "fireworks-glm-5p2";
+  // GLM retired — Grok 4.5 replaces it in the lineup, but existing GLM-pinned
+  // projects fall back to Kimi (both free tier) so free users aren't paywalled
+  // onto pro Grok. [[grok-glm-replacement]]
+  if (stored === "fireworks-glm-5" || stored === "fireworks-glm-5p1" || stored === "fireworks-glm-5p2") return "fireworks-kimi-k2p7";
   if (stored === "fireworks-minimax-m2p7" || stored === "fireworks-minimax-m2p5") return "fireworks-minimax-m3";
   if (stored === "fireworks-kimi-k2p6") return "fireworks-kimi-k2p7";
   // Still-valid model: pass through
@@ -222,6 +225,7 @@ export function getProviderKeyName(model: ModelId): string {
     openai: "OpenAI",
     anthropic: "Anthropic",
     google: "Google",
+    xai: "xAI",
     fireworks: "Fireworks",
   };
   return map[MODEL_CONFIGS[model].provider];

@@ -37,12 +37,12 @@ const PROVIDER_LABELS: Record<string, string> = {
   fireworks: 'Fireworks',
   together: 'Together',
   google: 'Google',
+  xai: 'xAI',
 };
 
 /** Minimum tier required to use a model on server-side keys (must match backend MODEL_TIER_REQUIREMENT) */
 const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
   'fireworks-minimax-m3': 'free',
-  'fireworks-glm-5p2': 'free',
   'fireworks-kimi-k2p7': 'free',
   'gpt-5.6-sol': 'pro',         // Pro+ for server key; free requires BYOK/OAuth
   'gpt-5.6-terra': 'pro',       // Pro+
@@ -52,6 +52,7 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
   'claude-opus-4-8': 'pro',     // Pro+
   'claude-fable-5': 'max',      // Max-only
   'gemini-3.1-pro-preview': 'pro', // Pro+ for server key; free requires BYOK
+  'grok-4.5': 'pro',            // Pro+ for server key; free requires BYOK (xAI)
 };
 
 /**
@@ -60,7 +61,6 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
  */
 const SERVER_KEY_MODELS = new Set<ModelId>([
   'fireworks-minimax-m3',
-  'fireworks-glm-5p2',
   'fireworks-kimi-k2p7',
   'gpt-5.6-sol',
   'gpt-5.6-terra',
@@ -70,14 +70,15 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
   'claude-opus-4-8',
   'claude-fable-5',
   'gemini-3.1-pro-preview',
+  'grok-4.5',
 ]);
 
 /** Rounded per-model cost multiplier for user display */
 const MODEL_COST_LABEL: Record<ModelId, string> = {
   'fireworks-minimax-m3': 'x1',
-  'fireworks-glm-5p2': 'x3',
   'fireworks-kimi-k2p7': 'x3',
   'gpt-5.6-luna': 'x3',
+  'grok-4.5': 'x4',
   'gemini-3.1-pro-preview': 'x5',
   'claude-sonnet-5': 'x5',
   'gpt-5.6-terra': 'x6',
@@ -99,15 +100,16 @@ function formatContextSize(tokens: number): string {
 // Order: cheapest → most expensive (by credit multiplier)
 const MODEL_ORDER: ModelId[] = [
   'fireworks-minimax-m3',  // x1
-  'fireworks-glm-5p2',         // x3
   'fireworks-kimi-k2p7',     // x3
   'gpt-5.6-luna',            // x3
+  'grok-4.5',                // x4
   'gemini-3.1-pro-preview',  // x5
   'claude-sonnet-5',         // x5
   'gpt-5.6-terra',           // x6
   'claude-opus-4-8',         // x10
   'gpt-5.6-sol',             // x12
-  'gpt-5.5',                 // x12
+  // 'gpt-5.5',              // x12 — hidden from the selector (kept in the
+  //                         // registry/pricing so existing projects still run).
   'claude-fable-5',          // x20 — most expensive (Max-only)
 ];
 

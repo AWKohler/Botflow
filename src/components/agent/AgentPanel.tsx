@@ -400,6 +400,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
   const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
   const [hasGoogleKey, setHasGoogleKey] = useState<boolean | null>(null);
+  const [hasXaiKey, setHasXaiKey] = useState<boolean | null>(null);
   const [hasTogetherKey, setHasTogetherKey] = useState<boolean | null>(null);
   // Server flag (USE_TOGETHER_KIMI): Kimi K2.7 is served by Together AI, not Fireworks.
   const [useTogetherKimi, setUseTogetherKimi] = useState(false);
@@ -550,6 +551,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       anthropic,
       fireworks: hasFireworksKey === true ? true : null,
       google: hasGoogleKey === true ? true : null,
+      xai: hasXaiKey === true ? true : null,
     };
   }, [
     hasCodexOAuth,
@@ -558,6 +560,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     hasAnthropicKey,
     hasFireworksKey,
     hasGoogleKey,
+    hasXaiKey,
     platform,
   ]);
 
@@ -580,6 +583,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           hasOpenAIKey: Boolean(hasOpenAIKey),
           hasFireworksKey: Boolean(hasFireworksKey),
           hasGoogleKey: Boolean(hasGoogleKey),
+          hasXaiKey: Boolean(hasXaiKey),
           hasTogetherKey: Boolean(hasTogetherKey),
         },
         tier: userTier,
@@ -594,6 +598,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       hasOpenAIKey,
       hasFireworksKey,
       hasGoogleKey,
+      hasXaiKey,
       hasTogetherKey,
       userTier,
       useTogetherKimi,
@@ -1446,6 +1451,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           setHasMoonshotKey(Boolean(data?.hasMoonshotKey));
           setHasFireworksKey(Boolean(data?.hasFireworksKey));
           setHasGoogleKey(Boolean(data?.hasGoogleKey));
+          setHasXaiKey(Boolean(data?.hasXaiKey));
           setHasTogetherKey(Boolean(data?.hasTogetherKey));
           setUseTogetherKimi(Boolean(data?.useTogetherKimi));
         }
@@ -1467,6 +1473,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           setHasMoonshotKey(Boolean(data?.hasMoonshotKey));
           setHasFireworksKey(Boolean(data?.hasFireworksKey));
           setHasGoogleKey(Boolean(data?.hasGoogleKey));
+          setHasXaiKey(Boolean(data?.hasXaiKey));
           setHasTogetherKey(Boolean(data?.hasTogetherKey));
           setUseTogetherKimi(Boolean(data?.useTogetherKimi));
         })

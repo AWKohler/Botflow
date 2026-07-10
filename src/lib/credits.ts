@@ -44,16 +44,6 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     cachedInput: 0.06 / BASE_PRICE,   // 0.2
     output:      1.20 / BASE_PRICE,   // 4.0
   },
-  // 'fireworks-glm-5': {
-  //   input:       1.00 / BASE_PRICE,   // 3.33
-  //   cachedInput: 0.20 / BASE_PRICE,   // 0.67
-  //   output:      3.20 / BASE_PRICE,   // 10.67
-  // },
-  'fireworks-glm-5p2': {
-    input:       1.40 / BASE_PRICE,   // 4.67
-    cachedInput: 0.26 / BASE_PRICE,   // 0.87
-    output:      4.40 / BASE_PRICE,   // 14.67
-  },
   'fireworks-kimi-k2p7': {
     input:       0.95 / BASE_PRICE,   // 3.17
     cachedInput: 0.19 / BASE_PRICE,   // 0.63
@@ -117,6 +107,16 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     output:     12.00 / BASE_PRICE,   // 40.0
     cacheWrite:  2.00 / BASE_PRICE,   // 6.67 — cache write billed at full input price
   },
+  // xAI Grok 4.5. Pricing verified live against the API's cost_in_usd_ticks
+  // (1 tick = 1e-10 USD): $2 uncached / $0.50 cached / $6 output per MTok.
+  // Cache is passive/read-only (openai-chat cached_tokens, a subset of
+  // prompt_tokens) — no cache-write billing, so no cacheWrite field. Note the
+  // discount is only 75% ($2→$0.50), less than the 90% on most other models.
+  'grok-4.5': {
+    input:       2.00 / BASE_PRICE,   // 6.67
+    cachedInput: 0.50 / BASE_PRICE,   // 1.67
+    output:      6.00 / BASE_PRICE,   // 20.0
+  },
 };
 
 // Gemini 3.1 Pro pricing at >200K context length
@@ -154,9 +154,9 @@ const SONNET5_INTRO_END = Date.UTC(2026, 8, 1); // 2026-09-01T00:00:00Z (month i
  */
 export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = {
   'fireworks-minimax-m3': 1,
-  'fireworks-glm-5p2': 3,
   'fireworks-kimi-k2p7': 3,
   'gpt-5.6-luna': 3,
+  'grok-4.5': 4,
   'gemini-3.1-pro-preview': 5,
   'claude-sonnet-5': 5,
   'gpt-5.6-terra': 6,

@@ -167,13 +167,14 @@ export async function GET(request: Request) {
     modelParam === 'kimi-k2.5' ? 'fireworks-minimax-m3' : // removed model
     modelParam === 'kimi-k2-thinking-turbo' ? 'fireworks-minimax-m3' : // removed model
     modelParam === 'fireworks-minimax-m3' ? 'fireworks-minimax-m3' :
-    modelParam === 'fireworks-glm-5p2' ? 'fireworks-glm-5p2' :
-    modelParam === 'fireworks-glm-5p1' ? 'fireworks-glm-5p2' : // updated model
+    modelParam === 'fireworks-glm-5p2' ? 'fireworks-kimi-k2p7' : // GLM retired → Kimi (both free)
+    modelParam === 'fireworks-glm-5p1' ? 'fireworks-kimi-k2p7' : // GLM retired → Kimi (both free)
     modelParam === 'fireworks-kimi-k2p6' ? 'fireworks-kimi-k2p7' : // updated model
     modelParam === 'fireworks-kimi-k2p7' ? 'fireworks-kimi-k2p7' :
     modelParam === 'gemini-3.1-pro-preview' ? 'gemini-3.1-pro-preview' :
+    modelParam === 'grok-4.5' ? 'grok-4.5' :
     'fireworks-kimi-k2p7'
-  ) as 'gpt-5.6-sol' | 'gpt-5.6-terra' | 'gpt-5.6-luna' | 'gpt-5.5' | 'claude-sonnet-5' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-glm-5p2' | 'fireworks-kimi-k2p7' | 'gemini-3.1-pro-preview';
+  ) as 'gpt-5.6-sol' | 'gpt-5.6-terra' | 'gpt-5.6-luna' | 'gpt-5.5' | 'claude-sonnet-5' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-kimi-k2p7' | 'gemini-3.1-pro-preview' | 'grok-4.5';
 
   if (!userId) {
     return redirectToSignIn({ returnBackUrl: request.url });

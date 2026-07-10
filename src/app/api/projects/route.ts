@@ -78,9 +78,9 @@ export async function POST(request: NextRequest) {
         | 'claude-opus-4-8'
         | 'claude-fable-5'
         | 'fireworks-minimax-m3'
-        | 'fireworks-glm-5p2'
         | 'fireworks-kimi-k2p7'
-        | 'gemini-3.1-pro-preview';
+        | 'gemini-3.1-pro-preview'
+        | 'grok-4.5';
     };
 
     if (!name) {
@@ -155,12 +155,12 @@ export async function POST(request: NextRequest) {
             ? 'claude-fable-5'
             : model === 'fireworks-minimax-m3'
             ? 'fireworks-minimax-m3'
-            : model === 'fireworks-glm-5p2'
-            ? 'fireworks-glm-5p2'
             : model === 'fireworks-kimi-k2p7'
             ? 'fireworks-kimi-k2p7'
             : model === 'gemini-3.1-pro-preview'
             ? 'gemini-3.1-pro-preview'
+            : model === 'grok-4.5'
+            ? 'grok-4.5'
             : 'fireworks-kimi-k2p7',
       })
       .returning();

@@ -474,7 +474,6 @@ async function injectOpenAICacheRetention(input: RequestInfo | URL, init?: Reque
 /** Server key models: models the app pays for on behalf of paid users */
 const SERVER_KEY_MODELS = new Set<ModelId>([
   'fireworks-minimax-m3', // free tier
-  'fireworks-glm-5p2',         // free tier
   'fireworks-kimi-k2p7',     // free tier
   'gpt-5.6-sol',             // pro+
   'gpt-5.6-terra',           // pro+
@@ -484,6 +483,7 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
   'claude-opus-4-8',         // pro+
   'claude-fable-5',          // max-only
   'gemini-3.1-pro-preview',  // pro+
+  'grok-4.5',                // pro+
 ]);
 
 function isServerKeyModel(model: ModelId): boolean {
@@ -669,11 +669,14 @@ export async function POST(req: Request) {
         // Together key and no server-side TOGETHER_API_KEY.
         return Boolean(creds.togetherApiKey) && !process.env.TOGETHER_API_KEY;
       }
-      if (selectedModel === 'fireworks-minimax-m3' || selectedModel === 'fireworks-glm-5p2' || selectedModel === 'fireworks-kimi-k2p7') {
+      if (selectedModel === 'fireworks-minimax-m3' || selectedModel === 'fireworks-kimi-k2p7') {
         return Boolean(creds.fireworksApiKey) && !process.env.FIREWORKS_API_KEY;
       }
       if (selectedModel === 'gemini-3.1-pro-preview') {
         return Boolean(creds.googleApiKey) && !process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+      }
+      if (selectedModel === 'grok-4.5') {
+        return Boolean(creds.xaiApiKey) && !process.env.XAI_API_KEY;
       }
       // Anthropic models — OAuth token only counts when the feature flag is on
       return Boolean(
@@ -864,7 +867,7 @@ export async function POST(req: Request) {
         }
 
         // Fireworks fallback: providerMetadata or response header
-        if (cachedRead === 0 && (selectedModel === 'fireworks-minimax-m3' || selectedModel === 'fireworks-glm-5p2' || selectedModel === 'fireworks-kimi-k2p7')) {
+        if (cachedRead === 0 && (selectedModel === 'fireworks-minimax-m3' || selectedModel === 'fireworks-kimi-k2p7')) {
           const metaCache = event.providerMetadata?.fireworks?.cachedPromptTokens as number | undefined;
           if (metaCache !== undefined && metaCache > 0) {
             cachedRead = metaCache;
@@ -1109,7 +1112,7 @@ export async function POST(req: Request) {
         return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
       }
 
-      if (selectedModel === "fireworks-minimax-m3" || selectedModel === "fireworks-glm-5p2" || selectedModel === "fireworks-kimi-k2p7") {
+      if (selectedModel === "fireworks-minimax-m3" || selectedModel === "fireworks-kimi-k2p7") {
         // Check for server-side Fireworks key first (for server-key models)
         const serverFireworksKey = process.env.FIREWORKS_API_KEY;
         const apiKey = isServerKeyModel(selectedModel) && serverFireworksKey

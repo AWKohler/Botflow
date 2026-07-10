@@ -19,7 +19,7 @@ interface SettingsModalProps {
 }
 
 type Tab = 'usage' | 'connections' | 'subscription';
-type Provider = 'openai' | 'anthropic' | 'moonshot' | 'fireworks' | 'together' | 'google';
+type Provider = 'openai' | 'anthropic' | 'moonshot' | 'fireworks' | 'together' | 'google' | 'xai';
 type OAuthStep = 'idle' | 'connecting' | 'exchanging' | 'success';
 
 const PROVIDERS: Array<{
@@ -31,6 +31,7 @@ const PROVIDERS: Array<{
   { provider: 'openai', label: 'OpenAI API Key', field: 'openaiApiKey', placeholder: 'sk-...' },
   { provider: 'anthropic', label: 'Anthropic API Key', field: 'anthropicApiKey', placeholder: 'sk-ant-...' },
   { provider: 'google', label: 'Google AI Studio API Key', field: 'googleApiKey', placeholder: 'AIza...' },
+  { provider: 'xai', label: 'xAI (Grok) API Key', field: 'xaiApiKey', placeholder: 'xai-...' },
   { provider: 'moonshot', label: 'Moonshot API Key', field: 'moonshotApiKey', placeholder: 'moonshot-...' },
   { provider: 'fireworks', label: 'Fireworks AI API Key', field: 'fireworksApiKey', placeholder: 'fw-...' },
   // Only rendered when the USE_TOGETHER_KIMI flag is on (Kimi routed to Together AI).
@@ -44,10 +45,10 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
   const [savingKey, setSavingKey] = useState<Provider | null>(null);
   const [removingKey, setRemovingKey] = useState<Provider | null>(null);
   const [keys, setKeys] = useState<Record<Provider, string>>({
-    openai: '', anthropic: '', moonshot: '', fireworks: '', together: '', google: '',
+    openai: '', anthropic: '', moonshot: '', fireworks: '', together: '', google: '', xai: '',
   });
   const [hasKey, setHasKey] = useState<Record<Provider, boolean>>({
-    openai: false, anthropic: false, moonshot: false, fireworks: false, together: false, google: false,
+    openai: false, anthropic: false, moonshot: false, fireworks: false, together: false, google: false, xai: false,
   });
   // Server-controlled flag (USE_TOGETHER_KIMI): gates the Together AI key input.
   const [useTogetherKimi, setUseTogetherKimi] = useState(false);
@@ -104,7 +105,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
     if (!open) return;
     let cancelled = false;
     setLoading(true);
-    setKeys({ openai: '', anthropic: '', moonshot: '', fireworks: '', together: '', google: '' });
+    setKeys({ openai: '', anthropic: '', moonshot: '', fireworks: '', together: '', google: '', xai: '' });
     setOauthStep('idle');
     setOauthCode('');
     setPkceVerifier('');
@@ -126,6 +127,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
               fireworks: Boolean(data?.hasFireworksKey),
               together: Boolean(data?.hasTogetherKey),
               google: Boolean(data?.hasGoogleKey),
+              xai: Boolean(data?.hasXaiKey),
             });
             setUseTogetherKimi(Boolean(data?.useTogetherKimi));
             setHasClaudeOAuth(Boolean(data?.hasClaudeOAuth));
@@ -229,6 +231,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
           fireworks: Boolean(data?.hasFireworksKey),
           together: Boolean(data?.hasTogetherKey),
           google: Boolean(data?.hasGoogleKey),
+          xai: Boolean(data?.hasXaiKey),
         });
         setKeys(prev => ({ ...prev, [provider]: '' }));
         toast({ title: 'Key saved', description: `${config.label} has been updated.` });

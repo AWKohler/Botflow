@@ -102,6 +102,18 @@ describe("settlement credit parity with /api/agent", () => {
     assert.ok(withWrite > withoutWrite);
   });
 
+  test("grok-4.5 credits reconcile to xAI's live billing (captured cost_in_usd_ticks)", () => {
+    // Real cold call captured from api.x.ai (1 tick = 1e-10 USD):
+    //   prompt_tokens=7755 (cached_tokens=128, a subset), output=completion(1)+reasoning(177)=178
+    //   cost_in_usd_ticks=163_860_000 → $0.016386
+    // 1 credit = $0.30/MTok = $3e-7, so $0.016386 / 3e-7 = 54_620 credits.
+    const credits = computeSettlementCredits(usageOf(7755, 178, 128, 0), "grok-4.5", "platform");
+    const dollarsFromTicks = 163_860_000 * 1e-10;      // $0.016386
+    const expected = dollarsFromTicks / 3e-7;           // 54_620 credits ($3e-7 = 1 credit)
+    // calculateCredits Math.ceil's the FP sum, so allow the ≤1-credit ceil artifact.
+    assert.ok(Math.abs(credits - expected) <= 1, `grok credits ${credits} vs xAI-derived ${expected}`);
+  });
+
   test("GPT-5.6 cache WRITES bill at the 1.25× premium (> same tokens as plain input)", () => {
     // usageOf's first arg is prompt_tokens (the total) — reads AND writes are
     // SUBSETS of it, not added on top (live-verified). Reclassifying 800 tokens
