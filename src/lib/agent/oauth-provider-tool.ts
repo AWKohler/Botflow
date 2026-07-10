@@ -42,11 +42,21 @@ function buildAuthTsSnippet(def: OAuthProviderDef): string {
    });`;
 }
 
-function buildSuccessContext(
+/**
+ * Post-success guidance for the agent. Exported because the in-sandbox rails
+ * (Claude Code / OpenCode) execute this tool via /api/internal/claude-code-tool
+ * rather than the ai-sdk tool above — both must return the same instructions.
+ */
+export function buildOAuthProviderSuccessContext(
   platform: OAuthToolPlatform,
   provider: string,
   def: OAuthProviderDef,
+  /** Rail-specific tool names — the CC/OpenCode MCP rails use snake_case. */
+  toolNames?: { deploy?: string; setupAuth?: string; setupOAuth?: string },
 ): string {
+  const deployTool = toolNames?.deploy ?? "convexDeploy";
+  const setupAuthTool = toolNames?.setupAuth ?? "setupAuth";
+  const setupOAuthTool = toolNames?.setupOAuth ?? "setupOAuthProvider";
   const header = `=== ${def.displayName.toUpperCase()} OAUTH CREDENTIALS SAVED ===
 
 ${def.envVars.join(", ")} now set on your Convex deployment.
@@ -58,7 +68,7 @@ REQUIRED NEXT STEPS:
 
 ${buildAuthTsSnippet(def)}
 
-2. Run convexDeploy to push the updated auth config.
+2. Run ${deployTool} to push the updated auth config.
 `;
 
   if (platform === "web") {
@@ -89,7 +99,7 @@ ${buildAuthTsSnippet(def)}
     provider !== "apple"
       ? "\n\nAPP STORE NOTE (tell the user, do not force): App Store guideline 4.8 requires iOS apps that " +
         "offer third-party login (Google/GitHub/Microsoft) to ALSO offer Sign in with Apple. Recommend adding " +
-        "it via setupOAuthProvider({ provider: \"apple\" }) before they submit to the App Store — but it is " +
+        `it via ${setupOAuthTool} with provider "apple" before they submit to the App Store — but it is ` +
         "their call; proceed without it if they decline (enforcement happens at App Review, not here)."
       : "\n\nAPPLE NOTE: the user's name/email are returned ONLY on the first sign-in — capture them then.";
   return (
@@ -99,8 +109,8 @@ ${buildAuthTsSnippet(def)}
    (convex/http.ts) shows a "Continue with ${def.displayName}" button automatically
    once the deploy is live; the existing in-app-browser flow handles the rest.
    IMPORTANT: if this project's convex/http.ts predates OAuth support (no
-   /auth/oauth/start route in it), call setupAuth again to get the refreshed
-   http.ts before deploying.` +
+   /auth/oauth/start route in it), call ${setupAuthTool} again to get the
+   refreshed http.ts before deploying.` +
     appleNudge
   );
 }
@@ -251,7 +261,7 @@ export function createSetupOAuthProviderTool(
           return {
             ok: true,
             provider,
-            context: buildSuccessContext(platform, provider, def),
+            context: buildOAuthProviderSuccessContext(platform, provider, def),
           };
         }
 
