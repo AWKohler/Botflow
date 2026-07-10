@@ -173,7 +173,7 @@ export async function GET(request: Request) {
     modelParam === 'fireworks-kimi-k2p7' ? 'fireworks-kimi-k2p7' :
     modelParam === 'gemini-3.1-pro-preview' ? 'gemini-3.1-pro-preview' :
     modelParam === 'grok-4.5' ? 'grok-4.5' :
-    'fireworks-kimi-k2p7'
+    'gpt-5.6-luna' // default model
   ) as 'gpt-5.6-sol' | 'gpt-5.6-terra' | 'gpt-5.6-luna' | 'gpt-5.5' | 'claude-sonnet-5' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-kimi-k2p7' | 'gemini-3.1-pro-preview' | 'grok-4.5';
 
   if (!userId) {

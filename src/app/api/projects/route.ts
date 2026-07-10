@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
             ? 'gemini-3.1-pro-preview'
             : model === 'grok-4.5'
             ? 'grok-4.5'
-            : 'fireworks-kimi-k2p7',
+            : 'gpt-5.6-luna', // default model
       })
       .returning();
 

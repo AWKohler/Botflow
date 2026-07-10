@@ -46,7 +46,7 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
   'fireworks-kimi-k2p7': 'free',
   'gpt-5.6-sol': 'pro',         // Pro+ for server key; free requires BYOK/OAuth
   'gpt-5.6-terra': 'pro',       // Pro+
-  'gpt-5.6-luna': 'pro',        // Pro+
+  'gpt-5.6-luna': 'free',       // free — default model, served on the platform key
   'gpt-5.5': 'pro',             // Pro+
   'claude-sonnet-5': 'pro',     // Pro+
   'claude-opus-4-8': 'pro',     // Pro+

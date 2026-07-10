@@ -1347,7 +1347,7 @@ export default function LandingV2() {
   // for Web (1px), Swift orange and thicker (2px) when Swift is selected.
   const promptFrameColor = platform === 'swift' ? SWIFT_ORANGE : 'var(--sand-border)';
   const promptFrameWidth = platform === 'swift' ? 2 : 1;
-  const [model, setModel] = useState<ModelId>('fireworks-kimi-k2p7');
+  const [model, setModel] = useState<ModelId>('gpt-5.6-luna');
   const { toast } = useToast();
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
