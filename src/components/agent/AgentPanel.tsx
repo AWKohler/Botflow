@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { LiveActions } from '@/components/agent/LiveActions';
 import { useToast } from '@/components/ui/toast';
 import type { ToolCallData } from '@/lib/agent/ui-types';
-import { MODEL_CONFIGS, modelSupportsImages, resolveModelId, isOpenAIModel, type ModelId } from '@/lib/agent/models';
+import { MODEL_CONFIGS, modelSupportsImages, resolveModelId, isOpenAIModel, effectiveContextTokens, type ModelId } from '@/lib/agent/models';
 import { ModelSelector } from '@/components/ui/ModelSelector';
 import { LimitModal, parseLimitPayload, type LimitReachedPayload } from '@/components/ui/LimitModal';
 import { CreditGauge } from '@/components/ui/CreditGauge';
@@ -643,7 +643,11 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     breakdown: { input: number; output: number; cacheCreate: number; cacheRead: number };
   } | null>(null);
   const [isCompacting, setIsCompacting] = useState(false);
-  const maxTokens = MODEL_CONFIGS[model]?.maxContextTokens ?? 128_000;
+  // Context meter limit: personal-cred Anthropic turns (Claude OAuth/BYOK →
+  // the claude-code backend) get the provider's 1M window, not the 200K
+  // platform default — otherwise the meter reads "227k / 200k" on a turn
+  // that's perfectly within budget. Display only; billing is server-side.
+  const maxTokens = effectiveContextTokens(model, derivedBackend.backend === 'claude-code');
 
   // --- First message tracking ---
   const [hasAgentResponded, setHasAgentResponded] = useState(false);
