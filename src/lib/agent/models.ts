@@ -3,8 +3,9 @@
  */
 
 export type ModelId =
-  | "gpt-5.3-codex"
-  | "gpt-5.4"
+  | "gpt-5.6-sol"
+  | "gpt-5.6-terra"
+  | "gpt-5.6-luna"
   | "gpt-5.5"
   | "claude-sonnet-5"
   | "claude-opus-4-8"
@@ -42,21 +43,31 @@ export interface ModelConfig {
 }
 
 export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
-  "gpt-5.3-codex": {
-    id: "gpt-5.3-codex",
+  "gpt-5.6-sol": {
+    id: "gpt-5.6-sol",
     provider: "openai",
-    apiModelId: "gpt-5.3-codex",
-    displayName: "GPT-5.3",
-    maxContextTokens: 400_000,
+    apiModelId: "gpt-5.6-sol",
+    displayName: "GPT-5.6 Sol",
+    maxContextTokens: 1_000_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
   },
-  "gpt-5.4": {
-    id: "gpt-5.4",
+  "gpt-5.6-terra": {
+    id: "gpt-5.6-terra",
     provider: "openai",
-    apiModelId: "gpt-5.4",
-    displayName: "GPT-5.4",
+    apiModelId: "gpt-5.6-terra",
+    displayName: "GPT-5.6 Terra",
+    maxContextTokens: 1_000_000,
+    warnThreshold: 0.7,
+    criticalThreshold: 0.9,
+    supportsImages: true,
+  },
+  "gpt-5.6-luna": {
+    id: "gpt-5.6-luna",
+    provider: "openai",
+    apiModelId: "gpt-5.6-luna",
+    displayName: "GPT-5.6 Luna",
     maxContextTokens: 1_000_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
@@ -159,7 +170,9 @@ export function resolveModelId(stored: string | null | undefined): ModelId {
   // Dot-notation renames (same model, new ID format)
   if (stored === "claude-sonnet-4.5" || stored === "claude-sonnet-4.6" || stored === "claude-sonnet-4-6") return "claude-sonnet-5";
   if (stored === "claude-opus-4.5" || stored === "claude-opus-4.6" || stored === "claude-opus-4.7" || stored === "claude-opus-4-7" || stored === "claude-opus-4-1") return "claude-opus-4-8";
-  if (stored === "gpt-4.1" || stored === "gpt-5.2") return "gpt-5.3-codex";
+  // OpenAI retired IDs → GPT-5.6 successors (Terra succeeds 5.4, Luna succeeds 5.3)
+  if (stored === "gpt-5.4") return "gpt-5.6-terra";
+  if (stored === "gpt-5.3-codex" || stored === "gpt-5.2" || stored === "gpt-4.1") return "gpt-5.6-luna";
   // GLM retired — Grok 4.5 replaces it in the lineup, but existing GLM-pinned
   // projects fall back to Kimi (both free tier) so free users aren't paywalled
   // onto pro Grok. [[grok-glm-replacement]]

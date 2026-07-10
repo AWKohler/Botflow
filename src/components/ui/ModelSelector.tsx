@@ -44,8 +44,9 @@ const PROVIDER_LABELS: Record<string, string> = {
 const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
   'fireworks-minimax-m3': 'free',
   'fireworks-kimi-k2p7': 'free',
-  'gpt-5.3-codex': 'pro',       // Pro+ for server key; free requires BYOK/OAuth
-  'gpt-5.4': 'pro',             // Pro+
+  'gpt-5.6-sol': 'pro',         // Pro+ for server key; free requires BYOK/OAuth
+  'gpt-5.6-terra': 'pro',       // Pro+
+  'gpt-5.6-luna': 'pro',        // Pro+
   'gpt-5.5': 'pro',             // Pro+
   'claude-sonnet-5': 'pro',     // Pro+
   'claude-opus-4-8': 'pro',     // Pro+
@@ -61,8 +62,9 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
 const SERVER_KEY_MODELS = new Set<ModelId>([
   'fireworks-minimax-m3',
   'fireworks-kimi-k2p7',
-  'gpt-5.3-codex',
-  'gpt-5.4',
+  'gpt-5.6-sol',
+  'gpt-5.6-terra',
+  'gpt-5.6-luna',
   'gpt-5.5',
   'claude-sonnet-5',
   'claude-opus-4-8',
@@ -75,12 +77,13 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
 const MODEL_COST_LABEL: Record<ModelId, string> = {
   'fireworks-minimax-m3': 'x1',
   'fireworks-kimi-k2p7': 'x3',
+  'gpt-5.6-luna': 'x3',
   'grok-4.5': 'x4',
-  'gpt-5.3-codex': 'x4',
   'gemini-3.1-pro-preview': 'x5',
   'claude-sonnet-5': 'x5',
-  'gpt-5.4': 'x6',
+  'gpt-5.6-terra': 'x6',
   'claude-opus-4-8': 'x10',
+  'gpt-5.6-sol': 'x12',
   'gpt-5.5': 'x12',
   'claude-fable-5': 'x20',
 };
@@ -98,12 +101,13 @@ function formatContextSize(tokens: number): string {
 const MODEL_ORDER: ModelId[] = [
   'fireworks-minimax-m3',  // x1
   'fireworks-kimi-k2p7',     // x3
+  'gpt-5.6-luna',            // x3
   'grok-4.5',                // x4
-  'gpt-5.3-codex',           // x4
   'gemini-3.1-pro-preview',  // x5
   'claude-sonnet-5',         // x5
-  'gpt-5.4',                 // x6
+  'gpt-5.6-terra',           // x6
   'claude-opus-4-8',         // x10
+  'gpt-5.6-sol',             // x12
   'gpt-5.5',                 // x12
   'claude-fable-5',          // x20 — most expensive (Max-only)
 ];
