@@ -32,7 +32,7 @@ import { isSandboxPlatform } from "@/lib/project-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { getUserTier } from "@/lib/tier";
 import {
-  getMonthlyCredits,
+  getMonthlyCreditsKV,
   getMonthlyLimit,
   getWeeklyCredits,
   getWeeklyLimit,
@@ -274,12 +274,14 @@ export async function POST(req: Request) {
       return fallback("no_provider_credentials"); // unmappable — cannot happen for registry models
     }
     if (credMode === null) {
-      // Platform mode pre-flight (the same split /api/agent uses: slow
-      // aggregate checks at turn start, the atomic weekly reservation per
-      // request at the proxy). The tier gate already ran inside the
-      // derivation above.
+      // Platform mode pre-flight — a cheap KV-only early exit at turn start
+      // (never Neon on this hot path). The binding per-request gate is the
+      // atomic spillover reservation at the proxy (reservePlatformCredits):
+      // weekly paces, boundary-straddling requests spill into monthly
+      // headroom, monthly is the hard ceiling. The tier gate already ran
+      // inside the derivation above.
       const monthlyLimit = getMonthlyLimit(userTier);
-      const monthlyUsed = await getMonthlyCredits(userId);
+      const monthlyUsed = await getMonthlyCreditsKV(userId);
       if (monthlyUsed >= monthlyLimit) {
         return limitReachedResponse({
           limitType: "monthly_credits",

@@ -61,9 +61,9 @@ import { redis } from "@/lib/redis";
 import {
   calculateCredits,
   getWeeklyCredits,
-  getMonthlyCredits,
-  reserveWeeklyCredits,
-  adjustWeeklyCredits,
+  getMonthlyCreditsKV,
+  reservePlatformCredits,
+  adjustPlatformCredits,
   getWeeklyLimit,
   getMonthlyLimit,
 } from "@/lib/credits";
@@ -697,34 +697,35 @@ export async function POST(req: Request) {
     const messagesTokens = estimateMessagesTokens(resolvedMessages);
     const totalEstimatedTokens = systemTokens + messagesTokens + TOOLS_TOKEN_ESTIMATE;
 
-    // ── Atomic weekly-credit reservation bookkeeping ─────────────────────────
-    // `weeklyReserved` holds this turn's reserved (worst-case) credits; it is
+    // ── Atomic platform-credit reservation bookkeeping ───────────────────────
+    // `platformReserved` holds this turn's reserved (worst-case) credits; it is
     // reconciled down to the real cost in onFinish, or released if the request
     // aborts first. The reconcile is idempotent so onFinish and the abort
-    // handler can't double-apply.
-    let weeklyReserved = 0;
+    // handler can't double-apply. Adjustments hit BOTH KV counters (weekly +
+    // monthly) via adjustPlatformCredits.
+    let platformReserved = 0;
     let creditReconciled = false;
-    const reconcileWeeklyCredits = async (actualCredits: number): Promise<void> => {
-      if (creditReconciled || weeklyReserved === 0) return;
+    const reconcilePlatformCredits = async (actualCredits: number): Promise<void> => {
+      if (creditReconciled || platformReserved === 0) return;
       creditReconciled = true;
-      const delta = actualCredits - weeklyReserved;
+      const delta = actualCredits - platformReserved;
       if (delta !== 0) {
-        await adjustWeeklyCredits(userId, delta).catch((err) => {
-          console.error("[agent] weekly_credit_reconcile_failed", err);
+        await adjustPlatformCredits(userId, delta).catch((err) => {
+          console.error("[agent] platform_credit_reconcile_failed", err);
         });
       }
     };
     // Release the reservation if the client disconnects before onFinish runs.
-    req.signal.addEventListener("abort", () => { void reconcileWeeklyCredits(0); });
+    req.signal.addEventListener("abort", () => { void reconcilePlatformCredits(0); });
 
     // ── Tier + credit budget enforcement (platform-paid models only) ─────────
-    // Weekly budget uses an ATOMIC reservation: reserve this turn's worst-case
-    // cost (all input uncached + the 32k output ceiling) via a single INCRBY,
-    // then reconcile to the real cost in onFinish. This closes the
-    // check-then-spend race — concurrent requests can no longer all clear the
-    // same pre-spend balance. Monthly is the slower aggregate guard; bursting it
-    // requires first clearing the weekly reservation, so weekly is the binding
-    // burst limiter.
+    // One ATOMIC reservation gates the turn's worst-case cost (all input
+    // uncached + the 32k output ceiling) against BOTH KV counters, then
+    // reconciles to the real cost in onFinish. Paradigm (see
+    // reservePlatformCredits): the weekly budget paces usage, a request that
+    // straddles the weekly boundary spills its overshoot into the monthly
+    // headroom, and the monthly budget is the hard ceiling. All checks are
+    // Redis-only — Neon is never touched on this hot path.
     if (isServerKeyModel(selectedModel) && !isUsingPersonalCredentials) {
       const tier = await getUserTier(userId);
       const requiredTier = MODEL_TIER_REQUIREMENT[selectedModel] ?? 'free';
@@ -740,35 +741,30 @@ export async function POST(req: Request) {
         });
       }
 
-      // Monthly credit limit (eventually-consistent aggregate from Neon)
-      const monthlyLimit = getMonthlyLimit(tier);
-      const monthlyUsed = await getMonthlyCredits(userId);
-      if (monthlyUsed >= monthlyLimit) {
-        return limitReachedResponse({
-          limitType: 'monthly_credits',
-          current: monthlyUsed,
-          limit: monthlyLimit,
-          tier,
-          model: selectedModel,
-        });
-      }
-
-      // Weekly credit limit — atomic worst-case reservation
       const weeklyLimit = getWeeklyLimit(tier);
-      weeklyReserved = calculateCredits({
+      const monthlyLimit = getMonthlyLimit(tier);
+      platformReserved = calculateCredits({
         model: selectedModel,
         inputTokens: totalEstimatedTokens,
         outputTokens: PLATFORM_MAX_OUTPUT_TOKENS,
         cachedReadTokens: 0,
         cacheWriteTokens: 0,
       });
-      const reserved = await reserveWeeklyCredits(userId, weeklyReserved, weeklyLimit);
-      if (!reserved) {
-        weeklyReserved = 0; // reservation was rolled back inside the helper
-        const weeklyUsed = await getWeeklyCredits(userId);
+      const reserved = await reservePlatformCredits(userId, platformReserved, weeklyLimit, monthlyLimit);
+      if (!reserved.ok) {
+        platformReserved = 0; // reservation was rolled back inside the helper
+        if (reserved.reason === 'monthly_exceeded') {
+          return limitReachedResponse({
+            limitType: 'monthly_credits',
+            current: await getMonthlyCreditsKV(userId),
+            limit: monthlyLimit,
+            tier,
+            model: selectedModel,
+          });
+        }
         return limitReachedResponse({
           limitType: 'weekly_credits',
-          current: weeklyUsed,
+          current: await getWeeklyCredits(userId),
           limit: weeklyLimit,
           tier,
           model: selectedModel,
@@ -907,11 +903,12 @@ export async function POST(req: Request) {
           // Record usage to Neon (monthly aggregate + audit trail).
           await recordTokenUsage(userId, selectedModel, tokensIn, tokensOut, actualCredits, cachedRead, cachedWrite).catch(() => {});
         }
-        // Reconcile the atomic weekly reservation down to the real cost (or
-        // release it entirely if no usage was reported). Always runs for
-        // platform-paid traffic so a reservation can't be left stranded; a
-        // no-op when nothing was reserved (personal credentials).
-        await reconcileWeeklyCredits(actualCredits);
+        // Reconcile the atomic platform reservation (weekly + monthly KV
+        // counters) down to the real cost, or release it entirely if no usage
+        // was reported. Always runs for platform-paid traffic so a reservation
+        // can't be left stranded; a no-op when nothing was reserved (personal
+        // credentials).
+        await reconcilePlatformCredits(actualCredits);
         const durationMs = Date.now() - startTime;
         agentLog.apiComplete({ model: selectedModel, durationMs });
       };
