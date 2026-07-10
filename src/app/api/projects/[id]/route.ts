@@ -45,8 +45,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     };
     if (
       model &&
-      model !== 'gpt-5.3-codex' &&
-      model !== 'gpt-5.4' &&
+      model !== 'gpt-5.6-sol' &&
+      model !== 'gpt-5.6-terra' &&
+      model !== 'gpt-5.6-luna' &&
+      model !== 'gpt-5.3-codex' && // backwards compat → resolves to gpt-5.6-luna
+      model !== 'gpt-5.4' && // backwards compat → resolves to gpt-5.6-terra
       model !== 'gpt-5.5' &&
       model !== 'gpt-5.2' && // backwards compat
       model !== 'gpt-4.1' && // backwards compat

@@ -110,6 +110,30 @@ describe("openai-chat dialect", () => {
     assert.equal(u.complete, true);
   });
 
+  test("GPT-5.6: cache_write_tokens is a SUBSET of prompt_tokens (NOT added back) — live-captured cold call", () => {
+    const p = createUsageParser("openai-chat", true);
+    p.push(sse([
+      {
+        choices: [],
+        usage: {
+          // Real capture from gpt-5.6-sol, cold call (whole prefix written).
+          prompt_tokens: 10256,
+          completion_tokens: 4,
+          prompt_tokens_details: { cached_tokens: 0, cache_write_tokens: 10253 },
+        },
+      },
+      "data: [DONE]",
+    ]));
+    const u = p.finish();
+    assert.equal(u.inputTokens, 10256);        // prompt_tokens as-is — writes are a subset, NOT +10253
+    assert.equal(u.cacheWriteTokens, 10253);
+    assert.equal(u.cachedReadTokens, 0);
+    assert.equal(u.explicitCacheReport, true);
+    // Billing: uncached = in − read − write = 3 plain tokens @1×; the 10253
+    // written tokens bill once, at 1.25×. (Add-back would double-count them.)
+    assert.equal(u.inputTokens - u.cachedReadTokens - u.cacheWriteTokens, 3);
+  });
+
   test("stream with NO usage frame (fireworks-style silence): zeros, complete:false, no explicit report", () => {
     const p = createUsageParser("openai-chat", true);
     p.push(sse([
@@ -157,6 +181,29 @@ describe("openai-responses dialect", () => {
     assert.equal(u.complete, true);
   });
 
+  test("GPT-5.6: input_tokens_details.cache_write_tokens is a SUBSET of input_tokens (NOT added back)", () => {
+    const p = createUsageParser("openai-responses", true);
+    p.push(sse([
+      {
+        type: "response.completed",
+        response: {
+          usage: {
+            input_tokens: 5000,
+            input_tokens_details: { cached_tokens: 4096, cache_write_tokens: 400 },
+            output_tokens: 250,
+          },
+        },
+      },
+    ]));
+    const u = p.finish();
+    assert.equal(u.inputTokens, 5000);         // input_tokens as-is — writes/reads are subsets
+    assert.equal(u.cachedReadTokens, 4096);
+    assert.equal(u.cacheWriteTokens, 400);
+    assert.equal(u.explicitCacheReport, true);
+    // subset invariant: read + write ≤ total
+    assert.ok(u.cachedReadTokens + u.cacheWriteTokens <= u.inputTokens);
+  });
+
   test("truncated before response.completed: complete:false", () => {
     const p = createUsageParser("openai-responses", true);
     p.push(sse([{ type: "response.output_text.delta", delta: "partial" }]));
@@ -192,7 +239,7 @@ describe("rewriteRequestBody", () => {
   test("platform mode rejects off-allowlist models", () => {
     const out = rewriteRequestBody(JSON.stringify({ model: "gpt-4o", stream: true }), {
       dialect: "openai-chat",
-      enforceModelAllowlist: ["gpt-5.4"],
+      enforceModelAllowlist: ["gpt-5.6-terra"],
       capOutputTokens: 32000,
     });
     assert.ok("rejected" in out);
@@ -200,8 +247,8 @@ describe("rewriteRequestBody", () => {
 
   test("injects include_usage even when the client disabled it, and inserts the output cap when absent", () => {
     const out = rewriteRequestBody(
-      JSON.stringify({ model: "gpt-5.4", stream: true, stream_options: { include_usage: false } }),
-      { dialect: "openai-chat", enforceModelAllowlist: ["gpt-5.4"], capOutputTokens: 32000 },
+      JSON.stringify({ model: "gpt-5.6-terra", stream: true, stream_options: { include_usage: false } }),
+      { dialect: "openai-chat", enforceModelAllowlist: ["gpt-5.6-terra"], capOutputTokens: 32000 },
     );
     assert.ok(!("rejected" in out));
     const body = JSON.parse(out.body);
@@ -213,8 +260,8 @@ describe("rewriteRequestBody", () => {
 
   test("clamps an oversized requested cap (responses dialect field name)", () => {
     const out = rewriteRequestBody(
-      JSON.stringify({ model: "gpt-5.3-codex", stream: true, max_output_tokens: 900000 }),
-      { dialect: "openai-responses", enforceModelAllowlist: ["gpt-5.3-codex"], capOutputTokens: 32000 },
+      JSON.stringify({ model: "gpt-5.6-luna", stream: true, max_output_tokens: 900000 }),
+      { dialect: "openai-responses", enforceModelAllowlist: ["gpt-5.6-luna"], capOutputTokens: 32000 },
     );
     assert.ok(!("rejected" in out));
     assert.equal(JSON.parse(out.body).max_output_tokens, 32000);

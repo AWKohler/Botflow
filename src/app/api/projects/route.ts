@@ -70,8 +70,9 @@ export async function POST(request: NextRequest) {
       platform?: ProjectPlatform;
       backendType?: BackendType;
       model?:
-        | 'gpt-5.3-codex'
-        | 'gpt-5.4'
+        | 'gpt-5.6-sol'
+        | 'gpt-5.6-terra'
+        | 'gpt-5.6-luna'
         | 'gpt-5.5'
         | 'claude-sonnet-5'
         | 'claude-opus-4-8'
@@ -138,8 +139,12 @@ export async function POST(request: NextRequest) {
         backendType: resolvedBackendType,
         sandboxTemplate,
         model:
-          model === 'gpt-5.4'
-            ? 'gpt-5.4'
+          model === 'gpt-5.6-sol'
+            ? 'gpt-5.6-sol'
+          : model === 'gpt-5.6-terra'
+            ? 'gpt-5.6-terra'
+          : model === 'gpt-5.6-luna'
+            ? 'gpt-5.6-luna'
           : model === 'gpt-5.5'
             ? 'gpt-5.5'
           : model === 'claude-sonnet-5'

@@ -59,21 +59,33 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     cachedInput: 0.19 / BASE_PRICE,   // 0.63
     output:      4.00 / BASE_PRICE,   // 13.33
   },
-  'gpt-5.3-codex': {
-    input:       1.75 / BASE_PRICE,   // 5.83
-    cachedInput: 0.175 / BASE_PRICE,  // 0.58
-    output:      14.00 / BASE_PRICE,  // 46.67
-  },
   'gpt-5.5': {
     input:       5.00 / BASE_PRICE,   // 16.67
     cachedInput: 0.50 / BASE_PRICE,   // 1.67
     output:      30.00 / BASE_PRICE,  // 100.0
   },
-  // GPT-5.4 ≤272K context — the >272K tier is handled in calculateCredits()
-  'gpt-5.4': {
+  // GPT-5.6 family. Flat pricing (no context-length tier). Unlike earlier
+  // OpenAI models, 5.6 bills cache WRITES at 1.25× uncached input — modeled via
+  // cacheWrite below. (Only charged when the meter reports cacheWriteTokens; see
+  // usage-meter — the OpenAI dialect must extract 5.6's cache-write count for it
+  // to take effect, otherwise writes fall back to plain input like the old models.)
+  'gpt-5.6-sol': {                    // flagship — same rates as GPT-5.5
+    input:       5.00 / BASE_PRICE,   // 16.67
+    cachedInput: 0.50 / BASE_PRICE,   // 1.67
+    output:      30.00 / BASE_PRICE,  // 100.0
+    cacheWrite:  6.25 / BASE_PRICE,   // 20.83 (1.25× input)
+  },
+  'gpt-5.6-terra': {                  // balanced — succeeds GPT-5.4
     input:       2.50 / BASE_PRICE,   // 8.33
     cachedInput: 0.25 / BASE_PRICE,   // 0.83
     output:      15.00 / BASE_PRICE,  // 50.0
+    cacheWrite:  3.125 / BASE_PRICE,  // 10.42 (1.25× input)
+  },
+  'gpt-5.6-luna': {                   // fast/cheap — succeeds GPT-5.3
+    input:       1.00 / BASE_PRICE,   // 3.33
+    cachedInput: 0.10 / BASE_PRICE,   // 0.33
+    output:      6.00 / BASE_PRICE,   // 20.0
+    cacheWrite:  1.25 / BASE_PRICE,   // 4.17 (1.25× input)
   },
   // Claude Sonnet 5 — standard (regular) pricing, effective 2026-09-01 onward.
   // Identical to the prior Sonnet 4.6 rates ($3 / $15 per MTok). Until then the
@@ -117,15 +129,6 @@ const GEMINI_LONG_CONTEXT_PRICING: ModelPricing = {
 
 const GEMINI_LONG_CONTEXT_THRESHOLD = 200_000;
 
-// GPT-5.4 pricing at >272K context length
-const GPT54_LONG_CONTEXT_PRICING: ModelPricing = {
-  input:       5.00 / BASE_PRICE,   // 16.67
-  cachedInput: 0.50 / BASE_PRICE,   // 1.67
-  output:      22.50 / BASE_PRICE,  // 75.0
-};
-
-const GPT54_LONG_CONTEXT_THRESHOLD = 272_000;
-
 // Claude Sonnet 5 introductory pricing — $2 input / $10 output per MTok, a
 // temporary discount from the standard $3 / $15 rates in MODEL_PRICING above.
 // Anthropic applies it through 2026-08-31; standard pricing resumes 2026-09-01.
@@ -153,11 +156,12 @@ export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = {
   'fireworks-minimax-m3': 1,
   'fireworks-glm-5p2': 3,
   'fireworks-kimi-k2p7': 3,
-  'gpt-5.3-codex': 4,
+  'gpt-5.6-luna': 3,
   'gemini-3.1-pro-preview': 5,
   'claude-sonnet-5': 5,
-  'gpt-5.4': 6,
+  'gpt-5.6-terra': 6,
   'claude-opus-4-8': 10,
+  'gpt-5.6-sol': 12,
   'gpt-5.5': 12,
   'claude-fable-5': 20,
 };
@@ -181,11 +185,6 @@ export function calculateCredits(params: CreditCalculationInput): number {
   if (!pricing) {
     // Fallback: treat as MiniMax pricing
     pricing = MODEL_PRICING['fireworks-minimax-m3'];
-  }
-
-  // GPT-5.4: use higher pricing tier if total input context exceeds 272K
-  if (model === 'gpt-5.4' && (inputTokens + cachedReadTokens) > GPT54_LONG_CONTEXT_THRESHOLD) {
-    pricing = GPT54_LONG_CONTEXT_PRICING;
   }
 
   // Gemini 3.1 Pro: use higher pricing tier if total input context exceeds 200K

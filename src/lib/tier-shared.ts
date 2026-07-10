@@ -14,8 +14,9 @@ export const MODEL_TIER_REQUIREMENT: Record<string, Tier> = {
   'fireworks-minimax-m3': 'free',
   'fireworks-glm-5p2': 'free',
   'fireworks-kimi-k2p7': 'free',
-  'gpt-5.3-codex': 'pro',            // Pro+ for server key; free requires BYOK/OAuth
-  'gpt-5.4': 'pro',                  // Pro+ for server key
+  'gpt-5.6-sol': 'pro',              // Pro+ for server key; free requires BYOK/OAuth
+  'gpt-5.6-terra': 'pro',            // Pro+ for server key
+  'gpt-5.6-luna': 'pro',             // Pro+ for server key
   'gpt-5.5': 'pro',                  // Pro+ for server key
   'claude-sonnet-5': 'pro',          // Pro+ for server key
   'claude-opus-4-8': 'pro',          // Pro+ for server key

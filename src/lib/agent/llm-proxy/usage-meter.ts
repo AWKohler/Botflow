@@ -20,8 +20,14 @@
  *      openai-chat       passive; usage only arrives when the request asks —
  *                        rewriteRequestBody INJECTS stream_options.include_
  *                        usage — and reads land in prompt_tokens_details.
+ *                        cached_tokens. GPT-5.6+ ALSO bills cache WRITES: it
+ *                        reports cache_write_tokens in the same details block,
+ *                        as a SUBSET of prompt_tokens (breakdown, like
+ *                        cached_tokens — verified live), so NOT added back;
+ *                        billing prices it at 1.25× via cacheWrite. (Unlike
+ *                        anthropic, whose input_tokens is uncached-only.)
  *      openai-responses  passive; response.completed carries
- *                        input_tokens_details.cached_tokens.
+ *                        input_tokens_details.{cached_tokens,cache_write_tokens}.
  *      google            passive; usageMetadata.cachedContentTokenCount.
  *      fireworks/together (openai-chat dialect) often report NOTHING —
  *                        applyClockHeuristic ports /api/agent's timestamp
@@ -178,6 +184,45 @@ function toNumber(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Self-verification for the GPT-5.6 cache-write arithmetic. When
+ *  LLM_PROXY_DEBUG_OPENAI_CACHE=true, log the raw token-details block and the
+ *  buckets we derived from it. Live-verified invariant: cache_write_tokens and
+ *  cached_tokens are both SUBSETS of prompt_tokens (never added on top), so
+ *  cachedRead + cacheWrite ≤ rawTotal on every well-formed response. Off by
+ *  default — zero overhead in normal operation. */
+const DEBUG_OPENAI_CACHE = process.env.LLM_PROXY_DEBUG_OPENAI_CACHE === "true";
+function debugOpenAICache(
+  dialect: string,
+  rawUsage: Record<string, unknown>,
+  details: Record<string, unknown> | undefined,
+  acc: ObservedUsage,
+): void {
+  if (!DEBUG_OPENAI_CACHE) return;
+  const totalField = dialect === "openai-responses" ? "input_tokens" : "prompt_tokens";
+  console.log(
+    JSON.stringify({
+      tag: "llm-proxy",
+      event: "openai_cache_probe",
+      dialect,
+      rawTotalField: totalField,
+      rawTotal: toNumber(rawUsage[totalField]),
+      rawDetails: details ?? null,
+      derived: {
+        inputTokens: acc.inputTokens,
+        cachedReadTokens: acc.cachedReadTokens,
+        cacheWriteTokens: acc.cacheWriteTokens,
+        // Plain uncached = rawTotal − read − write (writes/reads are subsets).
+        // Should stay ≥ 0; a negative pre-clamp value would signal the subset
+        // invariant broke (e.g. an upstream API change).
+        uncachedForBilling: Math.max(
+          0,
+          acc.inputTokens - acc.cachedReadTokens - acc.cacheWriteTokens,
+        ),
+      },
+    }),
+  );
+}
+
 function extractFromDialect(dialect: UsageDialect, obj: Record<string, unknown>, acc: ObservedUsage): void {
   if (dialect === "anthropic") {
     // message_start: {type, message: {usage: {input_tokens, cache_creation_input_tokens, cache_read_input_tokens, output_tokens?}}}
@@ -216,36 +261,51 @@ function extractFromDialect(dialect: UsageDialect, obj: Record<string, unknown>,
   }
 
   if (dialect === "openai-chat") {
-    // Final stream chunk (or non-streaming body): {usage: {prompt_tokens, completion_tokens, prompt_tokens_details?: {cached_tokens}}}
+    // Final stream chunk (or non-streaming body): {usage: {prompt_tokens, completion_tokens, prompt_tokens_details?: {cached_tokens, cache_write_tokens}}}
     const usage = obj.usage as Record<string, unknown> | undefined | null;
     if (usage) {
+      const details = usage.prompt_tokens_details as Record<string, unknown> | undefined;
+      // GPT-5.6+ reports cache_write_tokens as a SUBSET of prompt_tokens — a
+      // breakdown, exactly like cached_tokens (VERIFIED live: cold call had
+      // prompt_tokens=10256 with cache_write_tokens=10253; prompt_tokens is
+      // identical cold vs warm). So do NOT add it back — prompt_tokens is
+      // already the total; billing's uncached = in − read − write isolates the
+      // plain portion, and write bills at 1.25×. Absent on older models ⇒ 0.
+      const cacheWrite = details ? toNumber(details.cache_write_tokens) : 0;
       acc.inputTokens = toNumber(usage.prompt_tokens);
       acc.outputTokens = toNumber(usage.completion_tokens);
-      const details = usage.prompt_tokens_details as Record<string, unknown> | undefined;
-      if (details && details.cached_tokens !== undefined) {
+      acc.cacheWriteTokens = cacheWrite;
+      if (details && (details.cached_tokens !== undefined || details.cache_write_tokens !== undefined)) {
         acc.cachedReadTokens = toNumber(details.cached_tokens);
         acc.explicitCacheReport = true;
       }
       acc.complete = true;
+      debugOpenAICache("openai-chat", usage, details, acc);
     }
     return;
   }
 
   if (dialect === "openai-responses") {
-    // {type:"response.completed", response:{usage:{input_tokens, input_tokens_details:{cached_tokens}, output_tokens}}}
+    // {type:"response.completed", response:{usage:{input_tokens, input_tokens_details:{cached_tokens, cache_write_tokens}, output_tokens}}}
     const isCompleted = obj.type === "response.completed";
     const response = (isCompleted ? obj.response : obj.usage ? obj : null) as Record<string, unknown> | null;
     if (response) {
       const usage = response.usage as Record<string, unknown> | undefined;
       if (usage) {
+        const details = usage.input_tokens_details as Record<string, unknown> | undefined;
+        // GPT-5.6+ cache_write_tokens is a SUBSET of input_tokens (breakdown,
+        // like cached_tokens) — NOT additive. See openai-chat above. Absent on
+        // older models ⇒ 0.
+        const cacheWrite = details ? toNumber(details.cache_write_tokens) : 0;
         acc.inputTokens = toNumber(usage.input_tokens);
         acc.outputTokens = toNumber(usage.output_tokens);
-        const details = usage.input_tokens_details as Record<string, unknown> | undefined;
-        if (details && details.cached_tokens !== undefined) {
+        acc.cacheWriteTokens = cacheWrite;
+        if (details && (details.cached_tokens !== undefined || details.cache_write_tokens !== undefined)) {
           acc.cachedReadTokens = toNumber(details.cached_tokens);
           acc.explicitCacheReport = true;
         }
         acc.complete = true;
+        debugOpenAICache("openai-responses", usage, details, acc);
       }
     }
     return;
