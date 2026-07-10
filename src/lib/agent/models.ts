@@ -12,7 +12,6 @@ export type ModelId =
   | "gemini-3.1-pro-preview"
   | "grok-4.5"
   | "fireworks-minimax-m3"
-  | "fireworks-glm-5p2"
   | "fireworks-kimi-k2p7";
 
 export type Provider = "openai" | "anthropic" | "google" | "xai" | "fireworks";
@@ -143,16 +142,6 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
   //   criticalThreshold: 0.9,
   //   supportsImages: false,
   // },
-  "fireworks-glm-5p2": {
-    id: "fireworks-glm-5p2",
-    provider: "fireworks",
-    apiModelId: "accounts/fireworks/models/glm-5p2",
-    displayName: "GLM-5.2",
-    maxContextTokens: 202_800,
-    warnThreshold: 0.7,
-    criticalThreshold: 0.9,
-    supportsImages: false,
-  },
   "fireworks-kimi-k2p7": {
     id: "fireworks-kimi-k2p7",
     provider: "fireworks",
@@ -171,7 +160,8 @@ export function resolveModelId(stored: string | null | undefined): ModelId {
   if (stored === "claude-sonnet-4.5" || stored === "claude-sonnet-4.6" || stored === "claude-sonnet-4-6") return "claude-sonnet-5";
   if (stored === "claude-opus-4.5" || stored === "claude-opus-4.6" || stored === "claude-opus-4.7" || stored === "claude-opus-4-7" || stored === "claude-opus-4-1") return "claude-opus-4-8";
   if (stored === "gpt-4.1" || stored === "gpt-5.2") return "gpt-5.3-codex";
-  if (stored === "fireworks-glm-5" || stored === "fireworks-glm-5p1") return "fireworks-glm-5p2";
+  // GLM retired — replaced by Grok 4.5 (removes Kimi/GLM/Grok redundancy).
+  if (stored === "fireworks-glm-5" || stored === "fireworks-glm-5p1" || stored === "fireworks-glm-5p2") return "grok-4.5";
   if (stored === "fireworks-minimax-m2p7" || stored === "fireworks-minimax-m2p5") return "fireworks-minimax-m3";
   if (stored === "fireworks-kimi-k2p6") return "fireworks-kimi-k2p7";
   // Still-valid model: pass through

@@ -44,16 +44,6 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     cachedInput: 0.06 / BASE_PRICE,   // 0.2
     output:      1.20 / BASE_PRICE,   // 4.0
   },
-  // 'fireworks-glm-5': {
-  //   input:       1.00 / BASE_PRICE,   // 3.33
-  //   cachedInput: 0.20 / BASE_PRICE,   // 0.67
-  //   output:      3.20 / BASE_PRICE,   // 10.67
-  // },
-  'fireworks-glm-5p2': {
-    input:       1.40 / BASE_PRICE,   // 4.67
-    cachedInput: 0.26 / BASE_PRICE,   // 0.87
-    output:      4.40 / BASE_PRICE,   // 14.67
-  },
   'fireworks-kimi-k2p7': {
     input:       0.95 / BASE_PRICE,   // 3.17
     cachedInput: 0.19 / BASE_PRICE,   // 0.63
@@ -161,7 +151,6 @@ const SONNET5_INTRO_END = Date.UTC(2026, 8, 1); // 2026-09-01T00:00:00Z (month i
  */
 export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = {
   'fireworks-minimax-m3': 1,
-  'fireworks-glm-5p2': 3,
   'fireworks-kimi-k2p7': 3,
   'grok-4.5': 4,
   'gpt-5.3-codex': 4,
