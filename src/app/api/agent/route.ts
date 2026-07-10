@@ -522,7 +522,7 @@ export async function POST(req: Request) {
       await req.json();
 
     // Determine selected model for project and ensure ownership
-    let selectedModel: ModelId = "fireworks-kimi-k2p7";
+    let selectedModel: ModelId = "gpt-5.6-luna";
     // Default to true so non-project agent requests still get the full toolset.
     let hasBackend = true;
     let convexUrl: string | undefined;
