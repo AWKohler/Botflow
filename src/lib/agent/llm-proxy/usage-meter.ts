@@ -21,9 +21,11 @@
  *                        rewriteRequestBody INJECTS stream_options.include_
  *                        usage — and reads land in prompt_tokens_details.
  *                        cached_tokens. GPT-5.6+ ALSO bills cache WRITES: it
- *                        reports cache_write_tokens (in the same details block)
- *                        SEPARATELY from prompt_tokens, so we add it back to
- *                        get true total-in — mirroring anthropic above.
+ *                        reports cache_write_tokens in the same details block,
+ *                        as a SUBSET of prompt_tokens (breakdown, like
+ *                        cached_tokens — verified live), so NOT added back;
+ *                        billing prices it at 1.25× via cacheWrite. (Unlike
+ *                        anthropic, whose input_tokens is uncached-only.)
  *      openai-responses  passive; response.completed carries
  *                        input_tokens_details.{cached_tokens,cache_write_tokens}.
  *      google            passive; usageMetadata.cachedContentTokenCount.
@@ -184,9 +186,10 @@ function toNumber(v: unknown): number {
 
 /** Self-verification for the GPT-5.6 cache-write arithmetic. When
  *  LLM_PROXY_DEBUG_OPENAI_CACHE=true, log the raw token-details block and the
- *  buckets we derived from it, so the first live 5.6 requests confirm that
- *  cache_write_tokens really is reported OUTSIDE prompt_tokens (the assumption
- *  behind adding it back). Off by default — zero overhead in normal operation. */
+ *  buckets we derived from it. Live-verified invariant: cache_write_tokens and
+ *  cached_tokens are both SUBSETS of prompt_tokens (never added on top), so
+ *  cachedRead + cacheWrite ≤ rawTotal on every well-formed response. Off by
+ *  default — zero overhead in normal operation. */
 const DEBUG_OPENAI_CACHE = process.env.LLM_PROXY_DEBUG_OPENAI_CACHE === "true";
 function debugOpenAICache(
   dialect: string,
@@ -208,8 +211,9 @@ function debugOpenAICache(
         inputTokens: acc.inputTokens,
         cachedReadTokens: acc.cachedReadTokens,
         cacheWriteTokens: acc.cacheWriteTokens,
-        // If writes are truly OUTSIDE the total, this equals rawTotal + write.
-        // If OpenAI actually nests them INSIDE, this over-counts by `write`.
+        // Plain uncached = rawTotal − read − write (writes/reads are subsets).
+        // Should stay ≥ 0; a negative pre-clamp value would signal the subset
+        // invariant broke (e.g. an upstream API change).
         uncachedForBilling: Math.max(
           0,
           acc.inputTokens - acc.cachedReadTokens - acc.cacheWriteTokens,
@@ -261,12 +265,14 @@ function extractFromDialect(dialect: UsageDialect, obj: Record<string, unknown>,
     const usage = obj.usage as Record<string, unknown> | undefined | null;
     if (usage) {
       const details = usage.prompt_tokens_details as Record<string, unknown> | undefined;
-      // GPT-5.6+ reports cache WRITES separately from prompt_tokens (unlike
-      // cached reads, which are a subset of it). Add writes back so inputTokens
-      // is the true total and billing's uncached = in − read − write isolates
-      // plain input. Absent on older models ⇒ 0 ⇒ unchanged behavior.
+      // GPT-5.6+ reports cache_write_tokens as a SUBSET of prompt_tokens — a
+      // breakdown, exactly like cached_tokens (VERIFIED live: cold call had
+      // prompt_tokens=10256 with cache_write_tokens=10253; prompt_tokens is
+      // identical cold vs warm). So do NOT add it back — prompt_tokens is
+      // already the total; billing's uncached = in − read − write isolates the
+      // plain portion, and write bills at 1.25×. Absent on older models ⇒ 0.
       const cacheWrite = details ? toNumber(details.cache_write_tokens) : 0;
-      acc.inputTokens = toNumber(usage.prompt_tokens) + cacheWrite;
+      acc.inputTokens = toNumber(usage.prompt_tokens);
       acc.outputTokens = toNumber(usage.completion_tokens);
       acc.cacheWriteTokens = cacheWrite;
       if (details && (details.cached_tokens !== undefined || details.cache_write_tokens !== undefined)) {
@@ -287,10 +293,11 @@ function extractFromDialect(dialect: UsageDialect, obj: Record<string, unknown>,
       const usage = response.usage as Record<string, unknown> | undefined;
       if (usage) {
         const details = usage.input_tokens_details as Record<string, unknown> | undefined;
-        // GPT-5.6+ cache writes: reported separately from input_tokens — add
-        // back for true total-in (see openai-chat above). 0 on older models.
+        // GPT-5.6+ cache_write_tokens is a SUBSET of input_tokens (breakdown,
+        // like cached_tokens) — NOT additive. See openai-chat above. Absent on
+        // older models ⇒ 0.
         const cacheWrite = details ? toNumber(details.cache_write_tokens) : 0;
-        acc.inputTokens = toNumber(usage.input_tokens) + cacheWrite;
+        acc.inputTokens = toNumber(usage.input_tokens);
         acc.outputTokens = toNumber(usage.output_tokens);
         acc.cacheWriteTokens = cacheWrite;
         if (details && (details.cached_tokens !== undefined || details.cache_write_tokens !== undefined)) {

@@ -103,8 +103,9 @@ describe("settlement credit parity with /api/agent", () => {
   });
 
   test("GPT-5.6 cache WRITES bill at the 1.25× premium (> same tokens as plain input)", () => {
-    // usageOf's first arg is TOTAL input (meter already added writes back).
-    // 800 tokens as cache-WRITE vs. the same 800 folded into plain uncached.
+    // usageOf's first arg is prompt_tokens (the total) — reads AND writes are
+    // SUBSETS of it, not added on top (live-verified). Reclassifying 800 tokens
+    // from plain uncached (1×) to cache-WRITE (1.25×) must cost strictly more.
     const asWrite = computeSettlementCredits(usageOf(12_800, 300, 11_500, 800), "gpt-5.6-sol", "platform");
     const asPlainInput = computeSettlementCredits(usageOf(12_800, 300, 11_500, 0), "gpt-5.6-sol", "platform");
     // Writes cost 1.25× input, so reclassifying them as 1× plain input is cheaper.

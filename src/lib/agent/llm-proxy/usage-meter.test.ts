@@ -110,27 +110,28 @@ describe("openai-chat dialect", () => {
     assert.equal(u.complete, true);
   });
 
-  test("GPT-5.6: cache_write_tokens reported separately from prompt_tokens → added back to total-in", () => {
+  test("GPT-5.6: cache_write_tokens is a SUBSET of prompt_tokens (NOT added back) — live-captured cold call", () => {
     const p = createUsageParser("openai-chat", true);
     p.push(sse([
       {
         choices: [],
         usage: {
-          prompt_tokens: 12000,
-          completion_tokens: 300,
-          // 5.6 reports writes OUTSIDE prompt_tokens; reads stay a subset of it.
-          prompt_tokens_details: { cached_tokens: 11500, cache_write_tokens: 800 },
+          // Real capture from gpt-5.6-sol, cold call (whole prefix written).
+          prompt_tokens: 10256,
+          completion_tokens: 4,
+          prompt_tokens_details: { cached_tokens: 0, cache_write_tokens: 10253 },
         },
       },
       "data: [DONE]",
     ]));
     const u = p.finish();
-    assert.equal(u.inputTokens, 12800);        // 12000 + 800 write
-    assert.equal(u.cachedReadTokens, 11500);
-    assert.equal(u.cacheWriteTokens, 800);
+    assert.equal(u.inputTokens, 10256);        // prompt_tokens as-is — writes are a subset, NOT +10253
+    assert.equal(u.cacheWriteTokens, 10253);
+    assert.equal(u.cachedReadTokens, 0);
     assert.equal(u.explicitCacheReport, true);
-    // Billing derives uncached = in − read − write = plain input (prompt−read).
-    assert.equal(u.inputTokens - u.cachedReadTokens - u.cacheWriteTokens, 500);
+    // Billing: uncached = in − read − write = 3 plain tokens @1×; the 10253
+    // written tokens bill once, at 1.25×. (Add-back would double-count them.)
+    assert.equal(u.inputTokens - u.cachedReadTokens - u.cacheWriteTokens, 3);
   });
 
   test("stream with NO usage frame (fireworks-style silence): zeros, complete:false, no explicit report", () => {
@@ -180,7 +181,7 @@ describe("openai-responses dialect", () => {
     assert.equal(u.complete, true);
   });
 
-  test("GPT-5.6: input_tokens_details.cache_write_tokens added back to total-in", () => {
+  test("GPT-5.6: input_tokens_details.cache_write_tokens is a SUBSET of input_tokens (NOT added back)", () => {
     const p = createUsageParser("openai-responses", true);
     p.push(sse([
       {
@@ -188,17 +189,19 @@ describe("openai-responses dialect", () => {
         response: {
           usage: {
             input_tokens: 5000,
-            input_tokens_details: { cached_tokens: 4096, cache_write_tokens: 512 },
+            input_tokens_details: { cached_tokens: 4096, cache_write_tokens: 400 },
             output_tokens: 250,
           },
         },
       },
     ]));
     const u = p.finish();
-    assert.equal(u.inputTokens, 5512);         // 5000 + 512 write
+    assert.equal(u.inputTokens, 5000);         // input_tokens as-is — writes/reads are subsets
     assert.equal(u.cachedReadTokens, 4096);
-    assert.equal(u.cacheWriteTokens, 512);
+    assert.equal(u.cacheWriteTokens, 400);
     assert.equal(u.explicitCacheReport, true);
+    // subset invariant: read + write ≤ total
+    assert.ok(u.cachedReadTokens + u.cacheWriteTokens <= u.inputTokens);
   });
 
   test("truncated before response.completed: complete:false", () => {
