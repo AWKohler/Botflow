@@ -205,7 +205,6 @@ export function FeatureBento({
               height={1431}
               sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 90vw"
               className="absolute left-1/2 top-0 w-[78%] max-w-[250px] -translate-x-1/2 transition-transform duration-500 group-hover:-translate-y-1.5"
-              style={{ filter: "drop-shadow(0 24px 38px rgba(0,0,0,0.3))" }}
             />
           </div>
         </div>
