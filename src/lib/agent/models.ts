@@ -96,7 +96,7 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     id: "claude-fable-5",
     provider: "anthropic",
     apiModelId: "claude-fable-5",
-    displayName: "Claude Fable 5 (Mythos)",
+    displayName: "Claude Fable 5",
     maxContextTokens: 1_000_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
