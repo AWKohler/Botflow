@@ -12,7 +12,14 @@ remains only as the 412-fallback during the bake.
 
 Pinned versions (env-overridable; installed locally in the sandbox under
 `~/.botflow/opencode/`, no sudo):
-- `opencode-ai` `1.17.13` (`BOTFLOW_OPENCODE_VERSION`)
+- `opencode-ai` `1.17.18` (`BOTFLOW_OPENCODE_VERSION`) — bumped from `1.17.13`
+  (for Grok 4.5). The `1.17.14–1.17.18` changelog shows no breaking changes to
+  the config schema, `auth.json`, SSE event shapes, or builtin tool names (the
+  surfaces below are coupled to). Verified locally that `1.17.18` accepts the
+  bridge config and resolves an explicitly-declared custom provider+model
+  (`xai/grok-4.5`) over the openai-compatible path, dialing the proxy baseURL
+  with bearer auth + `stream_options.include_usage`. Full in-sandbox turn is the
+  last-mile check. The spike findings below remain from the `1.17.13` audit.
 - `@modelcontextprotocol/sdk` `1.29.0` (`BOTFLOW_MCP_SDK_VERSION`) — used by
   the MCP tool script only. The bridge deliberately carries NO
   `@opencode-ai/sdk` dependency: it speaks plain fetch + SSE against four
