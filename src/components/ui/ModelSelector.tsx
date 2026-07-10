@@ -108,7 +108,8 @@ const MODEL_ORDER: ModelId[] = [
   'gpt-5.6-terra',           // x6
   'claude-opus-4-8',         // x10
   'gpt-5.6-sol',             // x12
-  'gpt-5.5',                 // x12
+  // 'gpt-5.5',              // x12 — hidden from the selector (kept in the
+  //                         // registry/pricing so existing projects still run).
   'claude-fable-5',          // x20 — most expensive (Max-only)
 ];
 
