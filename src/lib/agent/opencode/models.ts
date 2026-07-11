@@ -22,6 +22,7 @@ export interface OpenCodeCredFlags {
   hasOpenAIKey?: boolean;
   hasFireworksKey?: boolean;
   hasGoogleKey?: boolean;
+  hasXaiKey?: boolean;
   hasTogetherKey?: boolean;
 }
 
@@ -48,6 +49,8 @@ export function resolveOpenCodeModel(
       return { providerID: "openai", modelID: config.apiModelId };
     case "google":
       return { providerID: "google", modelID: config.apiModelId };
+    case "xai":
+      return { providerID: "xai", modelID: config.apiModelId };
     case "fireworks":
       if (model === "fireworks-kimi-k2p7" && opts.useTogetherKimi) {
         return { providerID: "togetherai", modelID: TOGETHER_KIMI_MODEL };
@@ -89,6 +92,8 @@ export function openCodeCredModeForModel(
       return creds.hasOpenAIKey ? "byok" : null;
     case "google":
       return creds.hasGoogleKey ? "byok" : null;
+    case "xai":
+      return creds.hasXaiKey ? "byok" : null;
     case "fireworks":
       if (model === "fireworks-kimi-k2p7" && useTogetherKimi) {
         return creds.hasTogetherKey ? "byok" : null;

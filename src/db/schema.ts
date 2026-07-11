@@ -13,8 +13,8 @@ export const projects = pgTable('projects', {
   // mint a new uuid here so the new agent reads a clean slate (older messages
   // stay in the DB under their old segment_id for UI display).
   currentSegmentId: uuid('current_segment_id'),
-  // Preferred model for this project: 'gpt-5.3-codex' | 'gpt-5.4' | 'gpt-5.5' | 'claude-sonnet-5' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-glm-5p2' | 'fireworks-kimi-k2p7' | 'gemini-3.1-pro-preview'
-  model: text('model').notNull().default('fireworks-kimi-k2p7'),
+  // Preferred model for this project: 'gpt-5.6-sol' | 'gpt-5.6-terra' | 'gpt-5.6-luna' | 'gpt-5.5' | 'claude-sonnet-5' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-kimi-k2p7' | 'gemini-3.1-pro-preview' | 'grok-4.5'
+  model: text('model').notNull().default('gpt-5.6-luna'),
   // Snapshot URLs for project thumbnails and HTML captures
   thumbnailUrl: text('thumbnail_url'),
   htmlSnapshotUrl: text('html_snapshot_url'),
@@ -76,6 +76,14 @@ export const projects = pgTable('projects', {
   lastOpened: timestamp('last_opened').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  // ─── Sharing switches (share sheet, owner-set; plan §7) ───────────────────
+  /** Editors may git commit/push via the project's linked GitHub repo. */
+  editorsCanPush: boolean('editors_can_push').notNull().default(false),
+  /** Collaborators' OAuth-model turns may resolve to the OWNER's Claude/Codex
+   *  account. Honored ONLY when SHARING_ALLOW_OWNER_OAUTH is also set
+   *  platform-wide (TOS escape hatch, plan §5.1) — enforced at credential
+   *  resolution, never trusted from the client. */
+  shareOwnerOauth: boolean('share_owner_oauth').notNull().default(false),
   // Soft delete — null means active. Set for Pro/Max users on delete; Free = immediate hard delete.
   deletedAt: timestamp('deleted_at'),
   // ─── Reaper / lifecycle fields ────────────────────────────────────────────
@@ -145,6 +153,64 @@ export const projects = pgTable('projects', {
 
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
+
+// ─── Project sharing (docs/features/project-sharing-plan.md §3) ─────────────
+// One row per (project, invited person), including invitees who haven't
+// signed up yet. The OWNER is NOT a member row — projects.userId stays the
+// single source of ownership truth; requireProjectAccess checks owner first,
+// then membership.
+export const projectMembers = pgTable('project_members', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  /** Clerk user id; NULL while the invite is pending signup. */
+  userId: text('user_id'),
+  /** Normalized (lowercased, trimmed) email the invite targeted. Used only
+   *  for the pending window + audit; authorization reads use userId. */
+  invitedEmail: text('invited_email').notNull(),
+  role: text('role').notNull().default('editor'), // 'editor' (owner is projects.userId)
+  status: text('status').notNull().default('pending'), // 'pending' | 'active' | 'revoked'
+  /** % of the owner's monthly token allowance this member may consume on the
+   *  platform-metered path. Column lands now; enforcement lands with
+   *  proxy-side metering (plan §5.1). */
+  tokenCapPct: integer('token_cap_pct').notNull().default(25),
+  /** Clerk id of the inviter (the owner). */
+  invitedBy: text('invited_by').notNull(),
+  invitedAt: timestamp('invited_at').defaultNow().notNull(),
+  acceptedAt: timestamp('accepted_at'),
+  revokedAt: timestamp('revoked_at'),
+}, (t) => ({
+  // Re-inviting a revoked email flips the row back rather than duplicating.
+  projectEmailUnique: uniqueIndex('project_members_project_email_unique').on(t.projectId, t.invitedEmail),
+  projectIdIdx: index('project_members_project_id_idx').on(t.projectId),
+  userIdIdx: index('project_members_user_id_idx').on(t.userId),
+  // Pending-claim lookup at signup/login is by email.
+  invitedEmailIdx: index('project_members_invited_email_idx').on(t.invitedEmail),
+}));
+
+export type ProjectMember = typeof projectMembers.$inferSelect;
+export type NewProjectMember = typeof projectMembers.$inferInsert;
+
+// Per-file version history for INSTRUMENTED writes (editor saves + Botflow
+// agent write tools) — the conflict-safety backstop (plan §6.5). In-sandbox
+// writes (CC/OpenCode/terminal/build) are not captured; restore UIs must say
+// "instrumented writes only". Hash-deduped; capped per file in code.
+export const projectFileVersions = pgTable('project_file_versions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  path: text('path').notNull(),
+  content: text('content').notNull(),
+  hash: text('hash').notNull(), // sha256 hex of content
+  size: integer('size').notNull(),
+  actorType: text('actor_type').notNull(), // 'user' | 'agent' | 'system'
+  actorUserId: text('actor_user_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  projectPathCreatedIdx: index('project_file_versions_project_path_created_idx')
+    .on(t.projectId, t.path, t.createdAt),
+}));
+
+export type ProjectFileVersion = typeof projectFileVersions.$inferSelect;
+export type NewProjectFileVersion = typeof projectFileVersions.$inferInsert;
 
 // Project stars — join table for public project stars
 export const projectStars = pgTable('project_stars', {

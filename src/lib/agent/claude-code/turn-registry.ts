@@ -27,10 +27,19 @@ const TTL_SECONDS = 60 * 60 * 6;
 
 export interface ClaudeCodeTurnRecord {
   turnId: string;
+  /** Clerk id of the user whose prompt spawned this turn. Under sharing, the
+   *  shared-turn guard uses this to refuse spawns that would kill ANOTHER
+   *  collaborator's live bridge (src/lib/sharing.ts). Absent on old records. */
+  userId?: string;
   /** Which in-sandbox agent ran this turn. Reattach picks the matching
    *  translator. Absent on records written before OpenCode existed —
    *  treat as "claude-code". */
   backend?: "claude-code" | "opencode";
+  /** Id of the user message that spawned this turn. Mount-time recovery uses
+   *  it to match the record to the transcript's trailing user message — an
+   *  exact-identity check, unlike startedAt which can't distinguish quick
+   *  back-to-back turns. Absent on records written before this field. */
+  userMessageId?: string;
   /** Absolute path (in the sandbox) of the NDJSON event tee file. */
   eventFile: string;
   /** Epoch ms when the bridge was spawned. */

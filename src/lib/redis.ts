@@ -18,6 +18,10 @@ const noopRedis = {
   incr: async () => 0,
   incrby: async () => 0,
   expire: async () => 1,
+  // Claiming the key "exists" makes ensureMonthlySeeded skip its Neon seed —
+  // no DB touch in no-op mode, and gets return null → limits degrade to
+  // unenforced, exactly the documented no-Redis behavior.
+  exists: async () => 1,
   // List ops used by workspace-control's browser-log ring buffer. Returning
   // empty / OK lets the feature degrade silently when Redis isn't configured
   // (local dev) — the agent's getBrowserLog tool just shows "no logs yet".

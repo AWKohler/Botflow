@@ -3,7 +3,7 @@ import { getDb } from '@/db';
 import { projects, chatImages, projectAssets } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
-import { requireProjectAccess } from '@/lib/project-access';
+import { requireProjectAccess, sanitizeProjectForRole } from '@/lib/project-access';
 import { deleteConvexBackend } from '@/lib/convex-platform';
 import { isModelDisabled, modelDisabledReason } from '@/lib/agent/models';
 import { UTApi } from 'uploadthing/server';
@@ -17,7 +17,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const access = await requireProjectAccess(resolvedParams.id, userId);
     if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    return NextResponse.json(access.project);
+    // Editors never receive secret-bearing fields (deploy keys, webhook secrets).
+    return NextResponse.json(sanitizeProjectForRole(access.project, access.role));
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: 'Failed to fetch project' }, { status: 500 });
@@ -44,8 +45,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     };
     if (
       model &&
-      model !== 'gpt-5.3-codex' &&
-      model !== 'gpt-5.4' &&
+      model !== 'gpt-5.6-sol' &&
+      model !== 'gpt-5.6-terra' &&
+      model !== 'gpt-5.6-luna' &&
+      model !== 'gpt-5.3-codex' && // backwards compat → resolves to gpt-5.6-luna
+      model !== 'gpt-5.4' && // backwards compat → resolves to gpt-5.6-terra
       model !== 'gpt-5.5' &&
       model !== 'gpt-5.2' && // backwards compat
       model !== 'gpt-4.1' && // backwards compat
@@ -64,11 +68,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       model !== 'kimi-k2-thinking-turbo' && // removed → mapped to minimax
       model !== 'fireworks-minimax-m2p7' && // backwards compat → resolves to m3
       model !== 'fireworks-minimax-m3' &&
-      model !== 'fireworks-glm-5p2' &&
-      model !== 'fireworks-glm-5p1' && // backwards compat → resolved to glm-5p2
+      model !== 'fireworks-glm-5p2' && // retired → resolves to fireworks-kimi-k2p7
+      model !== 'fireworks-glm-5p1' && // retired → resolves to fireworks-kimi-k2p7
       model !== 'fireworks-kimi-k2p7' &&
       model !== 'fireworks-kimi-k2p6' && // backwards compat → resolved to k2p7
-      model !== 'gemini-3.1-pro-preview'
+      model !== 'gemini-3.1-pro-preview' &&
+      model !== 'grok-4.5'
     ) {
       return NextResponse.json({ error: 'Invalid model' }, { status: 400 });
     }
@@ -103,7 +108,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const db = getDb();
-    const access = await requireProjectAccess(resolvedParams.id, userId);
+    const access = await requireProjectAccess(resolvedParams.id, userId, 'owner');
     if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const proj = access.project;
 

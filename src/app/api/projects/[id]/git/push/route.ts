@@ -74,6 +74,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const db = getDb();
     const access = await requireProjectAccess(id, userId);
     if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    // Sharing: editors may push/commit only when the owner enabled the
+    // share-sheet switch (plan §3.3 role matrix).
+    if (access.role === 'editor' && !access.project.editorsCanPush) {
+      return NextResponse.json(
+        { error: 'The project owner hasn\'t enabled Git push for editors.' },
+        { status: 403 },
+      );
+    }
     const { project: proj } = access;
 
     if (!proj.githubRepoOwner || !proj.githubRepoName) {

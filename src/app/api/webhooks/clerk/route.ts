@@ -28,6 +28,7 @@ import { getDb } from "@/db";
 import { projects } from "@/db/schema";
 import { invalidateTierCache, invalidateBetaCache, type Tier } from "@/lib/tier";
 import { getEmailForClerkUser } from "@/lib/email";
+import { claimPendingInvites, verifiedEmailsForUser } from "@/lib/sharing";
 import { sendRestoredEmail } from "@/lib/reaper/emails";
 
 export const runtime = "nodejs";
@@ -85,6 +86,19 @@ export async function POST(req: Request) {
     await handlePlanChange(evt.data.id, effectiveTierFromMetadata(evt.data.public_metadata));
   }
   // user.deleted: leave projects alone; admin/console flow handles user removal.
+
+  // Sharing: a new signup may be the target of pending project invites —
+  // claim them by the account's VERIFIED emails (plan §4). Best-effort; the
+  // projects-list route lazy-claims as a fallback for missed webhooks.
+  if (evt.type === "user.created") {
+    try {
+      const emails = await verifiedEmailsForUser(evt.data.id);
+      const claimed = await claimPendingInvites(evt.data.id, emails);
+      if (claimed > 0) console.log(`[clerk-webhook] claimed ${claimed} project invite(s) for ${evt.data.id}`);
+    } catch (e) {
+      console.warn("[clerk-webhook] invite claim failed:", e);
+    }
+  }
 
   return NextResponse.json({ ok: true });
 }

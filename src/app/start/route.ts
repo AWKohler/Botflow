@@ -143,11 +143,14 @@ export async function GET(request: Request) {
   const backendTypeParam = url.searchParams.get('backendType');
   const modelParam = url.searchParams.get('model');
   const model = (
-    modelParam === 'gpt-5.3-codex' ? 'gpt-5.3-codex' :
-    modelParam === 'gpt-5.4' ? 'gpt-5.4' :
+    modelParam === 'gpt-5.6-sol' ? 'gpt-5.6-sol' :
+    modelParam === 'gpt-5.6-terra' ? 'gpt-5.6-terra' :
+    modelParam === 'gpt-5.6-luna' ? 'gpt-5.6-luna' :
     modelParam === 'gpt-5.5' ? 'gpt-5.5' :
-    modelParam === 'gpt-5.2' ? 'gpt-5.3-codex' : // migrate legacy
-    modelParam === 'gpt-4.1' ? 'gpt-5.3-codex' : // migrate legacy
+    modelParam === 'gpt-5.4' ? 'gpt-5.6-terra' : // migrate legacy → Terra succeeds 5.4
+    modelParam === 'gpt-5.3-codex' ? 'gpt-5.6-luna' : // migrate legacy → Luna succeeds 5.3
+    modelParam === 'gpt-5.2' ? 'gpt-5.6-luna' : // migrate legacy
+    modelParam === 'gpt-4.1' ? 'gpt-5.6-luna' : // migrate legacy
     modelParam === 'claude-sonnet-5' ? 'claude-sonnet-5' :
     modelParam === 'claude-sonnet-4-6' ? 'claude-sonnet-5' : // migrate legacy → superseded by Sonnet 5
     modelParam === 'claude-sonnet-4.6' ? 'claude-sonnet-5' : // migrate legacy
@@ -164,13 +167,14 @@ export async function GET(request: Request) {
     modelParam === 'kimi-k2.5' ? 'fireworks-minimax-m3' : // removed model
     modelParam === 'kimi-k2-thinking-turbo' ? 'fireworks-minimax-m3' : // removed model
     modelParam === 'fireworks-minimax-m3' ? 'fireworks-minimax-m3' :
-    modelParam === 'fireworks-glm-5p2' ? 'fireworks-glm-5p2' :
-    modelParam === 'fireworks-glm-5p1' ? 'fireworks-glm-5p2' : // updated model
+    modelParam === 'fireworks-glm-5p2' ? 'fireworks-kimi-k2p7' : // GLM retired → Kimi (both free)
+    modelParam === 'fireworks-glm-5p1' ? 'fireworks-kimi-k2p7' : // GLM retired → Kimi (both free)
     modelParam === 'fireworks-kimi-k2p6' ? 'fireworks-kimi-k2p7' : // updated model
     modelParam === 'fireworks-kimi-k2p7' ? 'fireworks-kimi-k2p7' :
     modelParam === 'gemini-3.1-pro-preview' ? 'gemini-3.1-pro-preview' :
-    'fireworks-kimi-k2p7'
-  ) as 'gpt-5.3-codex' | 'gpt-5.4' | 'gpt-5.5' | 'claude-sonnet-5' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-glm-5p2' | 'fireworks-kimi-k2p7' | 'gemini-3.1-pro-preview';
+    modelParam === 'grok-4.5' ? 'grok-4.5' :
+    'gpt-5.6-luna' // default model
+  ) as 'gpt-5.6-sol' | 'gpt-5.6-terra' | 'gpt-5.6-luna' | 'gpt-5.5' | 'claude-sonnet-5' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-kimi-k2p7' | 'gemini-3.1-pro-preview' | 'grok-4.5';
 
   if (!userId) {
     return redirectToSignIn({ returnBackUrl: request.url });
@@ -268,7 +272,17 @@ export async function GET(request: Request) {
       }
 
       if (!allowed) {
-        if (!supportsNoBackend || seedSlug) {
+        // Did the user EXPLICITLY ask for managed Convex — either by picking it
+        // this session (?backendType=platform) or via their sticky preference —
+        // vs. platform merely being the resolution default? When it was explicit
+        // we must surface the limit, not silently hand them a no-backend project
+        // (the bug: over-cap users selected "Managed" and got no backend, no
+        // error). We only fall back to 'none' when the user never asked for a
+        // backend AND the platform has a no-backend template.
+        const explicitlyRequestedPlatform =
+          backendTypeParam === 'platform' ||
+          creds.convexBackendPreference === 'platform';
+        if (!supportsNoBackend || seedSlug || explicitlyRequestedPlatform) {
           const errUrl = new URL('/', request.url);
           errUrl.searchParams.set(
             'error',

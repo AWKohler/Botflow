@@ -60,6 +60,7 @@ export function credFlagsFromUserCredentials(creds: {
   openaiApiKey?: string | null;
   fireworksApiKey?: string | null;
   googleApiKey?: string | null;
+  xaiApiKey?: string | null;
   togetherApiKey?: string | null;
 }): BackendCreds {
   return {
@@ -69,6 +70,7 @@ export function credFlagsFromUserCredentials(creds: {
     hasOpenAIKey: Boolean(creds.openaiApiKey),
     hasFireworksKey: Boolean(creds.fireworksApiKey),
     hasGoogleKey: Boolean(creds.googleApiKey),
+    hasXaiKey: Boolean(creds.xaiApiKey),
     hasTogetherKey: Boolean(creds.togetherApiKey),
   };
 }

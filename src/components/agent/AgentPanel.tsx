@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { LiveActions } from '@/components/agent/LiveActions';
 import { useToast } from '@/components/ui/toast';
 import type { ToolCallData } from '@/lib/agent/ui-types';
-import { MODEL_CONFIGS, modelSupportsImages, resolveModelId, type ModelId } from '@/lib/agent/models';
+import { MODEL_CONFIGS, modelSupportsImages, resolveModelId, isOpenAIModel, effectiveContextTokens, type ModelId } from '@/lib/agent/models';
 import { ModelSelector } from '@/components/ui/ModelSelector';
 import { LimitModal, parseLimitPayload, type LimitReachedPayload } from '@/components/ui/LimitModal';
 import { CreditGauge } from '@/components/ui/CreditGauge';
@@ -36,6 +36,7 @@ import {
   sanitizeToolUseId,
 } from '@/lib/agent/tool-name-map';
 import type { SubagentStep } from '@/lib/agent/claude-code/translator';
+import { transcriptHasUnfinishedTail } from '@/lib/agent/transcript-tail';
 
 type Props = { className?: string; projectId: string; initialPrompt?: string; platform?: ProjectPlatform };
 
@@ -392,7 +393,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [initialized, setInitialized] = useState(false);
   const [actions, setActions] = useState<ToolCallData[]>([]);
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
-  const [model, setModel] = useState<ModelId>('fireworks-kimi-k2p7');
+  const [model, setModel] = useState<ModelId>('gpt-5.6-luna');
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
   const [hasClaudeOAuth, setHasClaudeOAuth] = useState<boolean | null>(null);
@@ -400,6 +401,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
   const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
   const [hasGoogleKey, setHasGoogleKey] = useState<boolean | null>(null);
+  const [hasXaiKey, setHasXaiKey] = useState<boolean | null>(null);
   const [hasTogetherKey, setHasTogetherKey] = useState<boolean | null>(null);
   // Server flag (USE_TOGETHER_KIMI): Kimi K2.7 is served by Together AI, not Fireworks.
   const [useTogetherKimi, setUseTogetherKimi] = useState(false);
@@ -550,6 +552,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       anthropic,
       fireworks: hasFireworksKey === true ? true : null,
       google: hasGoogleKey === true ? true : null,
+      xai: hasXaiKey === true ? true : null,
     };
   }, [
     hasCodexOAuth,
@@ -558,6 +561,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     hasAnthropicKey,
     hasFireworksKey,
     hasGoogleKey,
+    hasXaiKey,
     platform,
   ]);
 
@@ -580,6 +584,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           hasOpenAIKey: Boolean(hasOpenAIKey),
           hasFireworksKey: Boolean(hasFireworksKey),
           hasGoogleKey: Boolean(hasGoogleKey),
+          hasXaiKey: Boolean(hasXaiKey),
           hasTogetherKey: Boolean(hasTogetherKey),
         },
         tier: userTier,
@@ -594,6 +599,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       hasOpenAIKey,
       hasFireworksKey,
       hasGoogleKey,
+      hasXaiKey,
       hasTogetherKey,
       userTier,
       useTogetherKimi,
@@ -638,7 +644,11 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     breakdown: { input: number; output: number; cacheCreate: number; cacheRead: number };
   } | null>(null);
   const [isCompacting, setIsCompacting] = useState(false);
-  const maxTokens = MODEL_CONFIGS[model]?.maxContextTokens ?? 128_000;
+  // Context meter limit: personal-cred Anthropic turns (Claude OAuth/BYOK →
+  // the claude-code backend) get the provider's 1M window, not the 200K
+  // platform default — otherwise the meter reads "227k / 200k" on a turn
+  // that's perfectly within budget. Display only; billing is server-side.
+  const maxTokens = effectiveContextTokens(model, derivedBackend.backend === 'claude-code');
 
   // --- First message tracking ---
   const [hasAgentResponded, setHasAgentResponded] = useState(false);
@@ -649,6 +659,13 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
 
   // --- AbortController for tool calls ---
   const toolAbortRef = useRef<AbortController | null>(null);
+
+  // Turn pin for reattach: set from the turn-status response just before
+  // resumeStream(), read by the transport's reconnect request builder. The
+  // reattach route 204s unless its record still has this exact turnId, so a
+  // NEW turn spawned between the status check and the reattach can never be
+  // replayed against the wrong transcript (TOCTOU guard).
+  const reattachTurnIdRef = useRef<string | null>(null);
 
   // --- Auto-continue (self-healing turn completion) ---
   // A turn can end without endTurn for reasons that are NOT the user's
@@ -696,7 +713,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     // recovery logic only calls resumeStream() for in-sandbox turns. A 204
     // (nothing to resume) is a clean no-op.
     prepareReconnectToStreamRequest: () => ({
-      api: `/api/agent/claude-code/reattach?projectId=${encodeURIComponent(projectId)}`,
+      api: `/api/agent/claude-code/reattach?projectId=${encodeURIComponent(projectId)}${
+        reattachTurnIdRef.current ? `&turnId=${encodeURIComponent(reattachTurnIdRef.current)}` : ''
+      }`,
     }),
     prepareSendMessagesRequest: ({ body, messages, api }) => {
       const backend = agentBackendRef.current;
@@ -973,8 +992,15 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   messagesRef.current = messages;
   const messageQueueRef = useRef(messageQueue);
   messageQueueRef.current = messageQueue;
-  const sendMessageRef = useRef(sendMessage);
-  sendMessageRef.current = sendMessage;
+  // Wrapped so EVERY send through the ref bumps the recovery epoch first
+  // (see recoveryEpochRef below): any new outgoing turn supersedes an
+  // in-flight reattach recovery. Direct sendMessage() call sites bump
+  // explicitly.
+  const sendMessageRef = useRef<typeof sendMessage>(sendMessage);
+  sendMessageRef.current = (...args: Parameters<typeof sendMessage>) => {
+    recoveryEpochRef.current++;
+    return sendMessage(...args);
+  };
   const endTurnCalledRef = useRef(endTurnCalled);
   endTurnCalledRef.current = endTurnCalled;
   const agentErrorRef = useRef(agentError);
@@ -1019,65 +1045,204 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // makes a >5-minute turn a reconnect instead of a second racing agent.
   const reattachInFlightRef = useRef(false);
   const lastReattachSigRef = useRef<string | null>(null);
+
+  // Send/recovery serialization. Every real outgoing send bumps this BEFORE
+  // sendMessage() — synchronously, in the same task as the user's action —
+  // and the recovery core re-reads it after each await, yielding
+  // ('superseded') if it moved. This closes the gap the tail-id recheck
+  // can't: a send scheduled but not yet flushed to messagesRef when the
+  // status response lands. A user message always wins over a recovery.
+  const recoveryEpochRef = useRef(0);
+
+  // Shared reattach core, used by BOTH recovery triggers (the busy-settle
+  // pass below and the mount-time effect further down): ask turn-status
+  // whether the project's in-sandbox turn is worth reattaching to; if so,
+  // drop the partial assistant tail and resumeStream().
+  //
+  //   reattached — the replay delivered; the turn is live in the UI again
+  //   no-turn    — nothing reattachable FOR THIS TURN (no record, dead, user
+  //                stopped, or the record belongs to an earlier turn);
+  //                recordExists is true only when a record positively matched
+  //                to this turn exists but is dead — the caller may warn
+  //   superseded — the transcript tail changed while checking (the user sent
+  //                a new message); do nothing, the new turn owns the UI
+  //   vanished   — status said active but the reattach 204'd (finish race)
+  //   wedged     — no progress since the last cycle; bridge killed
+  //   error      — status/reattach unreachable
+  //
+  // Turn-identity opts (mount-time callers): expectedUserMessageId matches
+  // the record's spawning user message against the transcript's trailing user
+  // message — the exact-identity check. staleIfStartedBefore (epoch ms) is
+  // the fallback for records written before the userMessageId field: treat an
+  // active record as another turn's when its startedAt predates the trailing
+  // message (each spawn overwrites the record, so the record for THIS message
+  // can't be older than it). expectedTailId aborts if the transcript moved on
+  // mid-check.
+  const reattachToLiveTurn = useCallback(async (
+    opts?: {
+      expectedUserMessageId?: string;
+      staleIfStartedBefore?: number;
+      expectedTailId?: string;
+    },
+  ): Promise<{
+    outcome: 'reattached' | 'no-turn' | 'superseded' | 'vanished' | 'wedged' | 'error';
+    recordExists: boolean;
+  }> => {
+    if (reattachInFlightRef.current) return { outcome: 'error', recordExists: false };
+    reattachInFlightRef.current = true;
+    const epoch = recoveryEpochRef.current;
+    try {
+      const res = await fetch(
+        `/api/agent/claude-code/turn-status?projectId=${encodeURIComponent(projectId)}`,
+      );
+      const data = res.ok
+        ? ((await res.json()) as {
+            active?: boolean;
+            turnId?: string | null;
+            startedAt?: number | null;
+            userMessageId?: string | null;
+          })
+        : null;
+      if (!data) return { outcome: 'error', recordExists: false };
+      // The user sent a new message while the status check was in flight —
+      // this recovery attempt is about a tail that no longer exists. The
+      // epoch check catches sends not yet flushed into messagesRef; the
+      // tail-id check catches everything already flushed.
+      if (recoveryEpochRef.current !== epoch) {
+        return { outcome: 'superseded', recordExists: false };
+      }
+      if (opts?.expectedTailId) {
+        const tail = messagesRef.current[messagesRef.current.length - 1];
+        if (tail?.id !== opts.expectedTailId) {
+          return { outcome: 'superseded', recordExists: false };
+        }
+      }
+      // Turn identity: prefer the exact user-message match; fall back to the
+      // timestamp heuristic only for records that predate the field.
+      const foreignTurn = opts?.expectedUserMessageId !== undefined
+        && (typeof data.userMessageId === 'string'
+          ? data.userMessageId !== opts.expectedUserMessageId
+          : typeof opts.staleIfStartedBefore === 'number'
+            && typeof data.startedAt === 'number'
+            && data.startedAt < opts.staleIfStartedBefore);
+      // A record for some OTHER turn is no record at all as far as this
+      // recovery is concerned — callers must not warn on its account.
+      const recordExists = Boolean(data.turnId) && !foreignTurn;
+      if (!data.active || foreignTurn || userStoppedRef.current) {
+        return { outcome: 'no-turn', recordExists };
+      }
+      // No-progress guard: two consecutive reattach cycles with an
+      // identical last message means the turn is wedged (bridge alive but
+      // silent) — kill it and let the caller fall through to its fallback.
+      const msgs = messagesRef.current;
+      const last = msgs[msgs.length - 1];
+      const sig = `${msgs.length}:${last?.role === 'assistant' ? JSON.stringify(last.parts ?? []).length : 0}`;
+      if (lastReattachSigRef.current === sig) {
+        fetch('/api/agent/claude-code/stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId }),
+        }).catch(() => {});
+        return { outcome: 'wedged', recordExists };
+      }
+      lastReattachSigRef.current = sig;
+      // Drop the partial assistant tail: the replay rebuilds the whole
+      // turn's message from event zero, so keeping the partial would
+      // duplicate its parts.
+      setMessages(prev => {
+        const out = [...prev];
+        while (out.length > 0 && out[out.length - 1].role === 'assistant') out.pop();
+        return out;
+      });
+      // The resumed turn is in-sandbox by definition — make sure a LATER
+      // cut of this same stream re-enters reattach-first recovery instead
+      // of auto-resubmitting (which would 409 on the replay guard).
+      lastTurnServedByInSandboxAgentRef.current = true;
+      // Pin the reattach to the exact turn the status check validated — a
+      // turn spawned between these two requests 204s instead of replaying.
+      reattachTurnIdRef.current = typeof data.turnId === 'string' ? data.turnId : null;
+      setIsBusy(true);
+      toolAbortRef.current = new AbortController();
+      await resumeStream();
+      // Give React a beat to flush the resumed stream into state, then
+      // check whether anything actually streamed. A rebuilt assistant
+      // tail means the reattach delivered — the next busy-settle pass
+      // re-evaluates (endTurn → done; cut again → reattach again).
+      await new Promise<void>(r => setTimeout(r, 150));
+      const nowLast = messagesRef.current[messagesRef.current.length - 1];
+      if (nowLast?.role === 'assistant') return { outcome: 'reattached', recordExists };
+      // 204 — the turn vanished between status check and reattach.
+      setIsBusy(false);
+      return { outcome: 'vanished', recordExists };
+    } catch {
+      return { outcome: 'error', recordExists: false };
+    } finally {
+      reattachInFlightRef.current = false;
+    }
+  }, [projectId, resumeStream, setMessages]);
+
   const attemptTurnRecovery = useCallback(async () => {
     if (userStoppedRef.current) return;
     if (reattachInFlightRef.current) return;
     const backend = agentBackendRef.current;
     if ((backend === 'claude-code' || backend === 'opencode') && lastTurnServedByInSandboxAgentRef.current) {
-      reattachInFlightRef.current = true;
-      try {
-        const res = await fetch(
-          `/api/agent/claude-code/turn-status?projectId=${encodeURIComponent(projectId)}`,
-        );
-        const data = res.ok ? ((await res.json()) as { active?: boolean }) : null;
-        if (data?.active && !userStoppedRef.current) {
-          // No-progress guard: two consecutive reattach cycles with an
-          // identical last message means the turn is wedged (bridge alive but
-          // silent) — kill it and fall through to the nudge.
-          const msgs = messagesRef.current;
-          const last = msgs[msgs.length - 1];
-          const sig = `${msgs.length}:${last?.role === 'assistant' ? JSON.stringify(last.parts ?? []).length : 0}`;
-          if (lastReattachSigRef.current !== sig) {
-            lastReattachSigRef.current = sig;
-            // Drop the partial assistant tail: the replay rebuilds the whole
-            // turn's message from event zero, so keeping the partial would
-            // duplicate its parts.
-            setMessages(prev => {
-              const out = [...prev];
-              while (out.length > 0 && out[out.length - 1].role === 'assistant') out.pop();
-              return out;
-            });
-            setIsBusy(true);
-            toolAbortRef.current = new AbortController();
-            await resumeStream();
-            // Give React a beat to flush the resumed stream into state, then
-            // check whether anything actually streamed. A rebuilt assistant
-            // tail means the reattach delivered — the next busy-settle pass
-            // re-evaluates (endTurn → done; cut again → reattach again).
-            await new Promise<void>(r => setTimeout(r, 150));
-            const nowLast = messagesRef.current[messagesRef.current.length - 1];
-            if (nowLast?.role === 'assistant') return;
-            // 204 — the turn vanished between status check and reattach.
-            setIsBusy(false);
-          } else {
-            fetch('/api/agent/claude-code/stop', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ projectId }),
-            }).catch(() => {});
-          }
-        }
-      } catch {
-        // Status/reattach unavailable — fall back to the nudge.
-      } finally {
-        reattachInFlightRef.current = false;
-      }
+      const { outcome } = await reattachToLiveTurn();
+      if (outcome === 'reattached') return;
+      // A user message arrived mid-recovery — its turn owns the flow now;
+      // neither a nudge nor a warning belongs to this stale attempt.
+      if (outcome === 'superseded') return;
       if (userStoppedRef.current || endTurnCalledRef.current) return;
     }
     if (!maybeAutoContinue()) {
       setShowCompletionWarning(true);
     }
-  }, [projectId, maybeAutoContinue, resumeStream, setMessages]);
+  }, [maybeAutoContinue, reattachToLiveTurn]);
+
+  // --- Mount-time reattach ---
+  // The busy-settle recovery below only fires on a busy→idle transition,
+  // which a fresh mount never produces: after a page reload mid-turn the
+  // detached bridge keeps working, but the panel rehydrates from the DB
+  // (user message only — assistant messages persist in onFinish) and sits
+  // there looking idle. So once the transcript loads, if it ends on a user
+  // message (the tell for a turn that never finished persisting), ask the
+  // turn registry. A live turn reattaches exactly like a mid-session cut:
+  // the replay rebuilds the lost tool calls from event zero and follows the
+  // stream to endTurn. A dead-but-recent turn gets the visible completion
+  // warning instead of a silent auto-continue — a cold mount is too
+  // ambiguous to spend an agent turn without the user's say-so.
+  const mountReattachAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (!initialized || mountReattachAttemptedRef.current) return;
+    mountReattachAttemptedRef.current = true;
+    const msgs = messagesRef.current;
+    if (!transcriptHasUnfinishedTail(msgs)) return;
+    // Turn identity: only reattach to the record spawned BY the trailing
+    // user message (exact id match, stored in the turn record). Records
+    // written before the userMessageId field fall back to a createdAt
+    // heuristic — the 60s grace absorbs clock skew and the persist/spawn
+    // race. expectedTailId aborts the attempt if the user sends a new
+    // message while the status check is in flight.
+    const tail = msgs[msgs.length - 1] as { id: string; createdAt?: string | number | Date };
+    const tailCreatedAtMs = tail?.createdAt ? new Date(tail.createdAt).getTime() : NaN;
+    void (async () => {
+      const { outcome, recordExists } = await reattachToLiveTurn({
+        expectedUserMessageId: tail.id,
+        expectedTailId: tail.id,
+        staleIfStartedBefore: Number.isFinite(tailCreatedAtMs)
+          ? tailCreatedAtMs - 60_000
+          : undefined,
+      });
+      // Nothing live to show — but if THIS turn's record exists (and is
+      // dead), the turn really did die unfinished; let the user decide
+      // whether to continue. (No record, or another turn's record = stay
+      // quiet rather than nag on every open.) Re-check the tail so a
+      // message the user sent meanwhile never gets a stale warning.
+      if (outcome !== 'reattached' && outcome !== 'error' && outcome !== 'superseded' && recordExists) {
+        const nowTail = messagesRef.current[messagesRef.current.length - 1];
+        if (nowTail?.id === tail.id) setShowCompletionWarning(true);
+      }
+    })();
+  }, [initialized, reattachToLiveTurn]);
 
   // --- Late modal completions → tell the agent ---
   // When the user finishes a tool-opened modal (OAuth credentials, env var)
@@ -1446,6 +1611,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           setHasMoonshotKey(Boolean(data?.hasMoonshotKey));
           setHasFireworksKey(Boolean(data?.hasFireworksKey));
           setHasGoogleKey(Boolean(data?.hasGoogleKey));
+          setHasXaiKey(Boolean(data?.hasXaiKey));
           setHasTogetherKey(Boolean(data?.hasTogetherKey));
           setUseTogetherKimi(Boolean(data?.useTogetherKimi));
         }
@@ -1467,6 +1633,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           setHasMoonshotKey(Boolean(data?.hasMoonshotKey));
           setHasFireworksKey(Boolean(data?.hasFireworksKey));
           setHasGoogleKey(Boolean(data?.hasGoogleKey));
+          setHasXaiKey(Boolean(data?.hasXaiKey));
           setHasTogetherKey(Boolean(data?.hasTogetherKey));
           setUseTogetherKimi(Boolean(data?.useTogetherKimi));
         })
@@ -1544,8 +1711,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     // block free-tier users who have no personal credentials for these providers.
     const isPayingTier = userTier === 'pro' || userTier === 'max';
     if (!isPayingTier) {
-      if ((model === 'gpt-5.3-codex' && hasOpenAICreds === false) || (usingAnthropic && hasAnthropicCreds === false)) {
-        toast({ title: 'Missing API key', description: `Please add your ${model === 'gpt-5.3-codex' ? 'OpenAI' : 'Anthropic'} API key in Settings, or upgrade to Pro.` });
+      if ((isOpenAIModel(model) && hasOpenAICreds === false) || (usingAnthropic && hasAnthropicCreds === false)) {
+        toast({ title: 'Missing API key', description: `Please add your ${isOpenAIModel(model) ? 'OpenAI' : 'Anthropic'} API key in Settings, or upgrade to Pro.` });
         return;
       }
     }
@@ -1593,6 +1760,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     userStoppedRef.current = false;
     autoContinuesUsedRef.current = 0;
     toolAbortRef.current = new AbortController();
+    recoveryEpochRef.current++; // a real user send supersedes any in-flight recovery
     sendMessage({ text: input.trim(), files: fileParts.length > 0 ? fileParts : undefined });
     setInput('');
     removePromptFromUrl();
@@ -1608,6 +1776,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     userStoppedRef.current = false;
     autoContinuesUsedRef.current = 0;
     toolAbortRef.current = new AbortController();
+    recoveryEpochRef.current++;
     sendMessage({ text: 'You stopped without calling endTurn. Please continue or call endTurn if done.' });
   }, [sendMessage]);
 
@@ -1854,6 +2023,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                   if (content) {
                     setIsBusy(true);
                     toolAbortRef.current = new AbortController();
+                    recoveryEpochRef.current++;
                     sendMessage({ text: content });
                   }
                 }

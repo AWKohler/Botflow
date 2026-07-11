@@ -205,22 +205,22 @@ export function BackendChip({ backend, reason, runnable }: BackendChipProps) {
         type="button"
         onClick={() => setPopoverOpen((v) => !v)}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium transition",
+          "inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium transition",
           errorStyle
             ? "bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/15"
             : "bg-accent/10 border-accent/30 text-fg hover:bg-accent/15",
         )}
       >
         <BackendGlyph backend={backend} size={12} />
-        <span className="leading-none">{copy.title}</span>
+        <span className="min-w-0 truncate leading-none">{copy.chipTitle}</span>
         <span className={cn("text-[10px] leading-none", errorStyle ? "text-red-400/70" : "text-muted")}>·</span>
         <span
           className={cn(
-            "text-[11px] leading-none underline-offset-2 hover:underline",
+            "shrink-0 text-[11px] leading-none underline-offset-2 hover:underline",
             errorStyle ? "text-red-400" : "text-accent",
           )}
         >
-          What this means?
+          What&apos;s this?
         </span>
       </button>
       {popoverOpen && (

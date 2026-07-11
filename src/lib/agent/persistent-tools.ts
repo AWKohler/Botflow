@@ -1,3 +1,4 @@
+import { recordFileVersion, recentForeignWriteWarning, touchWriteBreadcrumb } from "@/lib/file-versions";
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
@@ -80,8 +81,22 @@ export function getPersistentTools(
     authHeaders?: Record<string, string>;
     /** Project platform — Swift projects get the simulator control tools. */
     platform?: string;
+    /** Clerk id of the turn's acting user — stamps version history +
+     *  write breadcrumbs for conflict safety (plan §6.4–6.5). */
+    actingUserId?: string;
   } = {},
 ) {
+  // Conflict safety: version + breadcrumb every agent write, and surface a
+  // warning when ANOTHER actor touched the file moments ago (plan §6.4–6.5).
+  // Best-effort by construction — never fails the write it decorates.
+  const writeActor = { type: "agent" as const, userId: opts.actingUserId };
+  async function afterAgentWrite(path: string, content: string): Promise<string | null> {
+    const warning = await recentForeignWriteWarning(projectId, path, writeActor);
+    void recordFileVersion({ projectId, path, content, actor: writeActor });
+    void touchWriteBreadcrumb(projectId, path, writeActor);
+    return warning;
+  }
+
   const baseTools = {
     bash: tool({
       description:
@@ -175,7 +190,8 @@ export function getPersistentTools(
         if (blocked) return blocked;
         return safe(async () => {
           await sandboxWriteFile(projectId, path, content);
-          return { ok: true, path, bytes: content.length };
+          const warning = await afterAgentWrite(path, content);
+          return { ok: true, path, bytes: content.length, ...(warning ? { warning } : {}) };
         });
       },
     }),
@@ -232,7 +248,8 @@ export function getPersistentTools(
           }
 
           await sandboxWriteFile(projectId, path, updated);
-          return { ok: true, path, replacements: count };
+          const warning = await afterAgentWrite(path, updated);
+          return { ok: true, path, replacements: count, ...(warning ? { warning } : {}) };
         });
       },
     }),
@@ -271,7 +288,8 @@ export function getPersistentTools(
           }
 
           await sandboxWriteFile(projectId, path, result.content);
-          return { ok: true, applied: result.appliedCount, path };
+          const warning = await afterAgentWrite(path, result.content);
+          return { ok: true, applied: result.appliedCount, path, ...(warning ? { warning } : {}) };
         });
       },
     }),

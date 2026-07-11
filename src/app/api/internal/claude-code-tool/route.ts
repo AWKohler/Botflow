@@ -98,15 +98,10 @@ export async function POST(req: Request) {
   // call pushes the TTL back out so an ACTIVE turn never loses tool access.
   void touchToolToken(match[1]);
 
-  // ── Rate limit ─────────────────────────────────────────────────────────────
-  // Key by the binding's userId (NOT the token) so a compromised/looping bridge
-  // can't multiply heavy tool spend (deploys, Stripe, git/PR, 5-min block-polls)
-  // by re-minting tokens. Higher ceiling than the agent routes since one turn
-  // legitimately fans out to many tool calls.
-  const blocked = await enforce(identifierFor(binding.userId, req), "toolCallback");
-  if (blocked) return blocked;
-
   // ── Parse ────────────────────────────────────────────────────────────────
+  // Parsed BEFORE the rate limit so we can tell a fresh tool invocation from a
+  // cheap continuation poll (see below). Parsing is cheap and the bearer token
+  // is already validated, so no unauth-flood concern in reordering.
   let body: RequestBody;
   try {
     body = (await req.json()) as RequestBody;
@@ -117,6 +112,30 @@ export async function POST(req: Request) {
   if (!tool || typeof tool !== "string") {
     return NextResponse.json({ ok: false, error: "tool field is required" }, { status: 400 });
   }
+
+  // ── Rate limit ─────────────────────────────────────────────────────────────
+  // Key by the binding's userId (NOT the token) so a compromised/looping bridge
+  // can't multiply heavy tool spend (deploys, Stripe, git/PR, 5-min block-polls)
+  // by re-minting tokens. Higher ceiling than the agent routes since one turn
+  // legitimately fans out to many tool calls.
+  //
+  // A `waitRequestId` in the input means this is the bridge re-polling a
+  // block-tool (HITL confirmation, simulator build, browser-log wait) whose
+  // INITIAL call already spent a toolCallback token. Those re-polls fire every
+  // ~2.5s for the life of the wait — a single multi-minute wait would drain the
+  // whole toolCallback budget by itself and 429 the turn mid-work. They're just
+  // cheap state reads of an already-admitted request, so route them to the
+  // generous `poll` bucket instead of charging the interactive tool budget.
+  const isContinuationPoll = !!(
+    body.input &&
+    typeof body.input === "object" &&
+    typeof (body.input as Record<string, unknown>).waitRequestId === "string"
+  );
+  const blocked = await enforce(
+    identifierFor(binding.userId, req),
+    isContinuationPoll ? "poll" : "toolCallback",
+  );
+  if (blocked) return blocked;
 
   // ── Project lookup + ownership re-check ─────────────────────────────────
   const db = getDb();

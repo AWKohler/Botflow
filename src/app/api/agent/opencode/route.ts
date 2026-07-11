@@ -23,6 +23,7 @@ import {
 } from "ai";
 
 import { requireProjectAccess } from "@/lib/project-access";
+import { sharedTurnBlockReason } from "@/lib/sharing";
 import { getUserCredentials, setUserCredentials } from "@/lib/user-credentials";
 import { getFreshCodexAccessToken } from "@/lib/codex-oauth";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
@@ -31,7 +32,7 @@ import { isSandboxPlatform } from "@/lib/project-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { getUserTier } from "@/lib/tier";
 import {
-  getMonthlyCredits,
+  getMonthlyCreditsKV,
   getMonthlyLimit,
   getWeeklyCredits,
   getWeeklyLimit,
@@ -92,6 +93,7 @@ import {
   fallbackResponse as fallback,
   jsonError,
   extractCurrentUserText,
+  extractCurrentUserMessageId,
   extractCurrentUserImageParts,
   fetchPromptImages,
   buildPriorConversationPreamble,
@@ -155,6 +157,13 @@ export async function POST(req: Request) {
   // route's rationale: this also protects the tool-token mint below).
   if (await swiftRuntimeForbidden(project.platform, userId)) {
     return jsonError(403, "Swift projects are currently in private beta.");
+  }
+
+  // Sharing (Phase 3): one live agent per project across ALL collaborators —
+  // never kill another user's bridge; tell this user to wait instead.
+  const sharedBlock = await sharedTurnBlockReason(projectId, userId);
+  if (sharedBlock) {
+    return jsonError(409, sharedBlock);
   }
 
   const selectedModel = resolveModelId(project.model);
@@ -266,12 +275,14 @@ export async function POST(req: Request) {
       return fallback("no_provider_credentials"); // unmappable — cannot happen for registry models
     }
     if (credMode === null) {
-      // Platform mode pre-flight (the same split /api/agent uses: slow
-      // aggregate checks at turn start, the atomic weekly reservation per
-      // request at the proxy). The tier gate already ran inside the
-      // derivation above.
+      // Platform mode pre-flight — a cheap KV-only early exit at turn start
+      // (never Neon on this hot path). The binding per-request gate is the
+      // atomic spillover reservation at the proxy (reservePlatformCredits):
+      // weekly paces, boundary-straddling requests spill into monthly
+      // headroom, monthly is the hard ceiling. The tier gate already ran
+      // inside the derivation above.
       const monthlyLimit = getMonthlyLimit(userTier);
-      const monthlyUsed = await getMonthlyCredits(userId);
+      const monthlyUsed = await getMonthlyCreditsKV(userId);
       if (monthlyUsed >= monthlyLimit) {
         return limitReachedResponse({
           limitType: "monthly_credits",
@@ -461,9 +472,12 @@ export async function POST(req: Request) {
   // network blip / tab reload / this route's own teardown — killing the turn
   // for it would defeat reattach. Explicit stops go through the stop route,
   // whose SIGTERM the bridge answers by aborting the opencode session.
+  const spawningUserMessageId = extractCurrentUserMessageId(messages);
   await setTurnRecord(projectId, {
     turnId,
+    userId,
     backend: "opencode",
+    ...(spawningUserMessageId ? { userMessageId: spawningUserMessageId } : {}),
     eventFile,
     startedAt: Date.now(),
     ...(toolToken ? { toolToken } : {}),

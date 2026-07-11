@@ -55,3 +55,13 @@ export const REVENUECAT_ENABLED =
  *  learns its value via the /api/user-settings response. */
 export const USE_TOGETHER_KIMI =
   process.env.USE_TOGETHER_KIMI === 'true';
+
+/** When true: project sharing is exposed — the Share button renders, the
+ *  members/invite endpoints accept requests, and requireProjectAccess grants
+ *  ACTIVE members editor access to shared projects. When false: strict
+ *  single-owner behavior everywhere (member rows are ignored). Keep OFF in
+ *  prod until the Anthropic proxy reaches Phase 2 — the owner's credential
+ *  must be out of the sandbox before a collaborator can hold a shell in it
+ *  (docs/features/anthropic-proxy-token-protection-plan.md §0). */
+export const SHARING_ENABLED =
+  process.env.NEXT_PUBLIC_SHARING_ENABLED === 'true';

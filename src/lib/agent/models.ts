@@ -3,18 +3,19 @@
  */
 
 export type ModelId =
-  | "gpt-5.3-codex"
-  | "gpt-5.4"
+  | "gpt-5.6-sol"
+  | "gpt-5.6-terra"
+  | "gpt-5.6-luna"
   | "gpt-5.5"
   | "claude-sonnet-5"
   | "claude-opus-4-8"
   | "claude-fable-5"
   | "gemini-3.1-pro-preview"
+  | "grok-4.5"
   | "fireworks-minimax-m3"
-  | "fireworks-glm-5p2"
   | "fireworks-kimi-k2p7";
 
-export type Provider = "openai" | "anthropic" | "google" | "fireworks";
+export type Provider = "openai" | "anthropic" | "google" | "xai" | "fireworks";
 
 export interface ModelConfig {
   id: ModelId;
@@ -25,6 +26,13 @@ export interface ModelConfig {
   displayName: string;
   /** Max context window in tokens */
   maxContextTokens: number;
+  /** Context window when the turn runs on the USER'S OWN credentials
+   *  (OAuth/BYOK) — some providers grant a larger window there than the
+   *  platform-billed default (Anthropic's 1M-context on Claude plans/API keys
+   *  vs our 200K platform window). Read via effectiveContextTokens();
+   *  undefined = same as maxContextTokens. Display/meter concern only —
+   *  billing reservations always use the platform value. */
+  personalCredContextTokens?: number;
   /** Warn at this percentage of max context */
   warnThreshold: number;
   /** Critical at this percentage of max context */
@@ -42,21 +50,31 @@ export interface ModelConfig {
 }
 
 export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
-  "gpt-5.3-codex": {
-    id: "gpt-5.3-codex",
+  "gpt-5.6-sol": {
+    id: "gpt-5.6-sol",
     provider: "openai",
-    apiModelId: "gpt-5.3-codex",
-    displayName: "GPT-5.3",
-    maxContextTokens: 400_000,
+    apiModelId: "gpt-5.6-sol",
+    displayName: "GPT-5.6 Sol",
+    maxContextTokens: 1_000_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
   },
-  "gpt-5.4": {
-    id: "gpt-5.4",
+  "gpt-5.6-terra": {
+    id: "gpt-5.6-terra",
     provider: "openai",
-    apiModelId: "gpt-5.4",
-    displayName: "GPT-5.4",
+    apiModelId: "gpt-5.6-terra",
+    displayName: "GPT-5.6 Terra",
+    maxContextTokens: 1_000_000,
+    warnThreshold: 0.7,
+    criticalThreshold: 0.9,
+    supportsImages: true,
+  },
+  "gpt-5.6-luna": {
+    id: "gpt-5.6-luna",
+    provider: "openai",
+    apiModelId: "gpt-5.6-luna",
+    displayName: "GPT-5.6 Luna",
     maxContextTokens: 1_000_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
@@ -78,6 +96,10 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     apiModelId: "claude-sonnet-5",
     displayName: "Claude Sonnet 5",
     maxContextTokens: 200_000,
+    // Anthropic grants 1M context on personal creds (Claude plans / API keys).
+    // Verified live for Opus (user session past 200K on OAuth); Sonnet assumed
+    // per Anthropic's 1M-context family — re-check if the meter misreports.
+    personalCredContextTokens: 1_000_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
@@ -88,6 +110,7 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     apiModelId: "claude-opus-4-8",
     displayName: "Claude Opus 4.8",
     maxContextTokens: 200_000,
+    personalCredContextTokens: 1_000_000, // 1M on Claude OAuth/BYOK (live-observed)
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
@@ -96,7 +119,7 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     id: "claude-fable-5",
     provider: "anthropic",
     apiModelId: "claude-fable-5",
-    displayName: "Claude Fable 5 (Mythos)",
+    displayName: "Claude Fable 5",
     maxContextTokens: 1_000_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
@@ -108,6 +131,16 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     apiModelId: "gemini-3.1-pro-preview",
     displayName: "Gemini 3.1 Pro",
     maxContextTokens: 1_000_000,
+    warnThreshold: 0.7,
+    criticalThreshold: 0.9,
+    supportsImages: true,
+  },
+  "grok-4.5": {
+    id: "grok-4.5",
+    provider: "xai",
+    apiModelId: "grok-4.5",
+    displayName: "Grok 4.5",
+    maxContextTokens: 500_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
@@ -132,16 +165,6 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
   //   criticalThreshold: 0.9,
   //   supportsImages: false,
   // },
-  "fireworks-glm-5p2": {
-    id: "fireworks-glm-5p2",
-    provider: "fireworks",
-    apiModelId: "accounts/fireworks/models/glm-5p2",
-    displayName: "GLM-5.2",
-    maxContextTokens: 202_800,
-    warnThreshold: 0.7,
-    criticalThreshold: 0.9,
-    supportsImages: false,
-  },
   "fireworks-kimi-k2p7": {
     id: "fireworks-kimi-k2p7",
     provider: "fireworks",
@@ -159,19 +182,39 @@ export function resolveModelId(stored: string | null | undefined): ModelId {
   // Dot-notation renames (same model, new ID format)
   if (stored === "claude-sonnet-4.5" || stored === "claude-sonnet-4.6" || stored === "claude-sonnet-4-6") return "claude-sonnet-5";
   if (stored === "claude-opus-4.5" || stored === "claude-opus-4.6" || stored === "claude-opus-4.7" || stored === "claude-opus-4-7" || stored === "claude-opus-4-1") return "claude-opus-4-8";
-  if (stored === "gpt-4.1" || stored === "gpt-5.2") return "gpt-5.3-codex";
-  if (stored === "fireworks-glm-5" || stored === "fireworks-glm-5p1") return "fireworks-glm-5p2";
+  // OpenAI retired IDs → GPT-5.6 successors (Terra succeeds 5.4, Luna succeeds 5.3)
+  if (stored === "gpt-5.4") return "gpt-5.6-terra";
+  if (stored === "gpt-5.3-codex" || stored === "gpt-5.2" || stored === "gpt-4.1") return "gpt-5.6-luna";
+  // GLM retired — Grok 4.5 replaces it in the lineup, but existing GLM-pinned
+  // projects fall back to Kimi (both free tier) so free users aren't paywalled
+  // onto pro Grok. [[grok-glm-replacement]]
+  if (stored === "fireworks-glm-5" || stored === "fireworks-glm-5p1" || stored === "fireworks-glm-5p2") return "fireworks-kimi-k2p7";
   if (stored === "fireworks-minimax-m2p7" || stored === "fireworks-minimax-m2p5") return "fireworks-minimax-m3";
   if (stored === "fireworks-kimi-k2p6") return "fireworks-kimi-k2p7";
   // Still-valid model: pass through
   if (stored && stored in MODEL_CONFIGS) return stored as ModelId;
-  // Unknown or removed model: silently use default
-  return "fireworks-kimi-k2p7";
+  // Unknown or removed model: silently use the default model
+  return "gpt-5.6-luna";
 }
 
 /** Check if a model supports image/file inputs */
 export function modelSupportsImages(model: ModelId): boolean {
   return MODEL_CONFIGS[model]?.supportsImages ?? false;
+}
+
+/**
+ * The context window in effect for a turn: the provider's larger
+ * personal-credential window when the turn runs on the user's own
+ * OAuth/BYOK creds, else the platform default. Drives the UI context meter
+ * (and any other display) — billing reservations deliberately keep using
+ * maxContextTokens.
+ */
+export function effectiveContextTokens(model: ModelId, personalCreds: boolean): number {
+  const config = MODEL_CONFIGS[model];
+  if (!config) return 128_000;
+  return personalCreds
+    ? (config.personalCredContextTokens ?? config.maxContextTokens)
+    : config.maxContextTokens;
 }
 
 /** Fallback message when a model is disabled but no explicit reason is set. */
@@ -209,6 +252,7 @@ export function getProviderKeyName(model: ModelId): string {
     openai: "OpenAI",
     anthropic: "Anthropic",
     google: "Google",
+    xai: "xAI",
     fireworks: "Fireworks",
   };
   return map[MODEL_CONFIGS[model].provider];

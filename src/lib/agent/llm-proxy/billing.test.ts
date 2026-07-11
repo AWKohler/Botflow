@@ -77,7 +77,7 @@ describe("settlement credit parity with /api/agent", () => {
 
   test("personal-cred modes bill zero, exactly like isUsingPersonalCredentials", () => {
     assert.equal(
-      computeSettlementCredits(usageOf(50_000, 2_000, 10_000, 0), "gpt-5.4", "byok"),
+      computeSettlementCredits(usageOf(50_000, 2_000, 10_000, 0), "gpt-5.6-terra", "byok"),
       0,
     );
     assert.equal(
@@ -86,9 +86,9 @@ describe("settlement credit parity with /api/agent", () => {
     );
   });
 
-  test("long-context surcharge triggers off uncached+cachedRead (gpt-5.4 past 272K)", () => {
-    const below = computeSettlementCredits(usageOf(200_000, 1_000, 100_000, 0), "gpt-5.4", "platform");
-    const above = computeSettlementCredits(usageOf(300_000, 1_000, 200_000, 0), "gpt-5.4", "platform");
+  test("long-context surcharge triggers off uncached+cachedRead (gemini past 200K)", () => {
+    const below = computeSettlementCredits(usageOf(200_000, 1_000, 100_000, 0), "gemini-3.1-pro-preview", "platform");
+    const above = computeSettlementCredits(usageOf(300_000, 1_000, 200_000, 0), "gemini-3.1-pro-preview", "platform");
     // Same output; above-threshold input must be priced strictly steeper than
     // a linear scale of the below-threshold rate.
     const belowPerToken = below / 200_000;
@@ -100,6 +100,33 @@ describe("settlement credit parity with /api/agent", () => {
     const withWrite = computeSettlementCredits(usageOf(10_000, 100, 0, 8_000), "claude-opus-4-8", "platform");
     const withoutWrite = computeSettlementCredits(usageOf(2_000, 100, 0, 0), "claude-opus-4-8", "platform");
     assert.ok(withWrite > withoutWrite);
+  });
+
+  test("grok-4.5 credits reconcile to xAI's live billing (captured cost_in_usd_ticks)", () => {
+    // Real cold call captured from api.x.ai (1 tick = 1e-10 USD):
+    //   prompt_tokens=7755 (cached_tokens=128, a subset), output=completion(1)+reasoning(177)=178
+    //   cost_in_usd_ticks=163_860_000 → $0.016386
+    // 1 credit = $0.30/MTok = $3e-7, so $0.016386 / 3e-7 = 54_620 credits.
+    const credits = computeSettlementCredits(usageOf(7755, 178, 128, 0), "grok-4.5", "platform");
+    const dollarsFromTicks = 163_860_000 * 1e-10;      // $0.016386
+    const expected = dollarsFromTicks / 3e-7;           // 54_620 credits ($3e-7 = 1 credit)
+    // calculateCredits Math.ceil's the FP sum, so allow the ≤1-credit ceil artifact.
+    assert.ok(Math.abs(credits - expected) <= 1, `grok credits ${credits} vs xAI-derived ${expected}`);
+  });
+
+  test("GPT-5.6 cache WRITES bill at the 1.25× premium (> same tokens as plain input)", () => {
+    // usageOf's first arg is prompt_tokens (the total) — reads AND writes are
+    // SUBSETS of it, not added on top (live-verified). Reclassifying 800 tokens
+    // from plain uncached (1×) to cache-WRITE (1.25×) must cost strictly more.
+    const asWrite = computeSettlementCredits(usageOf(12_800, 300, 11_500, 800), "gpt-5.6-sol", "platform");
+    const asPlainInput = computeSettlementCredits(usageOf(12_800, 300, 11_500, 0), "gpt-5.6-sol", "platform");
+    // Writes cost 1.25× input, so reclassifying them as 1× plain input is cheaper.
+    assert.ok(asWrite > asPlainInput, `write premium should exceed plain input: ${asWrite} vs ${asPlainInput}`);
+    // And Terra/Luna price writes proportionally to their own input rate.
+    assert.ok(
+      computeSettlementCredits(usageOf(2_000, 100, 0, 1_600), "gpt-5.6-luna", "platform") >
+      computeSettlementCredits(usageOf(2_000, 100, 0, 0), "gpt-5.6-luna", "platform"),
+    );
   });
 });
 

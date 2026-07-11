@@ -167,50 +167,62 @@ export function deriveAgentBackend(input: DeriveBackendInput): DeriveBackendOutp
  * Human-readable copy for the badge popover. Keyed by `DerivationReason` so
  * the chip can show an explanation of "why am I on this agent?" without the
  * caller having to format strings.
+ *
+ * `chipTitle` is a compact noun phrase for the inline chip (which sits next to
+ * a glyph and a "What's this?" link in a narrow sidebar); `title` is the fuller
+ * heading shown in the popover once opened.
  */
 export function describeDerivation(reason: DerivationReason): {
+  chipTitle: string;
   title: string;
   body: string;
 } {
   switch (reason) {
     case "oauth_claude_code":
       return {
+        chipTitle: "Your Claude subscription",
         title: "Running on your Claude subscription",
         body:
           "Anthropic requires that subscription tokens flow through their official Claude Code client, never a third party. Your turns run inside a real `claude` process in this project's sandbox, billed to your Pro/Max plan. Provider access goes through Botflow's credential proxy — your tokens never enter the sandbox.",
       };
     case "byok_claude_code":
       return {
+        chipTitle: "Your Claude API key",
         title: "Running on Claude Code with your API key",
         body:
           "Anthropic API keys run through the official Claude Code agent inside this project's sandbox. Your key stays on our servers — the sandbox holds only a per-turn proxy token. No platform credits are consumed.",
       };
     case "codex_oauth_opencode":
       return {
+        chipTitle: "Your ChatGPT plan",
         title: "Running on OpenCode with your ChatGPT plan",
         body:
           "Your turns run inside the open-source OpenCode agent in this project's sandbox, authenticated with your ChatGPT (Codex) subscription. Usage bills to your OpenAI plan — no platform credits are consumed.",
       };
     case "byok_opencode":
       return {
+        chipTitle: "Your API key",
         title: "Running on OpenCode with your API key",
         body:
           "You've added your own key for this model's provider, so turns run inside the open-source OpenCode agent in this project's sandbox. Your key stays on our servers — the sandbox holds only a per-turn proxy token. No platform credits are consumed.",
       };
     case "platform_key_opencode":
       return {
+        chipTitle: "Your plan's credits",
         title: "Running on your plan's credits",
         body:
           "Turns run inside the open-source OpenCode agent in this project's sandbox. Provider access goes through Botflow's credential proxy — keys never enter the sandbox — and usage is metered against your plan's included credits.",
       };
     case "tier_too_low":
       return {
+        chipTitle: "Higher plan needed",
         title: "This model needs a higher plan",
         body:
           "Running this model on platform credits requires an upgraded plan. Add your own API key for this model's provider in Settings to use it on any plan.",
       };
     case "byok_botflow":
       return {
+        chipTitle: "Your Anthropic key",
         title: "Running with your Anthropic API key",
         body:
           "Claude models on this project run through the built-in server-side engine using your API key. Sandbox projects run them through the official Claude Code agent instead.",
@@ -218,11 +230,13 @@ export function describeDerivation(reason: DerivationReason): {
     case "platform_key_botflow":
       return OPENCODE_BACKEND_ENABLED
         ? {
+            chipTitle: "Your plan's credits",
             title: "Running on your plan's credits",
             body:
               "Your subscription covers this model's usage through the built-in server-side engine, so these turns consume platform credits.",
           }
         : {
+            chipTitle: "Your Pro plan",
             title: "Running on Botflow with your Pro plan",
             body:
               "Your subscription covers Anthropic usage through Botflow's agent. Turns run on our servers using Botflow's tools.",
@@ -230,23 +244,27 @@ export function describeDerivation(reason: DerivationReason): {
     case "non_anthropic_model":
       return OPENCODE_BACKEND_ENABLED
         ? {
+            chipTitle: "Your plan's credits",
             title: "Running on your plan's credits",
             body:
               "This model runs through the built-in server-side engine using your plan's included credits.",
           }
         : {
+            chipTitle: "Botflow",
             title: "Running on Botflow",
             body:
               "Non-Anthropic models always use Botflow's agent. Claude Code only runs Anthropic models.",
           };
     case "oauth_no_path":
       return {
+        chipTitle: "Not available here",
         title: "Can't run Anthropic models on this project",
         body:
           "Your Claude subscription requires a sandbox project to run Claude Code, but this project is a WebContainer project. Create a new sandbox project to use Claude models with your subscription, or add an Anthropic API key in Settings.",
       };
     case "no_credentials":
       return {
+        chipTitle: "Credentials required",
         title: "Anthropic credentials required",
         body:
           "Sign in with Claude (Pro/Max subscription) or add an Anthropic API key in Settings to use Claude models. Free tier users can use OpenAI, Fireworks, and Google models without setup.",

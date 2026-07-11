@@ -20,6 +20,7 @@ export async function GET() {
       hasFireworksKey: Boolean(creds.fireworksApiKey),
       hasTogetherKey: Boolean(creds.togetherApiKey),
       hasGoogleKey: Boolean(creds.googleApiKey),
+      hasXaiKey: Boolean(creds.xaiApiKey),
       // Surface the server-only Together/Kimi flag so the client can decide
       // whether to show the Together AI BYOK input in the connections tab.
       useTogetherKimi: USE_TOGETHER_KIMI,
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
       fireworksApiKey,
       togetherApiKey,
       googleApiKey,
+      xaiApiKey,
       convexBackendPreference,
     } = body as {
       openaiApiKey?: string | null;
@@ -58,6 +60,7 @@ export async function POST(req: NextRequest) {
       fireworksApiKey?: string | null;
       togetherApiKey?: string | null;
       googleApiKey?: string | null;
+      xaiApiKey?: string | null;
       convexBackendPreference?: 'platform' | 'user' | 'none';
     };
 
@@ -71,6 +74,7 @@ export async function POST(req: NextRequest) {
     if (fireworksApiKey !== undefined) updates.fireworksApiKey = fireworksApiKey || null;
     if (togetherApiKey !== undefined) updates.togetherApiKey = togetherApiKey || null;
     if (googleApiKey !== undefined) updates.googleApiKey = googleApiKey || null;
+    if (xaiApiKey !== undefined) updates.xaiApiKey = xaiApiKey || null;
     if (
       convexBackendPreference === 'platform' ||
       convexBackendPreference === 'user' ||
@@ -91,6 +95,7 @@ export async function POST(req: NextRequest) {
       hasFireworksKey: Boolean(merged.fireworksApiKey),
       hasTogetherKey: Boolean(merged.togetherApiKey),
       hasGoogleKey: Boolean(merged.googleApiKey),
+      hasXaiKey: Boolean(merged.xaiApiKey),
     });
   } catch (e) {
     console.error('POST /api/user-settings failed:', e);

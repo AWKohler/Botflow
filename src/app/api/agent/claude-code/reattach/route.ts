@@ -70,6 +70,14 @@ export async function GET(req: NextRequest) {
     // client falls back to its auto-continue path.
     return new Response(null, { status: 204 });
   }
+  // Optional turn pin: the client validated a specific record via turn-status
+  // before resuming; if a NEW turn replaced it in the window between those
+  // two requests, replaying the new turn's file against the old turn's
+  // transcript would be wrong — 204 instead and let the client re-evaluate.
+  const expectedTurnId = req.nextUrl.searchParams.get("turnId");
+  if (expectedTurnId && expectedTurnId !== record.turnId) {
+    return new Response(null, { status: 204 });
+  }
   const { turnId, eventFile } = record;
 
   let sandbox: Awaited<ReturnType<typeof getOrCreatePersistentSandbox>>;

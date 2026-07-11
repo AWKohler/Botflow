@@ -67,10 +67,16 @@ export async function resolveOpenCodePaths(projectId: string): Promise<OpenCodeS
 // Pinned versions — see the CC setup's rationale verbatim: pinning insulates
 // us from breaking upstream publishes; env overrides allow validating a newer
 // release without a deploy; the install marker is keyed on these strings so a
-// bump forces a reinstall on the next turn. opencode 1.17.13 is the version
-// the integration spike verified (docs/features/opencode-agent.md) — reverify
-// the spike findings before bumping.
-const OPENCODE_VERSION = process.env.BOTFLOW_OPENCODE_VERSION || "1.17.13";
+// bump forces a reinstall on the next turn.
+//
+// Pin bumped 1.17.13 → 1.17.18 (2026, for Grok 4.5). The 1.17.14–1.17.18
+// changelog documents NO breaking changes to the config/opencode.json schema,
+// auth.json format, SSE event shapes, or builtin tool names — the surfaces the
+// integration spike (docs/features/opencode-agent.md) is coupled to. Verified
+// locally: 1.17.18 accepts our exact bridge config and resolves an explicitly-
+// declared custom provider+model (xai/grok-4.5) via the openai-compatible path.
+// A full in-sandbox turn is still the last-mile check before/after deploy.
+const OPENCODE_VERSION = process.env.BOTFLOW_OPENCODE_VERSION || "1.17.18";
 const MCP_SDK_VERSION = process.env.BOTFLOW_MCP_SDK_VERSION || "1.29.0";
 
 function installMarkerToken(): string {

@@ -1347,7 +1347,7 @@ export default function LandingV2() {
   // for Web (1px), Swift orange and thicker (2px) when Swift is selected.
   const promptFrameColor = platform === 'swift' ? SWIFT_ORANGE : 'var(--sand-border)';
   const promptFrameWidth = platform === 'swift' ? 2 : 1;
-  const [model, setModel] = useState<ModelId>('fireworks-kimi-k2p7');
+  const [model, setModel] = useState<ModelId>('gpt-5.6-luna');
   const { toast } = useToast();
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
@@ -1389,8 +1389,8 @@ export default function LandingV2() {
   const PENDING_PARAMS_KEY = 'huggable_pending_start_params';
   const PENDING_NAME_KEY = 'huggable_pending_project_name';
   const serverKeyModels = useMemo(() => new Set([
-    'fireworks-minimax-m3', 'fireworks-glm-5p2', 'fireworks-kimi-k2p7',
-    'gpt-5.3-codex', 'gpt-5.4', 'gpt-5.5', 'claude-sonnet-5', 'claude-sonnet-4.6', 'claude-opus-4.7', 'claude-opus-4-8',
+    'fireworks-minimax-m3', 'fireworks-kimi-k2p7',
+    'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'claude-sonnet-5', 'claude-sonnet-4.6', 'claude-opus-4.7', 'claude-opus-4-8',
   ]), []);
   const landingSignInModalAppearance = {
     elements: {
@@ -1464,7 +1464,7 @@ export default function LandingV2() {
     if (serverKeyModels.has(model)) return true;
     const hasOpenAICreds = hasCodexOAuth || hasOpenAIKey;
     const keyChecks: Record<string, { hasKey: boolean | null; provider: string }> = {
-      'gpt-5.3-codex': { hasKey: hasOpenAICreds, provider: 'OpenAI' },
+      'gpt-5.6-sol': { hasKey: hasOpenAICreds, provider: 'OpenAI' },
     };
     const check = keyChecks[model];
     if (check?.hasKey === false) {
@@ -1529,6 +1529,10 @@ export default function LandingV2() {
       params.set('backendType', 'none');
     } else if (convexBackendType === 'user' || params.get('backendType') === 'user') {
       params.set('backendType', 'user');
+    } else if (convexBackendType === 'platform') {
+      // Explicitly transmit the managed choice; otherwise /start falls back to
+      // the sticky saved preference (often 'none') and provisions no backend.
+      params.set('backendType', 'platform');
     }
     if (pendingImages.length > 0) {
       try {
@@ -1679,6 +1683,8 @@ export default function LandingV2() {
         convex_not_connected: { title: 'Convex not connected', description: 'Please connect your Convex account before creating a BYOC project.' },
         convex_provision_failed: { title: 'Convex provisioning failed', description: 'Failed to create a Convex backend in your account. Please try again or check your Convex dashboard.' },
         convex_quota: { title: 'Convex project limit reached', description: 'Your Convex account has reached its project quota. Delete unused projects at dashboard.convex.dev or upgrade your Convex plan.' },
+        convex_limit_reached: { title: 'Managed Convex limit reached', description: "You've reached your plan's managed Convex project limit. Delete an existing project to free a slot, then try again." },
+        convex_requires_pro: { title: 'Managed Convex requires Pro or Max', description: 'Upgrade to Pro or Max to create projects with a Botflow-managed Convex backend, or choose "No Backend".' },
         swift_requires_pro: { title: 'Swift requires Pro or Max', description: 'Upgrade to Pro or Max to create native Swift projects.' },
       };
       const errMsg = errorMessages[errorParam] ?? { title: 'Error', description: 'Something went wrong creating your project.' };
