@@ -15,6 +15,7 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { getUserCredentials } from "@/lib/user-credentials";
 import {
   cloneRepoIntoSandbox,
@@ -84,13 +85,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const db = getDb();
-    const [proj] = await db.select().from(projects).where(eq(projects.id, id));
-    if (!proj || proj.userId !== userId) {
+    const access = await requireProjectAccess(id, userId);
+    if (!access) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    if (proj.platform !== "sandboxed-web") {
+    const { project: proj } = access;
+    // Any platform whose files live in the persistent Vercel Sandbox can use
+    // the real-git link flow. Legacy 'web' (WebContainer) stays on the
+    // DB-snapshot flow under /api/projects/[id]/git/*.
+    if (proj.platform !== "sandboxed-web" && proj.platform !== "swift") {
       return NextResponse.json(
-        { error: "This endpoint is for sandboxed-web projects only." },
+        { error: "This endpoint is for sandbox-backed projects only." },
         { status: 400 },
       );
     }
@@ -242,8 +247,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const db = getDb();
-    const [proj] = await db.select().from(projects).where(eq(projects.id, id));
-    if (!proj || proj.userId !== userId) {
+    const access = await requireProjectAccess(id, userId);
+    if (!access) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 

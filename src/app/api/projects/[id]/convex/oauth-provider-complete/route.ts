@@ -17,8 +17,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eq, and } from "drizzle-orm";
 import { getDb } from "@/db";
-import { projects, oauthProviderRequests } from "@/db/schema";
+import { oauthProviderRequests } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { applyOAuthProvider } from "@/lib/convex-auth-setup";
+import { isAgentWaiting } from "@/lib/agent/modal-wait";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -50,13 +52,9 @@ export async function POST(
     const db = getDb();
 
     // Ownership check
-    const [project] = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-      .limit(1);
+    const access = await requireProjectAccess(projectId, userId, "owner");
 
-    if (!project) {
+    if (!access) {
       return NextResponse.json({ ok: false, error: "Project not found." }, { status: 404 });
     }
 
@@ -142,7 +140,17 @@ export async function POST(
       .set({ status: "completed", updatedAt: new Date() })
       .where(eq(oauthProviderRequests.id, requestId));
 
-    return NextResponse.json({ ok: true, status: "completed" });
+    // Tell the modal whether an agent poller is still actively waiting on this
+    // request. If not (the agent gave up and moved on), the workspace sends a
+    // system-note so the agent learns the credentials arrived.
+    const agentWaiting = await isAgentWaiting("oauth-provider", requestId);
+
+    return NextResponse.json({
+      ok: true,
+      status: "completed",
+      provider: oauthReq.provider,
+      agentWaiting,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[oauth-provider-complete] error:", err);

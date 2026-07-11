@@ -12,9 +12,10 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { and, desc, eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { projects, revenueCatWebhookDeliveries } from '@/db/schema';
+import { revenueCatWebhookDeliveries } from '@/db/schema';
+import { requireProjectAccess } from '@/lib/project-access';
 import { REVENUECAT_ENABLED } from '@/lib/feature-flags';
 
 export const runtime = 'nodejs';
@@ -55,12 +56,8 @@ export async function GET(
 
   const { id: projectId } = await params;
   const db = getDb();
-  const [project] = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-  if (!project) {
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) {
     return NextResponse.json({ ok: false, error: 'Project not found' }, { status: 404 });
   }
 

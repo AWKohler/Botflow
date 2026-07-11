@@ -223,7 +223,7 @@ async function runImagePromptWriter(args: {
 
   const openai = createOpenAI({ apiKey });
   const { object } = await generateObject({
-    model: openai('gpt-5.4'),
+    model: openai('gpt-5.6-terra'),
     system: IMAGE_PROMPT_SYSTEM,
     messages,
     schema: imageSchema,
@@ -297,7 +297,7 @@ async function runBrandSubjectWriter(args: {
   if (!apiKey) throw new Error('OPENAI_API_KEY is not set');
   const openai = createOpenAI({ apiKey });
   const { object } = await generateObject({
-    model: openai('gpt-5.4'),
+    model: openai('gpt-5.6-terra'),
     system: BRAND_SUBJECT_SYSTEM,
     prompt: buildBrandSubjectUserText({ title: args.title, excerpt: args.excerpt }),
     schema: brandSubjectSchema,

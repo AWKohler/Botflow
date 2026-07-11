@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects, userDomains } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
+import { requireProjectAccess } from '@/lib/project-access';
 import { getUserTierAndLimits } from '@/lib/tier';
 import {
   attachPagesCustomDomain,
@@ -10,16 +11,12 @@ import {
   upsertDnsRecord,
   deleteDnsRecord,
   listDnsRecords,
+  ensureBrandedDeploymentUrl,
 } from '@/lib/cloudflare-zones';
 
 async function getProject(userId: string, projectId: string) {
-  const db = getDb();
-  const [p] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-  return p ?? null;
+  const access = await requireProjectAccess(projectId, userId, "owner");
+  return access?.project ?? null;
 }
 
 /** Build the fully-qualified hostname from a (sub, apex) pair. "" / "@" / apex → apex. */
@@ -206,15 +203,20 @@ export async function DELETE(
     if (mirror) await detachOne(domain.cfZoneId, project.cloudflareProjectName, mirror).catch(() => {});
   }
 
+  // Fall back to the white-label branded URL (or .pages.dev when unconfigured).
+  const fallbackUrl = project.cloudflareProjectName
+    ? await ensureBrandedDeploymentUrl(project.cloudflareProjectName)
+    : null;
+
   await db
     .update(projects)
     .set({
       managedDomainId: null,
       managedDomainHostname: null,
-      cloudflareDeploymentUrl: project.cloudflareProjectName ? `https://${project.cloudflareProjectName}.pages.dev` : null,
+      cloudflareDeploymentUrl: fallbackUrl,
       updatedAt: new Date(),
     })
     .where(eq(projects.id, project.id));
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, url: fallbackUrl });
 }

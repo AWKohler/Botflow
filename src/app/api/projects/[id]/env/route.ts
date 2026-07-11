@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/db';
-import { projects, projectEnvVars } from '@/db/schema';
+import { projectEnvVars } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
+import { requireProjectAccess } from '@/lib/project-access';
 import { materializeFrontendEnv, platformConvexEnvVar } from '@/lib/sandbox-env';
 import { isReservedEnvKey } from '@/lib/platform-env';
 
@@ -18,10 +19,12 @@ import { isReservedEnvKey } from '@/lib/platform-env';
  */
 
 async function loadOwnedProject(projectId: string, userId: string) {
-  const db = getDb();
-  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-  if (!project || project.userId !== userId) return null;
-  return project;
+  const access = await requireProjectAccess(projectId, userId);
+  return access?.project ?? null;
+}
+
+async function loadAccess(projectId: string, userId: string) {
+  return requireProjectAccess(projectId, userId);
 }
 
 /**
@@ -36,8 +39,9 @@ export async function GET(
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const project = await loadOwnedProject(id, userId);
-  if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const access = await loadAccess(id, userId);
+  if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const project = access.project;
 
   const db = getDb();
   const envVars = await db.select().from(projectEnvVars)
@@ -55,7 +59,9 @@ export async function GET(
       .map((e) => ({
         id: e.id,
         key: e.key,
-        value: e.value,
+        // Editors never receive secret VALUES (plan §3.3) — masked client-side
+        // display only; the sandbox still materializes real values for builds.
+        value: e.isSecret && access.role !== 'owner' ? '••••••••' : e.value,
         isSecret: e.isSecret,
         isSystem: false,
       })),

@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { releaseSession } from "@/lib/sim-platform";
 import {
   dropSwiftPreviewSession,
@@ -25,11 +23,11 @@ export async function DELETE(
   }
 
   const { id: projectId, sessionId } = await params;
-  const db = getDb();
-  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-  if (!project || project.userId !== userId) {
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  const { project } = access;
   // Beta-only runtime. Gates legacy swift projects owned by non-beta users.
   if (await swiftRuntimeForbidden(project.platform, userId)) {
     return NextResponse.json(

@@ -46,3 +46,19 @@ export async function resolveToolToken(token: string): Promise<ToolTokenBinding 
 export async function revokeToolToken(token: string): Promise<void> {
   await redis.del(`${KEY_PREFIX}${token}`);
 }
+
+/**
+ * Sliding expiration: refresh the token's TTL back to full on each successful
+ * tool call. The bridge runs detached and can legitimately outlive the route
+ * that spawned it by a long stretch (multi-window turns, 20-minute modal
+ * waits) — a fixed TTL would cut off its tool access mid-turn. Abandoned
+ * tokens still expire TTL_SECONDS after their last use, and the next turn's
+ * spawn (and the stop route) revoke the previous turn's token explicitly.
+ */
+export async function touchToolToken(token: string): Promise<void> {
+  try {
+    await redis.expire(`${KEY_PREFIX}${token}`, TTL_SECONDS);
+  } catch {
+    /* best-effort — worst case the token expires on its original clock */
+  }
+}

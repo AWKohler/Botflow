@@ -13,7 +13,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eq, and } from "drizzle-orm";
 import { getDb } from "@/db";
-import { projects, oauthProviderRequests } from "@/db/schema";
+import { oauthProviderRequests } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { isSupportedOAuthProvider } from "@/lib/oauth-providers/registry";
 
 /**
@@ -38,13 +39,9 @@ export async function DELETE(
     const db = getDb();
 
     // Lightweight ownership check
-    const [project] = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-      .limit(1);
+    const access = await requireProjectAccess(projectId, userId, "owner");
 
-    if (!project) {
+    if (!access) {
       return NextResponse.json({ ok: false, error: "Project not found." }, { status: 404 });
     }
 
@@ -98,15 +95,12 @@ export async function POST(
     }
 
     const db = getDb();
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-      .limit(1);
+    const access = await requireProjectAccess(projectId, userId, "owner");
 
-    if (!project) {
+    if (!access) {
       return NextResponse.json({ ok: false, error: "Project not found." }, { status: 404 });
     }
+    const project = access.project;
     if (!project.authConfigured) {
       return NextResponse.json(
         {

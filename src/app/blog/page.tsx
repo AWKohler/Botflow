@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
-import { Reveal, SectionLabel, serif } from '@/components/landing/shared';
+import { Reveal, SectionLabel } from '@/components/landing/shared';
+import { serif } from '@/components/landing/fonts';
 import { PostCard } from '@/components/blog/PostCard';
 import { getAllPosts } from '@/lib/sanity/posts';
 import { cn } from '@/lib/utils';

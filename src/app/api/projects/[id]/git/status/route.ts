@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
-import { projects, pendingGitCommits } from '@/db/schema';
+import { pendingGitCommits } from '@/db/schema';
 import { getUserCredentials } from '@/lib/user-credentials';
 import { eq, asc } from 'drizzle-orm';
+import { requireProjectAccess } from '@/lib/project-access';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -26,8 +27,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const db = getDb();
-    const [proj] = await db.select().from(projects).where(eq(projects.id, id));
-    if (!proj || proj.userId !== userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const access = await requireProjectAccess(id, userId);
+    if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const { project: proj } = access;
 
     if (!proj.githubRepoOwner || !proj.githubRepoName) {
       return NextResponse.json({ error: 'No GitHub repo connected' }, { status: 400 });

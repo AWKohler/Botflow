@@ -24,6 +24,7 @@ export interface UserCredentials {
   fireworksApiKey: string | null;
   togetherApiKey: string | null;
   googleApiKey: string | null;
+  xaiApiKey: string | null;
   // Claude OAuth
   claudeOAuthAccessToken: string | null;
   claudeOAuthRefreshToken: string | null;
@@ -132,6 +133,8 @@ export async function getUserCredentials(userId: string): Promise<UserCredential
     // (no Neon legacy column), so there's nothing to fall back to.
     togetherApiKey: meta.togetherApiKey ?? null,
     googleApiKey: (meta.googleApiKey ?? neon.googleApiKey) ?? null,
+    // xAI key is newer — Clerk privateMetadata only, no Neon legacy column.
+    xaiApiKey: meta.xaiApiKey ?? null,
     claudeOAuthAccessToken: (meta.claudeOAuthAccessToken ?? neon.claudeOAuthAccessToken) ?? null,
     claudeOAuthRefreshToken: (meta.claudeOAuthRefreshToken ?? neon.claudeOAuthRefreshToken) ?? null,
     claudeOAuthExpiresAt: (meta.claudeOAuthExpiresAt ?? neon.claudeOAuthExpiresAt) ?? null,

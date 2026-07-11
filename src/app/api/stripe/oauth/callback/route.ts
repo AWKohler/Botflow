@@ -31,6 +31,7 @@ import {
   stripeOauthStates,
   userStripeIdentity,
 } from '@/db/schema';
+import { requireProjectAccess } from '@/lib/project-access';
 import { getStripe, type StripeMode } from '@/lib/stripe';
 import { mirrorStripeProductsAcrossModes } from '@/lib/stripe-scaffold';
 import { ensureConnectWebhookEndpoint } from '@/lib/stripe-webhook-provisioning';
@@ -134,17 +135,14 @@ export async function GET(req: NextRequest) {
 
   // Re-verify the project still belongs to this user (could have been deleted
   // or transferred while the popup was open).
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, stateRow.projectId), eq(projects.userId, userId)))
-    .limit(1);
-  if (!project) {
+  const access = await requireProjectAccess(stateRow.projectId, userId, "owner");
+  if (!access) {
     return workspaceRedirect(url.origin, stateRow.projectId, {
       stripe_connect: 'error',
       reason: 'project-not-found',
     });
   }
+  const { project } = access;
 
   const mode = stateRow.mode as StripeMode;
   let stripeUserId: string;

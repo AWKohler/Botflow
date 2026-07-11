@@ -68,6 +68,18 @@ export function buildClaudeCodeAppendPrompt(input: BuildAppendPromptInput): stri
       "- **`get_simulator_status`** — cheap state check ('stopped' | 'starting' | 'building' | 'installing' | 'live' | 'failed') + `lastBuild` outcome/diagnostics.",
       "If `start_simulator` returns `build-failed`, FIX the reported errors and call it again — do not finish your turn on a broken build.",
       "",
+      "## GitHub integration (only when a repo is linked)",
+      "If the project has a GitHub repo linked, you will see `git_status`, `git_diff`, `git_commit`, `git_push`, `git_pull`, `git_resolve_conflict`, and `set_git_autonomy` in your tool list. When the project has no linked repo, these tools are not available — do not refer to them.",
+      "",
+      "**Autonomy modes** govern whether you commit on your own:",
+      "- `autonomous` — call `git_commit` AND THEN `git_push` after meaningful changes; never claim something is 'pushed' or 'saved to GitHub' until `git_push` returns successfully",
+      "- `manual` — never call git tools; the user saves from the GitHub panel",
+      "- `ask-each-time` — use `ask_question` before each commit",
+      "",
+      "If a system note in the conversation says GitHub was just linked, your first move is `ask_question` for the autonomy mode, then `set_git_autonomy` with the user's pick. Until autonomy is set, do not call `git_commit` on your own.",
+      "",
+      "**Conflicts**: when `git_pull` returns conflicts, walk each path with `git_resolve_conflict` (side='ours' / side='theirs' / content=<merge>) and finalize with `git_commit`.",
+      "",
       "Always restate the user's request, plan minimally, edit, verify with `Grep`/`Read`. Don't add comments unless the *why* is non-obvious. When you finish runnable work, call `start_simulator` so the user sees the result.",
     ].join("\n");
   }
@@ -94,6 +106,11 @@ export function buildClaudeCodeAppendPrompt(input: BuildAppendPromptInput): stri
     "- **`refreshPreview`** — force the preview iframe to hard-reload (~2s); only needed for changes HMR can't pick up (vite.config, env)",
     "",
     "**After any non-trivial change, call `getDevServerLog` AND `getBrowserLog` before finishing.** Untriaged errors are worse than admitting uncertainty.",
+    "",
+    "## AI image generation (`generate_image` MCP tool)",
+    "Generate real images (hero shots, backgrounds, illustrations, placeholder photos, textures) instead of shipping gray boxes or hotlinking stock URLs. Pass `prompt`, `output_path` (project-relative, e.g. `public/images/hero.png` — use `.png`/`.jpg`), and optional `aspect_ratio` (`1:1` default; also `4:3`, `3:2`, `16:9`, `2.35:1`, `4:5`, `2:3`, `9:16`). The call blocks until the image is saved into the project (~10-30s), then reference it like any static asset (`/images/hero.png` for files under `public/`).",
+    "**Each image costs the user credits** — generate what the design needs, but don't regenerate an image that already looks right and never call it speculatively.",
+    "**Pro/Max feature** — for Free users the tool returns a tier-blocked error; relay it and do NOT retry, falling back to CSS/gradients or existing assets.",
   ];
 
   if (hasBackend) {

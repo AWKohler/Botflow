@@ -18,6 +18,7 @@ import { UTApi } from "uploadthing/server";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 
 const utapi = new UTApi();
 
@@ -35,11 +36,11 @@ export async function POST(
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { id } = await params;
-    const db = getDb();
-    const [project] = await db.select().from(projects).where(eq(projects.id, id));
-    if (!project || project.userId !== userId) {
+    const access = await requireProjectAccess(id, userId);
+    if (!access) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    const { project } = access;
 
     const body = (await req.json().catch(() => null)) as {
       html?: string;
@@ -91,7 +92,7 @@ export async function POST(
     }
 
     if (Object.keys(updates).length > 0) {
-      await db.update(projects).set(updates).where(eq(projects.id, id));
+      await getDb().update(projects).set(updates).where(eq(projects.id, id));
     }
 
     // Evict the previous files AFTER the row points at the new ones, so a

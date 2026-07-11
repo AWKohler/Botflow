@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import {
   startSandboxDevServer,
   stopSandboxDevServer,
@@ -16,9 +14,9 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 async function authorizedProject(projectId: string, userId: string) {
-  const db = getDb();
-  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-  if (!project || project.userId !== userId) return null;
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) return null;
+  const { project } = access;
   if (project.platform !== "swift" && project.platform !== "sandboxed-web") return null;
   // Swift's runtime is beta-only; deny non-beta owners of legacy swift projects.
   if (await swiftRuntimeForbidden(project.platform, userId)) return null;

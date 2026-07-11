@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { LiveActions } from '@/components/agent/LiveActions';
 import { useToast } from '@/components/ui/toast';
 import type { ToolCallData } from '@/lib/agent/ui-types';
-import { MODEL_CONFIGS, modelSupportsImages, resolveModelId, type ModelId } from '@/lib/agent/models';
+import { MODEL_CONFIGS, modelSupportsImages, resolveModelId, isOpenAIModel, effectiveContextTokens, type ModelId } from '@/lib/agent/models';
 import { ModelSelector } from '@/components/ui/ModelSelector';
 import { LimitModal, parseLimitPayload, type LimitReachedPayload } from '@/components/ui/LimitModal';
 import { CreditGauge } from '@/components/ui/CreditGauge';
@@ -32,9 +32,11 @@ import { QuestionPrompt, type QuestionConfig, type QuestionAnswerPayload } from 
 import {
   BOTFLOW_NATIVE_TOOLS,
   CLAUDE_CODE_TO_BOTFLOW,
+  OPENCODE_TO_BOTFLOW,
   sanitizeToolUseId,
 } from '@/lib/agent/tool-name-map';
 import type { SubagentStep } from '@/lib/agent/claude-code/translator';
+import { transcriptHasUnfinishedTail } from '@/lib/agent/transcript-tail';
 
 type Props = { className?: string; projectId: string; initialPrompt?: string; platform?: ProjectPlatform };
 
@@ -273,8 +275,11 @@ function transformPartForBotflow(part: AnyPart): AnyPart | AnyPart[] | null {
     return part;
   }
 
-  // Look up in the cross-agent map.
-  const rule = CLAUDE_CODE_TO_BOTFLOW[rawName];
+  // Look up in the cross-agent maps: Claude Code names first (PascalCase +
+  // MCP snake_case), then OpenCode-only natives (lowercase). The key spaces
+  // are disjoint, and platform (MCP) tools arrive pre-stripped by the
+  // OpenCode translator under the exact names the CC map already rewrites.
+  const rule = CLAUDE_CODE_TO_BOTFLOW[rawName] ?? OPENCODE_TO_BOTFLOW[rawName];
 
   // No mapping — could be a tool we don't know about. Collapse to a text
   // summary so the receiving agent has prose context but doesn't try to
@@ -388,7 +393,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [initialized, setInitialized] = useState(false);
   const [actions, setActions] = useState<ToolCallData[]>([]);
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
-  const [model, setModel] = useState<ModelId>('fireworks-kimi-k2p7');
+  const [model, setModel] = useState<ModelId>('gpt-5.6-luna');
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
   const [hasClaudeOAuth, setHasClaudeOAuth] = useState<boolean | null>(null);
@@ -396,13 +401,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
   const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
   const [hasGoogleKey, setHasGoogleKey] = useState<boolean | null>(null);
+  const [hasXaiKey, setHasXaiKey] = useState<boolean | null>(null);
+  const [hasTogetherKey, setHasTogetherKey] = useState<boolean | null>(null);
   // Server flag (USE_TOGETHER_KIMI): Kimi K2.7 is served by Together AI, not Fireworks.
   const [useTogetherKimi, setUseTogetherKimi] = useState(false);
-  // BYOK user's per-account preference for which agent runs Claude models.
-  // Honored by the derivation only when the user has a genuine choice
-  // (BYOK with no OAuth). OAuth users are ToS-locked to Claude Code regardless.
-  const [preferredAnthropicBackend, setPreferredAnthropicBackend] =
-    useState<'botflow' | 'claude-code'>('botflow');
   const [showSettings, setShowSettings] = useState(false);
   const [agentError, setAgentError] = useState<StructuredError | null>(null);
   const [retryCountdown, setRetryCountdown] = useState<number | null>(null);
@@ -550,6 +552,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       anthropic,
       fireworks: hasFireworksKey === true ? true : null,
       google: hasGoogleKey === true ? true : null,
+      xai: hasXaiKey === true ? true : null,
     };
   }, [
     hasCodexOAuth,
@@ -558,6 +561,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     hasAnthropicKey,
     hasFireworksKey,
     hasGoogleKey,
+    hasXaiKey,
     platform,
   ]);
 
@@ -565,10 +569,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // Single source of truth lives in deriveAgentBackend(). Both the chip badge
   // and the transport's routing decision read from this memo. No more separate
   // useState, no more auto-coerce effect, no more confirmation modal — when
-  // the user picks a different model, the agent flips silently.
-  //
-  // BYOK users who want to override the default (Botflow) to Claude Code use
-  // the preference in Connections → preferredAnthropicBackend.
+  // the user picks a different model, the agent flips silently. Credentials
+  // pick the MODE (codex-oauth / byok / platform via the LLM proxy); the
+  // backend itself is fully determined by model + platform + flag.
   const derivedBackend = useMemo(
     () =>
       deriveAgentBackend({
@@ -577,11 +580,30 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         creds: {
           hasClaudeOAuth: Boolean(hasClaudeOAuth),
           hasAnthropicKey: Boolean(hasAnthropicKey),
+          hasCodexOAuth: Boolean(hasCodexOAuth),
+          hasOpenAIKey: Boolean(hasOpenAIKey),
+          hasFireworksKey: Boolean(hasFireworksKey),
+          hasGoogleKey: Boolean(hasGoogleKey),
+          hasXaiKey: Boolean(hasXaiKey),
+          hasTogetherKey: Boolean(hasTogetherKey),
         },
-        preferredAnthropicBackend,
         tier: userTier,
+        useTogetherKimi,
       }),
-    [model, platform, hasClaudeOAuth, hasAnthropicKey, preferredAnthropicBackend, userTier],
+    [
+      model,
+      platform,
+      hasClaudeOAuth,
+      hasAnthropicKey,
+      hasCodexOAuth,
+      hasOpenAIKey,
+      hasFireworksKey,
+      hasGoogleKey,
+      hasXaiKey,
+      hasTogetherKey,
+      userTier,
+      useTogetherKimi,
+    ],
   );
   const agentBackend = derivedBackend.backend;
 
@@ -622,7 +644,11 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     breakdown: { input: number; output: number; cacheCreate: number; cacheRead: number };
   } | null>(null);
   const [isCompacting, setIsCompacting] = useState(false);
-  const maxTokens = MODEL_CONFIGS[model]?.maxContextTokens ?? 128_000;
+  // Context meter limit: personal-cred Anthropic turns (Claude OAuth/BYOK →
+  // the claude-code backend) get the provider's 1M window, not the 200K
+  // platform default — otherwise the meter reads "227k / 200k" on a turn
+  // that's perfectly within budget. Display only; billing is server-side.
+  const maxTokens = effectiveContextTokens(model, derivedBackend.backend === 'claude-code');
 
   // --- First message tracking ---
   const [hasAgentResponded, setHasAgentResponded] = useState(false);
@@ -633,6 +659,13 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
 
   // --- AbortController for tool calls ---
   const toolAbortRef = useRef<AbortController | null>(null);
+
+  // Turn pin for reattach: set from the turn-status response just before
+  // resumeStream(), read by the transport's reconnect request builder. The
+  // reattach route 204s unless its record still has this exact turnId, so a
+  // NEW turn spawned between the status check and the reattach can never be
+  // replayed against the wrong transcript (TOCTOU guard).
+  const reattachTurnIdRef = useRef<string | null>(null);
 
   // --- Auto-continue (self-healing turn completion) ---
   // A turn can end without endTurn for reasons that are NOT the user's
@@ -651,13 +684,14 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // exists) can trigger a continue.
   const maybeAutoContinueRef = useRef<() => boolean>(() => false);
 
-  // True when the LAST agent request was actually served by
-  // /api/agent/claude-code (i.e. it didn't 412-fall-back to /api/agent).
-  // Claude Code turns are single-shot — the bridge runs the whole agentic
-  // loop inside one POST — so the client must NEVER auto-resubmit them: a
-  // resubmit carries a trailing assistant message, which the route rejects
-  // with 409 ("Last message must be a user message") and the agent stops.
-  const lastTurnServedByClaudeCodeRef = useRef(false);
+  // True when the LAST agent request was actually served by an in-sandbox
+  // agent route — /api/agent/claude-code OR /api/agent/opencode — (i.e. it
+  // didn't 412-fall-back to /api/agent). In-sandbox turns are single-shot:
+  // the bridge runs the whole agentic loop inside one POST, so the client
+  // must NEVER auto-resubmit them: a resubmit carries a trailing assistant
+  // message, which both routes reject with 409 ("Last message must be a user
+  // message") and the agent stops.
+  const lastTurnServedByInSandboxAgentRef = useRef(false);
 
   // --- Ref that the transport's prepare/fetch closures read at request time.
   //     Holds the project's persisted agent_backend so we route every turn to
@@ -673,11 +707,22 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const transportRef = useRef(new DefaultChatTransport({
     api: '/api/agent',
     body: { projectId, platform },
+    // resumeStream() → GET the reattach route, which replays the current
+    // in-sandbox turn's event file (Claude Code or OpenCode — the turn record
+    // picks the translator) and follows it while the bridge lives. The
+    // recovery logic only calls resumeStream() for in-sandbox turns. A 204
+    // (nothing to resume) is a clean no-op.
+    prepareReconnectToStreamRequest: () => ({
+      api: `/api/agent/claude-code/reattach?projectId=${encodeURIComponent(projectId)}${
+        reattachTurnIdRef.current ? `&turnId=${encodeURIComponent(reattachTurnIdRef.current)}` : ''
+      }`,
+    }),
     prepareSendMessagesRequest: ({ body, messages, api }) => {
-      const useClaudeCode = agentBackendRef.current === 'claude-code';
+      const backend = agentBackendRef.current;
+      const useInSandboxAgent = backend === 'claude-code' || backend === 'opencode';
       // Assume the intended endpoint serves this turn; the fetch wrapper
       // flips this off if a 412 falls the request back to /api/agent.
-      lastTurnServedByClaudeCodeRef.current = useClaudeCode;
+      lastTurnServedByInSandboxAgentRef.current = useInSandboxAgent;
 
       // Scope to the current segment. Segments now only break on explicit
       // Reset (no longer on agent switch), so most of the time this is a
@@ -692,16 +737,18 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           })
         : messages;
 
-      // For Botflow outgoing: rewrite any foreign (Claude Code) tool_use
-      // parts into Botflow's tool vocabulary so Anthropic doesn't reject
-      // the request with `messages.X.content.Y.tool_use` errors. Unmapped
-      // tool parts are collapsed into text summaries. Also defensively
-      // sanitize any tool_use IDs that don't match Anthropic's regex.
+      // For Botflow outgoing: rewrite any foreign (Claude Code / OpenCode)
+      // tool_use parts into Botflow's tool vocabulary so Anthropic doesn't
+      // reject the request with `messages.X.content.Y.tool_use` errors.
+      // Unmapped tool parts are collapsed into text summaries. Also
+      // defensively sanitize any tool_use IDs that don't match Anthropic's
+      // regex.
       //
-      // For Claude Code outgoing: the bridge takes only the user prompt
-      // (it doesn't accept a messages array), so we pass `scoped` through
-      // unchanged — the route does its own prior-conversation preamble.
-      const transformed = useClaudeCode
+      // For in-sandbox outgoing (Claude Code / OpenCode): the bridges take
+      // only the user prompt (no messages array), so we pass `scoped`
+      // through unchanged — the routes build their own prior-conversation
+      // preamble.
+      const transformed = useInSandboxAgent
         ? scoped
         : scoped.map(transformMessageForBotflow);
 
@@ -711,24 +758,29 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
 
       return {
         body: { ...(body ?? {}), messages: finalMessages },
-        ...(useClaudeCode ? { api: '/api/agent/claude-code' } : { api }),
+        ...(backend === 'claude-code'
+          ? { api: '/api/agent/claude-code' }
+          : backend === 'opencode'
+            ? { api: '/api/agent/opencode' }
+            : { api }),
       };
     },
     fetch: async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const res = await fetch(input, init);
-      // 412 from /api/agent/claude-code = "creds went stale, fall back".
-      // Rare — the persisted agent_backend should match what's available.
-      if (res.status === 412 && url.includes('/api/agent/claude-code')) {
+      // 412 from an in-sandbox route = "not eligible / creds went stale" —
+      // transparently land the turn on /api/agent. Rare: the derivation
+      // should already match what's available server-side.
+      if (res.status === 412 && /\/api\/agent\/(claude-code|opencode)/.test(url)) {
         // This turn is now Botflow-served — its tool loop needs resubmits.
-        lastTurnServedByClaudeCodeRef.current = false;
-        return fetch(url.replace('/api/agent/claude-code', '/api/agent'), init);
+        lastTurnServedByInSandboxAgentRef.current = false;
+        return fetch(url.replace(/\/api\/agent\/(claude-code|opencode)/, '/api/agent'), init);
       }
       return res;
     },
   }));
 
-  const { messages, sendMessage, setMessages, addToolOutput, stop, status } = useChat({
+  const { messages, sendMessage, setMessages, addToolOutput, stop, status, resumeStream } = useChat({
     transport: transportRef.current,
     // Receive Claude Code's transient data parts: real token usage + compact
     // boundaries. These never persist to message.parts (they're `transient: true`
@@ -736,7 +788,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     // local state.
     onData(part) {
       const p = part as { type: string; data?: unknown };
-      if (p.type === 'data-claude-code-usage') {
+      if (p.type === 'data-claude-code-usage' || p.type === 'data-opencode-usage') {
         const data = p.data as {
           tokens?: number;
           breakdown?: { input: number; output: number; cacheCreate: number; cacheRead: number };
@@ -749,7 +801,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           // Receiving fresh usage means compaction (if any) is done.
           setIsCompacting(false);
         }
-      } else if (p.type === 'data-claude-code-compact-boundary') {
+      } else if (p.type === 'data-claude-code-compact-boundary' || p.type === 'data-opencode-compact-boundary') {
         const data = p.data as { trigger?: 'manual' | 'auto'; preTokens?: number } | undefined;
         // Reset the bar — claude just compacted; the next usage event will
         // show the new (much smaller) size.
@@ -765,6 +817,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         const data = p.data as { status?: string } | undefined;
         if (data?.status === 'compacting') setIsCompacting(true);
       }
+      // data-opencode-status ("retrying") is deliberately not surfaced yet —
+      // opencode retries transparently and the busy spinner already covers it.
     },
     onFinish({ message, isAbort }) {
       // Don't clear busy on finish — let debounce handle it
@@ -904,14 +958,15 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     // into re-POSTing — and /api/agent/claude-code replays the last user
     // prompt on every POST, so the turn looped until the user intervened.
     sendAutomaticallyWhen: ({ messages }) => {
-      // Claude Code turns are single-shot: the bridge runs the whole agentic
-      // loop inside one POST and every tool part arrives already complete, so
-      // the helper below would re-POST after EVERY turn that did real work.
-      // Worse, when a turn dies early (bridge crash, maxDuration kill) the
-      // synthetic endTurn marker never arrives and the resubmit hits the
-      // route's replay guard — 409, agent stops. Never auto-resubmit a turn
-      // that Claude Code actually served (fallback-served turns still may).
-      if (lastTurnServedByClaudeCodeRef.current) return false;
+      // In-sandbox turns (Claude Code / OpenCode) are single-shot: the bridge
+      // runs the whole agentic loop inside one POST and every tool part
+      // arrives already complete, so the helper below would re-POST after
+      // EVERY turn that did real work. Worse, when a turn dies early (bridge
+      // crash, maxDuration kill) the synthetic endTurn marker never arrives
+      // and the resubmit hits the route's replay guard — 409, agent stops.
+      // Never auto-resubmit a turn an in-sandbox agent actually served
+      // (fallback-served turns still may).
+      if (lastTurnServedByInSandboxAgentRef.current) return false;
       if (!lastAssistantMessageIsCompleteWithToolCalls({ messages })) return false;
       const last = messages[messages.length - 1];
       if (!last || last.role !== 'assistant') return false;
@@ -937,14 +992,23 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   messagesRef.current = messages;
   const messageQueueRef = useRef(messageQueue);
   messageQueueRef.current = messageQueue;
-  const sendMessageRef = useRef(sendMessage);
-  sendMessageRef.current = sendMessage;
+  // Wrapped so EVERY send through the ref bumps the recovery epoch first
+  // (see recoveryEpochRef below): any new outgoing turn supersedes an
+  // in-flight reattach recovery. Direct sendMessage() call sites bump
+  // explicitly.
+  const sendMessageRef = useRef<typeof sendMessage>(sendMessage);
+  sendMessageRef.current = (...args: Parameters<typeof sendMessage>) => {
+    recoveryEpochRef.current++;
+    return sendMessage(...args);
+  };
   const endTurnCalledRef = useRef(endTurnCalled);
   endTurnCalledRef.current = endTurnCalled;
   const agentErrorRef = useRef(agentError);
   agentErrorRef.current = agentError;
   const limitPayloadRef = useRef(limitPayload);
   limitPayloadRef.current = limitPayload;
+  const isBusyRef = useRef(false);
+  isBusyRef.current = isBusy;
 
   // Silently nudge the agent to finish an interrupted turn. Returns false when
   // continuing would be wrong (user pressed Stop) or the per-message cap is
@@ -957,13 +1021,271 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     setShowCompletionWarning(false);
     setIsBusy(true);
     toolAbortRef.current = new AbortController();
-    const nudge = agentBackendRef.current === 'claude-code'
-      ? '[system-note] Automatic continuation: your previous turn was interrupted before it finished. Continue from where you left off; if the task is already complete, give a brief summary of what was done.'
+    // Per-backend wording: both in-sandbox agents (Claude Code + OpenCode)
+    // have reattach-first recovery, so their nudge only fires after a failed
+    // reattach and leans on the resumed session transcript. Botflow keys on
+    // endTurn.
+    const backend = agentBackendRef.current;
+    const nudge = backend === 'claude-code' || backend === 'opencode'
+      ? '[system-note] Automatic continuation: your previous turn stopped before finishing and could not be re-attached. Your resumed session transcript is the source of truth for what already happened — trust it, do not re-read files or re-verify work it already shows as done. Continue from where it leaves off; if the task is already complete, give a brief summary of what was done.'
       : '[system-note] Automatic continuation: the previous response ended without calling endTurn. Continue the remaining work; if everything is already complete, call endTurn now with a brief summary.';
     sendMessageRef.current({ text: nudge });
     return true;
   }, [MAX_AUTO_CONTINUES]);
   maybeAutoContinueRef.current = maybeAutoContinue;
+
+  // --- Reattach-first recovery (Claude Code + OpenCode) ---
+  // Both in-sandbox bridges run detached, so a settled stream usually means
+  // the VIEWER's pipe died (route maxDuration), not the turn. Check
+  // turn-status; if the turn is alive (or finished unseen), drop the partial
+  // assistant tail and resumeStream() — the reattach route replays the turn's
+  // event file from zero (through the backend's translator) and follows it
+  // live. Only when the turn is truly dead do we fall back to the
+  // auto-continue nudge (whose spawn also clears any corpse). This is what
+  // makes a >5-minute turn a reconnect instead of a second racing agent.
+  const reattachInFlightRef = useRef(false);
+  const lastReattachSigRef = useRef<string | null>(null);
+
+  // Send/recovery serialization. Every real outgoing send bumps this BEFORE
+  // sendMessage() — synchronously, in the same task as the user's action —
+  // and the recovery core re-reads it after each await, yielding
+  // ('superseded') if it moved. This closes the gap the tail-id recheck
+  // can't: a send scheduled but not yet flushed to messagesRef when the
+  // status response lands. A user message always wins over a recovery.
+  const recoveryEpochRef = useRef(0);
+
+  // Shared reattach core, used by BOTH recovery triggers (the busy-settle
+  // pass below and the mount-time effect further down): ask turn-status
+  // whether the project's in-sandbox turn is worth reattaching to; if so,
+  // drop the partial assistant tail and resumeStream().
+  //
+  //   reattached — the replay delivered; the turn is live in the UI again
+  //   no-turn    — nothing reattachable FOR THIS TURN (no record, dead, user
+  //                stopped, or the record belongs to an earlier turn);
+  //                recordExists is true only when a record positively matched
+  //                to this turn exists but is dead — the caller may warn
+  //   superseded — the transcript tail changed while checking (the user sent
+  //                a new message); do nothing, the new turn owns the UI
+  //   vanished   — status said active but the reattach 204'd (finish race)
+  //   wedged     — no progress since the last cycle; bridge killed
+  //   error      — status/reattach unreachable
+  //
+  // Turn-identity opts (mount-time callers): expectedUserMessageId matches
+  // the record's spawning user message against the transcript's trailing user
+  // message — the exact-identity check. staleIfStartedBefore (epoch ms) is
+  // the fallback for records written before the userMessageId field: treat an
+  // active record as another turn's when its startedAt predates the trailing
+  // message (each spawn overwrites the record, so the record for THIS message
+  // can't be older than it). expectedTailId aborts if the transcript moved on
+  // mid-check.
+  const reattachToLiveTurn = useCallback(async (
+    opts?: {
+      expectedUserMessageId?: string;
+      staleIfStartedBefore?: number;
+      expectedTailId?: string;
+    },
+  ): Promise<{
+    outcome: 'reattached' | 'no-turn' | 'superseded' | 'vanished' | 'wedged' | 'error';
+    recordExists: boolean;
+  }> => {
+    if (reattachInFlightRef.current) return { outcome: 'error', recordExists: false };
+    reattachInFlightRef.current = true;
+    const epoch = recoveryEpochRef.current;
+    try {
+      const res = await fetch(
+        `/api/agent/claude-code/turn-status?projectId=${encodeURIComponent(projectId)}`,
+      );
+      const data = res.ok
+        ? ((await res.json()) as {
+            active?: boolean;
+            turnId?: string | null;
+            startedAt?: number | null;
+            userMessageId?: string | null;
+          })
+        : null;
+      if (!data) return { outcome: 'error', recordExists: false };
+      // The user sent a new message while the status check was in flight —
+      // this recovery attempt is about a tail that no longer exists. The
+      // epoch check catches sends not yet flushed into messagesRef; the
+      // tail-id check catches everything already flushed.
+      if (recoveryEpochRef.current !== epoch) {
+        return { outcome: 'superseded', recordExists: false };
+      }
+      if (opts?.expectedTailId) {
+        const tail = messagesRef.current[messagesRef.current.length - 1];
+        if (tail?.id !== opts.expectedTailId) {
+          return { outcome: 'superseded', recordExists: false };
+        }
+      }
+      // Turn identity: prefer the exact user-message match; fall back to the
+      // timestamp heuristic only for records that predate the field.
+      const foreignTurn = opts?.expectedUserMessageId !== undefined
+        && (typeof data.userMessageId === 'string'
+          ? data.userMessageId !== opts.expectedUserMessageId
+          : typeof opts.staleIfStartedBefore === 'number'
+            && typeof data.startedAt === 'number'
+            && data.startedAt < opts.staleIfStartedBefore);
+      // A record for some OTHER turn is no record at all as far as this
+      // recovery is concerned — callers must not warn on its account.
+      const recordExists = Boolean(data.turnId) && !foreignTurn;
+      if (!data.active || foreignTurn || userStoppedRef.current) {
+        return { outcome: 'no-turn', recordExists };
+      }
+      // No-progress guard: two consecutive reattach cycles with an
+      // identical last message means the turn is wedged (bridge alive but
+      // silent) — kill it and let the caller fall through to its fallback.
+      const msgs = messagesRef.current;
+      const last = msgs[msgs.length - 1];
+      const sig = `${msgs.length}:${last?.role === 'assistant' ? JSON.stringify(last.parts ?? []).length : 0}`;
+      if (lastReattachSigRef.current === sig) {
+        fetch('/api/agent/claude-code/stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId }),
+        }).catch(() => {});
+        return { outcome: 'wedged', recordExists };
+      }
+      lastReattachSigRef.current = sig;
+      // Drop the partial assistant tail: the replay rebuilds the whole
+      // turn's message from event zero, so keeping the partial would
+      // duplicate its parts.
+      setMessages(prev => {
+        const out = [...prev];
+        while (out.length > 0 && out[out.length - 1].role === 'assistant') out.pop();
+        return out;
+      });
+      // The resumed turn is in-sandbox by definition — make sure a LATER
+      // cut of this same stream re-enters reattach-first recovery instead
+      // of auto-resubmitting (which would 409 on the replay guard).
+      lastTurnServedByInSandboxAgentRef.current = true;
+      // Pin the reattach to the exact turn the status check validated — a
+      // turn spawned between these two requests 204s instead of replaying.
+      reattachTurnIdRef.current = typeof data.turnId === 'string' ? data.turnId : null;
+      setIsBusy(true);
+      toolAbortRef.current = new AbortController();
+      await resumeStream();
+      // Give React a beat to flush the resumed stream into state, then
+      // check whether anything actually streamed. A rebuilt assistant
+      // tail means the reattach delivered — the next busy-settle pass
+      // re-evaluates (endTurn → done; cut again → reattach again).
+      await new Promise<void>(r => setTimeout(r, 150));
+      const nowLast = messagesRef.current[messagesRef.current.length - 1];
+      if (nowLast?.role === 'assistant') return { outcome: 'reattached', recordExists };
+      // 204 — the turn vanished between status check and reattach.
+      setIsBusy(false);
+      return { outcome: 'vanished', recordExists };
+    } catch {
+      return { outcome: 'error', recordExists: false };
+    } finally {
+      reattachInFlightRef.current = false;
+    }
+  }, [projectId, resumeStream, setMessages]);
+
+  const attemptTurnRecovery = useCallback(async () => {
+    if (userStoppedRef.current) return;
+    if (reattachInFlightRef.current) return;
+    const backend = agentBackendRef.current;
+    if ((backend === 'claude-code' || backend === 'opencode') && lastTurnServedByInSandboxAgentRef.current) {
+      const { outcome } = await reattachToLiveTurn();
+      if (outcome === 'reattached') return;
+      // A user message arrived mid-recovery — its turn owns the flow now;
+      // neither a nudge nor a warning belongs to this stale attempt.
+      if (outcome === 'superseded') return;
+      if (userStoppedRef.current || endTurnCalledRef.current) return;
+    }
+    if (!maybeAutoContinue()) {
+      setShowCompletionWarning(true);
+    }
+  }, [maybeAutoContinue, reattachToLiveTurn]);
+
+  // --- Mount-time reattach ---
+  // The busy-settle recovery below only fires on a busy→idle transition,
+  // which a fresh mount never produces: after a page reload mid-turn the
+  // detached bridge keeps working, but the panel rehydrates from the DB
+  // (user message only — assistant messages persist in onFinish) and sits
+  // there looking idle. So once the transcript loads, if it ends on a user
+  // message (the tell for a turn that never finished persisting), ask the
+  // turn registry. A live turn reattaches exactly like a mid-session cut:
+  // the replay rebuilds the lost tool calls from event zero and follows the
+  // stream to endTurn. A dead-but-recent turn gets the visible completion
+  // warning instead of a silent auto-continue — a cold mount is too
+  // ambiguous to spend an agent turn without the user's say-so.
+  const mountReattachAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (!initialized || mountReattachAttemptedRef.current) return;
+    mountReattachAttemptedRef.current = true;
+    const msgs = messagesRef.current;
+    if (!transcriptHasUnfinishedTail(msgs)) return;
+    // Turn identity: only reattach to the record spawned BY the trailing
+    // user message (exact id match, stored in the turn record). Records
+    // written before the userMessageId field fall back to a createdAt
+    // heuristic — the 60s grace absorbs clock skew and the persist/spawn
+    // race. expectedTailId aborts the attempt if the user sends a new
+    // message while the status check is in flight.
+    const tail = msgs[msgs.length - 1] as { id: string; createdAt?: string | number | Date };
+    const tailCreatedAtMs = tail?.createdAt ? new Date(tail.createdAt).getTime() : NaN;
+    void (async () => {
+      const { outcome, recordExists } = await reattachToLiveTurn({
+        expectedUserMessageId: tail.id,
+        expectedTailId: tail.id,
+        staleIfStartedBefore: Number.isFinite(tailCreatedAtMs)
+          ? tailCreatedAtMs - 60_000
+          : undefined,
+      });
+      // Nothing live to show — but if THIS turn's record exists (and is
+      // dead), the turn really did die unfinished; let the user decide
+      // whether to continue. (No record, or another turn's record = stay
+      // quiet rather than nag on every open.) Re-check the tail so a
+      // message the user sent meanwhile never gets a stale warning.
+      if (outcome !== 'reattached' && outcome !== 'error' && outcome !== 'superseded' && recordExists) {
+        const nowTail = messagesRef.current[messagesRef.current.length - 1];
+        if (nowTail?.id === tail.id) setShowCompletionWarning(true);
+      }
+    })();
+  }, [initialized, reattachToLiveTurn]);
+
+  // --- Late modal completions → tell the agent ---
+  // When the user finishes a tool-opened modal (OAuth credentials, env var)
+  // AFTER the agent stopped waiting for it, the workspace fires this event
+  // (the completion route reports agentWaiting=false). Without it the agent
+  // never learns the credentials arrived and keeps reporting them missing.
+  // Busy → queue the note for after the turn; idle → send it right away.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{
+        projectId: string;
+        kind: 'oauth-provider' | 'env-var' | 'stripe-connect';
+        subject: string;
+      }>).detail;
+      if (!detail || detail.projectId !== projectId) return;
+      let note: string;
+      switch (detail.kind) {
+        case 'oauth-provider':
+          note =
+            `[system-note] The user just saved ${detail.subject} OAuth credentials in the workspace modal — it was still pending from earlier and was never dismissed. ` +
+            'Finish the wiring now: make sure convex/auth.ts registers the provider, run the Convex deploy, and confirm the sign-in button exists.';
+          break;
+        case 'env-var':
+          note =
+            `[system-note] The user just entered the ${detail.subject} environment variable in the workspace modal — it was still pending from earlier and was never dismissed. ` +
+            'Continue the work that needed it (the value is stored server-side; never ask to see it).';
+          break;
+        case 'stripe-connect':
+          note =
+            '[system-note] The user just connected their Stripe account — the earlier connect request completed. ' +
+            'Call initialize_stripe_payments again to finish setup (it will return already-connected with next steps).';
+          break;
+      }
+      if (isBusyRef.current) {
+        setMessageQueue(q => [...q, note]);
+      } else {
+        userStoppedRef.current = false;
+        sendMessageRef.current({ text: note });
+      }
+    };
+    window.addEventListener('agent-modal-completed', handler);
+    return () => window.removeEventListener('agent-modal-completed', handler);
+  }, [projectId]);
 
   // --- Debounced busy state: goes true immediately on activity, only goes false after a delay ---
   useEffect(() => {
@@ -1038,13 +1360,13 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         && !limitPayloadRef.current
         && messagesRef.current.some(m => m.role === 'assistant')
       ) {
-        if (!maybeAutoContinue()) {
-          setShowCompletionWarning(true);
-        }
+        // Reattach-first for Claude Code; falls back to the auto-continue
+        // nudge (and finally the visible warning) when there's nothing live.
+        void attemptTurnRecovery();
       }
     }
     prevBusyRef.current = isBusy;
-  }, [isBusy, maybeAutoContinue]); // Only trigger on actual busy state transitions
+  }, [isBusy, attemptTurnRecovery]); // Only trigger on actual busy state transitions
 
   // Track first response — only check when message count changes
   useEffect(() => {
@@ -1070,6 +1392,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       endTurnSeenRef.current = false;
       setEndTurnCalled(false);
       setShowCompletionWarning(false);
+      // New turn → fresh no-progress baseline for the reattach guard.
+      lastReattachSigRef.current = null;
     }
   }, [messages.length]);
 
@@ -1287,11 +1611,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           setHasMoonshotKey(Boolean(data?.hasMoonshotKey));
           setHasFireworksKey(Boolean(data?.hasFireworksKey));
           setHasGoogleKey(Boolean(data?.hasGoogleKey));
+          setHasXaiKey(Boolean(data?.hasXaiKey));
+          setHasTogetherKey(Boolean(data?.hasTogetherKey));
           setUseTogetherKimi(Boolean(data?.useTogetherKimi));
-          const pref = data?.preferredAnthropicBackend;
-          if (pref === 'botflow' || pref === 'claude-code') {
-            setPreferredAnthropicBackend(pref);
-          }
         }
       } catch {}
     })();
@@ -1311,11 +1633,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           setHasMoonshotKey(Boolean(data?.hasMoonshotKey));
           setHasFireworksKey(Boolean(data?.hasFireworksKey));
           setHasGoogleKey(Boolean(data?.hasGoogleKey));
+          setHasXaiKey(Boolean(data?.hasXaiKey));
+          setHasTogetherKey(Boolean(data?.hasTogetherKey));
           setUseTogetherKimi(Boolean(data?.useTogetherKimi));
-          const pref = data?.preferredAnthropicBackend;
-          if (pref === 'botflow' || pref === 'claude-code') {
-            setPreferredAnthropicBackend(pref as 'botflow' | 'claude-code');
-          }
         })
         .catch(() => {});
     };
@@ -1391,8 +1711,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     // block free-tier users who have no personal credentials for these providers.
     const isPayingTier = userTier === 'pro' || userTier === 'max';
     if (!isPayingTier) {
-      if ((model === 'gpt-5.3-codex' && hasOpenAICreds === false) || (usingAnthropic && hasAnthropicCreds === false)) {
-        toast({ title: 'Missing API key', description: `Please add your ${model === 'gpt-5.3-codex' ? 'OpenAI' : 'Anthropic'} API key in Settings, or upgrade to Pro.` });
+      if ((isOpenAIModel(model) && hasOpenAICreds === false) || (usingAnthropic && hasAnthropicCreds === false)) {
+        toast({ title: 'Missing API key', description: `Please add your ${isOpenAIModel(model) ? 'OpenAI' : 'Anthropic'} API key in Settings, or upgrade to Pro.` });
         return;
       }
     }
@@ -1440,6 +1760,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     userStoppedRef.current = false;
     autoContinuesUsedRef.current = 0;
     toolAbortRef.current = new AbortController();
+    recoveryEpochRef.current++; // a real user send supersedes any in-flight recovery
     sendMessage({ text: input.trim(), files: fileParts.length > 0 ? fileParts : undefined });
     setInput('');
     removePromptFromUrl();
@@ -1455,6 +1776,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     userStoppedRef.current = false;
     autoContinuesUsedRef.current = 0;
     toolAbortRef.current = new AbortController();
+    recoveryEpochRef.current++;
     sendMessage({ text: 'You stopped without calling endTurn. Please continue or call endTurn if done.' });
   }, [sendMessage]);
 
@@ -1462,7 +1784,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // For Claude Code projects we have authoritative usage from the SDK; use it
   // when present so the bar reflects the real (post-compaction) context size.
   // Falls back to our char/4 estimate before the first turn completes.
-  const displayedTokens = agentBackend === 'claude-code' && claudeCodeUsage
+  const displayedTokens = (agentBackend === 'claude-code' || agentBackend === 'opencode') && claudeCodeUsage
     ? claudeCodeUsage.tokens
     : tokenEstimate;
   const tokenRatio = maxTokens > 0 ? displayedTokens / maxTokens : 0;
@@ -1701,6 +2023,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                   if (content) {
                     setIsBusy(true);
                     toolAbortRef.current = new AbortController();
+                    recoveryEpochRef.current++;
                     sendMessage({ text: content });
                   }
                 }
@@ -2320,6 +2643,19 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                     }
                     setShowCompletionWarning(false);
                     setMessageQueue([]);
+                    // Both in-sandbox agents run DETACHED in the sandbox —
+                    // aborting the client stream alone leaves them working.
+                    // Kill for real via the shared stop route (the bridges'
+                    // SIGTERM handlers stop their subprocesses cleanly:
+                    // Claude Code interrupts claude, OpenCode aborts the
+                    // session and nukes its server process group).
+                    if (agentBackendRef.current === 'claude-code' || agentBackendRef.current === 'opencode') {
+                      fetch('/api/agent/claude-code/stop', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ projectId }),
+                      }).catch(() => {});
+                    }
                     // Signal workspace to dismiss any pending tool-driven modals
                     // (e.g. OAuthProviderModal from setupOAuthProvider) and tell
                     // the server-side polling loops to terminate early.

@@ -128,10 +128,30 @@ export function OAuthProviderModal({
           body: JSON.stringify({ requestId, fields }),
         },
       );
-      const data = (await res.json()) as { ok: boolean; error?: string };
+      const data = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        provider?: string;
+        agentWaiting?: boolean;
+      };
       if (!data.ok) {
         setError(data.error ?? "Failed to save credentials. Please try again.");
         return;
+      }
+      // If no agent poller is actively waiting on this request (the agent
+      // gave up and moved on), tell the AgentPanel so it can send a
+      // system-note — otherwise the agent never learns the credentials
+      // arrived and keeps reporting them missing.
+      if (data.agentWaiting === false) {
+        window.dispatchEvent(
+          new CustomEvent("agent-modal-completed", {
+            detail: {
+              projectId,
+              kind: "oauth-provider",
+              subject: def.displayName,
+            },
+          }),
+        );
       }
       onClose();
     } catch {

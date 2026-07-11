@@ -1,7 +1,8 @@
 import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import { requireProjectAccess } from '@/lib/project-access';
 import Link from 'next/link';
 import { IsolationGuard } from './isolation-guard';
 import { normalizeProjectPlatform, normalizeBackendType } from '@/lib/project-platform';
@@ -22,11 +23,8 @@ export default async function WorkspacePage({
     return redirectToSignIn({ returnBackUrl: `/workspace/${projectId}` });
   }
 
-  const db = getDb();
-  const [proj] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+  const access = await requireProjectAccess(projectId, userId);
+  const proj = access?.project;
 
   // Prefer query param, fall back to the project's saved platform
   const platform = typeof searchParamsResolved.platform === 'string'
@@ -65,7 +63,7 @@ export default async function WorkspacePage({
     );
   }
 
-  await db
+  await getDb()
     .update(projects)
     .set({ lastOpened: new Date() })
     .where(eq(projects.id, projectId));

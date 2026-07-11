@@ -18,15 +18,19 @@ import { randomUUID } from "node:crypto";
 
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { resolveModelId } from "@/lib/agent/models";
 import { normalizeProjectPlatform } from "@/lib/project-platform";
 import {
+  credFlagsFromUserCredentials,
   isAgentBackend,
   resolveBackends,
   type AgentBackend,
 } from "@/lib/agent/backend-resolution";
 import { clearClaudeCodeSessionId } from "@/lib/agent/claude-code/session-store";
+import { clearOpenCodeSessionId } from "@/lib/agent/opencode/session-store";
+import { USE_TOGETHER_KIMI } from "@/lib/feature-flags";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,12 +51,11 @@ async function authorized(projectId: string) {
   const { userId } = await auth();
   if (!userId) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
 
-  const db = getDb();
-  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-  if (!project || project.userId !== userId) {
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) {
     return { error: NextResponse.json({ error: "Not found" }, { status: 404 }) };
   }
-  return { userId, project };
+  return { userId, project: access.project };
 }
 
 export async function GET(
@@ -68,10 +71,8 @@ export async function GET(
   const resolution = resolveBackends({
     model: resolveModelId(project.model),
     platform: normalizeProjectPlatform(project.platform),
-    creds: {
-      hasClaudeOAuth: Boolean(creds.claudeOAuthAccessToken),
-      hasAnthropicKey: Boolean(creds.anthropicApiKey),
-    },
+    creds: credFlagsFromUserCredentials(creds),
+    useTogetherKimi: USE_TOGETHER_KIMI,
   });
 
   return NextResponse.json({
@@ -116,10 +117,8 @@ export async function POST(
   const resolution = resolveBackends({
     model: resolveModelId(project.model),
     platform: normalizeProjectPlatform(project.platform),
-    creds: {
-      hasClaudeOAuth: Boolean(creds.claudeOAuthAccessToken),
-      hasAnthropicKey: Boolean(creds.anthropicApiKey),
-    },
+    creds: credFlagsFromUserCredentials(creds),
+    useTogetherKimi: USE_TOGETHER_KIMI,
   });
   if (!resolution.available.includes(requested)) {
     return NextResponse.json(
@@ -150,12 +149,14 @@ export async function POST(
     })
     .where(eq(projects.id, id));
 
-  // Always wipe the Claude Code session pointer on switch. The session file
+  // Always wipe the in-sandbox session pointers on switch. The session files
   // inside the sandbox may have been GC'd (sandbox timeout) or contain
   // partial/foreign state from the prior agent, both of which produce the
   // dreaded "messages.X.content.Y.tool_use.id: pattern" error from Anthropic
-  // when claude tries to resume. A fresh session is the safer default.
+  // when claude tries to resume (OpenCode has the same class of failure). A
+  // fresh session + preamble is the safer default for both.
   await clearClaudeCodeSessionId(project.id);
+  await clearOpenCodeSessionId(project.id);
 
   return NextResponse.json({
     agentBackend: requested,

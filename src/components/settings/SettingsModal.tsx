@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/toast';
 import { X, ExternalLink, AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { UsageTab } from './UsageTab';
-import { ANTHROPIC_OAUTH_ENABLED, CLAUDE_CODE_ENABLED } from '@/lib/feature-flags';
+import { ANTHROPIC_OAUTH_ENABLED } from '@/lib/feature-flags';
 
 interface SettingsModalProps {
   open: boolean;
@@ -19,7 +19,7 @@ interface SettingsModalProps {
 }
 
 type Tab = 'usage' | 'connections' | 'subscription';
-type Provider = 'openai' | 'anthropic' | 'moonshot' | 'fireworks' | 'together' | 'google';
+type Provider = 'openai' | 'anthropic' | 'moonshot' | 'fireworks' | 'together' | 'google' | 'xai';
 type OAuthStep = 'idle' | 'connecting' | 'exchanging' | 'success';
 
 const PROVIDERS: Array<{
@@ -31,6 +31,7 @@ const PROVIDERS: Array<{
   { provider: 'openai', label: 'OpenAI API Key', field: 'openaiApiKey', placeholder: 'sk-...' },
   { provider: 'anthropic', label: 'Anthropic API Key', field: 'anthropicApiKey', placeholder: 'sk-ant-...' },
   { provider: 'google', label: 'Google AI Studio API Key', field: 'googleApiKey', placeholder: 'AIza...' },
+  { provider: 'xai', label: 'xAI (Grok) API Key', field: 'xaiApiKey', placeholder: 'xai-...' },
   { provider: 'moonshot', label: 'Moonshot API Key', field: 'moonshotApiKey', placeholder: 'moonshot-...' },
   { provider: 'fireworks', label: 'Fireworks AI API Key', field: 'fireworksApiKey', placeholder: 'fw-...' },
   // Only rendered when the USE_TOGETHER_KIMI flag is on (Kimi routed to Together AI).
@@ -44,10 +45,10 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
   const [savingKey, setSavingKey] = useState<Provider | null>(null);
   const [removingKey, setRemovingKey] = useState<Provider | null>(null);
   const [keys, setKeys] = useState<Record<Provider, string>>({
-    openai: '', anthropic: '', moonshot: '', fireworks: '', together: '', google: '',
+    openai: '', anthropic: '', moonshot: '', fireworks: '', together: '', google: '', xai: '',
   });
   const [hasKey, setHasKey] = useState<Record<Provider, boolean>>({
-    openai: false, anthropic: false, moonshot: false, fireworks: false, together: false, google: false,
+    openai: false, anthropic: false, moonshot: false, fireworks: false, together: false, google: false, xai: false,
   });
   // Server-controlled flag (USE_TOGETHER_KIMI): gates the Together AI key input.
   const [useTogetherKimi, setUseTogetherKimi] = useState(false);
@@ -68,10 +69,6 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
   const [appleSaving, setAppleSaving] = useState(false);
   const [appleDisconnecting, setAppleDisconnecting] = useState(false);
   const [appleError, setAppleError] = useState('');
-  // Per-user default agent backend for Anthropic models (BYOK choice only).
-  // OAuth users are locked to claude-code regardless of this.
-  const [preferredAnthropicBackend, setPreferredAnthropicBackend] = useState<'botflow' | 'claude-code'>('botflow');
-  const [savingBackendPref, setSavingBackendPref] = useState(false);
 
   // Codex OAuth device flow state
   const [codexOAuthStep, setCodexOAuthStep] = useState<'idle' | 'polling' | 'success'>('idle');
@@ -108,7 +105,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
     if (!open) return;
     let cancelled = false;
     setLoading(true);
-    setKeys({ openai: '', anthropic: '', moonshot: '', fireworks: '', together: '', google: '' });
+    setKeys({ openai: '', anthropic: '', moonshot: '', fireworks: '', together: '', google: '', xai: '' });
     setOauthStep('idle');
     setOauthCode('');
     setPkceVerifier('');
@@ -130,15 +127,12 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
               fireworks: Boolean(data?.hasFireworksKey),
               together: Boolean(data?.hasTogetherKey),
               google: Boolean(data?.hasGoogleKey),
+              xai: Boolean(data?.hasXaiKey),
             });
             setUseTogetherKimi(Boolean(data?.useTogetherKimi));
             setHasClaudeOAuth(Boolean(data?.hasClaudeOAuth));
             setHasCodexOAuth(Boolean(data?.hasCodexOAuth));
             setHasConvexOAuth(Boolean(data?.hasConvexOAuth));
-            const pref = data?.preferredAnthropicBackend;
-            if (pref === 'botflow' || pref === 'claude-code') {
-              setPreferredAnthropicBackend(pref);
-            }
           }
         }
       } catch {
@@ -237,6 +231,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
           fireworks: Boolean(data?.hasFireworksKey),
           together: Boolean(data?.hasTogetherKey),
           google: Boolean(data?.hasGoogleKey),
+          xai: Boolean(data?.hasXaiKey),
         });
         setKeys(prev => ({ ...prev, [provider]: '' }));
         toast({ title: 'Key saved', description: `${config.label} has been updated.` });
@@ -847,77 +842,6 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                         </div>
                       )}
                     </div>}
-
-                    {/* ── Default Anthropic agent backend (BYOK choice) ── */}
-                    {/* Only meaningful when:                                    */}
-                    {/*   • Claude Code flag is on                               */}
-                    {/*   • The user has an Anthropic API key (BYOK)             */}
-                    {/*   • The user does NOT have Claude OAuth (which would    */}
-                    {/*     force claude-code regardless)                        */}
-                    {CLAUDE_CODE_ENABLED && hasKey.anthropic && !hasClaudeOAuth && (
-                      <div>
-                        <div className="mb-2">
-                          <h3 className="text-sm font-semibold text-fg">Default agent for Anthropic models</h3>
-                          <p className="text-xs text-muted mt-0.5">
-                            Applies to new sandbox projects. You can still switch per-project from the agent panel.
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          {([
-                            {
-                              value: 'botflow' as const,
-                              label: 'Botflow',
-                              desc: 'Our agent and tools, charged to your Anthropic key. Same flow as other models.',
-                            },
-                            {
-                              value: 'claude-code' as const,
-                              label: 'Claude Code',
-                              desc: 'Anthropic’s official agent runs inside the project sandbox. More autonomous; same Anthropic billing.',
-                            },
-                          ]).map((opt) => {
-                            const active = preferredAnthropicBackend === opt.value;
-                            return (
-                              <button
-                                key={opt.value}
-                                type="button"
-                                disabled={savingBackendPref}
-                                onClick={async () => {
-                                  if (opt.value === preferredAnthropicBackend) return;
-                                  setSavingBackendPref(true);
-                                  const prev = preferredAnthropicBackend;
-                                  setPreferredAnthropicBackend(opt.value);
-                                  try {
-                                    const res = await fetch('/api/user-settings', {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ preferredAnthropicBackend: opt.value }),
-                                    });
-                                    if (!res.ok) throw new Error('Failed to save preference');
-                                    toast({ title: 'Default agent updated', description: `New Anthropic projects will use ${opt.label}.` });
-                                  } catch {
-                                    setPreferredAnthropicBackend(prev);
-                                    toast({ title: 'Could not save preference' });
-                                  } finally {
-                                    setSavingBackendPref(false);
-                                  }
-                                }}
-                                className={`w-full text-left rounded-xl border p-3 transition ${
-                                  active
-                                    ? 'border-accent bg-accent/10'
-                                    : 'border-border bg-bg hover:bg-surface'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <span className={`size-3 rounded-full border-2 ${active ? 'border-accent bg-accent' : 'border-border'}`} />
-                                  <span className="text-sm font-medium text-fg">{opt.label}</span>
-                                </div>
-                                <p className="text-xs text-muted mt-1.5 ml-5 leading-snug">{opt.desc}</p>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
 
                     {/* ── BYOK API Keys ── */}
                     <div>

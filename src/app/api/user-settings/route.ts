@@ -20,6 +20,7 @@ export async function GET() {
       hasFireworksKey: Boolean(creds.fireworksApiKey),
       hasTogetherKey: Boolean(creds.togetherApiKey),
       hasGoogleKey: Boolean(creds.googleApiKey),
+      hasXaiKey: Boolean(creds.xaiApiKey),
       // Surface the server-only Together/Kimi flag so the client can decide
       // whether to show the Together AI BYOK input in the connections tab.
       useTogetherKimi: USE_TOGETHER_KIMI,
@@ -27,7 +28,9 @@ export async function GET() {
       hasCodexOAuth: Boolean(creds.codexOAuthAccessToken),
       hasConvexOAuth: Boolean(creds.convexOAuthAccessToken),
       convexBackendPreference: creds.convexBackendPreference ?? 'platform',
-      preferredAnthropicBackend: creds.preferredAnthropicBackend ?? 'botflow',
+      // Retired (Anthropic BYOK locks to Claude Code) — static value kept one
+      // release so stale clients hydrate harmlessly. Remove after proxy GA.
+      preferredAnthropicBackend: 'botflow',
     });
   } catch (e) {
     console.error('GET /api/user-settings failed:', e);
@@ -48,8 +51,8 @@ export async function POST(req: NextRequest) {
       fireworksApiKey,
       togetherApiKey,
       googleApiKey,
+      xaiApiKey,
       convexBackendPreference,
-      preferredAnthropicBackend,
     } = body as {
       openaiApiKey?: string | null;
       anthropicApiKey?: string | null;
@@ -57,8 +60,8 @@ export async function POST(req: NextRequest) {
       fireworksApiKey?: string | null;
       togetherApiKey?: string | null;
       googleApiKey?: string | null;
+      xaiApiKey?: string | null;
       convexBackendPreference?: 'platform' | 'user' | 'none';
-      preferredAnthropicBackend?: 'botflow' | 'claude-code';
     };
 
     // Read existing credentials to preserve fields not being updated
@@ -71,6 +74,7 @@ export async function POST(req: NextRequest) {
     if (fireworksApiKey !== undefined) updates.fireworksApiKey = fireworksApiKey || null;
     if (togetherApiKey !== undefined) updates.togetherApiKey = togetherApiKey || null;
     if (googleApiKey !== undefined) updates.googleApiKey = googleApiKey || null;
+    if (xaiApiKey !== undefined) updates.xaiApiKey = xaiApiKey || null;
     if (
       convexBackendPreference === 'platform' ||
       convexBackendPreference === 'user' ||
@@ -78,10 +82,6 @@ export async function POST(req: NextRequest) {
     ) {
       updates.convexBackendPreference = convexBackendPreference;
     }
-    if (preferredAnthropicBackend === 'botflow' || preferredAnthropicBackend === 'claude-code') {
-      updates.preferredAnthropicBackend = preferredAnthropicBackend;
-    }
-
     await setUserCredentials(userId, updates);
 
     // Re-read to return accurate has* flags
@@ -95,6 +95,7 @@ export async function POST(req: NextRequest) {
       hasFireworksKey: Boolean(merged.fireworksApiKey),
       hasTogetherKey: Boolean(merged.togetherApiKey),
       hasGoogleKey: Boolean(merged.googleApiKey),
+      hasXaiKey: Boolean(merged.xaiApiKey),
     });
   } catch (e) {
     console.error('POST /api/user-settings failed:', e);

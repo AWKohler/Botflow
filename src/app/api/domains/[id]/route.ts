@@ -3,7 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { userDomains, projects } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
-import { deleteZone, detachPagesCustomDomain } from '@/lib/cloudflare-zones';
+import { deleteZone, detachPagesCustomDomain, ensureBrandedDeploymentUrl } from '@/lib/cloudflare-zones';
 
 async function getOwned(userId: string, id: string) {
   const db = getDb();
@@ -53,7 +53,10 @@ export async function DELETE(
       .set({
         managedDomainId: null,
         managedDomainHostname: null,
-        cloudflareDeploymentUrl: p.cloudflareProjectName ? `https://${p.cloudflareProjectName}.pages.dev` : null,
+        // Fall back to the white-label branded URL (or .pages.dev when unconfigured).
+        cloudflareDeploymentUrl: p.cloudflareProjectName
+          ? await ensureBrandedDeploymentUrl(p.cloudflareProjectName)
+          : null,
         updatedAt: new Date(),
       })
       .where(eq(projects.id, p.id));

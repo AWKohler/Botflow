@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/db';
-import { projects } from '@/db/schema';
-import { desc, eq, isNull, and } from 'drizzle-orm';
+import { projects, projectMembers } from '@/db/schema';
+import { desc, eq, isNull, and, inArray } from 'drizzle-orm';
+import { SHARING_ENABLED } from '@/lib/feature-flags';
+import { sanitizeProjectForRole } from '@/lib/project-access';
+import { claimPendingInvites, verifiedEmailsForUser } from '@/lib/sharing';
 import { auth } from '@clerk/nextjs/server';
 import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
 import { countUserProjects } from '@/lib/usage';
@@ -9,6 +12,7 @@ import { limitReachedResponse } from '@/lib/plan-response';
 import { normalizeProjectPlatform, normalizeBackendType, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
 import { isModelDisabled, modelDisabledReason } from '@/lib/agent/models';
 import { chooseProviderForNewProject } from '@/lib/sandbox-provider';
+import { canUseSwift } from '@/lib/swift-access';
 
 export async function GET() {
   try {
@@ -20,7 +24,37 @@ export async function GET() {
       .from(projects)
       .where(and(eq(projects.userId, userId), isNull(projects.deletedAt)))
       .orderBy(desc(projects.lastOpened), desc(projects.createdAt));
-    return NextResponse.json(allProjects);
+
+    if (!SHARING_ENABLED) return NextResponse.json(allProjects);
+
+    // Lazy invite claim — fallback for a missed user.created webhook. Cheap
+    // when there's nothing pending for this user's emails.
+    try {
+      const emails = await verifiedEmailsForUser(userId);
+      await claimPendingInvites(userId, emails);
+    } catch {
+      // Best-effort; the webhook is the primary claim path.
+    }
+
+    // "Shared with me": projects where this user is an ACTIVE member. Secret
+    // fields are stripped (editor role); `shared: true` lets the projects page
+    // badge them.
+    const memberships = await db
+      .select({ projectId: projectMembers.projectId })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.userId, userId), eq(projectMembers.status, 'active')));
+    if (memberships.length === 0) return NextResponse.json(allProjects);
+
+    const shared = await db
+      .select()
+      .from(projects)
+      .where(and(inArray(projects.id, memberships.map((m) => m.projectId)), isNull(projects.deletedAt)))
+      .orderBy(desc(projects.lastOpened));
+    const sharedSanitized = shared.map((p) => ({
+      ...sanitizeProjectForRole(p, 'editor'),
+      shared: true,
+    }));
+    return NextResponse.json([...allProjects, ...sharedSanitized]);
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: 'Failed to fetch projects' }, { status: 500 });
@@ -37,16 +71,17 @@ export async function POST(request: NextRequest) {
       platform?: ProjectPlatform;
       backendType?: BackendType;
       model?:
-        | 'gpt-5.3-codex'
-        | 'gpt-5.4'
+        | 'gpt-5.6-sol'
+        | 'gpt-5.6-terra'
+        | 'gpt-5.6-luna'
         | 'gpt-5.5'
         | 'claude-sonnet-5'
         | 'claude-opus-4-8'
         | 'claude-fable-5'
         | 'fireworks-minimax-m3'
-        | 'fireworks-glm-5p2'
         | 'fireworks-kimi-k2p7'
-        | 'gemini-3.1-pro-preview';
+        | 'gemini-3.1-pro-preview'
+        | 'grok-4.5';
     };
 
     if (!name) {
@@ -78,14 +113,12 @@ export async function POST(request: NextRequest) {
 
     const db = getDb();
     const resolvedPlatform = normalizeProjectPlatform(platform);
-    // Swift is a beta-only platform. normalizeProjectPlatform already enforces
-    // the global kill-switch (NEXT_PUBLIC_ALLOW_PERSISTENT_EXP); this adds the
-    // per-user gate. Only runs when swift is actually requested, so it costs
-    // nothing on the common web-project path — and the getUserTierAndLimits call
-    // above has already warmed the beta cache for free users.
-    if (resolvedPlatform === 'swift' && !(await isBetaUser(userId))) {
+    // normalizeProjectPlatform enforces the global kill switch. The entitlement
+    // gate allows Pro/Max subscribers plus invited beta users (whose effective
+    // tier is automatically raised to Pro).
+    if (resolvedPlatform === 'swift' && !(await canUseSwift(userId))) {
       return NextResponse.json(
-        { error: 'Swift projects are currently in private beta.' },
+        { error: 'Swift projects require a Pro or Max plan, or beta access.' },
         { status: 403 },
       );
     }
@@ -112,8 +145,12 @@ export async function POST(request: NextRequest) {
         sandboxTemplate,
         sandboxProvider,
         model:
-          model === 'gpt-5.4'
-            ? 'gpt-5.4'
+          model === 'gpt-5.6-sol'
+            ? 'gpt-5.6-sol'
+          : model === 'gpt-5.6-terra'
+            ? 'gpt-5.6-terra'
+          : model === 'gpt-5.6-luna'
+            ? 'gpt-5.6-luna'
           : model === 'gpt-5.5'
             ? 'gpt-5.5'
           : model === 'claude-sonnet-5'
@@ -124,13 +161,13 @@ export async function POST(request: NextRequest) {
             ? 'claude-fable-5'
             : model === 'fireworks-minimax-m3'
             ? 'fireworks-minimax-m3'
-            : model === 'fireworks-glm-5p2'
-            ? 'fireworks-glm-5p2'
             : model === 'fireworks-kimi-k2p7'
             ? 'fireworks-kimi-k2p7'
             : model === 'gemini-3.1-pro-preview'
             ? 'gemini-3.1-pro-preview'
-            : 'fireworks-kimi-k2p7',
+            : model === 'grok-4.5'
+            ? 'grok-4.5'
+            : 'gpt-5.6-luna', // default model
       })
       .returning();
 

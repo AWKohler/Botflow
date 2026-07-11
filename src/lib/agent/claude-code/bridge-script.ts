@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "24";
+export const BRIDGE_SCRIPT_VERSION = "27";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -45,6 +45,11 @@ export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
  *   BOTFLOW_CONFIG_PATH   — path to the config JSON file (required)
  *   BOTFLOW_API_BASE      — origin for our internal callback API (https://...)
  *   BOTFLOW_TOOL_TOKEN    — bearer token validated by the callback endpoint
+ *   BOTFLOW_EVENT_FILE    — NDJSON tee file; every stdout event is also
+ *                           appended here so the host can re-attach to this
+ *                           turn after its streaming route dies (maxDuration)
+ *   BOTFLOW_PID_FILE      — where to write our pid so the host can kill or
+ *                           liveness-probe this bridge across requests
  *
  * stdout NDJSON events:
  *   { type: "ready" }
@@ -59,11 +64,39 @@ export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 
 import { query, createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { readFile } from "node:fs/promises";
+import { appendFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { z } from "zod";
 
+// Tee every event to BOTFLOW_EVENT_FILE (in addition to stdout). The file is
+// what lets the host re-attach to this turn after the original streaming
+// request dies at its serverless maxDuration — the bridge (and the turn)
+// keep going regardless.
+const EVENT_FILE = process.env.BOTFLOW_EVENT_FILE || null;
+
 function emit(event) {
-  process.stdout.write(JSON.stringify(event) + "\\n");
+  const line = JSON.stringify(event) + "\\n";
+  process.stdout.write(line);
+  if (EVENT_FILE) {
+    try { appendFileSync(EVENT_FILE, line); } catch { /* tee is best-effort */ }
+  }
 }
+
+// The in-flight query() generator, held so SIGTERM can interrupt the claude
+// subprocess instead of orphaning it — a superseded/stopped turn must stop
+// editing files immediately.
+let activeQuery = null;
+
+process.on("SIGTERM", () => {
+  try { emit({ type: "error", error: "Turn stopped (superseded by a new turn or stopped by the user)." }); } catch {}
+  try {
+    if (activeQuery && typeof activeQuery.interrupt === "function") {
+      activeQuery.interrupt();
+    }
+  } catch {}
+  // Give the interrupt a moment to reach the subprocess, then exit regardless.
+  setTimeout(() => process.exit(1), 1500);
+});
 
 // ---------------------------------------------------------------------------
 // Host callback for tools whose execution must stay on the server side.
@@ -73,26 +106,81 @@ function emit(event) {
 //   Body: { tool: string, input: object }
 // Server runs the tool with its own credentials, returns
 //   { ok: boolean, content: string | object }.
+//
+// WAITABLE TOOLS: modal-driven tools (setup_oauth_provider, request_env_var,
+// initialize_stripe_payments) can't block inside one serverless invocation —
+// the host route dies at its maxDuration long before a human finishes an
+// OAuth console setup. Instead the host returns
+//   { ok: true, pending: true, wait: { requestId, pollDelayMs } }
+// and THIS loop — which runs in the sandbox, where there is no execution
+// ceiling — re-polls until the host returns a terminal result. From the
+// model's perspective the tool call simply blocks until the user acts (or
+// the host's wait ceiling passes and it returns an honest "still pending"
+// result). The host enforces the real ceiling; the client cap below is only
+// a runaway backstop.
 // ---------------------------------------------------------------------------
-async function callHostTool(toolName, input) {
+const WAIT_CLIENT_CAP_MS = 30 * 60 * 1000;
+
+async function postHostTool(toolName, input) {
   const base = process.env.BOTFLOW_API_BASE;
   const token = process.env.BOTFLOW_TOOL_TOKEN;
   if (!base || !token) {
     throw new Error("Host callback not configured (BOTFLOW_API_BASE / BOTFLOW_TOOL_TOKEN missing)");
   }
-  const response = await fetch(base + "/api/internal/claude-code-tool", {
-    method: "POST",
-    headers: {
-      "authorization": "Bearer " + token,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ tool: toolName, input: input ?? {} }),
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error("Host tool call failed (HTTP " + response.status + "): " + text);
+  // A 429 from the host limiter is transient and self-clearing: the response
+  // carries Retry-After, so pace against it instead of surfacing a turn-killing
+  // "rate_limited" error the user has to manually retry. Bounded attempts so a
+  // genuinely stuck limiter still eventually errors out.
+  const MAX_429_RETRIES = 6;
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(base + "/api/internal/claude-code-tool", {
+      method: "POST",
+      headers: {
+        "authorization": "Bearer " + token,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ tool: toolName, input: input ?? {} }),
+    });
+    if (response.status === 429 && attempt < MAX_429_RETRIES) {
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const waitSec = retryAfter > 0 ? retryAfter : Math.min(30, Math.pow(2, attempt));
+      await new Promise((r) => setTimeout(r, waitSec * 1000));
+      continue;
+    }
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error("Host tool call failed (HTTP " + response.status + "): " + text);
+    }
+    return response.json();
   }
-  return response.json();
+}
+
+async function callHostTool(toolName, input) {
+  let result = await postHostTool(toolName, input);
+  const startedWaiting = Date.now();
+  let transientFailures = 0;
+  while (result && result.pending === true && result.wait && result.wait.requestId) {
+    if (Date.now() - startedWaiting > WAIT_CLIENT_CAP_MS) {
+      return {
+        ok: false,
+        content:
+          "Stopped waiting for the user after 30 minutes. The request may STILL be pending in their workspace — " +
+          "do NOT tell the user they dismissed or declined it. Continue with other work.",
+      };
+    }
+    const delay = Number(result.wait.pollDelayMs) > 0 ? Number(result.wait.pollDelayMs) : 2500;
+    await new Promise((r) => setTimeout(r, delay));
+    try {
+      result = await postHostTool(toolName, { ...(input ?? {}), waitRequestId: result.wait.requestId });
+      transientFailures = 0;
+    } catch (err) {
+      // Don't let one blip (redeploy, network hiccup) abort a long human
+      // wait — retry a few times before surfacing the error.
+      transientFailures += 1;
+      if (transientFailures >= 5) throw err;
+    }
+  }
+  return result;
 }
 
 // Helper: wrap a host-tool callback into the MCP CallToolResult shape.
@@ -246,8 +334,11 @@ function buildCustomTools(customTools, oauthProviderIds) {
         "Opens a modal in the user's workspace where they register an app with the provider and paste their credentials (Apple uploads a .p8). " +
         "ONLY call this when the user EXPLICITLY asks for social sign-in; otherwise default to password sign-in via setup_auth. " +
         "PREREQUISITE: setup_auth must have run first. " +
-        "It blocks until the user completes or dismisses the modal (up to 5 minutes). On success it returns the exact " +
-        "convex/auth.ts import + providers-array line and the sign-in button to add — then run convex_deploy. On dismiss: do NOT retry.",
+        "It BLOCKS until the user finishes — provider console setup takes real time, so expect to wait up to 20 minutes; that is normal, not an error. " +
+        "On success it returns the exact convex/auth.ts import + providers-array line and the sign-in button to add — then run convex_deploy. " +
+        "Outcomes: 'dismissed' means the user explicitly closed the modal — do NOT retry, and do not treat it as failure to configure later. " +
+        "A 'still pending' result means the user simply hasn't finished YET — the modal stays open, you'll get a system note when they submit; " +
+        "NEVER report a still-pending modal as dismissed or declined.",
         {
           provider: z
             .enum(oauthIds)
@@ -319,8 +410,10 @@ function buildCustomTools(customTools, oauthProviderIds) {
         "Set up Stripe payments for this project. Call when the user asks to add checkout, subscriptions, billing, a paywall, or any payment flow. " +
         "Stripe Standard Connect — the user links their own Stripe account once and reuses it across every Botflow project. " +
         "If they've already linked it: returns status='already-connected' immediately. " +
-        "Otherwise: opens a modal in the workspace and BLOCKS up to 5 minutes while the user clicks Connect with Stripe and authorizes. " +
-        "Returns status='connected' on success, 'dismissed' on cancel (do NOT retry — continue and tell the user they can connect later), 'timeout' (treat like dismiss), 'tier-blocked' (Free; relay message), 'backend-blocked' (no Convex backend).",
+        "Otherwise: opens a modal in the workspace and BLOCKS (up to 20 minutes) while the user clicks Connect with Stripe and authorizes. " +
+        "Returns status='connected' on success; 'dismissed' means the user explicitly cancelled (do NOT retry — continue and tell the user they can connect later); " +
+        "'still-pending' means the user hasn't finished YET — the modal stays open, so NEVER describe it as dismissed or declined; " +
+        "'tier-blocked' (Free; relay message); 'backend-blocked' (no Convex backend).",
         {},
         makeHostToolHandler("initialize_stripe_payments"),
       ),
@@ -494,6 +587,26 @@ function buildCustomTools(customTools, oauthProviderIds) {
     );
   }
 
+  if (customTools.includes("generate_image")) {
+    tools.push(
+      tool(
+        "generate_image",
+        "Generate an image with AI (Krea 2 Medium) from a text prompt and save it into the project at the given path. " +
+        "Blocks until generation finishes (typically 10-30s); on success the file exists in the project immediately. " +
+        "Use for hero images, backgrounds, illustrations, placeholder photos, textures, etc. " +
+        "Put web assets under public/ (e.g. public/images/hero.png) and reference them by URL path ('/images/hero.png'), or under src/assets/ for bundled imports. Use a .png or .jpg extension. " +
+        "Each call costs the user credits, so don't regenerate an image that already looks right and don't call this speculatively. " +
+        "Pro/Max feature: for Free users this returns a tier-blocked error — relay it to the user and do NOT retry; fall back to CSS/gradients or existing assets.",
+        {
+          prompt: z.string().describe("Text description of the image to generate. Be concrete about subject, style, lighting, and mood."),
+          output_path: z.string().describe("Project-relative file path to save the image to, e.g. public/images/hero.png. Parent directories are created automatically."),
+          aspect_ratio: z.enum(["1:1", "4:3", "3:2", "16:9", "2.35:1", "4:5", "2:3", "9:16"]).optional().describe("Aspect ratio of the generated image. Defaults to '1:1'."),
+        },
+        makeHostToolHandler("generate_image"),
+      ),
+    );
+  }
+
   if (customTools.includes("request_env_var")) {
     tools.push(
       tool(
@@ -501,7 +614,9 @@ function buildCustomTools(customTools, oauthProviderIds) {
         "Ask the user to enter the value of an environment variable. Opens a modal in the user's workspace showing the variable NAME you chose; the user types only the VALUE. The value is stored server-side and NEVER shown to you — assume it is set and write code that reads it. " +
         "Targets: 'client' = frontend Vite .env (only VITE_-prefixed vars reach browser code); 'server' = the Convex deployment env (process.env in Convex functions; requires a backend). " +
         "Use for third-party API keys, webhook secrets, etc. Set isSecret=true for sensitive values. Include a short message explaining what the value is and where to find it — it's rendered in the modal. " +
-        "Blocks until the user saves or dismisses (up to 5 minutes). On dismiss: do NOT retry automatically; continue without it.",
+        "BLOCKS until the user saves or dismisses (up to 15 minutes — finding an API key can take a while; waiting is normal). " +
+        "'dismissed' means the user explicitly closed the modal: do NOT retry automatically; continue without it. " +
+        "'still pending' means they haven't finished YET — the modal stays open and you'll get a system note when they save; never call that dismissed.",
         {
           target: z.enum(["client", "server"]),
           key: z.string(),
@@ -630,6 +745,16 @@ async function main() {
   } catch (err) {
     emit({ type: "error", error: "Failed to read config file: " + (err && err.message ? err.message : String(err)) });
     process.exit(1);
+  }
+
+  // Advertise our pid so the host can kill/probe this bridge from a later
+  // request (one bridge per project — the next turn kills us first).
+  const pidFile = process.env.BOTFLOW_PID_FILE;
+  if (pidFile) {
+    try {
+      mkdirSync(dirname(pidFile), { recursive: true });
+      writeFileSync(pidFile, String(process.pid));
+    } catch { /* liveness probing degrades gracefully without it */ }
   }
 
   emit({ type: "ready" });
@@ -765,7 +890,8 @@ async function main() {
   }
 
   try {
-    for await (const message of query({ prompt: queryPrompt, options })) {
+    activeQuery = query({ prompt: queryPrompt, options });
+    for await (const message of activeQuery) {
       if (message && message.session_id && message.session_id !== lastSessionId) {
         lastSessionId = message.session_id;
         emit({ type: "session_started", sessionId: message.session_id });

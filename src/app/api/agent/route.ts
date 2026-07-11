@@ -5,17 +5,16 @@ import { createFireworks } from "@ai-sdk/fireworks";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { z } from "zod";
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { requireProjectAccess } from "@/lib/project-access";
+import { sharedTurnBlockReason } from "@/lib/sharing";
 import { auth } from "@clerk/nextjs/server";
 
 import { SYSTEM_PROMPT_MOBILE, SYSTEM_PROMPT_MULTIPLATFORM, buildSwiftSystemPrompt, buildSandboxedWebSystemPrompt, buildWebSystemPrompt } from "@/lib/agent/prompts";
 import { isSandboxPlatform } from "@/lib/project-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { getPersistentTools } from "@/lib/agent/persistent-tools";
-import { getSandboxedWebTools } from "@/lib/agent/sandboxed-web-tools";
-import { MODEL_CONFIGS, resolveModelId, isModelDisabled, modelDisabledReason, type ModelId } from "@/lib/agent/models";
+import { getGitTools, getSandboxedWebTools } from "@/lib/agent/sandboxed-web-tools";
+import { MODEL_CONFIGS, resolveModelId, isModelDisabled, modelDisabledReason, isOpenAIModel, type ModelId } from "@/lib/agent/models";
 import { agentLog, generateRequestId, setRequestId } from "@/lib/agent/logger";
 import { classifyError, formatErrorResponse } from "@/lib/agent/errors";
 import { USE_TOGETHER_KIMI } from "@/lib/feature-flags";
@@ -55,15 +54,16 @@ import {
   compactMessages,
 } from "@/lib/agent/compaction";
 import { getUserCredentials, setUserCredentials } from "@/lib/user-credentials";
+import { refreshCodexOAuthToken } from "@/lib/codex-oauth";
 import { getUserTier, MODEL_TIER_REQUIREMENT, tierMeetsRequirement } from "@/lib/tier";
 import { recordTokenUsage } from "@/lib/usage";
 import { redis } from "@/lib/redis";
 import {
   calculateCredits,
   getWeeklyCredits,
-  getMonthlyCredits,
-  reserveWeeklyCredits,
-  adjustWeeklyCredits,
+  getMonthlyCreditsKV,
+  reservePlatformCredits,
+  adjustPlatformCredits,
   getWeeklyLimit,
   getMonthlyLimit,
 } from "@/lib/credits";
@@ -448,49 +448,10 @@ async function refreshAnthropicOAuthToken(
   }
 }
 
-async function refreshCodexOAuthToken(
-  creds: { codexOAuthRefreshToken?: string | null },
-  userId: string
-): Promise<string | null> {
-  if (!creds.codexOAuthRefreshToken) return null;
-
-  try {
-    const refreshRes = await fetch('https://auth.openai.com/oauth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: creds.codexOAuthRefreshToken,
-        client_id: 'app_EMoamEEZ73f0CkXaXp7hrann',
-      }).toString(),
-    });
-
-    if (!refreshRes.ok) return null;
-
-    const refreshed = await refreshRes.json() as {
-      access_token: string;
-      refresh_token?: string;
-      expires_in?: number;
-    };
-
-    const newExpiresAt = refreshed.expires_in
-      ? Date.now() + refreshed.expires_in * 1000 - 5 * 60 * 1000
-      : null;
-
-    await setUserCredentials(userId, {
-      codexOAuthAccessToken: refreshed.access_token,
-      codexOAuthRefreshToken: refreshed.refresh_token ?? creds.codexOAuthRefreshToken,
-      codexOAuthExpiresAt: newExpiresAt,
-    });
-
-    return refreshed.access_token;
-  } catch {
-    return null;
-  }
-}
-
 // ============================================================================
-// GPT-5.4: inject prompt_cache_retention: "24h" for extended caching
+// GPT-5.5: inject prompt_cache_retention: "24h" for extended caching.
+// NB: this param is deprecated on GPT-5.6+ (which use prompt_cache_options.ttl,
+// default 30m) — do NOT send it for 5.6 models or the request may be rejected.
 // ============================================================================
 
 async function injectOpenAICacheRetention(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -513,15 +474,16 @@ async function injectOpenAICacheRetention(input: RequestInfo | URL, init?: Reque
 /** Server key models: models the app pays for on behalf of paid users */
 const SERVER_KEY_MODELS = new Set<ModelId>([
   'fireworks-minimax-m3', // free tier
-  'fireworks-glm-5p2',         // free tier
   'fireworks-kimi-k2p7',     // free tier
-  'gpt-5.3-codex',           // pro+
-  'gpt-5.4',                 // pro+
+  'gpt-5.6-sol',             // pro+
+  'gpt-5.6-terra',           // pro+
+  'gpt-5.6-luna',            // pro+
   'gpt-5.5',                 // pro+
   'claude-sonnet-5',         // pro+
   'claude-opus-4-8',         // pro+
   'claude-fable-5',          // max-only
   'gemini-3.1-pro-preview',  // pro+
+  'grok-4.5',                // pro+
 ]);
 
 function isServerKeyModel(model: ModelId): boolean {
@@ -559,10 +521,8 @@ export async function POST(req: Request) {
     }: { messages: unknown; projectId?: string; platform?: ProjectPlatform } =
       await req.json();
 
-    const db = getDb();
-
     // Determine selected model for project and ensure ownership
-    let selectedModel: ModelId = "fireworks-kimi-k2p7";
+    let selectedModel: ModelId = "gpt-5.6-luna";
     // Default to true so non-project agent requests still get the full toolset.
     let hasBackend = true;
     let convexUrl: string | undefined;
@@ -573,19 +533,26 @@ export async function POST(req: Request) {
       autonomy: "autonomous" | "manual" | "ask-each-time" | null;
     } | undefined;
     if (projectId) {
-      const [proj] = await db
-        .select()
-        .from(projects)
-        .where(eq(projects.id, projectId));
-      if (!proj || proj.userId !== userId) {
+      const access = await requireProjectAccess(projectId, userId);
+      if (!access) {
         return new Response(JSON.stringify({ error: "Not found" }), {
           status: 404,
           headers: { "Content-Type": "application/json" },
         });
       }
+      const proj = access.project;
       // Swift's runtime is beta-only. Gate on the STORED platform so a non-beta
       // owner of a legacy swift project can't drive the native agent's sandbox
       // tools against the swift sandbox.
+      // Sharing (Phase 3): one live in-sandbox agent per project across ALL
+      // collaborators (CC/OpenCode turns register; this route only checks).
+      const sharedBlock = await sharedTurnBlockReason(projectId, userId);
+      if (sharedBlock) {
+        return new Response(JSON.stringify({ error: sharedBlock }), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (await swiftRuntimeForbidden(proj.platform, userId)) {
         return new Response(
           JSON.stringify({ error: "Swift projects are currently in private beta." }),
@@ -645,13 +612,14 @@ export async function POST(req: Request) {
 
     // Sandbox platforms: tools execute server-side against the user's Vercel
     // sandbox. Client never sees onToolCall — keeps platform creds off-browser.
-    let tools: ReturnType<typeof getTools> | ReturnType<typeof getPersistentTools> | ReturnType<typeof getSandboxedWebTools>;
+    let tools: ReturnType<typeof getTools> | ReturnType<typeof getPersistentTools> | ReturnType<typeof getSandboxedWebTools> | (ReturnType<typeof getPersistentTools> & ReturnType<typeof getGitTools>);
     if (platform === "sandboxed-web" && projectId) {
       // Forward Cookie so the internal /api/projects/:id/convex/deploy call
       // sees the same Clerk session.
       const cookie = req.headers.get("cookie") ?? "";
       tools = getSandboxedWebTools({
         projectId,
+        userId,
         hasBackend,
         convexUrl,
         appBaseUrl: new URL(req.url).origin,
@@ -665,12 +633,27 @@ export async function POST(req: Request) {
       // Convex deploy/logs when the project has a backend. Forward Cookie so the
       // internal /api/projects/:id/convex/deploy call sees the same Clerk session.
       const cookie = req.headers.get("cookie") ?? "";
-      tools = getPersistentTools(projectId, {
+      const persistentTools = getPersistentTools(projectId, {
         hasBackend,
+        actingUserId: userId,
         appBaseUrl: new URL(req.url).origin,
         ...(platform ? { platform } : {}),
         ...(cookie ? { authHeaders: { cookie } } : {}),
       });
+      // Same git tool surface as sandboxed-web — the sandbox has a real .git
+      // once a repo is linked, and sandbox-git is platform-agnostic.
+      tools = githubLink
+        ? {
+            ...persistentTools,
+            ...getGitTools({
+              projectId,
+              ownerName: { owner: githubLink.owner, name: githubLink.name },
+              branch: githubLink.branch,
+              userId,
+              autonomy: githubLink.autonomy,
+            }),
+          }
+        : persistentTools;
     } else {
       tools = getTools({ hasBackend });
     }
@@ -678,7 +661,7 @@ export async function POST(req: Request) {
     // ── Tier enforcement for server-key models ──────────────────────────────
     // Detect if this request uses personal BYOK/OAuth credentials (skip credit checks)
     const isUsingPersonalCredentials = ((): boolean => {
-      if (selectedModel === 'gpt-5.3-codex' || selectedModel === 'gpt-5.4' || selectedModel === 'gpt-5.5') {
+      if (isOpenAIModel(selectedModel)) {
         return Boolean(creds.codexOAuthAccessToken || creds.openaiApiKey);
       }
       if (selectedModel === 'fireworks-kimi-k2p7' && USE_TOGETHER_KIMI) {
@@ -686,11 +669,14 @@ export async function POST(req: Request) {
         // Together key and no server-side TOGETHER_API_KEY.
         return Boolean(creds.togetherApiKey) && !process.env.TOGETHER_API_KEY;
       }
-      if (selectedModel === 'fireworks-minimax-m3' || selectedModel === 'fireworks-glm-5p2' || selectedModel === 'fireworks-kimi-k2p7') {
+      if (selectedModel === 'fireworks-minimax-m3' || selectedModel === 'fireworks-kimi-k2p7') {
         return Boolean(creds.fireworksApiKey) && !process.env.FIREWORKS_API_KEY;
       }
       if (selectedModel === 'gemini-3.1-pro-preview') {
         return Boolean(creds.googleApiKey) && !process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+      }
+      if (selectedModel === 'grok-4.5') {
+        return Boolean(creds.xaiApiKey) && !process.env.XAI_API_KEY;
       }
       // Anthropic models — OAuth token only counts when the feature flag is on
       return Boolean(
@@ -711,34 +697,35 @@ export async function POST(req: Request) {
     const messagesTokens = estimateMessagesTokens(resolvedMessages);
     const totalEstimatedTokens = systemTokens + messagesTokens + TOOLS_TOKEN_ESTIMATE;
 
-    // ── Atomic weekly-credit reservation bookkeeping ─────────────────────────
-    // `weeklyReserved` holds this turn's reserved (worst-case) credits; it is
+    // ── Atomic platform-credit reservation bookkeeping ───────────────────────
+    // `platformReserved` holds this turn's reserved (worst-case) credits; it is
     // reconciled down to the real cost in onFinish, or released if the request
     // aborts first. The reconcile is idempotent so onFinish and the abort
-    // handler can't double-apply.
-    let weeklyReserved = 0;
+    // handler can't double-apply. Adjustments hit BOTH KV counters (weekly +
+    // monthly) via adjustPlatformCredits.
+    let platformReserved = 0;
     let creditReconciled = false;
-    const reconcileWeeklyCredits = async (actualCredits: number): Promise<void> => {
-      if (creditReconciled || weeklyReserved === 0) return;
+    const reconcilePlatformCredits = async (actualCredits: number): Promise<void> => {
+      if (creditReconciled || platformReserved === 0) return;
       creditReconciled = true;
-      const delta = actualCredits - weeklyReserved;
+      const delta = actualCredits - platformReserved;
       if (delta !== 0) {
-        await adjustWeeklyCredits(userId, delta).catch((err) => {
-          console.error("[agent] weekly_credit_reconcile_failed", err);
+        await adjustPlatformCredits(userId, delta).catch((err) => {
+          console.error("[agent] platform_credit_reconcile_failed", err);
         });
       }
     };
     // Release the reservation if the client disconnects before onFinish runs.
-    req.signal.addEventListener("abort", () => { void reconcileWeeklyCredits(0); });
+    req.signal.addEventListener("abort", () => { void reconcilePlatformCredits(0); });
 
     // ── Tier + credit budget enforcement (platform-paid models only) ─────────
-    // Weekly budget uses an ATOMIC reservation: reserve this turn's worst-case
-    // cost (all input uncached + the 32k output ceiling) via a single INCRBY,
-    // then reconcile to the real cost in onFinish. This closes the
-    // check-then-spend race — concurrent requests can no longer all clear the
-    // same pre-spend balance. Monthly is the slower aggregate guard; bursting it
-    // requires first clearing the weekly reservation, so weekly is the binding
-    // burst limiter.
+    // One ATOMIC reservation gates the turn's worst-case cost (all input
+    // uncached + the 32k output ceiling) against BOTH KV counters, then
+    // reconciles to the real cost in onFinish. Paradigm (see
+    // reservePlatformCredits): the weekly budget paces usage, a request that
+    // straddles the weekly boundary spills its overshoot into the monthly
+    // headroom, and the monthly budget is the hard ceiling. All checks are
+    // Redis-only — Neon is never touched on this hot path.
     if (isServerKeyModel(selectedModel) && !isUsingPersonalCredentials) {
       const tier = await getUserTier(userId);
       const requiredTier = MODEL_TIER_REQUIREMENT[selectedModel] ?? 'free';
@@ -754,35 +741,30 @@ export async function POST(req: Request) {
         });
       }
 
-      // Monthly credit limit (eventually-consistent aggregate from Neon)
-      const monthlyLimit = getMonthlyLimit(tier);
-      const monthlyUsed = await getMonthlyCredits(userId);
-      if (monthlyUsed >= monthlyLimit) {
-        return limitReachedResponse({
-          limitType: 'monthly_credits',
-          current: monthlyUsed,
-          limit: monthlyLimit,
-          tier,
-          model: selectedModel,
-        });
-      }
-
-      // Weekly credit limit — atomic worst-case reservation
       const weeklyLimit = getWeeklyLimit(tier);
-      weeklyReserved = calculateCredits({
+      const monthlyLimit = getMonthlyLimit(tier);
+      platformReserved = calculateCredits({
         model: selectedModel,
         inputTokens: totalEstimatedTokens,
         outputTokens: PLATFORM_MAX_OUTPUT_TOKENS,
         cachedReadTokens: 0,
         cacheWriteTokens: 0,
       });
-      const reserved = await reserveWeeklyCredits(userId, weeklyReserved, weeklyLimit);
-      if (!reserved) {
-        weeklyReserved = 0; // reservation was rolled back inside the helper
-        const weeklyUsed = await getWeeklyCredits(userId);
+      const reserved = await reservePlatformCredits(userId, platformReserved, weeklyLimit, monthlyLimit);
+      if (!reserved.ok) {
+        platformReserved = 0; // reservation was rolled back inside the helper
+        if (reserved.reason === 'monthly_exceeded') {
+          return limitReachedResponse({
+            limitType: 'monthly_credits',
+            current: await getMonthlyCreditsKV(userId),
+            limit: monthlyLimit,
+            tier,
+            model: selectedModel,
+          });
+        }
         return limitReachedResponse({
           limitType: 'weekly_credits',
-          current: weeklyUsed,
+          current: await getWeeklyCredits(userId),
           limit: weeklyLimit,
           tier,
           model: selectedModel,
@@ -881,7 +863,7 @@ export async function POST(req: Request) {
         }
 
         // Fireworks fallback: providerMetadata or response header
-        if (cachedRead === 0 && (selectedModel === 'fireworks-minimax-m3' || selectedModel === 'fireworks-glm-5p2' || selectedModel === 'fireworks-kimi-k2p7')) {
+        if (cachedRead === 0 && (selectedModel === 'fireworks-minimax-m3' || selectedModel === 'fireworks-kimi-k2p7')) {
           const metaCache = event.providerMetadata?.fireworks?.cachedPromptTokens as number | undefined;
           if (metaCache !== undefined && metaCache > 0) {
             cachedRead = metaCache;
@@ -921,16 +903,17 @@ export async function POST(req: Request) {
           // Record usage to Neon (monthly aggregate + audit trail).
           await recordTokenUsage(userId, selectedModel, tokensIn, tokensOut, actualCredits, cachedRead, cachedWrite).catch(() => {});
         }
-        // Reconcile the atomic weekly reservation down to the real cost (or
-        // release it entirely if no usage was reported). Always runs for
-        // platform-paid traffic so a reservation can't be left stranded; a
-        // no-op when nothing was reserved (personal credentials).
-        await reconcileWeeklyCredits(actualCredits);
+        // Reconcile the atomic platform reservation (weekly + monthly KV
+        // counters) down to the real cost, or release it entirely if no usage
+        // was reported. Always runs for platform-paid traffic so a reservation
+        // can't be left stranded; a no-op when nothing was reserved (personal
+        // credentials).
+        await reconcilePlatformCredits(actualCredits);
         const durationMs = Date.now() - startTime;
         agentLog.apiComplete({ model: selectedModel, durationMs });
       };
 
-      if (selectedModel === "gpt-5.3-codex" || selectedModel === "gpt-5.4" || selectedModel === "gpt-5.5") {
+      if (isOpenAIModel(selectedModel)) {
         // Path A: Codex OAuth (priority)
         if (creds.codexOAuthAccessToken) {
           let accessToken = creds.codexOAuthAccessToken;
@@ -1008,7 +991,7 @@ export async function POST(req: Request) {
 
         // Path B: OpenAI BYOK API key
         if (creds.openaiApiKey) {
-          const openai = createOpenAI((selectedModel === 'gpt-5.4' || selectedModel === 'gpt-5.5')
+          const openai = createOpenAI(selectedModel === 'gpt-5.5'
             ? { apiKey: creds.openaiApiKey, fetch: injectOpenAICacheRetention }
             : { apiKey: creds.openaiApiKey });
           const result = streamText({
@@ -1031,7 +1014,7 @@ export async function POST(req: Request) {
         // Path C: Server-side OpenAI key for Pro/Max tiers
         const serverOpenAIKey = process.env.OPENAI_API_KEY;
         if (isServerKeyModel(selectedModel) && serverOpenAIKey) {
-          const openai = createOpenAI((selectedModel === 'gpt-5.4' || selectedModel === 'gpt-5.5')
+          const openai = createOpenAI(selectedModel === 'gpt-5.5'
             ? { apiKey: serverOpenAIKey, fetch: injectOpenAICacheRetention }
             : { apiKey: serverOpenAIKey });
           const result = streamText({
@@ -1126,7 +1109,7 @@ export async function POST(req: Request) {
         return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
       }
 
-      if (selectedModel === "fireworks-minimax-m3" || selectedModel === "fireworks-glm-5p2" || selectedModel === "fireworks-kimi-k2p7") {
+      if (selectedModel === "fireworks-minimax-m3" || selectedModel === "fireworks-kimi-k2p7") {
         // Check for server-side Fireworks key first (for server-key models)
         const serverFireworksKey = process.env.FIREWORKS_API_KEY;
         const apiKey = isServerKeyModel(selectedModel) && serverFireworksKey

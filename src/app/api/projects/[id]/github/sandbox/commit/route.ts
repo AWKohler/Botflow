@@ -7,9 +7,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { commitAll, hasGitDir } from "@/lib/sandbox-git";
 
 export const dynamic = "force-dynamic";
@@ -26,11 +24,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const db = getDb();
-    const [proj] = await db.select().from(projects).where(eq(projects.id, id));
-    if (!proj || proj.userId !== userId) {
+    const access = await requireProjectAccess(id, userId);
+    if (!access) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    // Sharing: editors may push/commit only when the owner enabled the
+    // share-sheet switch (plan §3.3 role matrix).
+    if (access.role === "editor" && !access.project.editorsCanPush) {
+      return NextResponse.json(
+        { error: "The project owner hasn't enabled Git push for editors." },
+        { status: 403 },
+      );
+    }
+    const { project: proj } = access;
     if (!proj.githubRepoOwner || !proj.githubRepoName) {
       return NextResponse.json({ error: "No GitHub repository linked." }, { status: 400 });
     }

@@ -17,9 +17,10 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { projects, userStripeIdentity } from '@/db/schema';
+import { requireProjectAccess } from '@/lib/project-access';
 import { canUseStripeConnect } from '@/lib/tier';
 import { getConnectClientId, getStripe, type StripeMode } from '@/lib/stripe';
 import { STRIPE_CONNECT_ENABLED } from '@/lib/feature-flags';
@@ -58,14 +59,11 @@ export async function POST(
   const mode: StripeMode = body.mode === 'live' ? 'live' : 'test';
 
   const db = getDb();
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-  if (!project) {
+  const access = await requireProjectAccess(projectId, userId, "owner");
+  if (!access) {
     return NextResponse.json({ ok: false, error: 'Project not found' }, { status: 404 });
   }
+  const project = access.project;
 
   const gate = await canUseStripeConnect(userId);
   if (!gate.allowed) {

@@ -11,9 +11,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { eq, and } from "drizzle-orm";
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { setupConvexAuth } from "@/lib/convex-auth-setup";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
@@ -32,16 +30,12 @@ export async function POST(
     }
 
     const { id: projectId } = await params;
-    const db = getDb();
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-      .limit(1);
+    const access = await requireProjectAccess(projectId, userId);
 
-    if (!project) {
+    if (!access) {
       return NextResponse.json({ ok: false, error: "Project not found" }, { status: 404 });
     }
+    const project = access.project;
     if (project.backendType === "none") {
       return NextResponse.json(
         { ok: false, error: "This project has no backend — Convex Auth is not available." },

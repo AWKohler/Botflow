@@ -22,31 +22,66 @@
  *                      │                            │ is unsafe.
  *
  * For non-Anthropic models, Claude Code is never available (it only runs
- * Anthropic models). Always ['botflow'].
+ * Anthropic models). When the OpenCode flag is on and the user has a personal
+ * credential for the model's provider (Codex OAuth or a BYOK key) on a sandbox
+ * platform, OpenCode drop-in replaces Botflow: ['opencode'], locked — no user
+ * choice. Otherwise ['botflow'] (the server-side engine keeps serving
+ * platform-key turns; the UI renders that identity neutrally under the flag).
  *
- * For WebContainer projects, Claude Code is never available — the sandbox it
- * needs to run in doesn't exist. Always ['botflow'].
+ * For WebContainer projects, neither in-sandbox agent is available — the
+ * sandbox they need to run in doesn't exist. Always ['botflow'].
  *
- * When the feature flag is off, Claude Code is never available. Always
- * ['botflow'].
+ * When the feature flags are off, the in-sandbox agents are never available.
+ * Always ['botflow'].
  */
-import { CLAUDE_CODE_ENABLED } from "@/lib/feature-flags";
+import { CLAUDE_CODE_ENABLED, OPENCODE_BACKEND_ENABLED } from "@/lib/feature-flags";
 import { isAnthropicModel, type ModelId } from "@/lib/agent/models";
 import { isSandboxPlatform } from "@/lib/project-platform";
+import { type OpenCodeCredFlags } from "@/lib/agent/opencode/models";
 
-export type AgentBackend = "botflow" | "claude-code";
+export type AgentBackend = "botflow" | "claude-code" | "opencode";
 
-export interface BackendCreds {
+export interface BackendCreds extends OpenCodeCredFlags {
   /** Whether the user has a working Claude OAuth access token. */
   hasClaudeOAuth: boolean;
   /** Whether the user has a BYOK Anthropic API key on file. */
   hasAnthropicKey: boolean;
 }
 
+/**
+ * Map a raw credentials record (server: getUserCredentials; client: the
+ * /api/user-settings boolean flags) onto BackendCreds. Structural input type
+ * so this stays importable from client code.
+ */
+export function credFlagsFromUserCredentials(creds: {
+  claudeOAuthAccessToken?: string | null;
+  anthropicApiKey?: string | null;
+  codexOAuthAccessToken?: string | null;
+  openaiApiKey?: string | null;
+  fireworksApiKey?: string | null;
+  googleApiKey?: string | null;
+  xaiApiKey?: string | null;
+  togetherApiKey?: string | null;
+}): BackendCreds {
+  return {
+    hasClaudeOAuth: Boolean(creds.claudeOAuthAccessToken),
+    hasAnthropicKey: Boolean(creds.anthropicApiKey),
+    hasCodexOAuth: Boolean(creds.codexOAuthAccessToken),
+    hasOpenAIKey: Boolean(creds.openaiApiKey),
+    hasFireworksKey: Boolean(creds.fireworksApiKey),
+    hasGoogleKey: Boolean(creds.googleApiKey),
+    hasXaiKey: Boolean(creds.xaiApiKey),
+    hasTogetherKey: Boolean(creds.togetherApiKey),
+  };
+}
+
 export interface BackendResolutionInput {
   model: ModelId;
   platform: string | null | undefined;
   creds: BackendCreds;
+  /** From the USE_TOGETHER_KIMI server flag (client learns it via
+   *  /api/user-settings). Decides which BYOK key makes Kimi opencode-eligible. */
+  useTogetherKimi?: boolean;
 }
 
 export interface BackendResolution {
@@ -76,7 +111,10 @@ export type ResolutionReason =
   /** User has BYOK only; both backends work but defaults to Botflow. */
   | "byok_choice"
   /** No Anthropic creds at all; falls back to Botflow + platform key. */
-  | "platform_key_only";
+  | "platform_key_only"
+  /** OpenCode flag on + personal creds for this model's provider: OpenCode
+   *  drop-in replaces Botflow (locked, no user choice). */
+  | "opencode_replaces_botflow";
 
 export function resolveBackends(input: BackendResolutionInput): BackendResolution {
   const { model, platform, creds } = input;
@@ -91,8 +129,19 @@ export function resolveBackends(input: BackendResolutionInput): BackendResolutio
     };
   }
 
-  // Hard rule #2: Claude Code only runs Anthropic models.
+  // Hard rule #2: Claude Code only runs Anthropic models. With the LLM
+  // proxy, non-Anthropic models are OpenCode's territory UNCONDITIONALLY
+  // (flag + sandbox): credentials only decide the MODE (codex-oauth / byok /
+  // platform via the proxy), never the backend.
   if (!isAnthropicModel(model)) {
+    if (OPENCODE_BACKEND_ENABLED && platform && isSandboxPlatform(platform)) {
+      return {
+        available: ["opencode"],
+        locked: "opencode",
+        defaultBackend: "opencode",
+        reason: "opencode_replaces_botflow",
+      };
+    }
     return {
       available: ["botflow"],
       locked: "botflow",
@@ -127,8 +176,17 @@ export function resolveBackends(input: BackendResolutionInput): BackendResolutio
   }
 
   if (creds.hasAnthropicKey) {
-    // BYOK: both backends work; user can pick. Default is Botflow because
-    // it's simpler / no install latency.
+    // BYOK is locked to Claude Code exactly like OAuth — one Anthropic agent
+    // (the preference toggle is retired; the key rides the LLM proxy). The
+    // lock rides the OpenCode flag so the kill-switch state stays legacy.
+    if (OPENCODE_BACKEND_ENABLED) {
+      return {
+        available: ["claude-code"],
+        locked: "claude-code",
+        defaultBackend: "claude-code",
+        reason: "byok_choice",
+      };
+    }
     return {
       available: ["botflow", "claude-code"],
       locked: null,
@@ -137,9 +195,17 @@ export function resolveBackends(input: BackendResolutionInput): BackendResolutio
     };
   }
 
-  // No Anthropic creds. Falls through to Botflow + platform key. We
-  // CANNOT use Claude Code here — passing our platform key into the
-  // sandbox env exposes it to the user/agent.
+  // No personal Anthropic creds: platform mode. With the proxy that's
+  // OpenCode (the server key is injected server-side, never in the sandbox);
+  // without the flag, the legacy Botflow engine.
+  if (OPENCODE_BACKEND_ENABLED) {
+    return {
+      available: ["opencode"],
+      locked: "opencode",
+      defaultBackend: "opencode",
+      reason: "opencode_replaces_botflow",
+    };
+  }
   return {
     available: ["botflow"],
     locked: "botflow",
@@ -173,5 +239,5 @@ export function resolveActiveBackend(input: {
 }
 
 export function isAgentBackend(value: string): value is AgentBackend {
-  return value === "botflow" || value === "claude-code";
+  return value === "botflow" || value === "claude-code" || value === "opencode";
 }

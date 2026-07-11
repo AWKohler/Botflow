@@ -18,10 +18,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import { getDb } from '@/db';
 import { projects, userStripeIdentity } from '@/db/schema';
+import { requireProjectAccess } from '@/lib/project-access';
 import { canUseStripeConnect } from '@/lib/tier';
 import { isConnectOAuthConfigured } from '@/lib/stripe';
 import {
@@ -38,8 +39,9 @@ export const runtime = 'nodejs';
 // setupOAuthProvider for parity.
 export const maxDuration = 300;
 
-// 270s (< maxDuration 300s) so the timeout-dismiss in pollConnectRequest runs
-// before the platform kills the request, instead of orphaning the modal.
+// 270s (< maxDuration 300s) so we return a structured 'timeout' (user hasn't
+// finished YET — the modal stays open) instead of the platform killing the
+// request mid-poll.
 const POLL_DEADLINE_MS = 270 * 1000;
 
 async function flipProjectEnabled(projectId: string) {
@@ -124,15 +126,11 @@ export async function POST(
   const { id: projectId } = await params;
   const db = getDb();
 
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-
-  if (!project) {
+  const access = await requireProjectAccess(projectId, userId, "owner");
+  if (!access) {
     return NextResponse.json({ ok: false, error: 'Project not found' }, { status: 404 });
   }
+  const project = access.project;
 
   if (project.backendType === 'none') {
     return NextResponse.json(
@@ -250,10 +248,17 @@ export async function POST(
     });
   }
 
+  // Drop the wait marker NOW so a completion seconds later correctly
+  // notifies the agent instead of assuming an active waiter.
+  const { clearAgentWaiting } = await import('@/lib/agent/modal-wait');
+  void clearAgentWaiting('stripe-connect', requestId);
+
   return NextResponse.json({
     ok: false,
     status: 'timeout',
     message:
-      'Timed out waiting for the user to complete Stripe OAuth (5 minutes elapsed). The modal is no longer visible. Treat like a dismiss — do not retry.',
+      'The user has NOT completed Stripe OAuth yet — the connect modal is still open in their workspace; nothing was dismissed or declined. ' +
+      'Do NOT say the user dismissed or declined it. Continue with other work; when they finish connecting you will get a system note, ' +
+      'or call this tool again later to resume waiting.',
   });
 }

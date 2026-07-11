@@ -1019,6 +1019,8 @@ import { cn } from '@/lib/utils';
 import { WorkspaceMockup } from '@/components/landing/WorkspaceMockup';
 import { CardSpotlight } from '@/components/landing/CardSpotlight';
 import { ModelCloud } from '@/components/landing/ModelCloud';
+import { AuthProviderArc } from '@/components/landing/AuthProviderArc';
+import { FeatureBento } from '@/components/landing/FeatureBento';
 import { MobileFeatureGrid } from '@/components/landing/MobileFeatureGrid';
 import { LandingFooter, LandingNav, MarginHatch, MarginBg } from '@/components/landing/shared';
 import { LandingShowcase } from '@/components/showcase/LandingShowcase';
@@ -1335,19 +1337,17 @@ interface LandingPendingImage {
 export default function LandingV2() {
   const router = useRouter();
   const { isSignedIn, user } = useUser();
-  // Beta flag lives in Clerk publicMetadata, which already rides along on the
-  // client user object — no extra fetch. Gates the Swift platform toggle below;
-  // the projects API enforces the same rule server-side.
+  // Beta access is available immediately from Clerk metadata. Paid access is
+  // resolved from the same authoritative tier endpoint used by server gates.
   const isBetaUser = (user?.publicMetadata as { isBeta?: boolean } | undefined)?.isBeta === true;
   const SWIFT_ORANGE = '#f46a13';
-  const hasSwiftAccess = isSwiftPlatformEnabled() && isBetaUser;
   const [prompt, setPrompt] = useState('');
   const [platform, setPlatform] = useState<ProjectPlatform>('sandboxed-web');
   // Accent that frames the prompt box for the selected platform: neutral sand
   // for Web (1px), Swift orange and thicker (2px) when Swift is selected.
   const promptFrameColor = platform === 'swift' ? SWIFT_ORANGE : 'var(--sand-border)';
   const promptFrameWidth = platform === 'swift' ? 2 : 1;
-  const [model, setModel] = useState<ModelId>('fireworks-kimi-k2p7');
+  const [model, setModel] = useState<ModelId>('gpt-5.6-luna');
   const { toast } = useToast();
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
@@ -1356,6 +1356,9 @@ export default function LandingV2() {
   const [hasCodexOAuth, setHasCodexOAuth] = useState<boolean | null>(null);
   const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'max'>('free');
+  const hasSwiftAccess =
+    isSwiftPlatformEnabled() &&
+    (isBetaUser || userTier === 'pro' || userTier === 'max');
   const [hasConvexOAuth, setHasConvexOAuth] = useState<boolean | null>(null);
   const [convexBackendType, setConvexBackendType] = useState<'platform' | 'user' | 'none'>('platform');
   const [showConvexSelector, setShowConvexSelector] = useState(false);
@@ -1386,8 +1389,8 @@ export default function LandingV2() {
   const PENDING_PARAMS_KEY = 'huggable_pending_start_params';
   const PENDING_NAME_KEY = 'huggable_pending_project_name';
   const serverKeyModels = useMemo(() => new Set([
-    'fireworks-minimax-m3', 'fireworks-glm-5p2', 'fireworks-kimi-k2p7',
-    'gpt-5.3-codex', 'gpt-5.4', 'gpt-5.5', 'claude-sonnet-5', 'claude-sonnet-4.6', 'claude-opus-4.7', 'claude-opus-4-8',
+    'fireworks-minimax-m3', 'fireworks-kimi-k2p7',
+    'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'claude-sonnet-5', 'claude-sonnet-4.6', 'claude-opus-4.7', 'claude-opus-4-8',
   ]), []);
   const landingSignInModalAppearance = {
     elements: {
@@ -1461,7 +1464,7 @@ export default function LandingV2() {
     if (serverKeyModels.has(model)) return true;
     const hasOpenAICreds = hasCodexOAuth || hasOpenAIKey;
     const keyChecks: Record<string, { hasKey: boolean | null; provider: string }> = {
-      'gpt-5.3-codex': { hasKey: hasOpenAICreds, provider: 'OpenAI' },
+      'gpt-5.6-sol': { hasKey: hasOpenAICreds, provider: 'OpenAI' },
     };
     const check = keyChecks[model];
     if (check?.hasKey === false) {
@@ -1526,6 +1529,10 @@ export default function LandingV2() {
       params.set('backendType', 'none');
     } else if (convexBackendType === 'user' || params.get('backendType') === 'user') {
       params.set('backendType', 'user');
+    } else if (convexBackendType === 'platform') {
+      // Explicitly transmit the managed choice; otherwise /start falls back to
+      // the sticky saved preference (often 'none') and provisions no backend.
+      params.set('backendType', 'platform');
     }
     if (pendingImages.length > 0) {
       try {
@@ -1676,6 +1683,9 @@ export default function LandingV2() {
         convex_not_connected: { title: 'Convex not connected', description: 'Please connect your Convex account before creating a BYOC project.' },
         convex_provision_failed: { title: 'Convex provisioning failed', description: 'Failed to create a Convex backend in your account. Please try again or check your Convex dashboard.' },
         convex_quota: { title: 'Convex project limit reached', description: 'Your Convex account has reached its project quota. Delete unused projects at dashboard.convex.dev or upgrade your Convex plan.' },
+        convex_limit_reached: { title: 'Managed Convex limit reached', description: "You've reached your plan's managed Convex project limit. Delete an existing project to free a slot, then try again." },
+        convex_requires_pro: { title: 'Managed Convex requires Pro or Max', description: 'Upgrade to Pro or Max to create projects with a Botflow-managed Convex backend, or choose "No Backend".' },
+        swift_requires_pro: { title: 'Swift requires Pro or Max', description: 'Upgrade to Pro or Max to create native Swift projects.' },
       };
       const errMsg = errorMessages[errorParam] ?? { title: 'Error', description: 'Something went wrong creating your project.' };
       toast(errMsg);
@@ -1885,8 +1895,8 @@ export default function LandingV2() {
               <div className="w-full mt-8">
                 {/* Platform tabs — sit on top of the prompt box; the selected
                     tab's accent color frames the box. Web is the default; Swift
-                    is gated to beta users (shows a lock until unlocked, then
-                    lights up in Swift orange #f46a13). */}
+                    is available to Pro/Max and beta users (shows a lock until
+                    unlocked, then lights up in Swift orange #f46a13). */}
                 <div
                   className="flex items-end gap-1 pl-4 sm:pl-6 relative z-10"
                   style={{ marginBottom: -promptFrameWidth }}
@@ -1923,14 +1933,14 @@ export default function LandingV2() {
                         setPlatform('swift');
                       } else {
                         toast({
-                          title: 'Swift is in private beta',
+                          title: 'Swift requires Pro or Max',
                           description:
-                            'Native Swift apps are rolling out to beta users — access is coming soon.',
+                            'Upgrade to Pro or Max to create native Swift projects.',
                         });
                       }
                     }}
                     aria-disabled={!hasSwiftAccess}
-                    title={hasSwiftAccess ? 'Build a native Swift app' : 'Swift is in private beta'}
+                    title={hasSwiftAccess ? 'Build a native Swift app' : 'Swift requires Pro or Max'}
                     className={cn(
                       'relative inline-flex items-center gap-1.5 rounded-t-xl px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-medium transition',
                       platform === 'swift'
@@ -2487,9 +2497,60 @@ export default function LandingV2() {
       </section> */}
 
       {/* ================================================================ */}
-      {/* INTEGRATIONS                                                     */}
+      {/* AUTHENTICATION                                                   */}
       {/* ================================================================ */}
       <LineDivider />
+      <section className="relative">
+        <MarginHatch />
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-24 lg:py-28">
+          <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:gap-16">
+            <Reveal className="px-4">
+              <div className="max-w-xl">
+                <SectionLabel>Authentication</SectionLabel>
+                <h2
+                  className={cn(
+                    serif.className,
+                    'text-4xl sm:text-5xl lg:text-6xl tracking-tight',
+                  )}
+                >
+                  Auth in <em className={serif.className}>one ask</em>
+                </h2>
+                <p className="mt-4 text-lg text-[var(--sand-text-muted)] leading-relaxed">
+                  Email &amp; password ships with every app. Want social sign-in? Just ask —
+                  the agent wires the OAuth flow, callback URLs, and sessions into your
+                  backend, then walks you through the couple of keys each provider needs.
+                </p>
+                <div className="mt-8 grid gap-3">
+                  {[
+                    'Google, GitHub, Microsoft & Apple',
+                    'Guided, field-by-field credential setup',
+                    'Apple secrets signed & auto-rotated',
+                  ].map((item) => (
+                    <span
+                      key={item}
+                      className="flex items-center gap-2.5 text-sm text-[var(--sand-text-muted)]"
+                    >
+                      <span
+                        className="h-1.5 w-1.5 rounded-full shrink-0"
+                        style={{ background: 'var(--sand-accent)' }}
+                      />
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </Reveal>
+
+            {/* mx (not px) so the panel's measured clientWidth stays the true
+                panel width for the wheel geometry */}
+            <AuthProviderArc serifClassName={serif.className} className="mx-4" />
+          </div>
+        </div>
+      </section>
+
+      {/* ================================================================ */}
+      {/* INTEGRATIONS                                                     */}
+      {/* ================================================================ */}
       {/* <section className="relative bg-[var(--sand-surface)]">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
           <Reveal>
@@ -2559,8 +2620,7 @@ export default function LandingV2() {
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative">
-        <MarginHatch />
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-24">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             {/* <Reveal className='max-md:px-4'> */}
             <Reveal className='px-4'>
@@ -2617,13 +2677,42 @@ export default function LandingV2() {
       )}
 
       {/* ================================================================ */}
+      {/* FEATURE BENTO                                                    */}
+      {/* ================================================================ */}
+      <LineDivider />
+      <section className="relative bg-[var(--sand-elevated)]">
+        <MarginHatch />
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-24">
+          <Reveal>
+            <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-16 px-4">
+              <SectionLabel>Swift</SectionLabel>
+              <h2
+                className={cn(
+                  serif.className,
+                  'text-4xl sm:text-5xl md:text-6xl tracking-tight',
+                )}
+              >
+                Native Swift.{' '}
+                <em className={serif.className}>Built from a prompt.</em>
+              </h2>
+              <p className="mt-4 text-lg text-[var(--sand-text-muted)] leading-relaxed">
+                Describe the iPhone app you want. Botflow writes real Swift,
+                connects the backend, and builds the native iOS features web
+                wrappers can&apos;t reach.
+              </p>
+            </div>
+          </Reveal>
+          <FeatureBento serifClassName={serif.className} className="px-4 lg:px-0" />
+        </div>
+      </section>
+
+      {/* ================================================================ */}
       {/* CTA                                                              */}
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative">
-        <MarginHatch />
         <div className="pointer-events-none absolute inset-0 -z-10 landing-gradient opacity-60" />
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-28 sm:py-36">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-28">
           <Reveal>
             <div className="text-center max-w-2xl mx-auto">
               <h2

@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { eq, and, isNull, ne } from 'drizzle-orm';
+import { requireProjectAccess } from '@/lib/project-access';
 import { getUserTierAndLimits } from '@/lib/tier';
 
 const CF_BASE = 'https://api.cloudflare.com/client/v4';
@@ -116,13 +117,8 @@ function isValidDomain(domain: string): boolean {
 }
 
 async function getProjectWithAuth(userId: string, projectId: string) {
-  const db = getDb();
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-  return project ?? null;
+  const access = await requireProjectAccess(projectId, userId, "owner");
+  return access?.project ?? null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

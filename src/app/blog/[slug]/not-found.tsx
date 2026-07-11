@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { serif } from '@/components/landing/shared';
+import { serif } from '@/components/landing/fonts';
 import { cn } from '@/lib/utils';
 
 export default function PostNotFound() {

@@ -15,6 +15,7 @@ import { UTApi } from "uploadthing/server";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 
 const utapi = new UTApi();
@@ -34,10 +35,11 @@ export async function POST(
 
     const { id } = await params;
     const db = getDb();
-    const [project] = await db.select().from(projects).where(eq(projects.id, id));
-    if (!project || project.userId !== userId || project.platform !== "swift") {
+    const access = await requireProjectAccess(id, userId);
+    if (!access || access.project.platform !== "swift") {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    const { project } = access;
     if (await swiftRuntimeForbidden(project.platform, userId)) {
       return NextResponse.json(
         { error: "Swift projects are currently in private beta." },

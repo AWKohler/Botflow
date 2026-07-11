@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import { requireProjectAccess } from '@/lib/project-access';
 import { createHash } from 'crypto';
 import { extname, basename } from 'path';
 import { getUserTierAndLimits } from '@/lib/tier';
@@ -10,6 +11,7 @@ import { countUserCfPagesDeployments } from '@/lib/usage';
 import { limitReachedResponse } from '@/lib/plan-response';
 import { refreshAuthSiteUrl } from '@/lib/convex-auth-setup';
 import { enforce, identifierFor } from '@/lib/rate-limit';
+import { getBrandedZoneId, ensureBrandedDeploymentUrl, removeBrandedSubdomain } from '@/lib/cloudflare-zones';
 
 function getCfConfig() {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -50,13 +52,8 @@ function computeHash(base64Content: string, filename: string): string {
 }
 
 async function getProjectWithAuth(userId: string, projectId: string) {
-  const db = getDb();
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1);
-  return project ?? null;
+  const access = await requireProjectAccess(projectId, userId, "owner");
+  return access?.project ?? null;
 }
 
 // POST — Publish / update deployment
@@ -91,12 +88,6 @@ export async function POST(
           limit: limits.maxCfPagesDeployments,
           tier: limits.tier,
         });
-      }
-
-      // Custom domain gating
-      if (!limits.customDomain && process.env.CLOUDFLARE_BRANDED_DOMAIN) {
-        // Free users get .pages.dev only — skip branded domain attachment
-        // (handled below by checking limits.customDomain before the domain attach call)
       }
     }
 
@@ -260,32 +251,13 @@ export async function POST(
       );
     }
 
-    // Step 5: Optionally attach branded custom domain (Pro/Max only)
-    const tierLimits = await getUserTierAndLimits(userId);
-    const brandedDomain = tierLimits.customDomain ? process.env.CLOUDFLARE_BRANDED_DOMAIN : null;
-    let deploymentUrl = `https://${projectName}.pages.dev`;
-
-    if (brandedDomain) {
-      const customDomain = `${projectName}.${brandedDomain}`;
-      try {
-        const domainRes = await cfFetch(
-          `/accounts/${cf.accountId}/pages/projects/${projectName}/domains`,
-          cf.apiToken,
-          { body: { name: customDomain } }
-        );
-        // 409 = domain already attached, that's fine
-        if (!domainRes.success) {
-          const is409 = domainRes.errors?.some(e => e.code === 8000040 || e.message?.includes('already'));
-          if (!is409) {
-            console.warn('Failed to attach custom domain:', domainRes.errors);
-          }
-        }
-        deploymentUrl = `https://${customDomain}`;
-      } catch (err) {
-        // Non-fatal — fall back to .pages.dev URL
-        console.warn('Custom domain attachment error:', err);
-      }
-    }
+    // Step 5: Front the deployment with the white-label branded domain
+    // (<project>.botflow-site.app) instead of the raw .pages.dev host. Applies to
+    // every deployment on every tier — it is NOT the user-supplied custom-domain
+    // perk (that stays tier-gated). Attaching alone isn't enough: CF doesn't
+    // auto-create the DNS record, so the helper also upserts the proxied CNAME.
+    // Non-fatal — .pages.dev remains a working fallback.
+    const deploymentUrl = await ensureBrandedDeploymentUrl(projectName);
 
     // Update DB
     const db = getDb();
@@ -336,6 +308,20 @@ export async function DELETE(
     }
 
     const cf = getCfConfig();
+
+    // Remove the white-label branded domain first. Deleting the Pages project drops
+    // the custom-domain attachment on the project side, but the zone's CNAME record
+    // would be left orphaned — so clean it up explicitly.
+    const brandedDomain = process.env.CLOUDFLARE_BRANDED_DOMAIN;
+    if (brandedDomain) {
+      const hostname = `${project.cloudflareProjectName}.${brandedDomain}`;
+      try {
+        const zoneId = await getBrandedZoneId();
+        if (zoneId) await removeBrandedSubdomain(project.cloudflareProjectName, hostname, zoneId);
+      } catch (err) {
+        console.warn('Branded domain cleanup error:', err);
+      }
+    }
 
     await cfFetch(
       `/accounts/${cf.accountId}/pages/projects/${project.cloudflareProjectName}`,

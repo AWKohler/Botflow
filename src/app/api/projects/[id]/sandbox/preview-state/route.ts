@@ -19,9 +19,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
+import { requireProjectAccess } from "@/lib/project-access";
 import {
   getDevServerState,
   getPreviewRefreshAt,
@@ -39,11 +37,11 @@ export async function GET(
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const db = getDb();
-  const [project] = await db.select().from(projects).where(eq(projects.id, id));
-  if (!project || project.userId !== userId || project.platform !== "sandboxed-web") {
+  const access = await requireProjectAccess(id, userId);
+  if (!access || access.project.platform !== "sandboxed-web") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  const { project } = access;
 
   const [refreshAt, cachedState] = await Promise.all([
     getPreviewRefreshAt(project.id),
