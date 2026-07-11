@@ -277,6 +277,10 @@ export async function incrementWeeklyCredits(userId: string, credits: number): P
  * Reservations are bounded by the existing WEEK_TTL, so a reservation that is
  * never reconciled (e.g. process death mid-stream) self-expires rather than
  * permanently inflating the counter.
+ *
+ * @deprecated Platform-billed flows should use reservePlatformCredits, which
+ * gates on the monthly ceiling with weekly-boundary spillover and maintains
+ * both KV counters together.
  */
 export async function reserveWeeklyCredits(
   userId: string,
@@ -307,10 +311,132 @@ export async function reserveWeeklyCredits(
  * reconcile a prior `reserveWeeklyCredits` down (or up) to the real cost, and to
  * release a reservation on abort. Unlike `incrementWeeklyCredits` it does not
  * touch the TTL, since the key already exists from the reservation.
+ *
+ * @deprecated Platform-billed flows should use reservePlatformCredits /
+ * adjustPlatformCredits, which maintain the weekly AND monthly KV counters
+ * together. Kept only so a straggling caller fails loudly in review, not
+ * silently at runtime.
  */
 export async function adjustWeeklyCredits(userId: string, delta: number): Promise<void> {
   if (delta === 0) return;
   await redis.incrby(weeklyRedisKey(userId), delta);
+}
+
+// ─── Redis: monthly credits (KV enforcement copy) ─────────────────────────────
+// Hot-path checks (turn pre-flight, per-request reservations) must NEVER hit
+// Neon. The monthly counter lives in Redis, lazily seeded from the Neon SUM
+// once per period (SET NX), then maintained by the same reserve/adjust flow as
+// the weekly counter. Neon stays the AUDIT source of truth (usage_records rows
+// written at settlement; /api/usage display reads) — this key is the
+// enforcement copy. Drift exposure: a crashed process's unreconciled
+// reservation inflates the counter until the month rolls over — the same class
+// of exposure the weekly key already accepts, with a longer window.
+
+const MONTH_TTL = 35 * 24 * 3600; // any month length + reconcile slack
+
+function monthlyRedisKey(userId: string): string {
+  return `mcred:${userId}:${currentPeriod()}`;
+}
+
+/** Seed the month's KV counter from Neon exactly once per period. Every
+ *  writer calls this BEFORE its INCRBY so the key is always created by the
+ *  SET NX (never by a bare INCRBY racing the seed to zero). */
+async function ensureMonthlySeeded(userId: string): Promise<void> {
+  const key = monthlyRedisKey(userId);
+  if (await redis.exists(key)) return;
+  const seed = await getMonthlyCredits(userId); // Neon SUM — once per period per user
+  await redis.set(key, seed, { nx: true, ex: MONTH_TTL });
+}
+
+/** Monthly usage from the KV enforcement counter (seeds from Neon if this is
+ *  the period's first read). Use THIS in hot paths, never getMonthlyCredits. */
+export async function getMonthlyCreditsKV(userId: string): Promise<number> {
+  await ensureMonthlySeeded(userId);
+  const val = await redis.get<number>(monthlyRedisKey(userId));
+  return val ?? 0;
+}
+
+export type PlatformReserveResult =
+  | { ok: true }
+  | { ok: false; reason: 'weekly_exhausted' | 'monthly_exceeded' };
+
+/**
+ * Atomically reserve `amount` credits for a platform-billed request.
+ *
+ * The paradigm — weekly pacing with monthly spillover:
+ *  - The WEEKLY budget paces usage. Once a user's week is exhausted
+ *    (weeklyUsed ≥ weeklyLimit BEFORE this request), requests are blocked
+ *    until the weekly reset.
+ *  - A single request that STRADDLES the weekly boundary — the user still has
+ *    weekly headroom, but the worst-case reservation overshoots it — is
+ *    ALLOWED. The overshoot spills into the monthly budget.
+ *  - The MONTHLY budget is the hard ceiling: a reservation that does not fit
+ *    the remaining monthly headroom is rejected outright. In the last week of
+ *    a month the two budgets converge, so spillover naturally shrinks to
+ *    zero — no calendar special-casing needed.
+ *
+ * Same INCRBY + rollback atomicity as reserveWeeklyCredits (closes the
+ * check-then-spend TOCTOU race). On success the caller MUST reconcile to the
+ * real cost via adjustPlatformCredits (onFinish), and release with
+ * adjustPlatformCredits(-amount) on abort.
+ */
+export async function reservePlatformCredits(
+  userId: string,
+  amount: number,
+  weeklyLimit: number,
+  monthlyLimit: number,
+): Promise<PlatformReserveResult> {
+  await ensureMonthlySeeded(userId);
+  const wKey = weeklyRedisKey(userId);
+  const mKey = monthlyRedisKey(userId);
+
+  if (amount <= 0) {
+    // Nothing to reserve — still enforce both limits against current usage.
+    const [w, m] = await Promise.all([getWeeklyCredits(userId), redis.get<number>(mKey)]);
+    if ((m ?? 0) >= monthlyLimit) return { ok: false, reason: 'monthly_exceeded' };
+    if (w >= weeklyLimit) return { ok: false, reason: 'weekly_exhausted' };
+    return { ok: true };
+  }
+
+  // Monthly first — the hard ceiling.
+  const mTotal = await redis.incrby(mKey, amount);
+  if (mTotal > monthlyLimit) {
+    await redis.incrby(mKey, -amount).catch(() => {});
+    return { ok: false, reason: 'monthly_exceeded' };
+  }
+
+  const wTotal = await redis.incrby(wKey, amount);
+  if (wTotal === amount) {
+    // First write this week — set TTL.
+    await redis.expire(wKey, WEEK_TTL);
+  }
+  // Spillover rule: reject only when the week was ALREADY exhausted before
+  // this request (pre-reservation usage ≥ limit). A request that STARTS under
+  // the weekly line may finish over it — that overshoot was covered by the
+  // monthly check above.
+  if (wTotal - amount >= weeklyLimit) {
+    await Promise.all([
+      redis.incrby(wKey, -amount).catch(() => {}),
+      redis.incrby(mKey, -amount).catch(() => {}),
+    ]);
+    return { ok: false, reason: 'weekly_exhausted' };
+  }
+  return { ok: true };
+}
+
+/**
+ * Adjust BOTH platform counters by `delta` (may be negative): reconcile a
+ * reservation to the real cost, or release it on abort/failure. The monthly
+ * key is re-seeded first if missing (eviction guard) so a bare INCRBY can
+ * never mint a fresh counter from zero.
+ */
+export async function adjustPlatformCredits(userId: string, delta: number): Promise<void> {
+  if (delta === 0) return;
+  await ensureMonthlySeeded(userId);
+  await Promise.all([
+    redis.incrby(weeklyRedisKey(userId), delta),
+    redis.incrby(monthlyRedisKey(userId), delta),
+  ]);
 }
 
 // ─── Neon: monthly credits ────────────────────────────────────────────────────

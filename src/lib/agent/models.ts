@@ -26,6 +26,13 @@ export interface ModelConfig {
   displayName: string;
   /** Max context window in tokens */
   maxContextTokens: number;
+  /** Context window when the turn runs on the USER'S OWN credentials
+   *  (OAuth/BYOK) — some providers grant a larger window there than the
+   *  platform-billed default (Anthropic's 1M-context on Claude plans/API keys
+   *  vs our 200K platform window). Read via effectiveContextTokens();
+   *  undefined = same as maxContextTokens. Display/meter concern only —
+   *  billing reservations always use the platform value. */
+  personalCredContextTokens?: number;
   /** Warn at this percentage of max context */
   warnThreshold: number;
   /** Critical at this percentage of max context */
@@ -89,6 +96,10 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     apiModelId: "claude-sonnet-5",
     displayName: "Claude Sonnet 5",
     maxContextTokens: 200_000,
+    // Anthropic grants 1M context on personal creds (Claude plans / API keys).
+    // Verified live for Opus (user session past 200K on OAuth); Sonnet assumed
+    // per Anthropic's 1M-context family — re-check if the meter misreports.
+    personalCredContextTokens: 1_000_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
@@ -99,6 +110,7 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     apiModelId: "claude-opus-4-8",
     displayName: "Claude Opus 4.8",
     maxContextTokens: 200_000,
+    personalCredContextTokens: 1_000_000, // 1M on Claude OAuth/BYOK (live-observed)
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
@@ -188,6 +200,21 @@ export function resolveModelId(stored: string | null | undefined): ModelId {
 /** Check if a model supports image/file inputs */
 export function modelSupportsImages(model: ModelId): boolean {
   return MODEL_CONFIGS[model]?.supportsImages ?? false;
+}
+
+/**
+ * The context window in effect for a turn: the provider's larger
+ * personal-credential window when the turn runs on the user's own
+ * OAuth/BYOK creds, else the platform default. Drives the UI context meter
+ * (and any other display) — billing reservations deliberately keep using
+ * maxContextTokens.
+ */
+export function effectiveContextTokens(model: ModelId, personalCreds: boolean): number {
+  const config = MODEL_CONFIGS[model];
+  if (!config) return 128_000;
+  return personalCreds
+    ? (config.personalCredContextTokens ?? config.maxContextTokens)
+    : config.maxContextTokens;
 }
 
 /** Fallback message when a model is disabled but no explicit reason is set. */

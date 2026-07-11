@@ -12,11 +12,10 @@
 
 import { canGenerateImages } from "@/lib/tier";
 import {
-  adjustWeeklyCredits,
-  getMonthlyCredits,
+  adjustPlatformCredits,
   getMonthlyLimit,
   getWeeklyLimit,
-  reserveWeeklyCredits,
+  reservePlatformCredits,
 } from "@/lib/credits";
 import { recordTokenUsage } from "@/lib/usage";
 import { sandboxWriteBinaryFile } from "@/lib/vercel-sandbox";
@@ -117,33 +116,30 @@ export async function generateImage(opts: {
     return { ok: false, error: gate.reason ?? "AI image generation is a Pro/Max feature.", tierBlocked: true };
   }
 
-  // ── Budget: monthly cap + atomic weekly reservation ──────────────────────
+  // ── Budget: one atomic KV reservation (weekly pacing, monthly ceiling) ───
+  // reservePlatformCredits gates the FULL cost against the monthly headroom
+  // (hard ceiling) and the weekly pace — a boundary-straddling generation may
+  // spill into monthly headroom. Redis-only; Neon never touched here.
   const tier = gate.tier;
-  // Pre-check the FULL cost against the monthly cap — not merely whether the
-  // user is already at it — so someone a credit under the cap can't still
-  // incur a whole image's worth of credits.
-  if ((await getMonthlyCredits(opts.userId)) + IMAGE_GENERATION_CREDITS > getMonthlyLimit(tier)) {
-    return {
-      ok: false,
-      error: "The user has reached their monthly credit limit — image generation is unavailable until it resets.",
-      insufficientCredits: true,
-    };
-  }
-  const reserved = await reserveWeeklyCredits(
+  const reserved = await reservePlatformCredits(
     opts.userId,
     IMAGE_GENERATION_CREDITS,
     getWeeklyLimit(tier),
+    getMonthlyLimit(tier),
   );
-  if (!reserved) {
+  if (!reserved.ok) {
     return {
       ok: false,
-      error: "Not enough weekly credits left to generate an image.",
+      error:
+        reserved.reason === "monthly_exceeded"
+          ? "The user has reached their monthly credit limit — image generation is unavailable until it resets."
+          : "Not enough weekly credits left to generate an image.",
       insufficientCredits: true,
     };
   }
 
   const refund = async () => {
-    await adjustWeeklyCredits(opts.userId, -IMAGE_GENERATION_CREDITS).catch((err) =>
+    await adjustPlatformCredits(opts.userId, -IMAGE_GENERATION_CREDITS).catch((err) =>
       // The image failed AND the refund failed — log loudly; the user is owed
       // these credits back.
       console.error(
