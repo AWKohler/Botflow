@@ -46,6 +46,17 @@ export function extractCurrentUserText(messages: UIMessage[]): string {
   return texts.join("\n");
 }
 
+/**
+ * Id of the CURRENT turn's user message (the last message — same replay-guard
+ * guarantee as above). Stored in the turn record so recovery can match a
+ * registry record to the exact user message that spawned it — timestamps
+ * can't establish turn identity (clock skew, quick back-to-back turns).
+ */
+export function extractCurrentUserMessageId(messages: UIMessage[]): string | null {
+  const last = messages[messages.length - 1];
+  return last && last.role === "user" && typeof last.id === "string" ? last.id : null;
+}
+
 /* ------------------------------- images -------------------------------- */
 
 /** A base64-encoded image, ready to embed as a provider image block. */

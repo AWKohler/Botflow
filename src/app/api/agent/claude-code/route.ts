@@ -69,6 +69,7 @@ import {
   fallbackResponse as fallback,
   jsonError,
   extractCurrentUserText,
+  extractCurrentUserMessageId,
   extractCurrentUserImageParts,
   fetchPromptImages,
   buildPriorConversationPreamble,
@@ -378,10 +379,12 @@ export async function POST(req: Request) {
   // Register the turn so later requests can find it: the reattach route tails
   // its event file after this route dies at maxDuration, and the next turn's
   // spawn (or the stop route) kills the bridge + revokes the token.
+  const spawningUserMessageId = extractCurrentUserMessageId(messages);
   await setTurnRecord(projectId, {
     turnId,
     userId,
     backend: "claude-code",
+    ...(spawningUserMessageId ? { userMessageId: spawningUserMessageId } : {}),
     eventFile,
     startedAt: Date.now(),
     ...(toolToken ? { toolToken } : {}),

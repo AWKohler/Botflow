@@ -93,6 +93,7 @@ import {
   fallbackResponse as fallback,
   jsonError,
   extractCurrentUserText,
+  extractCurrentUserMessageId,
   extractCurrentUserImageParts,
   fetchPromptImages,
   buildPriorConversationPreamble,
@@ -471,10 +472,12 @@ export async function POST(req: Request) {
   // network blip / tab reload / this route's own teardown — killing the turn
   // for it would defeat reattach. Explicit stops go through the stop route,
   // whose SIGTERM the bridge answers by aborting the opencode session.
+  const spawningUserMessageId = extractCurrentUserMessageId(messages);
   await setTurnRecord(projectId, {
     turnId,
     userId,
     backend: "opencode",
+    ...(spawningUserMessageId ? { userMessageId: spawningUserMessageId } : {}),
     eventFile,
     startedAt: Date.now(),
     ...(toolToken ? { toolToken } : {}),
