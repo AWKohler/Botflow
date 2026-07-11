@@ -390,8 +390,10 @@ export function PersistentWorkspace({
 
   return (
     <div className="h-screen flex bolt-bg text-fg">
-      {/* Agent sidebar */}
-      <div className="w-96 flex flex-col bg-elevated/70 backdrop-blur-sm">
+      {/* Agent sidebar. `relative z-30` so the model-selector / backend popovers
+          that overflow the w-96 column paint above the adjacent main panel
+          instead of being covered by it. */}
+      <div className="w-96 flex flex-col bg-elevated/70 backdrop-blur-sm relative z-30">
         <AgentPanel
           className="h-full"
           projectId={projectId}

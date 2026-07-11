@@ -1060,7 +1060,7 @@ export function SandboxedWebWorkspace({
       {/* Agent sidebar. Hold the initial prompt until the sandbox is ready —
           otherwise the agent fires its first turn against an empty filesystem
           while the seed is still cloning, and tools fail. */}
-      <div className="w-96 flex flex-col bg-elevated/70 backdrop-blur-sm">
+      <div className="w-96 flex flex-col bg-elevated/70 backdrop-blur-sm relative z-30">
         <AgentPanel
           className="h-full"
           projectId={projectId}
