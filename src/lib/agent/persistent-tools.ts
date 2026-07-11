@@ -11,6 +11,8 @@ import {
   sandboxWriteFile,
 } from "@/lib/vercel-sandbox";
 import { applyDiff } from "@/lib/agent/diff";
+import { getProjectSandboxProvider } from "@/lib/sandbox-provider";
+import { looksLikeEgressBlock, EGRESS_BLOCK_MESSAGE } from "@/lib/egress-hint";
 import { getDb } from "@/db";
 import { chatQuestions, projects } from "@/db/schema";
 import { REVENUECAT_ENABLED } from "@/lib/feature-flags";
@@ -113,11 +115,28 @@ export function getPersistentTools(
       async execute({ command, cwd }) {
         return safe(async () => {
           const res = await sandboxBash(projectId, command, cwd ? { cwd } : {});
-          return {
+          const result: {
+            exitCode: number;
+            stdout: string;
+            stderr: string;
+            note?: string;
+          } = {
             exitCode: res.exitCode,
             stdout: truncate(res.stdout),
             stderr: truncate(res.stderr),
           };
+          // A failed command whose output looks like a name-resolution/reset
+          // block is almost certainly the free-tier egress allowlist. Tell the
+          // model so it explains it to the user instead of "fixing" a non-bug.
+          // Provider lookup is cached and only runs on the failure path.
+          if (
+            res.exitCode !== 0 &&
+            looksLikeEgressBlock(`${res.stdout}\n${res.stderr}`) &&
+            (await getProjectSandboxProvider(projectId)) === "sandbox-host"
+          ) {
+            result.note = EGRESS_BLOCK_MESSAGE;
+          }
+          return result;
         });
       },
     }),
