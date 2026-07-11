@@ -28,16 +28,21 @@ import { markAgentWaiting } from "@/lib/agent/modal-wait";
 
 export type OAuthToolPlatform = "web" | "swift";
 
-function buildAuthTsSnippet(def: OAuthProviderDef): string {
+function buildAuthTsSnippet(def: OAuthProviderDef, platform: OAuthToolPlatform): string {
   const imp = def.authImport.default
     ? `import ${def.authImport.symbol} from "${def.authImport.from}";`
     : `import { ${def.authImport.symbol} } from "${def.authImport.from}";`;
+  // Swift uses the in-app-browser flow; some providers need a Swift-specific
+  // expression (e.g. prompt=select_account so silent re-auth bounces — which
+  // drop the OAuth cookies in WebKit — never happen). See registry.ts.
+  const expr =
+    platform === "swift" ? (def.swiftProviderExpr ?? def.providerExpr) : def.providerExpr;
   return `   import { convexAuth } from "@convex-dev/auth/server";
    import { Password } from "@convex-dev/auth/providers/Password";
    ${imp}
 
    export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-     providers: [Password, ${def.providerExpr}],
+     providers: [Password, ${expr}],
      // keep the existing callbacks.redirect block intact
    });`;
 }
@@ -66,7 +71,7 @@ REQUIRED NEXT STEPS:
 1. Update convex/auth.ts — add the provider (pass NO arguments; extra config such
    as the Microsoft issuer or Apple client secret is read from env automatically):
 
-${buildAuthTsSnippet(def)}
+${buildAuthTsSnippet(def, platform)}
 
 2. Run ${deployTool} to push the updated auth config.
 `;
@@ -108,6 +113,10 @@ ${buildAuthTsSnippet(def)}
 3. That is it — do NOT write any Swift code for this. The hosted sign-in page
    (convex/http.ts) shows a "Continue with ${def.displayName}" button automatically
    once the deploy is live; the existing in-app-browser flow handles the rest.
+   IMPORTANT: use the provider expression from step 1 EXACTLY as given. Where it
+   includes authorization params (e.g. prompt: "select_account"), they are
+   REQUIRED: without a forced interaction, a returning user's silent provider
+   bounce drops the OAuth cookies in the in-app browser and repeat sign-ins fail.
    IMPORTANT: if this project's convex/http.ts predates OAuth support (no
    /auth/oauth/start route in it), call ${setupAuthTool} again to get the
    refreshed http.ts before deploying.` +

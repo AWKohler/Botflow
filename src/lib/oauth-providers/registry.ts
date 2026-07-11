@@ -61,6 +61,16 @@ export interface OAuthProviderDef {
   authImport: { symbol: string; from: string; default: boolean };
   /** Expression to add to the providers array (usually === authImport.symbol). */
   providerExpr: string;
+  /**
+   * Swift-specific providers-array expression, when it must differ from the
+   * web one. Repeat sign-ins from the iOS in-app browser break when the
+   * provider silently bounces straight back (an uninterrupted cross-site
+   * redirect chain with no user gesture — WebKit drops the OAuth cookies and
+   * the callback fails, landing on a dead end). Forcing an interaction
+   * (prompt=select_account) makes every attempt behave like the first one.
+   * Falls back to providerExpr when absent.
+   */
+  swiftProviderExpr?: string;
 }
 
 export const OAUTH_PROVIDERS: Record<string, OAuthProviderDef> = {
@@ -83,6 +93,8 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderDef> = {
     persists: false,
     authImport: { symbol: "Google", from: "@auth/core/providers/google", default: true },
     providerExpr: "Google",
+    swiftProviderExpr:
+      'Google({ authorization: { params: { prompt: "select_account" } } })',
   },
   github: {
     id: "github",
@@ -131,6 +143,8 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderDef> = {
     persists: false,
     authImport: { symbol: "MicrosoftEntraID", from: "@auth/core/providers/microsoft-entra-id", default: true },
     providerExpr: "MicrosoftEntraID",
+    swiftProviderExpr:
+      'MicrosoftEntraID({ authorization: { params: { prompt: "select_account" } } })',
   },
   apple: {
     id: "apple",

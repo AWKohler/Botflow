@@ -201,6 +201,25 @@ function page(redirect: string, flow: string, error: string | null, state: strin
   const toggleHref = "/auth/signin?redirect=" + encodeURIComponent(redirect) + "&flow=" + toggleFlow +
     (state ? "&state=" + encodeURIComponent(state) : "");
   const errHtml = error ? '<p class="err">' + esc(error) + "</p>" : "";
+  // Without a redirect target there is nowhere to deliver tokens, so a form
+  // would only dead-end on submit — render the message alone instead (reached
+  // via the "/" recovery route and malformed sign-in links).
+  const formHtml = redirect
+    ? [
+        '<form method="POST" action="/auth/signin">',
+        '<input type="hidden" name="flow" value="' + flow + '">',
+        '<input type="hidden" name="redirect" value="' + esc(redirect) + '">',
+        '<input type="hidden" name="state" value="' + esc(state) + '">',
+        "<label>Email</label>",
+        '<input name="email" type="email" autocomplete="email" autocapitalize="none" required>',
+        "<label>Password</label>",
+        '<input name="password" type="password" autocomplete="' + (signUp ? "new-password" : "current-password") + '" minlength="8" required>',
+        errHtml,
+        '<button type="submit">' + esc(title) + "</button>",
+        "</form>",
+        '<a href="' + toggleHref + '">' + esc(toggleLabel) + "</a>",
+      ].join("")
+    : errHtml;
   return [
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8">',
@@ -230,18 +249,7 @@ function page(redirect: string, flow: string, error: string | null, state: strin
     "<h1>" + esc(title) + "</h1>",
     '<p class="sub">' + (signUp ? "Sign up to continue." : "Welcome back.") + "</p>",
     oauthButtonsHtml(redirect, state),
-    '<form method="POST" action="/auth/signin">',
-    '<input type="hidden" name="flow" value="' + flow + '">',
-    '<input type="hidden" name="redirect" value="' + esc(redirect) + '">',
-    '<input type="hidden" name="state" value="' + esc(state) + '">',
-    "<label>Email</label>",
-    '<input name="email" type="email" autocomplete="email" autocapitalize="none" required>',
-    "<label>Password</label>",
-    '<input name="password" type="password" autocomplete="' + (signUp ? "new-password" : "current-password") + '" minlength="8" required>',
-    errHtml,
-    '<button type="submit">' + esc(title) + "</button>",
-    "</form>",
-    '<a href="' + toggleHref + '">' + esc(toggleLabel) + "</a>",
+    formHtml,
     "</div></body></html>",
   ].join("");
 }
@@ -368,6 +376,23 @@ function readCookie(request: Request, name: string): string {
   }
   return "";
 }
+
+// Friendly landing for anything that falls off the flow. Convex Auth's
+// callback redirects to the bare SITE_URL origin when its redirect cookie is
+// missing (e.g. a silent provider re-auth bounce dropped cookies) — without
+// this route that's a dead-end "No matching routes found" page inside the
+// in-app browser. There's no redirect/state to resume with, so the honest
+// recovery is: close the sheet and start sign-in again from the app.
+http.route({
+  path: "/",
+  method: "GET",
+  handler: httpAction(async (_ctx, _request) => {
+    return htmlResponse(
+      page("", "signIn", "Sign-in did not complete. Close this window and try again from the app.", ""),
+      200,
+    );
+  }),
+});
 
 http.route({
   path: "/auth/oauth/start",
@@ -909,6 +934,11 @@ OAUTH / SOCIAL SIGN-IN (Google, GitHub, Microsoft, Apple):
     button automatically. There is NO Swift code to write, NO native SDK to
     add, and NO redirect handling to build — the existing in-app-browser flow
     (BotflowAuthProvider) receives OAuth tokens exactly like password tokens.
+  • Use the snippet's provider expression EXACTLY — for Google/Microsoft it
+    includes authorization params (prompt: "select_account"). Those are
+    REQUIRED on iOS: a returning user's silent provider bounce drops the
+    OAuth cookies in the in-app browser and repeat sign-ins fail without
+    the forced account picker.
   • If this project's convex/http.ts predates OAuth support (it has no
     /auth/oauth/start route), call setupAuth again to get the refreshed
     http.ts before deploying.
