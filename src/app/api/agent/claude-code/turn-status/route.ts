@@ -47,5 +47,9 @@ export async function GET(req: NextRequest) {
     endedNormally: Boolean(record?.endedNormally),
     turnId: record?.turnId ?? null,
     startedAt: record?.startedAt ?? null,
+    // Which user message spawned this turn — mount-time recovery matches it
+    // against the transcript's trailing user message so it never replays a
+    // record that belongs to some earlier turn. Null on pre-field records.
+    userMessageId: record?.userMessageId ?? null,
   });
 }
