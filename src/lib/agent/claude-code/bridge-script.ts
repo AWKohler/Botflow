@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "26";
+export const BRIDGE_SCRIPT_VERSION = "27";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -127,12 +127,20 @@ async function postHostTool(toolName, input) {
   if (!base || !token) {
     throw new Error("Host callback not configured (BOTFLOW_API_BASE / BOTFLOW_TOOL_TOKEN missing)");
   }
+  const headers = {
+    "authorization": "Bearer " + token,
+    "content-type": "application/json",
+  };
+  // Preview deployments answer cookie-less requests with the Vercel
+  // Deployment Protection page (401) before our route ever runs — the same
+  // wall the Anthropic-proxy calls dodge via ANTHROPIC_CUSTOM_HEADERS. The
+  // host route sets this env only on protected previews.
+  if (process.env.BOTFLOW_VERCEL_BYPASS) {
+    headers["x-vercel-protection-bypass"] = process.env.BOTFLOW_VERCEL_BYPASS;
+  }
   const response = await fetch(base + "/api/internal/claude-code-tool", {
     method: "POST",
-    headers: {
-      "authorization": "Bearer " + token,
-      "content-type": "application/json",
-    },
+    headers,
     body: JSON.stringify({ tool: toolName, input: input ?? {} }),
   });
   if (!response.ok) {

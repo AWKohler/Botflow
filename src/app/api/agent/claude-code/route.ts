@@ -336,6 +336,12 @@ export async function POST(req: Request) {
   if (toolToken) {
     bridgeEnv.BOTFLOW_API_BASE = new URL(req.url).origin;
     bridgeEnv.BOTFLOW_TOOL_TOKEN = toolToken;
+    // On protected preview deployments the host-tool callback would otherwise
+    // die on Vercel's Deployment Protection wall (401 before our route runs) —
+    // every host tool (setup_auth, convex_deploy, ask_question, …) fails.
+    if (process.env.VERCEL_ENV === "preview" && process.env.VERCEL_AUTOMATION_BYPASS_SECRET) {
+      bridgeEnv.BOTFLOW_VERCEL_BYPASS = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    }
   }
   if (llmProxyToken) {
     bridgeEnv.ANTHROPIC_BASE_URL = `${llmProxyOrigin(new URL(req.url).origin)}/api/internal/llm-proxy/anthropic`;
