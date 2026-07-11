@@ -115,6 +115,8 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderDef> = {
     persists: false,
     authImport: { symbol: "GitHub", from: "@auth/core/providers/github", default: true },
     providerExpr: "GitHub",
+    swiftProviderExpr:
+      'GitHub({ authorization: { params: { prompt: "select_account" } } })',
   },
   "microsoft-entra-id": {
     id: "microsoft-entra-id",

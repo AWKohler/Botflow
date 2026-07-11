@@ -934,11 +934,11 @@ OAUTH / SOCIAL SIGN-IN (Google, GitHub, Microsoft, Apple):
     button automatically. There is NO Swift code to write, NO native SDK to
     add, and NO redirect handling to build — the existing in-app-browser flow
     (BotflowAuthProvider) receives OAuth tokens exactly like password tokens.
-  • Use the snippet's provider expression EXACTLY — for Google/Microsoft it
-    includes authorization params (prompt: "select_account"). Those are
-    REQUIRED on iOS: a returning user's silent provider bounce drops the
-    OAuth cookies in the in-app browser and repeat sign-ins fail without
-    the forced account picker.
+  • Use the snippet's provider expression EXACTLY — for Google/GitHub/
+    Microsoft it includes authorization params (prompt: "select_account").
+    Those are REQUIRED on iOS: a returning user's silent provider bounce
+    drops the OAuth cookies in the in-app browser and repeat sign-ins fail
+    without the forced account picker.
   • If this project's convex/http.ts predates OAuth support (it has no
     /auth/oauth/start route), call setupAuth again to get the refreshed
     http.ts before deploying.
