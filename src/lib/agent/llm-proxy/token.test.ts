@@ -69,6 +69,13 @@ describe("provider registry", () => {
     assert.ok(p.openai.pathAllowlist.test("v1/chat/completions"));
     assert.ok(!p.openai.pathAllowlist.test("v1/files"));
     assert.ok(p.fireworks.pathAllowlist.test("v1/chat/completions"));
+    // xAI (Grok) is OpenAI-compatible on both endpoints — reasoning models
+    // route through /responses. Dialect follows the path, like openai.
+    assert.ok(p.xai.pathAllowlist.test("v1/responses"));
+    assert.ok(p.xai.pathAllowlist.test("v1/chat/completions"));
+    assert.ok(!p.xai.pathAllowlist.test("v1/models"));
+    assert.equal(p.xai.dialectForPath("v1/responses"), "openai-responses");
+    assert.equal(p.xai.dialectForPath("v1/chat/completions"), "openai-chat");
     assert.ok(p.together.pathAllowlist.test("v1/chat/completions"));
     assert.ok(!p.together.pathAllowlist.test("v1/models"));
     assert.ok(p.google.pathAllowlist.test("v1beta/models/gemini-3.1-pro-preview:streamGenerateContent"));
