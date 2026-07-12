@@ -129,6 +129,18 @@ const GEMINI_LONG_CONTEXT_PRICING: ModelPricing = {
 
 const GEMINI_LONG_CONTEXT_THRESHOLD = 200_000;
 
+// Grok 4.5 pricing above its long_context_threshold (200K) — EVERY axis
+// doubles, per xAI's own model metadata (prompt_text_token_price_long_context
+// 40000 = $4/MTok, cached 10000 = $1, completion 120000 = $12; all 2× the
+// ≤200K rates). Verified live against GET api.x.ai/v1/models/grok-4.5.
+const GROK_LONG_CONTEXT_PRICING: ModelPricing = {
+  input:       4.00 / BASE_PRICE,   // 13.33
+  cachedInput: 1.00 / BASE_PRICE,   // 3.33
+  output:     12.00 / BASE_PRICE,   // 40.0
+};
+
+const GROK_LONG_CONTEXT_THRESHOLD = 200_000;
+
 // Claude Sonnet 5 introductory pricing — $2 input / $10 output per MTok, a
 // temporary discount from the standard $3 / $15 rates in MODEL_PRICING above.
 // Anthropic applies it through 2026-08-31; standard pricing resumes 2026-09-01.
@@ -190,6 +202,11 @@ export function calculateCredits(params: CreditCalculationInput): number {
   // Gemini 3.1 Pro: use higher pricing tier if total input context exceeds 200K
   if (model === 'gemini-3.1-pro-preview' && (inputTokens + cachedReadTokens) > GEMINI_LONG_CONTEXT_THRESHOLD) {
     pricing = GEMINI_LONG_CONTEXT_PRICING;
+  }
+
+  // Grok 4.5: every rate doubles above 200K total context (xAI long-context tier).
+  if (model === 'grok-4.5' && (inputTokens + cachedReadTokens) > GROK_LONG_CONTEXT_THRESHOLD) {
+    pricing = GROK_LONG_CONTEXT_PRICING;
   }
 
   // Claude Sonnet 5: introductory pricing applies through 2026-08-31 (UTC);
