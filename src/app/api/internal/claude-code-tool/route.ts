@@ -1098,39 +1098,20 @@ export async function POST(req: Request) {
 
         if (statusRow.status === "completed") {
           const def = getOAuthProvider(inputProvider)!;
-          const imp = def.authImport.default
-            ? `import ${def.authImport.symbol} from "${def.authImport.from}";`
-            : `import { ${def.authImport.symbol} } from "${def.authImport.from}";`;
-          const appleNote =
-            inputProvider === "apple"
-              ? "\n\nAPPLE NOTE: name/email arrive ONLY on the first sign-in — capture them then. Apple can't be tested on localhost; use the deployed preview."
-              : "";
+          // Shared per-platform guidance (web wires a React button; Swift's
+          // hosted sign-in page needs no client work at all) with this rail's
+          // snake_case tool names.
+          const { buildOAuthProviderSuccessContext } = await import(
+            "@/lib/agent/oauth-provider-tool"
+          );
           return NextResponse.json({
             ok: true,
-            content: `=== ${def.displayName.toUpperCase()} OAUTH CREDENTIALS SAVED ===
-
-${def.envVars.join(", ")} now set on your Convex deployment.
-
-REQUIRED NEXT STEPS:
-
-1. Update convex/auth.ts — add the provider (pass NO arguments; extra config is
-   read from env automatically):
-
-   import { convexAuth } from "@convex-dev/auth/server";
-   import { Password } from "@convex-dev/auth/providers/Password";
-   ${imp}
-
-   export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-     providers: [Password, ${def.providerExpr}],
-     // keep the existing callbacks.redirect block intact
-   });
-
-2. Run convex_deploy to push the updated auth config.
-
-3. Add a sign-in button using startOAuthSignIn(signIn, "${inputProvider}") from
-   @/lib/botflowAuth (NOT signIn directly) so it works from the preview iframe,
-   and call resumePendingOAuthSignIn(signIn) once at app mount. On return, Convex
-   Auth creates or merges the user account automatically.${appleNote}`,
+            content: buildOAuthProviderSuccessContext(
+              project.platform === "swift" ? "swift" : "web",
+              inputProvider,
+              def,
+              { deploy: "convex_deploy", setupAuth: "setup_auth", setupOAuth: "setup_oauth_provider" },
+            ),
           });
         }
 

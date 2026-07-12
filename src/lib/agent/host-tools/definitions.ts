@@ -518,8 +518,10 @@ export function selectHostTools(input: SelectHostToolsInput): string[] {
     if (hasBackend) {
       // Swift + Convex backend: the deploy/logs/auth tools are platform-
       // agnostic server-side (the deploy pipeline zips /convex regardless of
-      // frontend language; setup_auth is platform-aware in the host route).
-      customTools.push("convex_deploy", "get_convex_logs", "setup_auth");
+      // frontend language; setup_auth and setup_oauth_provider are platform-
+      // aware in the host route — the Swift OAuth flow is served entirely by
+      // the generated convex/http.ts, no client work).
+      customTools.push("convex_deploy", "get_convex_logs", "setup_auth", "setup_oauth_provider");
     }
     // Git tools — same surface as sandboxed-web. The host route executes them
     // via sandbox-git against the persistent sandbox, which is platform-
