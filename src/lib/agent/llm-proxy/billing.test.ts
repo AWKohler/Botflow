@@ -96,6 +96,16 @@ describe("settlement credit parity with /api/agent", () => {
     assert.ok(abovePerToken > belowPerToken, `expected surcharge: ${abovePerToken} > ${belowPerToken}`);
   });
 
+  test("grok-4.5 long-context tier DOUBLES every rate past 200K (xAI long_context)", () => {
+    // Pure input, no output/cache: 100K (short tier) vs 300K (long tier).
+    // Long tier is exactly 2× → per-token rate doubles.
+    const short = computeSettlementCredits(usageOf(100_000, 0, 0, 0), "grok-4.5", "platform");
+    const long = computeSettlementCredits(usageOf(300_000, 0, 0, 0), "grok-4.5", "platform");
+    const shortPerTok = short / 100_000; // ≈ 6.67 credits/token ($2/MTok)
+    const longPerTok = long / 300_000;   // ≈ 13.33 credits/token ($4/MTok)
+    assert.ok(Math.abs(longPerTok / shortPerTok - 2) < 0.001, `expected 2× but got ${longPerTok / shortPerTok}`);
+  });
+
   test("anthropic cache WRITES are billed (never free)", () => {
     const withWrite = computeSettlementCredits(usageOf(10_000, 100, 0, 8_000), "claude-opus-4-8", "platform");
     const withoutWrite = computeSettlementCredits(usageOf(2_000, 100, 0, 0), "claude-opus-4-8", "platform");

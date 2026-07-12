@@ -14,7 +14,7 @@ import { isSandboxPlatform } from "@/lib/project-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { getPersistentTools } from "@/lib/agent/persistent-tools";
 import { getGitTools, getSandboxedWebTools } from "@/lib/agent/sandboxed-web-tools";
-import { MODEL_CONFIGS, resolveModelId, isModelDisabled, modelDisabledReason, isOpenAIModel, type ModelId } from "@/lib/agent/models";
+import { MODEL_CONFIGS, resolveModelId, isModelDisabled, modelDisabledReason, isOpenAIModel, isAnthropicModel, getProviderKeyName, type ModelId } from "@/lib/agent/models";
 import { agentLog, generateRequestId, setRequestId } from "@/lib/agent/logger";
 import { classifyError, formatErrorResponse } from "@/lib/agent/errors";
 import { USE_TOGETHER_KIMI } from "@/lib/feature-flags";
@@ -1140,6 +1140,24 @@ export async function POST(req: Request) {
       }
 
       // ── Anthropic models ──────────────────────────────────────────────────
+      // Guard: only Anthropic models may reach this branch. A non-Anthropic
+      // model here means an in-sandbox route (opencode) 412-fell-back for a
+      // provider the legacy engine can't serve — xAI (Grok) and Google
+      // (Gemini) have no legacy handler. Without this guard they fall through
+      // to createAnthropic(<their id>) and Anthropic 404s with a cryptic
+      // "model: <id>" (the exact symptom that surfaced for grok-4.5). Fail
+      // clearly instead. Root cause is almost always a missing platform key
+      // for that provider (e.g. XAI_API_KEY) in this deployment.
+      if (!isAnthropicModel(selectedModel)) {
+        return new Response(
+          JSON.stringify({
+            error: `${modelConfig.displayName} isn't available on the fallback engine — its provider needs the OpenCode backend (platform key not configured on this deployment). Add your own ${getProviderKeyName(selectedModel)} API key in Settings, or contact support.`,
+            errorType: "unavailable",
+          }),
+          { status: 503, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
       // Priority: OAuth token > server-side API key (for server-key models) > BYOK API key
       let anthropicToken: string | null = null;
 
