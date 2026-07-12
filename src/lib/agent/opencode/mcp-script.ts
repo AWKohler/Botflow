@@ -167,7 +167,7 @@ async function callHostTool(toolName, input) {
         ok: false,
         content:
           "Stopped waiting for the user after 30 minutes. The request may STILL be pending in their workspace — " +
-          "do NOT tell the user they dismissed or declined it. Continue with other work.",
+          "do NOT tell the user they dismissed or declined it. Continue only with unrelated work; do not implement or expose UI that depends on the pending setup until the host tool returns success.",
       };
     }
     const delay = Number(result.wait.pollDelayMs) > 0 ? Number(result.wait.pollDelayMs) : 2500;

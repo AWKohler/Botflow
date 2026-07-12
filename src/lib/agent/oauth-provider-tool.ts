@@ -150,7 +150,8 @@ function buildDescription(platform: OAuthToolPlatform): string {
     "  4. On success: credentials are saved server-side. You then update convex/auth.ts and run convexDeploy.\n" +
     "  5. If the user explicitly DISMISSES the modal: returns an error saying so. Stop trying — do not call this again unless the user asks.\n" +
     "  6. If it times out, the user simply hasn't finished YET — the modal STAYS OPEN. NEVER report a timeout as the user dismissing " +
-    "or declining; you'll get a system note when they submit, and you can call this tool again later to resume waiting.\n\n" +
+    "or declining; you'll get a system note when they submit, and you can call this tool again later to resume waiting. " +
+    "Until this tool returns success, do NOT edit convex/auth.ts or add/expose the provider's sign-in UI.\n\n" +
     afterSuccess
   );
 }
@@ -298,8 +299,9 @@ export function createSetupOAuthProviderTool(
         error:
           `The user has NOT finished entering ${getOAuthProvider(provider)?.displayName ?? provider} OAuth credentials yet — ` +
           "the modal is still open in their workspace; nothing was dismissed or declined. " +
-          "Do NOT say the user dismissed or declined it. Continue with other work; you'll get a system note when they submit, " +
-          "or call setupOAuthProvider again later to resume waiting.",
+          "Do NOT say the user dismissed or declined it. You may continue unrelated work, but do NOT edit convex/auth.ts, " +
+          "add or expose this provider's sign-in UI, or claim the provider is configured. You'll get a system note when " +
+          "they submit, or you can call setupOAuthProvider again later to resume waiting.",
       };
     },
   });

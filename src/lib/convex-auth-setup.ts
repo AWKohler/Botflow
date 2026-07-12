@@ -792,6 +792,8 @@ ${buildOAuthProviderGuidance()}
            ${convexSiteUrl}/api/auth/callback/<id>) and BLOCKS until the user
            completes or dismisses it (up to 5 minutes). On ok: true the
            provider's env vars are set on the deployment — you never see them.
+           Until ok: true is returned, do NOT edit convex/auth.ts, add or expose
+           a provider sign-in button, or claim that provider setup is complete.
 
   Step 2 — After ok: true, edit convex/auth.ts: add the provider's import (see
            the list above) and add it to the providers array alongside Password.

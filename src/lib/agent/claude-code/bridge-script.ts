@@ -173,7 +173,7 @@ async function callHostTool(toolName, input) {
         ok: false,
         content:
           "Stopped waiting for the user after 30 minutes. The request may STILL be pending in their workspace — " +
-          "do NOT tell the user they dismissed or declined it. Continue with other work.",
+          "do NOT tell the user they dismissed or declined it. Continue only with unrelated work; do not implement or expose UI that depends on the pending setup until the host tool returns success.",
       };
     }
     const delay = Number(result.wait.pollDelayMs) > 0 ? Number(result.wait.pollDelayMs) : 2500;
@@ -346,7 +346,7 @@ function buildCustomTools(customTools, oauthProviderIds) {
         "On success it returns the exact convex/auth.ts import + providers-array line and the sign-in button to add — then run convex_deploy. " +
         "Outcomes: 'dismissed' means the user explicitly closed the modal — do NOT retry, and do not treat it as failure to configure later. " +
         "A 'still pending' result means the user simply hasn't finished YET — the modal stays open, you'll get a system note when they submit; " +
-        "NEVER report a still-pending modal as dismissed or declined.",
+        "NEVER report a still-pending modal as dismissed or declined. Until success is returned, do NOT edit convex/auth.ts or add/expose the provider sign-in button.",
         {
           provider: z
             .enum(oauthIds)

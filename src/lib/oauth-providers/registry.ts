@@ -25,6 +25,17 @@ export interface OAuthProviderField {
   required?: boolean;
   /** For file inputs — the accept attribute (e.g. ".p8"). */
   accept?: string;
+  /** Lightweight client/server validation for text credentials. */
+  validation?: {
+    pattern: string;
+    message: string;
+    maxLength?: number;
+  };
+}
+
+export interface OAuthConsoleLink {
+  label: string;
+  url: string;
 }
 
 export interface OAuthAudienceOption {
@@ -47,6 +58,10 @@ export interface OAuthProviderDef {
   consoleUrl: string;
   /** One-liner: where in the console to create credentials. */
   setupHint: string;
+  /** Optional provider-specific checklist shown instead of setupHint alone. */
+  setupSteps?: string[];
+  /** Optional separate destinations when setup spans multiple console areas. */
+  consoleLinks?: OAuthConsoleLink[];
   /** Fields the credential modal collects. */
   fields: OAuthProviderField[];
   /** Optional audience selector (Microsoft Entra). */
@@ -153,20 +168,82 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderDef> = {
     displayName: "Apple",
     blurb: "Enable “Sign in with Apple”.",
     consoleName: "Apple Developer",
-    consoleUrl: "https://developer.apple.com/account/resources/authkeys/list",
+    consoleUrl: "https://developer.apple.com/account/resources/identifiers/list/serviceId",
     setupHint:
-      "Certificates, Identifiers & Profiles → create a Services ID (your client_id) and a Key with “Sign in with Apple” enabled, then download its .p8.",
+      "Apple requires an App ID, a Services ID, and a private key for web sign-in.",
+    setupSteps: [
+      "Enable Sign in with Apple on a primary App ID (create one first if the project does not have one).",
+      "Create a Services ID, enable Sign in with Apple, associate it with that primary App ID, and configure the domain and return URL shown below.",
+      "Create a Key with Sign in with Apple enabled, associate it with the same primary App ID, and download the .p8 file. Apple lets you download it only once.",
+    ],
+    consoleLinks: [
+      {
+        label: "Open App IDs",
+        url: "https://developer.apple.com/account/resources/identifiers/list/bundleId",
+      },
+      {
+        label: "Open Services IDs",
+        url: "https://developer.apple.com/account/resources/identifiers/list/serviceId",
+      },
+      {
+        label: "Open Keys",
+        url: "https://developer.apple.com/account/resources/authkeys/list",
+      },
+    ],
     fields: [
-      { key: "servicesId", label: "Services ID", type: "text", required: true, placeholder: "com.yourapp.web" },
-      { key: "teamId", label: "Team ID", type: "text", required: true, placeholder: "ABCDE12345" },
-      { key: "keyId", label: "Key ID", type: "text", required: true, placeholder: "XYZ1234567" },
-      { key: "privateKeyP8", label: "Sign in with Apple key (.p8)", type: "file", required: true, accept: ".p8", help: "The AuthKey_XXXXXXXXXX.p8 you downloaded when creating the key." },
+      {
+        key: "servicesId",
+        label: "Services ID",
+        type: "text",
+        required: true,
+        placeholder: "com.yourapp.web",
+        help: "Use the Identifier from Apple’s Services IDs page, not an App ID or bundle ID.",
+        validation: {
+          pattern: "[A-Za-z0-9][A-Za-z0-9.-]*",
+          message: "Enter a valid Apple Services ID (for example, com.yourapp.web).",
+          maxLength: 255,
+        },
+      },
+      {
+        key: "teamId",
+        label: "Team ID",
+        type: "text",
+        required: true,
+        placeholder: "ABCDE12345",
+        help: "The 10-character Team ID shown in your Apple Developer membership details and account header.",
+        validation: {
+          pattern: "[A-Z0-9]{10}",
+          message: "Team ID must be 10 uppercase letters or numbers.",
+          maxLength: 10,
+        },
+      },
+      {
+        key: "keyId",
+        label: "Key ID",
+        type: "text",
+        required: true,
+        placeholder: "XYZ1234567",
+        help: "The 10-character identifier shown for the Sign in with Apple key you created.",
+        validation: {
+          pattern: "[A-Z0-9]{10}",
+          message: "Key ID must be 10 uppercase letters or numbers.",
+          maxLength: 10,
+        },
+      },
+      {
+        key: "privateKeyP8",
+        label: "Sign in with Apple key (.p8)",
+        type: "file",
+        required: true,
+        accept: ".p8",
+        help: "Upload the AuthKey_XXXXXXXXXX.p8 file. Botflow encrypts it at rest, never exposes it to the generated app or agent, and uses it only to rotate Apple’s client secret.",
+      },
     ],
     envVars: ["AUTH_APPLE_ID", "AUTH_APPLE_SECRET"],
     caveats: [
       "Apple sends the user's name and email only on the FIRST sign-in — persist them then.",
       "Sign in with Apple cannot be tested on localhost; use a deployed preview (public HTTPS).",
-      "Botflow signs the client secret from your .p8 and auto-rotates it before Apple's 6-month expiry.",
+      "Botflow signs the client secret from your encrypted .p8 and auto-rotates it before Apple's 6-month expiry.",
     ],
     persists: true,
     authImport: { symbol: "Apple", from: "@auth/core/providers/apple", default: true },

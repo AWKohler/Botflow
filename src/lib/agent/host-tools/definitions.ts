@@ -88,7 +88,7 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       "On success it returns the exact convex/auth.ts import + providers-array line and the sign-in button to add — then run convex_deploy. " +
       "Outcomes: 'dismissed' means the user explicitly closed the modal — do NOT retry, and do not treat it as failure to configure later. " +
       "A 'still pending' result means the user simply hasn't finished YET — the modal stays open, you'll get a system note when they submit; " +
-      "NEVER report a still-pending modal as dismissed or declined.",
+      "NEVER report a still-pending modal as dismissed or declined. Until success is returned, do NOT edit convex/auth.ts or add/expose the provider sign-in button.",
     inputSchema: {
       type: "object",
       properties: {

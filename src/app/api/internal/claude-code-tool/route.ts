@@ -1146,7 +1146,9 @@ export async function POST(req: Request) {
         return NextResponse.json({
           ok: false,
           status: "still-pending",
-          content: stillPendingGiveUpMessage(`${name} OAuth credentials`),
+          content:
+            stillPendingGiveUpMessage(`${name} OAuth credentials`) +
+            " You may continue unrelated work, but do NOT edit convex/auth.ts, add or expose this provider's sign-in button, or claim the provider is configured until the credentials are saved successfully.",
         });
       }
       return NextResponse.json({

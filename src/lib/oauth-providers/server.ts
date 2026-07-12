@@ -73,8 +73,20 @@ export function buildOAuthEnvVars(
   provider: string,
   fields: Record<string, string>,
 ): OAuthApplyResult {
-  if (!getOAuthProvider(provider)) {
+  const def = getOAuthProvider(provider);
+  if (!def) {
     throw new Error(`Unknown OAuth provider: ${provider}`);
+  }
+
+  req(fields, def.fields.filter((field) => field.required).map((field) => field.key));
+  for (const field of def.fields) {
+    const value = fields[field.key]?.trim();
+    if (!value || !field.validation) continue;
+    if (field.validation.maxLength && value.length > field.validation.maxLength) {
+      throw new Error(field.validation.message);
+    }
+    const pattern = new RegExp(`^(?:${field.validation.pattern})$`);
+    if (!pattern.test(value)) throw new Error(field.validation.message);
   }
 
   switch (provider) {
@@ -113,12 +125,18 @@ export function buildOAuthEnvVars(
     }
 
     case "apple": {
-      req(fields, ["servicesId", "teamId", "keyId", "privateKeyP8"]);
+      const p8 = fields.privateKeyP8.trim();
+      if (
+        !p8.includes("-----BEGIN PRIVATE KEY-----") ||
+        !p8.includes("-----END PRIVATE KEY-----")
+      ) {
+        throw new Error("The uploaded file is not a valid Apple .p8 private key.");
+      }
       const { secret, expiresAt } = signAppleClientSecret({
         teamId: fields.teamId.trim(),
         keyId: fields.keyId.trim(),
         servicesId: fields.servicesId.trim(),
-        p8: fields.privateKeyP8,
+        p8,
       });
       return {
         env: {
@@ -129,7 +147,7 @@ export function buildOAuthEnvVars(
           appleTeamId: fields.teamId.trim(),
           appleKeyId: fields.keyId.trim(),
           appleServicesId: fields.servicesId.trim(),
-          applePrivateKeyP8: fields.privateKeyP8,
+          applePrivateKeyP8: p8,
           secretExpiresAt: expiresAt,
         },
       };
