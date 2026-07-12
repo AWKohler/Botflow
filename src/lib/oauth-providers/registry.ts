@@ -247,7 +247,17 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderDef> = {
     ],
     persists: true,
     authImport: { symbol: "Apple", from: "@auth/core/providers/apple", default: true },
-    providerExpr: "Apple",
+    // Auth.js 0.41.x maps Apple's missing avatar to `image: null`, while
+    // Convex Auth's users table accepts only string | undefined. Override the
+    // profile mapper so the absent image is omitted instead of written as null.
+    providerExpr: `Apple({
+        profile(profile) {
+          const name = profile.user
+            ? [profile.user.name.firstName, profile.user.name.lastName].filter(Boolean).join(" ")
+            : profile.email;
+          return { id: profile.sub, name, email: profile.email };
+        },
+      })`,
   },
 };
 
