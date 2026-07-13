@@ -4,6 +4,7 @@ import { projects, chatImages, projectAssets } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { requireProjectAccess, sanitizeProjectForRole } from '@/lib/project-access';
+import { getUserTier } from '@/lib/tier';
 import { deleteConvexBackend } from '@/lib/convex-platform';
 import { isModelDisabled, modelDisabledReason } from '@/lib/agent/models';
 import { UTApi } from 'uploadthing/server';
@@ -18,7 +19,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const access = await requireProjectAccess(resolvedParams.id, userId);
     if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     // Editors never receive secret-bearing fields (deploy keys, webhook secrets).
-    return NextResponse.json(sanitizeProjectForRole(access.project, access.role));
+    const body: Record<string, unknown> = {
+      ...sanitizeProjectForRole(access.project, access.role),
+      viewerRole: access.role,
+    };
+    // When the owner shares credits, editors inherit the OWNER's model-tier
+    // access (sharing decision 2026-07-06) — the client model selector reads
+    // this; the agent route re-derives it server-side and never trusts it.
+    if (access.role === 'editor' && access.project.shareOwnerCredits) {
+      body.sharedTier = await getUserTier(access.project.userId);
+    }
+    return NextResponse.json(body);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: 'Failed to fetch project' }, { status: 500 });

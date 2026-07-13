@@ -447,12 +447,31 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     sevenDay: number | null;
   } | null>(null);
 
+  // Sharing: when the owner shares credits, this project's model access
+  // follows the OWNER's tier — the server sends sharedTier on the project GET
+  // and re-derives it authoritatively per turn. Wins over the personal tier.
+  const sharedTierRef = useRef<'pro' | 'max' | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/projects/${encodeURIComponent(projectId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p: { sharedTier?: string } | null) => {
+        if (cancelled) return;
+        if (p?.sharedTier === 'pro' || p?.sharedTier === 'max') {
+          sharedTierRef.current = p.sharedTier;
+          setUserTier(p.sharedTier);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [projectId]);
+
   const fetchCredits = useCallback(() => {
     fetch('/api/usage/credits')
       .then(r => r.ok ? r.json() : null)
       .then((d: { pct?: number; tier?: string } | null) => {
         if (d?.pct !== undefined) setCreditPct(d.pct);
-        if (d?.tier === 'pro' || d?.tier === 'max') setUserTier(d.tier as 'pro' | 'max');
+        if (!sharedTierRef.current && (d?.tier === 'pro' || d?.tier === 'max')) setUserTier(d.tier as 'pro' | 'max');
       })
       .catch(() => {});
   }, []);

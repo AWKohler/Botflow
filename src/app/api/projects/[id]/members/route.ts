@@ -60,6 +60,7 @@ export async function GET(
   return NextResponse.json({
     role: access.role,
     editorsCanPush: access.project.editorsCanPush,
+    shareOwnerCredits: access.project.shareOwnerCredits,
     shareOwnerOauth: access.project.shareOwnerOauth,
     members: live.map((m) => ({
       id: m.id,

@@ -32,20 +32,36 @@ export async function PATCH(
 
   const body = (await req.json().catch(() => null)) as {
     editorsCanPush?: boolean;
+    shareOwnerCredits?: boolean;
     shareOwnerOauth?: boolean;
   } | null;
   if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
 
-  const updates: Partial<{ editorsCanPush: boolean; shareOwnerOauth: boolean; updatedAt: Date }> = {};
+  const updates: Partial<{
+    editorsCanPush: boolean;
+    shareOwnerCredits: boolean;
+    shareOwnerOauth: boolean;
+    updatedAt: Date;
+  }> = {};
   if (typeof body.editorsCanPush === "boolean") updates.editorsCanPush = body.editorsCanPush;
+  if (typeof body.shareOwnerCredits === "boolean") {
+    updates.shareOwnerCredits = body.shareOwnerCredits;
+    // The OAuth/BYOK switch is nested under owner-credits: turning the
+    // parent off always turns the child off too.
+    if (!body.shareOwnerCredits) updates.shareOwnerOauth = false;
+  }
   if (typeof body.shareOwnerOauth === "boolean") {
-    if (process.env.SHARING_ALLOW_OWNER_OAUTH !== "true") {
+    const parentOn = updates.shareOwnerCredits ?? access.project.shareOwnerCredits;
+    if (body.shareOwnerOauth && !parentOn) {
       return NextResponse.json(
-        { error: "Owner-subscription sharing is not enabled on this deployment." },
+        { error: "Enable credit sharing first — subscription/key sharing rides on it." },
         { status: 400 },
       );
     }
-    updates.shareOwnerOauth = body.shareOwnerOauth;
+    // Stored freely; ACTUAL owner-credential use is enforced at credential
+    // resolution time, where the SHARING_ALLOW_OWNER_OAUTH platform kill
+    // switch can still veto it (TOS escape hatch, plan §5.1).
+    if (updates.shareOwnerOauth === undefined) updates.shareOwnerOauth = body.shareOwnerOauth;
   }
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
@@ -58,6 +74,7 @@ export async function PATCH(
   return NextResponse.json({
     ok: true,
     editorsCanPush: updates.editorsCanPush ?? access.project.editorsCanPush,
+    shareOwnerCredits: updates.shareOwnerCredits ?? access.project.shareOwnerCredits,
     shareOwnerOauth: updates.shareOwnerOauth ?? access.project.shareOwnerOauth,
   });
 }

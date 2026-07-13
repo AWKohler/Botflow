@@ -521,6 +521,10 @@ export async function POST(req: Request) {
     // Determine selected model for project and ensure ownership
     let selectedModel: ModelId = "fireworks-kimi-k2p7";
     // Default to true so non-project agent requests still get the full toolset.
+    // Whose plan funds tier access + credits on the platform-metered path.
+    // Defaults to the actor; becomes the OWNER for editors on projects with
+    // shareOwnerCredits (sharing decision 2026-07-06).
+    let creditsUserId = userId;
     let hasBackend = true;
     let convexUrl: string | undefined;
     let githubLink: {
@@ -538,6 +542,9 @@ export async function POST(req: Request) {
         });
       }
       const proj = access.project;
+      if (access.role === "editor" && proj.shareOwnerCredits) {
+        creditsUserId = proj.userId;
+      }
       // Swift's runtime is beta-only. Gate on the STORED platform so a non-beta
       // owner of a legacy swift project can't drive the native agent's sandbox
       // tools against the swift sandbox.
@@ -689,7 +696,7 @@ export async function POST(req: Request) {
       creditReconciled = true;
       const delta = actualCredits - weeklyReserved;
       if (delta !== 0) {
-        await adjustWeeklyCredits(userId, delta).catch((err) => {
+        await adjustWeeklyCredits(creditsUserId, delta).catch((err) => {
           console.error("[agent] weekly_credit_reconcile_failed", err);
         });
       }
@@ -706,7 +713,7 @@ export async function POST(req: Request) {
     // requires first clearing the weekly reservation, so weekly is the binding
     // burst limiter.
     if (isServerKeyModel(selectedModel) && !isUsingPersonalCredentials) {
-      const tier = await getUserTier(userId);
+      const tier = await getUserTier(creditsUserId);
       const requiredTier = MODEL_TIER_REQUIREMENT[selectedModel] ?? 'free';
 
       // Check if user's tier supports this model on server keys
@@ -722,7 +729,7 @@ export async function POST(req: Request) {
 
       // Monthly credit limit (eventually-consistent aggregate from Neon)
       const monthlyLimit = getMonthlyLimit(tier);
-      const monthlyUsed = await getMonthlyCredits(userId);
+      const monthlyUsed = await getMonthlyCredits(creditsUserId);
       if (monthlyUsed >= monthlyLimit) {
         return limitReachedResponse({
           limitType: 'monthly_credits',
@@ -742,10 +749,10 @@ export async function POST(req: Request) {
         cachedReadTokens: 0,
         cacheWriteTokens: 0,
       });
-      const reserved = await reserveWeeklyCredits(userId, weeklyReserved, weeklyLimit);
+      const reserved = await reserveWeeklyCredits(creditsUserId, weeklyReserved, weeklyLimit);
       if (!reserved) {
         weeklyReserved = 0; // reservation was rolled back inside the helper
-        const weeklyUsed = await getWeeklyCredits(userId);
+        const weeklyUsed = await getWeeklyCredits(creditsUserId);
         return limitReachedResponse({
           limitType: 'weekly_credits',
           current: weeklyUsed,
@@ -885,7 +892,7 @@ export async function POST(req: Request) {
             cacheWriteTokens: cachedWrite,
           });
           // Record usage to Neon (monthly aggregate + audit trail).
-          await recordTokenUsage(userId, selectedModel, tokensIn, tokensOut, actualCredits, cachedRead, cachedWrite).catch(() => {});
+          await recordTokenUsage(creditsUserId, selectedModel, tokensIn, tokensOut, actualCredits, cachedRead, cachedWrite).catch(() => {});
         }
         // Reconcile the atomic weekly reservation down to the real cost (or
         // release it entirely if no usage was reported). Always runs for

@@ -77,6 +77,10 @@ export const projects = pgTable('projects', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   // ─── Sharing switches (share sheet, owner-set; plan §7) ───────────────────
+  /** Collaborators' platform-metered turns bill the OWNER's credits, and
+   *  model-tier access follows the OWNER's tier. Off → collaborators use
+   *  their own credits + tier (sharing decision 2026-07-06). */
+  shareOwnerCredits: boolean('share_owner_credits').notNull().default(false),
   /** Editors may git commit/push via the project's linked GitHub repo. */
   editorsCanPush: boolean('editors_can_push').notNull().default(false),
   /** Collaborators' OAuth-model turns may resolve to the OWNER's Claude/Codex

@@ -112,6 +112,10 @@ export function SandboxedWebWorkspace({
   // ── UI state ─────────────────────────────────────────────────────────
   const [showSidebar, setShowSidebar] = useState(true);
   const [sidebarTab, setSidebarTab] = useState<"files" | "search" | "env" | "git">("files");
+  // Sharing: editors only see the Git tab when the owner enabled the
+  // share-sheet push switch. Server routes enforce regardless; this applies
+  // client-side on the next load/refresh (sharing decision 2026-07-06).
+  const [gitTabAllowed, setGitTabAllowed] = useState(true);
 
   // GitHub link state (lives on `projects`; mirrored locally for the panel)
   const [githubRepoOwner, setGithubRepoOwner] = useState<string | null>(null);
@@ -212,6 +216,9 @@ export function SandboxedWebWorkspace({
           setBackendType(normalizeBackendType(proj.backendType));
         }
         if (proj?.authConfigured === true) setHasAuth(true);
+        if (proj?.viewerRole === "editor" && proj?.editorsCanPush !== true) {
+          setGitTabAllowed(false);
+        }
         if (typeof proj?.githubRepoOwner === "string") setGithubRepoOwner(proj.githubRepoOwner);
         if (typeof proj?.githubRepoName === "string") setGithubRepoName(proj.githubRepoName);
         if (typeof proj?.githubDefaultBranch === "string") setGithubDefaultBranch(proj.githubDefaultBranch);
@@ -407,6 +414,10 @@ export function SandboxedWebWorkspace({
     },
     [projectId, files, toast, imageBlobUrl],
   );
+
+  useEffect(() => {
+    if (!gitTabAllowed && sidebarTab === "git") setSidebarTab("files");
+  }, [gitTabAllowed, sidebarTab]);
 
   const handleContentChange = useCallback((next: string) => {
     setFileContent(next);
@@ -1336,7 +1347,7 @@ export function SandboxedWebWorkspace({
                           { value: "files", text: "Files" },
                           { value: "search", text: "Search" },
                           { value: "env", text: "ENV" },
-                          { value: "git", text: "Git" },
+                          ...(gitTabAllowed ? [{ value: "git", text: "Git" }] : []),
                         ] as TabOption<"files" | "search" | "env" | "git">[]
                       }
                       selected={sidebarTab}

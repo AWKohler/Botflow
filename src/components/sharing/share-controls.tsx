@@ -49,6 +49,7 @@ interface Member {
 interface SharingState {
   role: "owner" | "editor";
   editorsCanPush: boolean;
+  shareOwnerCredits: boolean;
   shareOwnerOauth: boolean;
   members: Member[];
 }
@@ -294,8 +295,6 @@ function SharePopover({
   const [position, setPosition] = useState<AnchoredPosition | null>(null);
 
   const isOwner = state?.role === "owner";
-  // Visibility only — the server re-checks SHARING_ALLOW_OWNER_OAUTH.
-  const ownerOauthAvailable = process.env.NEXT_PUBLIC_SHARING_ALLOW_OWNER_OAUTH === "true";
 
   useEffect(() => {
     setPosition(positionFrom(anchorRef.current));
@@ -342,7 +341,11 @@ function SharePopover({
     }
   };
 
-  const patchSettings = async (patch: { editorsCanPush?: boolean; shareOwnerOauth?: boolean }) => {
+  const patchSettings = async (patch: {
+    editorsCanPush?: boolean;
+    shareOwnerCredits?: boolean;
+    shareOwnerOauth?: boolean;
+  }) => {
     // Optimistic; revert on failure.
     setState((s) => (s ? { ...s, ...patch } : s));
     const res = await fetch(`/api/projects/${projectId}/sharing-settings`, {
@@ -458,12 +461,20 @@ function SharePopover({
               label="Editors can push to GitHub"
               hint="Commits and pushes go to your linked repository, attributed to the editor."
             />
-            {ownerOauthAvailable && (
+            <Toggle
+              checked={state.shareOwnerCredits}
+              onChange={(v) =>
+                void patchSettings({ shareOwnerCredits: v, ...(v ? {} : { shareOwnerOauth: false }) })
+              }
+              label="Collaborators use my credits"
+              hint="Their agent turns bill your plan's credits, and they get access to your tier's models."
+            />
+            {state.shareOwnerCredits && (
               <Toggle
                 checked={state.shareOwnerOauth}
                 onChange={(v) => void patchSettings({ shareOwnerOauth: v })}
-                label="Collaborators may use my Claude/Codex subscription"
-                hint="Off: collaborators connect their own accounts for OAuth models."
+                label="Share my Claude/Codex & API-key usage"
+                hint="Their turns can run through your connected accounts via Botflow's proxy — they never see the keys."
               />
             )}
           </div>
