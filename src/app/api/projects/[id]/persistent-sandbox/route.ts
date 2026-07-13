@@ -5,7 +5,7 @@ import {
   getSandboxName,
   runPersistentSandboxSmokeTest,
 } from "@/lib/vercel-sandbox";
-import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { swiftProjectForbidden } from "@/lib/swift-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,7 +35,7 @@ export async function POST(
       );
     }
     // Swift's runtime is beta-only; deny non-beta owners of legacy swift projects.
-    if (await swiftRuntimeForbidden(project.platform, userId)) {
+    if (await swiftProjectForbidden(project)) {
       return NextResponse.json(
         { error: "Swift projects are currently in private beta." },
         { status: 403 },

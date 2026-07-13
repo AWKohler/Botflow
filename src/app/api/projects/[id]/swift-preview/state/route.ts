@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireProjectAccess } from "@/lib/project-access";
-import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { canUseSwift, swiftProjectForbidden } from "@/lib/swift-access";
 import {
   clearSimulatorDesired,
   getSimulatorDesired,
@@ -43,13 +43,23 @@ async function loadAuthorizedProject(projectId: string) {
     return { error: NextResponse.json({ error: "Not found" }, { status: 404 }) };
   }
   const { project } = access;
-  if (await swiftRuntimeForbidden(project.platform, userId)) {
+  if (await swiftProjectForbidden(project)) {
     return {
       error: NextResponse.json(
         { error: "Swift projects are currently in private beta." },
         { status: 403 },
       ),
     };
+  }
+
+  // Simulator streaming is a per-ACTOR entitlement even on shared projects:
+  // editors need their own Pro/Max plan to use the sim; device builds stay
+  // open to free editors (sharing decision 2026-07-06).
+  if (access.role !== "owner" && !(await canUseSwift(userId))) {
+    return NextResponse.json(
+      { error: "The iOS simulator requires a Pro or Max plan. You can still build to your own device." },
+      { status: 403 },
+    );
   }
   return { project };
 }

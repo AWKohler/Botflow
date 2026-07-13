@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { getDeviceBuild } from "@/lib/sim-platform";
-import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { swiftProjectForbidden } from "@/lib/swift-access";
 import {
   ownsSwiftDeviceBuild,
   swiftDeviceBuildDownloadToken,
@@ -33,7 +33,7 @@ export async function GET(
       { status: 400 },
     );
   }
-  if (await swiftRuntimeForbidden(project.platform, userId)) {
+  if (await swiftProjectForbidden(project)) {
     return NextResponse.json(
       { error: "Swift projects are currently in private beta." },
       { status: 403 },

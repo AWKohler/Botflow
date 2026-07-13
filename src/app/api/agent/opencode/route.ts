@@ -29,7 +29,7 @@ import { getFreshCodexAccessToken } from "@/lib/codex-oauth";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
 import { resolveModelId, MODEL_CONFIGS } from "@/lib/agent/models";
 import { isSandboxPlatform } from "@/lib/project-platform";
-import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { swiftProjectForbidden } from "@/lib/swift-access";
 import { getUserTier } from "@/lib/tier";
 import {
   getMonthlyCredits,
@@ -154,7 +154,7 @@ export async function POST(req: Request) {
   const { project } = access;
   // Swift's runtime is beta-only — gate on the STORED platform (see the CC
   // route's rationale: this also protects the tool-token mint below).
-  if (await swiftRuntimeForbidden(project.platform, userId)) {
+  if (await swiftProjectForbidden(project)) {
     return jsonError(403, "Swift projects are currently in private beta.");
   }
 

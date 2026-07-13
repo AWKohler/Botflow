@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { sandboxReadFile, sandboxWriteFile } from "@/lib/vercel-sandbox";
-import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { swiftProjectForbidden } from "@/lib/swift-access";
 import {
   setClassNameAtLoc,
   parseLoc,
@@ -20,7 +20,7 @@ async function getAuthorizedProject(projectId: string, userId: string) {
   if (project.platform !== "swift" && project.platform !== "sandboxed-web") {
     return null;
   }
-  if (await swiftRuntimeForbidden(project.platform, userId)) return null;
+  if (await swiftProjectForbidden(project)) return null;
   return project;
 }
 

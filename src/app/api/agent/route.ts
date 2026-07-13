@@ -11,7 +11,7 @@ import { auth } from "@clerk/nextjs/server";
 
 import { SYSTEM_PROMPT_MOBILE, SYSTEM_PROMPT_MULTIPLATFORM, buildSwiftSystemPrompt, buildSandboxedWebSystemPrompt, buildWebSystemPrompt } from "@/lib/agent/prompts";
 import { isSandboxPlatform } from "@/lib/project-platform";
-import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { swiftProjectForbidden } from "@/lib/swift-access";
 import { getPersistentTools } from "@/lib/agent/persistent-tools";
 import { getSandboxedWebTools } from "@/lib/agent/sandboxed-web-tools";
 import { MODEL_CONFIGS, resolveModelId, isModelDisabled, modelDisabledReason, type ModelId } from "@/lib/agent/models";
@@ -550,7 +550,7 @@ export async function POST(req: Request) {
           headers: { "Content-Type": "application/json" },
         });
       }
-      if (await swiftRuntimeForbidden(proj.platform, userId)) {
+      if (await swiftProjectForbidden(proj)) {
         return new Response(
           JSON.stringify({ error: "Swift projects are currently in private beta." }),
           { status: 403, headers: { "Content-Type": "application/json" } },
