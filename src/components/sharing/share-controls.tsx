@@ -49,6 +49,7 @@ interface Member {
 interface SharingState {
   role: "owner" | "editor";
   editorsCanPush: boolean;
+  editorsManageBackend: boolean;
   shareOwnerCredits: boolean;
   shareOwnerOauth: boolean;
   members: Member[];
@@ -343,6 +344,7 @@ function SharePopover({
 
   const patchSettings = async (patch: {
     editorsCanPush?: boolean;
+    editorsManageBackend?: boolean;
     shareOwnerCredits?: boolean;
     shareOwnerOauth?: boolean;
   }) => {
@@ -460,6 +462,12 @@ function SharePopover({
               onChange={(v) => void patchSettings({ editorsCanPush: v })}
               label="Editors can push to GitHub"
               hint="Commits and pushes go to your linked repository, attributed to the editor."
+            />
+            <Toggle
+              checked={state.editorsManageBackend}
+              onChange={(v) => void patchSettings({ editorsManageBackend: v })}
+              label="Editors can manage the backend"
+              hint="Lets editors open the database dashboard and edit backend env vars (which include deployment secrets)."
             />
             <Toggle
               checked={state.shareOwnerCredits}

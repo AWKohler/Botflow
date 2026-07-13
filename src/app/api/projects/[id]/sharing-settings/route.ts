@@ -32,6 +32,7 @@ export async function PATCH(
 
   const body = (await req.json().catch(() => null)) as {
     editorsCanPush?: boolean;
+    editorsManageBackend?: boolean;
     shareOwnerCredits?: boolean;
     shareOwnerOauth?: boolean;
   } | null;
@@ -39,11 +40,13 @@ export async function PATCH(
 
   const updates: Partial<{
     editorsCanPush: boolean;
+    editorsManageBackend: boolean;
     shareOwnerCredits: boolean;
     shareOwnerOauth: boolean;
     updatedAt: Date;
   }> = {};
   if (typeof body.editorsCanPush === "boolean") updates.editorsCanPush = body.editorsCanPush;
+  if (typeof body.editorsManageBackend === "boolean") updates.editorsManageBackend = body.editorsManageBackend;
   if (typeof body.shareOwnerCredits === "boolean") {
     updates.shareOwnerCredits = body.shareOwnerCredits;
     // The OAuth/BYOK switch is nested under owner-credits: turning the
@@ -74,6 +77,7 @@ export async function PATCH(
   return NextResponse.json({
     ok: true,
     editorsCanPush: updates.editorsCanPush ?? access.project.editorsCanPush,
+    editorsManageBackend: updates.editorsManageBackend ?? access.project.editorsManageBackend,
     shareOwnerCredits: updates.shareOwnerCredits ?? access.project.shareOwnerCredits,
     shareOwnerOauth: updates.shareOwnerOauth ?? access.project.shareOwnerOauth,
   });

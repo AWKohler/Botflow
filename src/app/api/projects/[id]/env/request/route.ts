@@ -33,6 +33,15 @@ async function loadOwnedProject(projectId: string, userId: string) {
   return access?.project ?? null;
 }
 
+/** Backend (server-target) env writes touch the Convex deployment secrets, so
+ *  they follow the same gate as env/backend: owner always, editors only when
+ *  the owner enabled "editors manage backend" (Codex review 2026-07-06). */
+async function canWriteBackendEnv(projectId: string, userId: string): Promise<boolean> {
+  const access = await requireProjectAccess(projectId, userId);
+  if (!access) return false;
+  return access.role === "owner" || access.project.editorsManageBackend;
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -138,6 +147,20 @@ export async function POST(
       .limit(1);
     if (!request) {
       return NextResponse.json({ ok: false, error: "Request not found." }, { status: 404 });
+    }
+
+    // Completing a server-target request writes a Convex deployment secret —
+    // block editors unless the owner opted them into backend management.
+    // Dismissal is always allowed (it only clears the modal). The write path
+    // is the security-critical chokepoint, so gating here covers every way a
+    // request could have been created (agent tools, either backend).
+    if (request.target === "server" && !body.dismissed) {
+      if (!(await canWriteBackendEnv(projectId, userId))) {
+        return NextResponse.json(
+          { ok: false, error: "Only the owner can set backend environment variables for this project." },
+          { status: 403 },
+        );
+      }
     }
 
     if (body.dismissed) {

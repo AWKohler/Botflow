@@ -81,6 +81,10 @@ export const projects = pgTable('projects', {
    *  model-tier access follows the OWNER's tier. Off → collaborators use
    *  their own credits + tier (sharing decision 2026-07-06). */
   shareOwnerCredits: boolean('share_owner_credits').notNull().default(false),
+  /** Editors may open the Convex database dashboard and read/write backend
+   *  (deployment) env vars — off by default because these expose the Convex
+   *  admin/deploy key + deployment secrets (sharing decision 2026-07-06). */
+  editorsManageBackend: boolean('editors_manage_backend').notNull().default(false),
   /** Editors may git commit/push via the project's linked GitHub repo. */
   editorsCanPush: boolean('editors_can_push').notNull().default(false),
   /** Collaborators' OAuth-model turns may resolve to the OWNER's Claude/Codex
