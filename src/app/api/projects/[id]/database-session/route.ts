@@ -14,7 +14,10 @@ export async function GET(
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const access = await requireProjectAccess(id, userId);
+  // Owner-only: this response carries the Convex admin/deploy key. Editors
+  // work on the app but never receive account/deployment secrets (plan §3.3
+  // role matrix; Codex review 2026-07-06).
+  const access = await requireProjectAccess(id, userId, 'owner');
 
   if (!access) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });

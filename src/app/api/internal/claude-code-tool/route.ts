@@ -126,6 +126,36 @@ export async function POST(req: Request) {
   }
   const { project } = access;
 
+  // ── Role gate (sharing; Codex review 2026-07-06) ─────────────────────────
+  // Editors drive their own agent, but the agent's server-side tools must
+  // respect the same boundaries as the HTTP routes: integration-connect tools
+  // are owner-only, and repo-writing git tools require the owner's push
+  // switch. Read-only git (status/diff), convex, dev-server, sim, and
+  // build/env tools stay available to editors.
+  if (access.role !== "owner") {
+    const OWNER_ONLY_TOOLS = new Set(["initialize_stripe_payments", "setup_oauth_provider"]);
+    const PUSH_TOOLS = new Set([
+      "git_commit",
+      "git_push",
+      "git_pull",
+      "git_resolve_conflict",
+      "git_abort_merge",
+      "open_pull_request",
+    ]);
+    if (OWNER_ONLY_TOOLS.has(tool)) {
+      return NextResponse.json({
+        ok: false,
+        content: "Only the project owner can configure integrations for this project.",
+      });
+    }
+    if (PUSH_TOOLS.has(tool) && !project.editorsCanPush) {
+      return NextResponse.json({
+        ok: false,
+        content: "The project owner hasn't enabled Git push for editors.",
+      });
+    }
+  }
+
   // ── Dispatch ─────────────────────────────────────────────────────────────
   switch (tool) {
     case "convex_deploy": {

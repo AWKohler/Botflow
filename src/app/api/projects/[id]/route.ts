@@ -102,7 +102,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       .set(updateData)
       .where(eq(projects.id, resolvedParams.id))
       .returning();
-    return NextResponse.json(updated);
+    // Editors never receive secret-bearing fields (same as GET).
+    return NextResponse.json(sanitizeProjectForRole(updated, access.role));
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: 'Failed to update project' }, { status: 500 });

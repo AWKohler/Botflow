@@ -566,7 +566,11 @@ export async function POST(req: Request) {
       selectedModel = resolveModelId(proj.model);
       hasBackend = proj.backendType !== "none";
       convexUrl = proj.userConvexUrl || proj.convexDeployUrl || undefined;
-      if (proj.githubRepoOwner && proj.githubRepoName) {
+      // Sharing: the agent's Git tools (commit/push/PR) mirror the HTTP git
+      // routes' gate — editors get them only when the owner enabled pushing
+      // (Codex review 2026-07-06). Owners always qualify.
+      const canUseGit = access.role === "owner" || proj.editorsCanPush;
+      if (canUseGit && proj.githubRepoOwner && proj.githubRepoName) {
         const autonomyValue = proj.gitAutonomy;
         const autonomy: "autonomous" | "manual" | "ask-each-time" | null =
           autonomyValue === "autonomous"

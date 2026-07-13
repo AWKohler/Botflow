@@ -56,10 +56,12 @@ async function loadAuthorizedProject(projectId: string) {
   // editors need their own Pro/Max plan to use the sim; device builds stay
   // open to free editors (sharing decision 2026-07-06).
   if (access.role !== "owner" && !(await canUseSwift(userId))) {
-    return NextResponse.json(
-      { error: "The iOS simulator requires a Pro or Max plan. You can still build to your own device." },
-      { status: 403 },
-    );
+    return {
+      error: NextResponse.json(
+        { error: "The iOS simulator requires a Pro or Max plan. You can still build to your own device." },
+        { status: 403 },
+      ),
+    };
   }
   return { project };
 }

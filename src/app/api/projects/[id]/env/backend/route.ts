@@ -17,7 +17,9 @@ export const dynamic = 'force-dynamic';
  */
 
 async function loadOwnedProject(projectId: string, userId: string) {
-  const access = await requireProjectAccess(projectId, userId);
+  // Owner-only: backend (Convex deployment) env vars are secret VALUES that
+  // editors must never read or mutate (plan §3.3; Codex review 2026-07-06).
+  const access = await requireProjectAccess(projectId, userId, "owner");
   return access?.project ?? null;
 }
 

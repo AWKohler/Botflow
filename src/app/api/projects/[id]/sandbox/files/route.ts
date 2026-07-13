@@ -111,12 +111,18 @@ export async function PUT(
       // window shrinks from minutes to ms, and version history restores the
       // loser — plan §6.1/§6.5).
       const current = await sandboxReadFile(project.id, filePath);
-      if (current && !current.binary && sha256Hex(current.content) !== baseHash) {
+      // A now-missing (deleted/renamed) file is itself a conflict when the
+      // caller edited from a known base — don't silently resurrect it.
+      const currentHash =
+        current && !current.binary ? sha256Hex(current.content) : null;
+      if (currentHash !== baseHash) {
         return NextResponse.json(
           {
             error: "conflict",
-            message: "This file changed since you opened it.",
-            currentHash: sha256Hex(current.content),
+            message: current
+              ? "This file changed since you opened it."
+              : "This file was deleted since you opened it.",
+            currentHash,
           },
           { status: 409 },
         );
