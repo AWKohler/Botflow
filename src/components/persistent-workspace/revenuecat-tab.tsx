@@ -161,6 +161,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
   const { toast } = useToast();
   const [data, setData] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
 
   // Wizard form fields.
@@ -197,9 +198,18 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
       const res = await fetch(`/api/projects/${projectId}/revenuecat/status`, {
         cache: "no-store",
       });
-      if (res.ok) setData((await res.json()) as StatusResponse);
+      const body = (await res.json().catch(() => null)) as StatusResponse | { error?: string } | null;
+      if (res.ok && body) {
+        setData(body as StatusResponse);
+        setLoadError(null);
+      } else {
+        setLoadError(
+          (body && "error" in body && body.error) ||
+            `Payments status could not be loaded (HTTP ${res.status}).`,
+        );
+      }
     } catch {
-      /* network blip */
+      setLoadError("Payments status could not be loaded. Check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -484,6 +494,12 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
             account below — you can leave and come back; this picks up where you left off.
           </p>
         </div>
+
+        {loadError && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-xs text-amber-500">
+            {loadError}
+          </div>
+        )}
 
         {/* Step checklist */}
         <div className="rounded-xl border border-border bg-elevated/60 p-4 space-y-2">
