@@ -45,6 +45,7 @@ export const STRIPE_CONNECT_ENABLED =
  *  requests. When false: all of those are hidden / refuse. Default off until
  *  the slice is verified end-to-end. */
 export const REVENUECAT_ENABLED =
+  process.env.REVENUECAT_ENABLED === 'true' ||
   process.env.NEXT_PUBLIC_REVENUECAT_ENABLED === 'true';
 
 /** When true: Kimi K2.7 traffic is routed to Together AI instead of Fireworks.
