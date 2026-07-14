@@ -121,7 +121,10 @@ export function PersistentWorkspace({
   // RevenueCat (iOS in-app purchases) — requires a Convex backend.
   const revenuecatStatus =
     (project?.revenuecatStatus as "none" | "connecting" | "connected" | undefined) ?? "none";
-  const revenuecatEnabled = REVENUECAT_ENABLED && hasBackend && revenuecatStatus !== "none";
+  // Keep Payments discoverable before the agent has initialized RevenueCat.
+  // The tab owns the setup wizard, so making it conditional on a prior agent
+  // tool call stranded users when that call was unavailable or interrupted.
+  const revenuecatEnabled = REVENUECAT_ENABLED && hasBackend;
 
   const refreshFiles = useCallback(async () => {
     try {
