@@ -529,7 +529,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-fg">2. Paste your keys</h3>
           <Field label="Secret key (sk_…)" value={rcSecretKey} onChange={setRcSecretKey} placeholder="sk_xxxxxxxx" mono type="password" />
-          <Field label="Public SDK key (appl_…)" value={rcPublicSdkKey} onChange={setRcPublicSdkKey} placeholder="appl_xxxxxxxx" mono />
+          <Field label="SDK key (appl_… or test_…)" value={rcPublicSdkKey} onChange={setRcPublicSdkKey} placeholder="appl_xxxxxxxx or test_xxxxxxxx" mono />
           <Field label="Project id (proj…)" value={rcProjectId} onChange={setRcProjectId} placeholder="proj1a2b3c4d" mono />
 
           <div className="flex items-center gap-2 pt-1">

@@ -89,12 +89,13 @@ export async function POST(
     );
   }
 
-  if (!rcPublicSdkKey.startsWith('appl_')) {
+  const isTestStoreKey = rcPublicSdkKey.startsWith('test_');
+  if (!rcPublicSdkKey.startsWith('appl_') && !isTestStoreKey) {
     return NextResponse.json(
       {
         ok: false,
         error:
-          'The public SDK key should start with "appl_" (the Apple app-specific key from RevenueCat → API Keys).',
+          'The SDK key should start with "appl_" for an App Store app or "test_" for RevenueCat Test Store.',
       },
       { status: 400 },
     );
@@ -151,7 +152,12 @@ export async function POST(
   const values = {
     userId,
     rcSecretKey: encryptSecret(rcSecretKey),
-    rcPublicSdkKey,
+    // A Test Store key is valid for development but must never become the
+    // production build key. Keep any prior appl_ key and store the test key in
+    // its dedicated field; release builds then remain unconfigured until the
+    // user adds a real App Store app.
+    rcPublicSdkKey: isTestStoreKey ? existing?.rcPublicSdkKey ?? null : rcPublicSdkKey,
+    ...(isTestStoreKey ? { rcTestStoreSdkKey: rcPublicSdkKey } : {}),
     rcProjectId,
     rcInboundWebhookSecret,
     rcInboundWebhookSecretDigest,

@@ -31,3 +31,10 @@ test("release Swift builds always use the production RevenueCat key", () => {
     { sdkKey: "appl_live", isTestStore: false },
   );
 });
+
+test("release Swift builds never fall back to a Test Store key", () => {
+  assert.deepEqual(
+    selectSwiftRevenueCatConfig({ productionSdkKey: null, testStoreSdkKey: "test_store" }, "release"),
+    { sdkKey: null, isTestStore: false },
+  );
+});
