@@ -31,6 +31,7 @@
               "features/convex",
               "features/auth",
               "features/payments",
+              "features/revenuecat-ios",
               "features/env-vars",
               "features/github",
               "features/deploy",
