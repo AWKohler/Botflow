@@ -428,6 +428,17 @@ function buildCustomTools(customTools, oauthProviderIds) {
     );
   }
 
+  if (customTools.includes("initialize_revenuecat_payments")) {
+    tools.push(
+      tool(
+        "initialize_revenuecat_payments",
+        "Set up RevenueCat in-app purchases for this Swift project. Call this FIRST for a paywall, subscriptions, premium features, consumables, or any iOS payment flow. It opens the Payments setup wizard when needed and returns already-connected, needs-connect, tier-blocked, or backend-blocked. Never hardcode SDK keys; Botflow writes RevenueCatConfig.swift before builds.",
+        {},
+        makeHostToolHandler("initialize_revenuecat_payments"),
+      ),
+    );
+  }
+
   if (customTools.includes("get_stripe_products")) {
     tools.push(
       tool(

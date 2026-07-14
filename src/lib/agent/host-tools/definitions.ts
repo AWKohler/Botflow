@@ -162,6 +162,15 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       "'tier-blocked' (Free; relay message); 'backend-blocked' (no Convex backend).",
     inputSchema: EMPTY_INPUT,
   },
+  initialize_revenuecat_payments: {
+    name: "initialize_revenuecat_payments",
+    description:
+      "Set up RevenueCat in-app purchases for this Swift project. Call this FIRST when the user asks for a paywall, subscriptions, premium features, consumables, or any iOS payment flow. " +
+      "It opens the Payments setup wizard when the user has not linked RevenueCat yet, or enables the project immediately when they have. " +
+      "Do not hardcode a RevenueCat SDK key: Botflow writes Sources/Core/RevenueCatConfig.swift before builds. " +
+      "Returns status='already-connected', 'needs-connect', 'tier-blocked', or 'backend-blocked'.",
+    inputSchema: EMPTY_INPUT,
+  },
   get_stripe_products: {
     name: "get_stripe_products",
     description:
@@ -442,6 +451,7 @@ export interface SelectHostToolsInput {
   hasBackend: boolean;
   hasGithub: boolean;
   stripeEnabled: boolean;
+  revenuecatEnabled: boolean;
 }
 
 /**
@@ -455,7 +465,7 @@ export interface SelectHostToolsInput {
  * enter the sandbox env.
  */
 export function selectHostTools(input: SelectHostToolsInput): string[] {
-  const { platform, hasBackend, hasGithub, stripeEnabled } = input;
+  const { platform, hasBackend, hasGithub, stripeEnabled, revenuecatEnabled } = input;
   const customTools: string[] = [];
   if (platform === "sandboxed-web") {
     customTools.push(
@@ -522,6 +532,7 @@ export function selectHostTools(input: SelectHostToolsInput): string[] {
       // aware in the host route — the Swift OAuth flow is served entirely by
       // the generated convex/http.ts, no client work).
       customTools.push("convex_deploy", "get_convex_logs", "setup_auth", "setup_oauth_provider");
+      if (revenuecatEnabled) customTools.push("initialize_revenuecat_payments");
     }
     // Git tools — same surface as sandboxed-web. The host route executes them
     // via sandbox-git against the persistent sandbox, which is platform-

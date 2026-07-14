@@ -67,7 +67,7 @@ import {
   resolveWithContent,
   resolveWithSide,
 } from "@/lib/sandbox-git";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -720,6 +720,71 @@ export async function POST(req: Request) {
         status: "dismissed",
         content:
           "The user explicitly cancelled the Stripe Connect modal — no account was linked. Do not retry automatically. Continue with the rest of the implementation and tell the user they can set up Stripe later from the workspace.",
+      });
+    }
+
+    case "initialize_revenuecat_payments": {
+      const { REVENUECAT_ENABLED } = await import("@/lib/feature-flags");
+      if (!REVENUECAT_ENABLED) {
+        return NextResponse.json({ ok: false, content: "RevenueCat is not enabled on this deployment." });
+      }
+      if (project.backendType === "none") {
+        return NextResponse.json({
+          ok: false,
+          status: "backend-blocked",
+          content: "This project has no Convex backend. RevenueCat requires one to receive entitlement webhooks.",
+        });
+      }
+
+      const { canUseRevenueCat } = await import("@/lib/tier");
+      const gate = await canUseRevenueCat(binding.userId);
+      if (!gate.allowed) {
+        return NextResponse.json({ ok: false, status: "tier-blocked", content: gate.reason, tier: gate.tier });
+      }
+
+      const { userRevenueCatIdentity } = await import("@/db/schema");
+      const { decryptSecret } = await import("@/lib/secrets");
+      const [identity] = await db
+        .select()
+        .from(userRevenueCatIdentity)
+        .where(eq(userRevenueCatIdentity.userId, binding.userId))
+        .limit(1);
+      const linked = Boolean(identity && decryptSecret(identity.rcSecretKey) && identity.rcProjectId);
+      const webhookSecret = project.revenuecatWebhookSecret ?? `bfrc_${randomBytes(32).toString("hex")}`;
+
+      await db
+        .update(projects)
+        .set({
+          revenuecatStatus: linked ? "connected" : "connecting",
+          revenuecatWebhookSecret: webhookSecret,
+          ...(linked && identity?.rcProjectId ? { revenuecatProjectId: identity.rcProjectId } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(projects.id, binding.projectId));
+
+      if (!linked) {
+        return NextResponse.json({
+          ok: true,
+          status: "needs-connect",
+          content: "Opened the Payments tab with the RevenueCat setup wizard. Continue building the paywall, but do not hardcode keys; the user must finish the RevenueCat connection there.",
+        });
+      }
+
+      const { after } = await import("next/server");
+      after(async () => {
+        try {
+          const { scaffoldRevenueCatIntoProject } = await import("@/lib/revenuecat-scaffold");
+          await scaffoldRevenueCatIntoProject(binding.projectId);
+          const { materializeSwiftRevenueCatConfig } = await import("@/lib/sandbox-env");
+          await materializeSwiftRevenueCatConfig(binding.projectId);
+        } catch (error) {
+          console.error("[claude-code-tool/revenuecat] background setup failed:", error);
+        }
+      });
+      return NextResponse.json({
+        ok: true,
+        status: "already-connected",
+        content: "RevenueCat is already linked for this user. This project is enabled and its backend setup is running in the background. Use RevenueCatConfig.swift rather than hardcoding an SDK key.",
       });
     }
 

@@ -29,7 +29,7 @@ import { isSandboxPlatform } from "@/lib/project-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 
 import { isClaudeCodeFlagEnabled } from "@/lib/agent/claude-code/feature-flag";
-import { STRIPE_CONNECT_ENABLED } from "@/lib/feature-flags";
+import { REVENUECAT_ENABLED, STRIPE_CONNECT_ENABLED } from "@/lib/feature-flags";
 import { OAUTH_PROVIDER_IDS } from "@/lib/oauth-providers/registry";
 import { deriveAgentBackend } from "@/lib/agent/derive-backend";
 import {
@@ -285,6 +285,7 @@ export async function POST(req: Request) {
     hasBackend,
     hasGithub: Boolean(project.githubRepoOwner && project.githubRepoName),
     stripeEnabled: STRIPE_CONNECT_ENABLED,
+    revenuecatEnabled: REVENUECAT_ENABLED,
   });
 
   const bridgeConfig = {
