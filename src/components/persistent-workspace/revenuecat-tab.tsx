@@ -169,6 +169,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
   const [rcPublicSdkKey, setRcPublicSdkKey] = useState("");
   const [rcProjectId, setRcProjectId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   // Activity feed (connected state): recent entitlement events routed to this
   // project, from the platform's delivery log — no RevenueCat API calls.
@@ -224,6 +225,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
       toast({ title: "Missing keys", description: "Secret key, public SDK key, and project id are all required." });
       return;
     }
+    setConnectError(null);
     setSubmitting(true);
     try {
       const res = await fetch(`/api/projects/${projectId}/revenuecat/connect`, {
@@ -246,10 +248,13 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
       // Drop all pasted credentials from client state once stored server-side.
       setRcSecretKey("");
       setRcPublicSdkKey("");
+      setConnectError(null);
       onChanged?.();
       await loadStatus();
     } catch (e) {
-      toast({ title: "Couldn't connect", description: e instanceof Error ? e.message : "Unknown error" });
+      const message = e instanceof Error ? e.message : "Unknown error";
+      setConnectError(message);
+      toast({ title: "Couldn't connect", description: message });
     } finally {
       setSubmitting(false);
     }
@@ -555,7 +560,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
           </p>
           <Field label="Secret key (sk_…)" value={rcSecretKey} onChange={setRcSecretKey} placeholder="sk_xxxxxxxx" mono type="password" />
           <Field label="SDK key (appl_… or test_…)" value={rcPublicSdkKey} onChange={setRcPublicSdkKey} placeholder="appl_xxxxxxxx or test_xxxxxxxx" mono />
-          <Field label="Project id (proj…)" value={rcProjectId} onChange={setRcProjectId} placeholder="proj1a2b3c4d" mono />
+          <Field label="Project ID (from the RevenueCat dashboard URL)" value={rcProjectId} onChange={setRcProjectId} placeholder="820f9fc3" mono />
 
           <div className="flex items-center gap-2 pt-1">
             <Button onClick={handleConnect} disabled={submitting} className="font-semibold">
@@ -567,8 +572,8 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
               Verify
             </Button>
           </div>
-          {data?.connectionError && (
-            <p className="text-xs text-amber-500">{data.connectionError}</p>
+          {(connectError || data?.connectionError) && (
+            <p className="text-xs text-amber-500">{connectError || data?.connectionError}</p>
           )}
         </div>
 

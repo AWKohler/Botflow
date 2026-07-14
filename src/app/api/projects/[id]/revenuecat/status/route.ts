@@ -75,7 +75,9 @@ export async function GET(
     dashboardUrl: dashboardUrl(rcProjectId),
     // Wizard checklist signals.
     checklist: {
-      keysProvided: Boolean(secretKey && identity?.rcPublicSdkKey && rcProjectId),
+      keysProvided: Boolean(
+        secretKey && (identity?.rcPublicSdkKey || identity?.rcTestStoreSdkKey) && rcProjectId,
+      ),
       connectionValid,
       // Test Store discovered + sandbox key cached → simulator test purchases
       // work. When false, the user enables Test Store in the RC dashboard and
