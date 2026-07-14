@@ -75,15 +75,24 @@ const EVENT_LABELS: Record<string, string> = {
  * development is ALWAYS test mode, published builds are ALWAYS live. Shown in
  * both tab states so the divergence is never a surprise.
  */
-function PaymentModeCard() {
+function PaymentModeCard({ testStoreReady }: { testStoreReady?: boolean }) {
   return (
     <div className="rounded-xl border border-border bg-elevated/40 p-4 space-y-2">
       <h3 className="text-sm font-semibold text-fg">How payments run</h3>
       <div className="text-xs text-muted space-y-1.5">
         <p>
           <span className="font-medium text-fg">Development (simulator &amp; dev devices):</span>{" "}
-          always <span className="text-amber-500 font-medium">test mode</span> — purchases are
-          simulated through RevenueCat&apos;s Test Store. No Apple setup, no real money, ever.
+          {testStoreReady ? (
+            <>
+              always <span className="text-amber-500 font-medium">test mode</span> — purchases are
+              simulated through RevenueCat&apos;s Test Store. No Apple setup, no real money, ever.
+            </>
+          ) : (
+            <>
+              requires RevenueCat&apos;s <span className="text-amber-500 font-medium">Test Store</span>.
+              Until it&apos;s ready, Botflow disables purchases in development rather than using a live key.
+            </>
+          )}
         </p>
         <p>
           <span className="font-medium text-fg">Published (App Store):</span> always{" "}
@@ -92,8 +101,8 @@ function PaymentModeCard() {
         </p>
         <p className="text-muted/80">
           There&apos;s no toggle: Botflow bakes the right RevenueCat key into each build kind
-          automatically, so a test build can never charge anyone and a store build can never
-          ship in test mode.
+          automatically. A test build without Test Store setup disables purchases, and a store
+          build can never ship in test mode.
         </p>
       </div>
     </div>
@@ -338,14 +347,15 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
             </div>
           </div>
 
-          <PaymentModeCard />
+          <PaymentModeCard testStoreReady={data?.checklist.testStoreReady} />
 
           {data && !data.checklist.testStoreReady && (
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-1">
               <p className="text-xs text-amber-500">
                 Your RevenueCat project has no Test Store, so the simulator can&apos;t make
-                test purchases yet. Enable it in RevenueCat (Project settings → Apps →
-                Test Store), then re-run setup below.
+                test purchases yet. Botflow keeps purchases disabled in development until
+                it&apos;s ready. Enable it in RevenueCat (Project settings → Apps → Test Store),
+                then re-run setup below.
               </p>
               <Button variant="outline" size="sm" onClick={handleRepairBackend} disabled={repairing}>
                 {repairing ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
@@ -482,7 +492,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
           <ChecklistRow done={Boolean(cl?.testStoreReady)}>Test Store found (simulator test purchases)</ChecklistRow>
         </div>
 
-        <PaymentModeCard />
+        <PaymentModeCard testStoreReady={cl?.testStoreReady} />
 
         {/* Step 1 */}
         <div className="space-y-2">
