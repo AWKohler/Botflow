@@ -523,8 +523,8 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
           <p className="text-xs text-muted leading-relaxed">
             For a simulator or development build, you do not need App Store Connect first.
             RevenueCat creates a Test Store for every project. In <span className="text-fg">Project settings → API keys</span>,
-            create a secret key, then copy the Test Store SDK key that starts with <code className="text-fg">test_</code>.
-            Use the project ID from the RevenueCat dashboard URL below.
+            create a <span className="text-fg">V2</span> secret key, then copy the Test Store SDK key that starts with <code className="text-fg">test_</code>.
+            Copy the separate <code className="text-fg">proj…</code> Project ID from <span className="text-fg">Project settings → General</span> — not the ID in the dashboard URL.
           </p>
           <a
             href="https://production-docs.revenuecat.com/docs/getting-started/configuring-sdk"
@@ -533,6 +533,14 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
             className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
           >
             <ArrowUpRight size={14} /> Follow RevenueCat&apos;s Test Store setup guide
+          </a>
+          <a
+            href="https://production-docs.revenuecat.com/docs/api-v2"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
+          >
+            <ArrowUpRight size={14} /> Create a RevenueCat V2 secret key
           </a>
         </div>
 
@@ -555,12 +563,12 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-fg">2. Paste your keys</h3>
           <p className="text-xs text-muted">
-            Use a <code className="text-fg">sk_</code> secret key and the <code className="text-fg">test_</code> Test Store key for simulator testing.
-            Botflow keeps the test key out of App Store builds.
+            Use a <code className="text-fg">sk_</code> <span className="text-fg">V2</span> secret key and the <code className="text-fg">test_</code> Test Store key for simulator testing.
+            V1 secret keys cannot access RevenueCat&apos;s v2 API. Botflow keeps the test key out of App Store builds.
           </p>
           <Field label="Secret key (sk_…)" value={rcSecretKey} onChange={setRcSecretKey} placeholder="sk_xxxxxxxx" mono type="password" />
           <Field label="SDK key (appl_… or test_…)" value={rcPublicSdkKey} onChange={setRcPublicSdkKey} placeholder="appl_xxxxxxxx or test_xxxxxxxx" mono />
-          <Field label="Project ID (from the RevenueCat dashboard URL)" value={rcProjectId} onChange={setRcProjectId} placeholder="820f9fc3" mono />
+          <Field label="API v2 Project ID (Project settings → General, starts proj…)" value={rcProjectId} onChange={setRcProjectId} placeholder="proj1a2b3c4d" mono />
 
           <div className="flex items-center gap-2 pt-1">
             <Button onClick={handleConnect} disabled={submitting} className="font-semibold">
