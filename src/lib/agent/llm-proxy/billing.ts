@@ -1,7 +1,7 @@
 /**
  * Billing at the LLM proxy — the ONLY component allowed to turn observed
  * usage into money. Same machinery /api/agent has always used
- * (calculateCredits / reserveWeeklyCredits / adjustWeeklyCredits /
+ * (calculateCredits / reservePlatformCredits / adjustPlatformCredits /
  * recordTokenUsage), moved to the trustworthy vantage point.
  *
  * Modes:
@@ -20,9 +20,10 @@
  */
 import {
   calculateCredits,
-  reserveWeeklyCredits,
-  adjustWeeklyCredits,
+  reservePlatformCredits,
+  adjustPlatformCredits,
   getWeeklyLimit,
+  getMonthlyLimit,
 } from "@/lib/credits";
 import { recordTokenUsage } from "@/lib/usage";
 import { MODEL_CONFIGS, type ModelId } from "@/lib/agent/models";
@@ -103,14 +104,25 @@ export async function reserveForRequest(
   binding: LlmProxyBinding,
   tier: Tier,
   estimate: { bodyBytes: number; effectiveMaxOutput: number },
-): Promise<{ ok: true; reserved: number } | { ok: false }> {
+): Promise<
+  | { ok: true; reserved: number }
+  | { ok: false; reason: "weekly_exhausted" | "monthly_exceeded" }
+> {
   const reserved = estimateRequestCredits(
     binding.modelId,
     estimate.bodyBytes,
     estimate.effectiveMaxOutput,
   );
-  const ok = await reserveWeeklyCredits(binding.userId, reserved, getWeeklyLimit(tier));
-  return ok ? { ok: true, reserved } : { ok: false };
+  // Weekly pacing with monthly spillover: a request that straddles the weekly
+  // boundary is allowed (the overshoot draws on monthly headroom); the monthly
+  // budget is the hard ceiling. See reservePlatformCredits for the paradigm.
+  const res = await reservePlatformCredits(
+    binding.userId,
+    reserved,
+    getWeeklyLimit(tier),
+    getMonthlyLimit(tier),
+  );
+  return res.ok ? { ok: true, reserved } : { ok: false, reason: res.reason };
 }
 
 /**
@@ -154,8 +166,8 @@ export function createSettlement(
 
     if (binding.credMode === "platform") {
       // Reconcile the worst-case reservation down (or release it entirely on
-      // zero-usage failures).
-      await adjustWeeklyCredits(binding.userId, credits - reserved).catch(() => {});
+      // zero-usage failures) — both KV counters together.
+      await adjustPlatformCredits(binding.userId, credits - reserved).catch(() => {});
     }
 
     if (rowModelId && (effective.inputTokens > 0 || effective.outputTokens > 0)) {
@@ -185,13 +197,20 @@ export function createSettlement(
 
 /* ------------------------------ error shapes ------------------------------ */
 
-const EXHAUSTED_MESSAGE =
-  "Botflow credits exhausted — your weekly credit budget is used up. Upgrade your plan or wait for the weekly reset.";
+const EXHAUSTED_MESSAGES = {
+  weekly_exhausted:
+    "Botflow credits exhausted — your weekly credit budget is used up. Upgrade your plan or wait for the weekly reset.",
+  monthly_exceeded:
+    "Botflow credits exhausted — this request doesn't fit your remaining monthly credit budget. Upgrade your plan or wait for the monthly reset.",
+} as const;
 
 /** 402 in the PROVIDER'S native error dialect so the in-sandbox agent
  *  surfaces the message verbatim as a provider error. */
-export function creditsExhaustedResponse(provider: LlmProxyProvider): Response {
-  return dialectErrorResponse(provider, 402, EXHAUSTED_MESSAGE, "insufficient_quota");
+export function creditsExhaustedResponse(
+  provider: LlmProxyProvider,
+  reason: keyof typeof EXHAUSTED_MESSAGES = "weekly_exhausted",
+): Response {
+  return dialectErrorResponse(provider, 402, EXHAUSTED_MESSAGES[reason], "insufficient_quota");
 }
 
 export function dialectErrorResponse(

@@ -90,9 +90,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     const { project: proj } = access;
-    if (proj.platform !== "sandboxed-web") {
+    // Any platform whose files live in the persistent Vercel Sandbox can use
+    // the real-git link flow. Legacy 'web' (WebContainer) stays on the
+    // DB-snapshot flow under /api/projects/[id]/git/*.
+    if (proj.platform !== "sandboxed-web" && proj.platform !== "swift") {
       return NextResponse.json(
-        { error: "This endpoint is for sandboxed-web projects only." },
+        { error: "This endpoint is for sandbox-backed projects only." },
         { status: 400 },
       );
     }

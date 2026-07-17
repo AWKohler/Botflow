@@ -21,7 +21,8 @@ export type LlmProxyProvider =
   | "openai"
   | "fireworks"
   | "together"
-  | "google";
+  | "google"
+  | "xai";
 
 export type UsageDialect =
   | "anthropic"
@@ -49,7 +50,8 @@ export interface LlmProxyProviderSpec {
     | "openaiApiKey"
     | "fireworksApiKey"
     | "togetherApiKey"
-    | "googleApiKey";
+    | "googleApiKey"
+    | "xaiApiKey";
   /** Only anthropic supports oauth credMode (Claude plans via Claude Code). */
   supportsOauth: boolean;
   /** Usage dialect by request path. */
@@ -127,6 +129,26 @@ export const LLM_PROXY_PROVIDERS: Record<LlmProxyProvider, LlmProxyProviderSpec>
     clockHeuristic: false,
     sandboxBasePath: "/v1beta",
   },
+  // xAI (Grok) — OpenAI-compatible chat completions. Reports cache reads
+  // explicitly in prompt_tokens_details.cached_tokens (verified live), so no
+  // clock heuristic. Passive read-only cache: no cache-write billing.
+  xai: {
+    upstreamBase: "https://api.x.ai",
+    // xAI is OpenAI-compatible on BOTH endpoints — opencode routes reasoning
+    // models (grok is one) through /v1/responses, others through
+    // /v1/chat/completions. Both verified live on api.x.ai. Mirror the openai
+    // spec exactly (allowlist + per-path dialect), or reasoning turns 404 with
+    // "Unknown proxy path".
+    pathAllowlist: /^v1\/(responses|chat\/completions)$/,
+    authStyle: "bearer",
+    platformKeyEnv: "XAI_API_KEY",
+    byokCredField: "xaiApiKey",
+    supportsOauth: false,
+    dialectForPath: (path) =>
+      path === "v1/responses" ? "openai-responses" : "openai-chat",
+    clockHeuristic: false,
+    sandboxBasePath: "/v1",
+  },
 };
 
 export function isLlmProxyProvider(value: string): value is LlmProxyProvider {
@@ -141,6 +163,7 @@ export function proxyProviderForOpenCodeId(providerID: string): LlmProxyProvider
     case "fireworks-ai": return "fireworks";
     case "togetherai": return "together";
     case "google": return "google";
+    case "xai": return "xai";
     default: return null;
   }
 }

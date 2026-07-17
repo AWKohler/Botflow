@@ -70,16 +70,17 @@ export async function POST(request: NextRequest) {
       platform?: ProjectPlatform;
       backendType?: BackendType;
       model?:
-        | 'gpt-5.3-codex'
-        | 'gpt-5.4'
+        | 'gpt-5.6-sol'
+        | 'gpt-5.6-terra'
+        | 'gpt-5.6-luna'
         | 'gpt-5.5'
         | 'claude-sonnet-5'
         | 'claude-opus-4-8'
         | 'claude-fable-5'
         | 'fireworks-minimax-m3'
-        | 'fireworks-glm-5p2'
         | 'fireworks-kimi-k2p7'
-        | 'gemini-3.1-pro-preview';
+        | 'gemini-3.1-pro-preview'
+        | 'grok-4.5';
     };
 
     if (!name) {
@@ -138,8 +139,12 @@ export async function POST(request: NextRequest) {
         backendType: resolvedBackendType,
         sandboxTemplate,
         model:
-          model === 'gpt-5.4'
-            ? 'gpt-5.4'
+          model === 'gpt-5.6-sol'
+            ? 'gpt-5.6-sol'
+          : model === 'gpt-5.6-terra'
+            ? 'gpt-5.6-terra'
+          : model === 'gpt-5.6-luna'
+            ? 'gpt-5.6-luna'
           : model === 'gpt-5.5'
             ? 'gpt-5.5'
           : model === 'claude-sonnet-5'
@@ -150,13 +155,13 @@ export async function POST(request: NextRequest) {
             ? 'claude-fable-5'
             : model === 'fireworks-minimax-m3'
             ? 'fireworks-minimax-m3'
-            : model === 'fireworks-glm-5p2'
-            ? 'fireworks-glm-5p2'
             : model === 'fireworks-kimi-k2p7'
             ? 'fireworks-kimi-k2p7'
             : model === 'gemini-3.1-pro-preview'
             ? 'gemini-3.1-pro-preview'
-            : 'fireworks-kimi-k2p7',
+            : model === 'grok-4.5'
+            ? 'grok-4.5'
+            : 'gpt-5.6-luna', // default model
       })
       .returning();
 

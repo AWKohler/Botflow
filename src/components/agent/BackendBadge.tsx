@@ -200,27 +200,27 @@ export function BackendChip({ backend, reason, runnable }: BackendChipProps) {
   const errorStyle = !runnable;
 
   return (
-    <div ref={wrapperRef} className="relative inline-flex items-center">
+    <div ref={wrapperRef} className="relative flex w-full items-center">
       <button
         type="button"
         onClick={() => setPopoverOpen((v) => !v)}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium transition",
+          "flex w-full flex-wrap items-center justify-center gap-1.5 rounded-full border px-3 py-1.5 text-center text-[11px] font-medium transition",
           errorStyle
             ? "bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/15"
             : "bg-accent/10 border-accent/30 text-fg hover:bg-accent/15",
         )}
       >
         <BackendGlyph backend={backend} size={12} />
-        <span className="leading-none">{copy.title}</span>
-        <span className={cn("text-[10px] leading-none", errorStyle ? "text-red-400/70" : "text-muted")}>·</span>
+        <span className="leading-snug">{copy.chipTitle}</span>
+        <span className={cn("text-[10px] leading-snug", errorStyle ? "text-red-400/70" : "text-muted")}>·</span>
         <span
           className={cn(
-            "text-[11px] leading-none underline-offset-2 hover:underline",
+            "text-[11px] leading-snug underline-offset-2 hover:underline",
             errorStyle ? "text-red-400" : "text-accent",
           )}
         >
-          What this means?
+          What&apos;s this?
         </span>
       </button>
       {popoverOpen && (

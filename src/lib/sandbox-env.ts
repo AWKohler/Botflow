@@ -163,6 +163,27 @@ const SWIFT_REVENUECAT_CONFIG_PATH = "/Sources/Core/RevenueCatConfig.swift";
 export type SwiftBuildKind = "dev" | "release";
 
 /**
+ * Pick the only SDK key a given Swift build is allowed to receive.
+ *
+ * A development build must never fall back to the live App Store key. If the
+ * RevenueCat Test Store has not been configured yet, we deliberately emit an
+ * empty key; `RevenueCatConfig.isConfigured` then keeps Purchases unconfigured
+ * instead of creating an ambiguous or potentially live payment path.
+ */
+export function selectSwiftRevenueCatConfig(
+  keys: { productionSdkKey: string | null; testStoreSdkKey: string | null },
+  buildKind: SwiftBuildKind,
+): { sdkKey: string | null; isTestStore: boolean } {
+  if (buildKind === "dev") {
+    return keys.testStoreSdkKey
+      ? { sdkKey: keys.testStoreSdkKey, isTestStore: true }
+      : { sdkKey: null, isTestStore: false };
+  }
+
+  return { sdkKey: keys.productionSdkKey, isTestStore: false };
+}
+
+/**
  * Render the generated `RevenueCatConfig.swift` — how the SDK key and the
  * project-namespaced App User ID prefix reach the app. The agent prompt tells
  * the agent to call `Purchases.configure(withAPIKey: RevenueCatConfig.apiKey,
@@ -214,11 +235,12 @@ export function swiftRevenueCatConfigContent(
  * Always written for Swift projects (when the feature is enabled) so the agent
  * can reference `RevenueCatConfig` before the user finishes connecting.
  *
- * Key selection (see SwiftBuildKind): dev builds bake the cached Test Store
- * sandbox key (falling back to the appl_ key when the RC project has no Test
- * Store); release builds ALWAYS bake the appl_ key — a Test Store key can
- * never ship to the App Store by construction. Keys only bake once this
- * project is 'connected'; otherwise the file carries an empty key.
+ * Key selection (see SwiftBuildKind): dev builds bake only the cached Test
+ * Store sandbox key. If the RC project has no Test Store, dev builds receive
+ * an empty key and Purchases stays disabled; they never fall back to `appl_`.
+ * Release builds ALWAYS bake the `appl_` key — a Test Store key can never ship
+ * to the App Store by construction. Keys only bake once this project is
+ * 'connected'; otherwise the file carries an empty key.
  */
 export async function materializeSwiftRevenueCatConfig(
   projectId: string,
@@ -230,8 +252,7 @@ export async function materializeSwiftRevenueCatConfig(
   if (!project || project.platform !== "swift") return;
   if (project.backendType === "none") return; // payments require a backend
 
-  let sdkKey: string | null = null;
-  let isTestStore = false;
+  let config = { sdkKey: null as string | null, isTestStore: false };
   if (project.revenuecatStatus === "connected") {
     const [identity] = await db
       .select({
@@ -240,18 +261,19 @@ export async function materializeSwiftRevenueCatConfig(
       })
       .from(userRevenueCatIdentity)
       .where(eq(userRevenueCatIdentity.userId, project.userId));
-    if (buildKind === "dev" && identity?.rcTestStoreSdkKey) {
-      sdkKey = identity.rcTestStoreSdkKey;
-      isTestStore = true;
-    } else {
-      sdkKey = identity?.rcPublicSdkKey ?? null;
-    }
+    config = selectSwiftRevenueCatConfig(
+      {
+        productionSdkKey: identity?.rcPublicSdkKey ?? null,
+        testStoreSdkKey: identity?.rcTestStoreSdkKey ?? null,
+      },
+      buildKind,
+    );
   }
 
   await sandboxWriteFile(
     projectId,
     SWIFT_REVENUECAT_CONFIG_PATH,
-    swiftRevenueCatConfigContent(sdkKey, namespacedAppUserIdPrefix(projectId), isTestStore),
+    swiftRevenueCatConfigContent(config.sdkKey, namespacedAppUserIdPrefix(projectId), config.isTestStore),
   );
 }
 

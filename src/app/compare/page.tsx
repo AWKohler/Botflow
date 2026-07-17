@@ -9,8 +9,8 @@ import {
   LandingNav,
   Reveal,
   SectionLabel,
-  serif,
 } from '@/components/landing/shared';
+import { serif } from '@/components/landing/fonts';
 import { ClosingCta, LineDivider } from '@/components/landing/compare-ui';
 import {
   COMPETITORS,

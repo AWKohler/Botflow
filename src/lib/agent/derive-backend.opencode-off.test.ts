@@ -36,7 +36,7 @@ describe("flag off — OpenCode never routes", () => {
   test("openai model + full personal creds → botflow, exactly as before", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
-      model: "gpt-5.4",
+      model: "gpt-5.6-terra",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasCodexOAuth: true, hasOpenAIKey: true },
       useTogetherKimi: true,
@@ -51,7 +51,7 @@ describe("flag off — OpenCode never routes", () => {
   test("resolveBackends: non-Anthropic → botflow-locked with legacy reason", async () => {
     const { resolveBackends } = await load();
     const res = resolveBackends({
-      model: "fireworks-glm-5p2",
+      model: "fireworks-minimax-m3",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasFireworksKey: true },
     });

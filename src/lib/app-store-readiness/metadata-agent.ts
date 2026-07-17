@@ -12,12 +12,11 @@ import { createFireworks } from "@ai-sdk/fireworks";
 import { z } from "zod";
 import { getUserTier } from "@/lib/tier";
 import {
-  adjustWeeklyCredits,
+  adjustPlatformCredits,
   calculateCredits,
-  getMonthlyCredits,
   getMonthlyLimit,
   getWeeklyLimit,
-  reserveWeeklyCredits,
+  reservePlatformCredits,
 } from "@/lib/credits";
 import { recordTokenUsage } from "@/lib/usage";
 import { sandboxBash } from "@/lib/vercel-sandbox";
@@ -74,13 +73,20 @@ export async function draftAppStoreMetadata(opts: {
     cachedReadTokens: 0,
     cacheWriteTokens: 0,
   });
-  // Pre-check the full estimate against the monthly cap (not just whether the
-  // user is already at it) so a near-cap user can't incur a full draft.
-  if ((await getMonthlyCredits(opts.userId)) + estimate > getMonthlyLimit(tier)) {
-    return { ok: false, status: 402, error: "You've reached your monthly credit limit.", insufficientCredits: true };
-  }
-  if (!(await reserveWeeklyCredits(opts.userId, estimate, getWeeklyLimit(tier)))) {
-    return { ok: false, status: 402, error: "Not enough weekly credits left to draft metadata.", insufficientCredits: true };
+  // One atomic KV reservation gates the full estimate: monthly headroom is
+  // the hard ceiling, weekly paces (boundary-straddling drafts may spill into
+  // monthly headroom). Redis-only; Neon never touched here.
+  const reservedRes = await reservePlatformCredits(opts.userId, estimate, getWeeklyLimit(tier), getMonthlyLimit(tier));
+  if (!reservedRes.ok) {
+    return {
+      ok: false,
+      status: 402,
+      error:
+        reservedRes.reason === "monthly_exceeded"
+          ? "You've reached your monthly credit limit."
+          : "Not enough weekly credits left to draft metadata.",
+      insufficientCredits: true,
+    };
   }
 
   // ── Ground the draft on the project's real source ────────────────────────
@@ -130,7 +136,7 @@ export async function draftAppStoreMetadata(opts: {
       keywords: clamp(out.keywords, LIMITS.keywords),
     };
   } catch (e) {
-    await adjustWeeklyCredits(opts.userId, -estimate).catch((err) =>
+    await adjustPlatformCredits(opts.userId, -estimate).catch((err) =>
       console.error(
         "[app-store-readiness/metadata] REFUND FAILED — user owed",
         estimate,
@@ -151,7 +157,7 @@ export async function draftAppStoreMetadata(opts: {
     cacheWriteTokens: 0,
   });
   await recordTokenUsage(opts.userId, MINIMAX_CREDIT_MODEL, inTok, outTok, actual).catch(() => {});
-  await adjustWeeklyCredits(opts.userId, actual - estimate).catch(() => {});
+  await adjustPlatformCredits(opts.userId, actual - estimate).catch(() => {});
 
   return { ok: true, metadata: drafted, creditsCharged: actual };
 }

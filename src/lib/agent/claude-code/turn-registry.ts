@@ -35,6 +35,11 @@ export interface ClaudeCodeTurnRecord {
    *  translator. Absent on records written before OpenCode existed —
    *  treat as "claude-code". */
   backend?: "claude-code" | "opencode";
+  /** Id of the user message that spawned this turn. Mount-time recovery uses
+   *  it to match the record to the transcript's trailing user message — an
+   *  exact-identity check, unlike startedAt which can't distinguish quick
+   *  back-to-back turns. Absent on records written before this field. */
+  userMessageId?: string;
   /** Absolute path (in the sandbox) of the NDJSON event tee file. */
   eventFile: string;
   /** Epoch ms when the bridge was spawned. */

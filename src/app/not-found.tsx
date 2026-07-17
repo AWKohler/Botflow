@@ -1,21 +1,33 @@
 import Link from 'next/link';
-import { ArrowRight, Compass } from 'lucide-react';
 import {
   EditorialGrid,
   LandingFooter,
   LandingNav,
   LineDivider,
+  MarginHatch,
   Reveal,
   SectionLabel,
-  serif,
+  StaggerButton,
 } from '@/components/landing/shared';
+import { serif } from '@/components/landing/fonts';
 import { cn } from '@/lib/utils';
 
 export const metadata = {
   title: 'Page not found',
   description:
-    "The page you're looking for has wandered off. Head back to Botflow or explore what others are building.",
+    "There's no page at this address. Head back to Botflow or browse the rest of the site.",
 };
+
+const CONTENTS: { n: string; label: string; href: string }[] = [
+  { n: '01', label: 'Home', href: '/' },
+  ...(process.env.NEXT_PUBLIC_HIDE_EXPLORE !== 'true'
+    ? [{ n: '02', label: 'Explore', href: '/explore' }]
+    : []),
+  { n: '03', label: 'Pricing', href: '/pricing' },
+  { n: '04', label: 'Docs', href: '/docs' },
+  { n: '05', label: 'Blog', href: '/blog' },
+  { n: '06', label: 'Convex', href: '/convex' },
+].map((entry, i) => ({ ...entry, n: String(i + 1).padStart(2, '0') }));
 
 export default function NotFound() {
   return (
@@ -23,228 +35,156 @@ export default function NotFound() {
       <EditorialGrid />
       <LandingNav />
 
-      {/* ================================================================ */}
-      {/* HERO 404                                                         */}
-      {/* ================================================================ */}
-      <section className="relative flex-1 overflow-hidden hero-grid">
-        {/* Soft accent halo behind the numerals */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 flex items-center justify-center"
-        >
-          <div
-            className="h-[40vmin] w-[40vmin] sm:h-[50vmin] sm:w-[50vmin] rounded-full blur-3xl opacity-40"
-            style={{
-              background:
-                'radial-gradient(circle at center, color-mix(in oklab, var(--sand-accent) 35%, transparent) 0%, transparent 70%)',
-            }}
-          />
-        </div>
+      <section className="relative flex-1 overflow-hidden">
+        <MarginHatch />
 
-        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 pt-12 sm:pt-20 pb-16 sm:pb-24">
-          <div className="mx-auto max-w-3xl text-center flex flex-col items-center">
-            {/* Tracked label */}
-            <Reveal>
-              <div className="flex items-center justify-center gap-3 mb-2">
-                <span
-                  aria-hidden
-                  className="h-px w-8 sm:w-12"
-                  style={{ background: 'var(--sand-border)' }}
-                />
-                <SectionLabel>Error · Off the map</SectionLabel>
-                <span
-                  aria-hidden
-                  className="h-px w-8 sm:w-12"
-                  style={{ background: 'var(--sand-border)' }}
-                />
-              </div>
-            </Reveal>
+        <div className="relative mx-auto max-w-7xl px-6 sm:px-10 pt-10 sm:pt-14 pb-16 sm:pb-24">
+          <div className="grid items-center gap-14 lg:grid-cols-[1.15fr_0.85fr] lg:gap-20">
+            {/* ---------------------------------------------------------- */}
+            {/* Left — the misprint                                        */}
+            {/* ---------------------------------------------------------- */}
+            <div>
+              <Reveal>
+                <SectionLabel>Error · Page not found</SectionLabel>
+              </Reveal>
 
-            {/* The 404 — center, oversized, serif */}
-            <Reveal delay={120}>
-              <h1
-                aria-label="404"
-                className={cn(
-                  serif.className,
-                  'select-none leading-none tracking-tight',
-                  'text-[28vw] sm:text-[22vw] md:text-[18rem] lg:text-[20rem]',
-                )}
-                style={{ lineHeight: 0.9 }}
-              >
-                <span className="inline-flex items-baseline">
-                  <span className="numeral-fade">4</span>
-                  <span className="numeral-orbit relative inline-block align-baseline">
-                    <span style={{ color: 'var(--sand-accent)' }}>0</span>
-                    {/* subtle orbiting dot inside the zero */}
-                    <span
-                      aria-hidden
-                      className="orbit-dot absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-                    >
-                      <span
-                        className="block h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full"
-                        style={{ background: 'var(--sand-accent)' }}
-                      />
-                    </span>
-                  </span>
-                  <span className="numeral-fade">4</span>
-                </span>
-              </h1>
-            </Reveal>
-
-            {/* Italic serif tagline echoing the hero pattern */}
-            <Reveal delay={220}>
-              <h2
-                className={cn(
-                  serif.className,
-                  'mt-6 sm:mt-8 text-3xl sm:text-4xl md:text-5xl tracking-tight leading-[1.1]',
-                )}
-              >
-                You&apos;ve wandered{' '}
-                <span className="relative inline-block italic">
-                  off the path
+              <Reveal delay={100}>
+                <h1
+                  aria-label="404 — page not found"
+                  className={cn(serif.className, 'select-none tracking-tight')}
+                  // tailwind-merge drops leading-* next to an arbitrary
+                  // text-[clamp(...)] size, so both live here instead
+                  style={{
+                    fontSize: 'clamp(7rem, 26vw, 15rem)',
+                    lineHeight: 0.85,
+                  }}
+                >
+                  <span aria-hidden>4</span>
                   <span
                     aria-hidden
-                    className="absolute -bottom-1 left-0 right-0 h-[3px] rounded-full origin-center underline-grow"
                     style={{
-                      background: 'var(--sand-accent)',
-                      opacity: 0.5,
+                      WebkitTextStroke: '0.014em var(--sand-text)',
+                      color: 'transparent',
                     }}
-                  />
-                </span>
-                .
-              </h2>
-            </Reveal>
+                  >
+                    0
+                  </span>
+                  <span aria-hidden>4</span>
+                </h1>
+              </Reveal>
 
-            {/* Muted description */}
-            <Reveal delay={300}>
-              <p className="mt-5 sm:mt-6 text-base sm:text-lg text-[var(--sand-text-muted)] max-w-xl mx-auto leading-relaxed">
-                We couldn&apos;t find the page you were looking for. It may have
-                moved, been renamed, or never existed in the first place.
-              </p>
-            </Reveal>
+              <Reveal delay={200}>
+                <h2
+                  className={cn(
+                    serif.className,
+                    'mt-6 text-3xl sm:text-4xl tracking-tight leading-[1.1]',
+                  )}
+                >
+                  There&apos;s no page at this address.
+                </h2>
+              </Reveal>
 
-            {/* CTAs */}
-            <Reveal delay={400}>
-              <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <Reveal delay={280}>
+                <p className="mt-4 max-w-md text-base sm:text-lg text-[var(--sand-text-muted)] leading-relaxed">
+                  It may have moved, or the link was mistyped. Everything else
+                  is where you left it.
+                </p>
+              </Reveal>
+
+              <Reveal delay={360}>
+                <div className="mt-8 flex flex-wrap items-center gap-5">
+                  <StaggerButton text="Back to home" href="/" />
+                  <Link
+                    href="/projects"
+                    className="text-sm font-medium text-[var(--sand-text-muted)] hover:text-[var(--sand-accent)] transition"
+                  >
+                    Go to my projects
+                  </Link>
+                </div>
+              </Reveal>
+            </div>
+
+            {/* ---------------------------------------------------------- */}
+            {/* Right — contents, with one entry missing                   */}
+            {/* ---------------------------------------------------------- */}
+            <Reveal delay={250}>
+              <div className="rounded-xl border border-[var(--sand-border)] bg-[var(--sand-surface)] p-6 sm:p-8 shadow-sm">
+                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[var(--sand-text-muted)]">
+                  Contents
+                </p>
+                <div
+                  className="mt-4 h-px w-full"
+                  style={{ background: 'var(--sand-border)' }}
+                />
+
+                <nav aria-label="Site contents" className="mt-2">
+                  <ul>
+                    {CONTENTS.map((entry) => (
+                      <li key={entry.href}>
+                        <Link
+                          href={entry.href}
+                          className="group flex items-baseline gap-3 py-3 text-sm sm:text-base"
+                        >
+                          <span className="w-6 shrink-0 tabular-nums text-xs text-[var(--sand-text-muted)] opacity-70">
+                            {entry.n}
+                          </span>
+                          <span className="font-medium transition group-hover:text-[var(--sand-accent)]">
+                            {entry.label}
+                          </span>
+                          <span
+                            aria-hidden
+                            className="flex-1 -translate-y-1 border-b border-dotted border-[var(--sand-soft)] transition group-hover:border-[var(--sand-text-muted)]"
+                          />
+                          <span className="shrink-0 text-xs text-[var(--sand-text-muted)] opacity-70 transition group-hover:opacity-100">
+                            {entry.href}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+
+                    {/* The entry that should have been here */}
+                    <li
+                      aria-hidden
+                      className="flex items-baseline gap-3 py-3 text-sm sm:text-base text-[var(--sand-text-muted)]"
+                    >
+                      <span className="w-6 shrink-0 text-xs opacity-70">—</span>
+                      <span className="line-through decoration-[var(--sand-accent)] decoration-2">
+                        The page you asked for
+                      </span>
+                      <span
+                        aria-hidden
+                        className="flex-1 -translate-y-1 border-b border-dotted border-[var(--sand-soft)]"
+                      />
+                      <span className="shrink-0 text-xs italic opacity-70">
+                        missing
+                      </span>
+                    </li>
+                  </ul>
+                </nav>
+              </div>
+
+              <p
+                className={cn(
+                  serif.className,
+                  'mt-5 px-1 text-base italic text-[var(--sand-text-muted)] leading-relaxed',
+                )}
+              >
+                Doesn&apos;t exist yet? That&apos;s the whole idea —{' '}
                 <Link
                   href="/"
-                  className="group relative inline-flex items-center gap-2 rounded-xl bg-[var(--sand-text)] text-[var(--sand-bg)] px-5 py-3 text-sm sm:text-base font-medium shadow-md hover:opacity-90 transition"
+                  className="underline decoration-[var(--sand-accent)] decoration-2 underline-offset-4 hover:text-[var(--sand-accent)] transition"
                 >
-                  Take me home
-                  <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
+                  describe it, and Botflow builds it
                 </Link>
-                <Link
-                  href="/explore"
-                  className="group inline-flex items-center gap-2 rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-5 py-3 text-sm sm:text-base font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
-                >
-                  <Compass className="h-4 w-4 text-[var(--sand-text-muted)] group-hover:text-[var(--sand-accent)] transition" />
-                  Explore community projects
-                </Link>
-              </div>
-            </Reveal>
-
-            {/* Quiet quick-links — like a sitemap footnote */}
-            <Reveal delay={500}>
-              <div className="mt-10 sm:mt-14 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-2 text-xs sm:text-sm text-[var(--sand-text-muted)]">
-                <span className="uppercase tracking-[0.18em] mr-2 opacity-70">
-                  Try
-                </span>
-                <QuickLink href="/projects">Projects</QuickLink>
-                <Dot />
-                <QuickLink href="/pricing">Pricing</QuickLink>
-                <Dot />
-                <QuickLink href="/blog">Blog</QuickLink>
-                <Dot />
-                <QuickLink href="/convex">Convex</QuickLink>
-                <Dot />
-                <QuickLink href="/explore">Explore</QuickLink>
-              </div>
+                .
+              </p>
             </Reveal>
           </div>
         </div>
-
-        {/* Local keyframes — scoped via plain <style> */}
-        <style>{`
-          @keyframes underlineGrow {
-            from { transform: scaleX(0); }
-            to { transform: scaleX(1); }
-          }
-          .underline-grow {
-            transform: scaleX(0);
-            animation: underlineGrow 0.9s cubic-bezier(0.5, 0, 0, 1) 0.7s forwards;
-          }
-
-          @keyframes orbit {
-            from { transform: translate(-50%, -50%) rotate(0deg) translateX(0.42em) rotate(0deg); }
-            to   { transform: translate(-50%, -50%) rotate(360deg) translateX(0.42em) rotate(-360deg); }
-          }
-          .orbit-dot {
-            animation: orbit 9s linear infinite;
-          }
-
-          @keyframes driftIn {
-            from { opacity: 0; letter-spacing: 0.04em; }
-            to   { opacity: 1; letter-spacing: 0; }
-          }
-          .numeral-fade {
-            display: inline-block;
-            animation: driftIn 1.1s cubic-bezier(0.43, 0.195, 0.02, 1) both;
-          }
-          .numeral-fade:first-child { animation-delay: 0.15s; }
-          .numeral-fade:last-child  { animation-delay: 0.35s; }
-
-          @keyframes pulseAccent {
-            0%, 100% { transform: scale(1); opacity: 1; }
-            50%      { transform: scale(1.04); opacity: 0.92; }
-          }
-          .numeral-orbit > span:first-child {
-            display: inline-block;
-            animation: pulseAccent 4s ease-in-out 1s infinite;
-          }
-
-          @media (prefers-reduced-motion: reduce) {
-            .underline-grow,
-            .orbit-dot,
-            .numeral-fade,
-            .numeral-orbit > span:first-child {
-              animation: none !important;
-              transform: none !important;
-              opacity: 1 !important;
-            }
-            .underline-grow { transform: scaleX(1) !important; }
-          }
-        `}</style>
       </section>
 
       <LineDivider />
       <LandingFooter />
     </div>
-  );
-}
-
-function QuickLink({
-  href,
-  children,
-}: {
-  href: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      className="rounded-md px-1.5 py-0.5 hover:text-[var(--sand-text)] hover:bg-[var(--sand-elevated)] transition"
-    >
-      {children}
-    </Link>
-  );
-}
-
-function Dot() {
-  return (
-    <span
-      aria-hidden
-      className="inline-block h-1 w-1 rounded-full opacity-50"
-      style={{ background: 'currentColor' }}
-    />
   );
 }

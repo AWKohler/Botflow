@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "26";
+export const BRIDGE_SCRIPT_VERSION = "28";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -127,19 +127,40 @@ async function postHostTool(toolName, input) {
   if (!base || !token) {
     throw new Error("Host callback not configured (BOTFLOW_API_BASE / BOTFLOW_TOOL_TOKEN missing)");
   }
-  const response = await fetch(base + "/api/internal/claude-code-tool", {
-    method: "POST",
-    headers: {
-      "authorization": "Bearer " + token,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ tool: toolName, input: input ?? {} }),
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error("Host tool call failed (HTTP " + response.status + "): " + text);
+  const headers = {
+    "authorization": "Bearer " + token,
+    "content-type": "application/json",
+  };
+  // Preview deployments answer cookie-less requests with the Vercel
+  // Deployment Protection page (401) before our route ever runs — the same
+  // wall the Anthropic-proxy calls dodge via ANTHROPIC_CUSTOM_HEADERS. The
+  // host route sets this env only on protected previews.
+  if (process.env.BOTFLOW_VERCEL_BYPASS) {
+    headers["x-vercel-protection-bypass"] = process.env.BOTFLOW_VERCEL_BYPASS;
   }
-  return response.json();
+  // A 429 from the host limiter is transient and self-clearing: the response
+  // carries Retry-After, so pace against it instead of surfacing a turn-killing
+  // "rate_limited" error the user has to manually retry. Bounded attempts so a
+  // genuinely stuck limiter still eventually errors out.
+  const MAX_429_RETRIES = 6;
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(base + "/api/internal/claude-code-tool", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ tool: toolName, input: input ?? {} }),
+    });
+    if (response.status === 429 && attempt < MAX_429_RETRIES) {
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const waitSec = retryAfter > 0 ? retryAfter : Math.min(30, Math.pow(2, attempt));
+      await new Promise((r) => setTimeout(r, waitSec * 1000));
+      continue;
+    }
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error("Host tool call failed (HTTP " + response.status + "): " + text);
+    }
+    return response.json();
+  }
 }
 
 async function callHostTool(toolName, input) {
@@ -152,7 +173,7 @@ async function callHostTool(toolName, input) {
         ok: false,
         content:
           "Stopped waiting for the user after 30 minutes. The request may STILL be pending in their workspace — " +
-          "do NOT tell the user they dismissed or declined it. Continue with other work.",
+          "do NOT tell the user they dismissed or declined it. Continue only with unrelated work; do not implement or expose UI that depends on the pending setup until the host tool returns success.",
       };
     }
     const delay = Number(result.wait.pollDelayMs) > 0 ? Number(result.wait.pollDelayMs) : 2500;
@@ -325,7 +346,7 @@ function buildCustomTools(customTools, oauthProviderIds) {
         "On success it returns the exact convex/auth.ts import + providers-array line and the sign-in button to add — then run convex_deploy. " +
         "Outcomes: 'dismissed' means the user explicitly closed the modal — do NOT retry, and do not treat it as failure to configure later. " +
         "A 'still pending' result means the user simply hasn't finished YET — the modal stays open, you'll get a system note when they submit; " +
-        "NEVER report a still-pending modal as dismissed or declined.",
+        "NEVER report a still-pending modal as dismissed or declined. Until success is returned, do NOT edit convex/auth.ts or add/expose the provider sign-in button.",
         {
           provider: z
             .enum(oauthIds)
@@ -403,6 +424,17 @@ function buildCustomTools(customTools, oauthProviderIds) {
         "'tier-blocked' (Free; relay message); 'backend-blocked' (no Convex backend).",
         {},
         makeHostToolHandler("initialize_stripe_payments"),
+      ),
+    );
+  }
+
+  if (customTools.includes("initialize_revenuecat_payments")) {
+    tools.push(
+      tool(
+        "initialize_revenuecat_payments",
+        "Set up RevenueCat in-app purchases for this Swift project. Call this FIRST for a paywall, subscriptions, premium features, consumables, or any iOS payment flow. It opens the Payments setup wizard when needed and returns already-connected, needs-connect, tier-blocked, or backend-blocked. Never hardcode SDK keys; Botflow writes RevenueCatConfig.swift before builds.",
+        {},
+        makeHostToolHandler("initialize_revenuecat_payments"),
       ),
     );
   }

@@ -13,11 +13,14 @@ import { UserButton } from "@clerk/nextjs";
 import { ShareControls } from "@/components/sharing/share-controls";
 import { cn } from "@/lib/utils";
 import { FileSearch } from "./file-search";
+import { SandboxGitHubPanel } from "@/components/sandboxed-web-workspace/github-panel";
 import { SwiftSimulatorPreview } from "./swift-simulator-preview";
 import { SwiftPipWindow } from "./swift-pip-window";
 import { IPhoneDeviceRunner } from "./iphone-device-runner";
 import { PublishToAppStore } from "./publish-to-app-store";
 import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
+import { OAuthProviderModal } from "@/components/workspace/oauth-provider-modal";
+import { useWorkspacePoll, rateLimitDelayMs } from "@/components/sandboxed-web-workspace/use-workspace-poll";
 import { RevenueCatTab } from "./revenuecat-tab";
 import { REVENUECAT_ENABLED } from "@/lib/feature-flags";
 import { PanelLeft, Play, Save, Loader2, Database, Rocket, Smartphone, Tablet, RotateCw, ArrowUpRight, Globe } from "lucide-react";
@@ -49,6 +52,9 @@ type ProjectRow = {
   revenuecatStatus?: string;
   swiftScreenshotIphoneUrl?: string | null;
   swiftScreenshotIpadUrl?: string | null;
+  githubRepoOwner?: string | null;
+  githubRepoName?: string | null;
+  githubDefaultBranch?: string | null;
 };
 
 interface PersistentWorkspaceProps {
@@ -72,7 +78,7 @@ export function PersistentWorkspace({
   const [fileContent, setFileContent] = useState<string>("");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [sidebarTab, setSidebarTab] = useState<"files" | "search" | "env">("files");
+  const [sidebarTab, setSidebarTab] = useState<"files" | "search" | "env" | "git">("files");
   const [currentView, setCurrentView] = useState<WorkspaceView>("code");
   // When a build-error row is clicked, we open the file and ask the editor to
   // reveal a specific line. The counter is bumped on every click so that
@@ -98,6 +104,14 @@ export function PersistentWorkspace({
   // mounted while the workspace lives so wizard state survives close/reopen.
   const [publishOpen, setPublishOpen] = useState(false);
 
+  // OAuth credential request from the agent (setupOAuthProvider) — shows the
+  // shared OAuthProviderModal when a pending row exists.
+  const [pendingOAuthRequest, setPendingOAuthRequest] = useState<{
+    id: string;
+    provider: string;
+    convexSiteUrl: string | null;
+  } | null>(null);
+
   // Project row (fetched client-side) — drives backend-aware UI. Null until loaded.
   const [project, setProject] = useState<ProjectRow | null>(null);
   const [deployingBackend, setDeployingBackend] = useState(false);
@@ -107,7 +121,10 @@ export function PersistentWorkspace({
   // RevenueCat (iOS in-app purchases) — requires a Convex backend.
   const revenuecatStatus =
     (project?.revenuecatStatus as "none" | "connecting" | "connected" | undefined) ?? "none";
-  const revenuecatEnabled = REVENUECAT_ENABLED && hasBackend && revenuecatStatus !== "none";
+  // Keep Payments discoverable before the agent has initialized RevenueCat.
+  // The tab owns the setup wizard, so making it conditional on a prior agent
+  // tool call stranded users when that call was unavailable or interrupted.
+  const revenuecatEnabled = REVENUECAT_ENABLED && hasBackend;
 
   const refreshFiles = useCallback(async () => {
     try {
@@ -133,6 +150,28 @@ export function PersistentWorkspace({
   useEffect(() => {
     void refreshProject();
   }, [refreshProject]);
+
+  // ── OAuth provider request polling ───────────────────────────────────
+  // When the agent calls setupOAuthProvider, it creates a pending request in
+  // the DB. We poll for it and show the OAuthProviderModal when one is found.
+  // Mirrors the sandboxed-web workspace; deliberately NOT gated on the
+  // workspace's cached authConfigured state (setupAuth may have run this
+  // session), only on the project having a backend at all.
+  useWorkspacePoll(async (signal) => {
+    const res = await fetch(
+      `/api/projects/${projectId}/convex/oauth-provider-status`,
+      { cache: "no-store", signal },
+    );
+    if (res.status === 429) return rateLimitDelayMs(res);
+    if (!res.ok) return;
+    const data = await res.json() as {
+      ok: boolean;
+      pending: { id: string; provider: string; convexSiteUrl: string | null } | null;
+    };
+    if (!signal.aborted && data.ok) {
+      setPendingOAuthRequest(data.pending);
+    }
+  }, 2500, hasBackend && sandboxStatus === "ready");
 
   // ── Agent simulator requests ────────────────────────────────────────────
   // The agent's startSimulator/stopSimulator tools publish a short-lived
@@ -386,8 +425,20 @@ export function PersistentWorkspace({
 
   return (
     <div className="h-screen flex bolt-bg text-fg">
-      {/* Agent sidebar */}
-      <div className="w-96 flex flex-col bg-elevated/70 backdrop-blur-sm">
+      {/* OAuth credential modal — shown when agent calls setupOAuthProvider */}
+      {pendingOAuthRequest && (
+        <OAuthProviderModal
+          requestId={pendingOAuthRequest.id}
+          provider={pendingOAuthRequest.provider}
+          convexSiteUrl={pendingOAuthRequest.convexSiteUrl}
+          projectId={projectId}
+          onClose={() => setPendingOAuthRequest(null)}
+        />
+      )}
+      {/* Agent sidebar. `relative z-30` so the model-selector / backend popovers
+          that overflow the w-96 column paint above the adjacent main panel
+          instead of being covered by it. */}
+      <div className="w-96 flex flex-col bg-elevated/70 backdrop-blur-sm relative z-30">
         <AgentPanel
           className="h-full"
           projectId={projectId}
@@ -554,10 +605,11 @@ export function PersistentWorkspace({
                           { value: "files", text: "Files" },
                           { value: "search", text: "Search" },
                           { value: "env", text: "ENV" },
-                        ] as TabOption<"files" | "search" | "env">[]
+                          { value: "git", text: "Git" },
+                        ] as TabOption<"files" | "search" | "env" | "git">[]
                       }
                       selected={sidebarTab}
-                      onSelect={(v) => setSidebarTab(v as "files" | "search" | "env")}
+                      onSelect={(v) => setSidebarTab(v as "files" | "search" | "env" | "git")}
                       stretch
                     />
                   </div>
@@ -583,8 +635,39 @@ export function PersistentWorkspace({
                           handleFileSelect(path);
                         }}
                       />
-                    ) : (
+                    ) : sidebarTab === "env" ? (
                       <EnvPanel projectId={projectId} />
+                    ) : (
+                      <SandboxGitHubPanel
+                        projectId={projectId}
+                        githubRepoOwner={project?.githubRepoOwner ?? null}
+                        githubRepoName={project?.githubRepoName ?? null}
+                        githubDefaultBranch={project?.githubDefaultBranch ?? null}
+                        onRepoLinked={(owner, name, branch) => {
+                          setProject((p) =>
+                            p
+                              ? {
+                                  ...p,
+                                  githubRepoOwner: owner,
+                                  githubRepoName: name,
+                                  githubDefaultBranch: branch,
+                                }
+                              : p,
+                          );
+                        }}
+                        onRepoUnlinked={() => {
+                          setProject((p) =>
+                            p
+                              ? {
+                                  ...p,
+                                  githubRepoOwner: null,
+                                  githubRepoName: null,
+                                  githubDefaultBranch: null,
+                                }
+                              : p,
+                          );
+                        }}
+                      />
                     )}
                   </div>
                 </div>

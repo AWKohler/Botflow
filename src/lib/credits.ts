@@ -44,36 +44,38 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     cachedInput: 0.06 / BASE_PRICE,   // 0.2
     output:      1.20 / BASE_PRICE,   // 4.0
   },
-  // 'fireworks-glm-5': {
-  //   input:       1.00 / BASE_PRICE,   // 3.33
-  //   cachedInput: 0.20 / BASE_PRICE,   // 0.67
-  //   output:      3.20 / BASE_PRICE,   // 10.67
-  // },
-  'fireworks-glm-5p2': {
-    input:       1.40 / BASE_PRICE,   // 4.67
-    cachedInput: 0.26 / BASE_PRICE,   // 0.87
-    output:      4.40 / BASE_PRICE,   // 14.67
-  },
   'fireworks-kimi-k2p7': {
     input:       0.95 / BASE_PRICE,   // 3.17
     cachedInput: 0.19 / BASE_PRICE,   // 0.63
     output:      4.00 / BASE_PRICE,   // 13.33
-  },
-  'gpt-5.3-codex': {
-    input:       1.75 / BASE_PRICE,   // 5.83
-    cachedInput: 0.175 / BASE_PRICE,  // 0.58
-    output:      14.00 / BASE_PRICE,  // 46.67
   },
   'gpt-5.5': {
     input:       5.00 / BASE_PRICE,   // 16.67
     cachedInput: 0.50 / BASE_PRICE,   // 1.67
     output:      30.00 / BASE_PRICE,  // 100.0
   },
-  // GPT-5.4 ≤272K context — the >272K tier is handled in calculateCredits()
-  'gpt-5.4': {
+  // GPT-5.6 family. Flat pricing (no context-length tier). Unlike earlier
+  // OpenAI models, 5.6 bills cache WRITES at 1.25× uncached input — modeled via
+  // cacheWrite below. (Only charged when the meter reports cacheWriteTokens; see
+  // usage-meter — the OpenAI dialect must extract 5.6's cache-write count for it
+  // to take effect, otherwise writes fall back to plain input like the old models.)
+  'gpt-5.6-sol': {                    // flagship — same rates as GPT-5.5
+    input:       5.00 / BASE_PRICE,   // 16.67
+    cachedInput: 0.50 / BASE_PRICE,   // 1.67
+    output:      30.00 / BASE_PRICE,  // 100.0
+    cacheWrite:  6.25 / BASE_PRICE,   // 20.83 (1.25× input)
+  },
+  'gpt-5.6-terra': {                  // balanced — succeeds GPT-5.4
     input:       2.50 / BASE_PRICE,   // 8.33
     cachedInput: 0.25 / BASE_PRICE,   // 0.83
     output:      15.00 / BASE_PRICE,  // 50.0
+    cacheWrite:  3.125 / BASE_PRICE,  // 10.42 (1.25× input)
+  },
+  'gpt-5.6-luna': {                   // fast/cheap — succeeds GPT-5.3
+    input:       1.00 / BASE_PRICE,   // 3.33
+    cachedInput: 0.10 / BASE_PRICE,   // 0.33
+    output:      6.00 / BASE_PRICE,   // 20.0
+    cacheWrite:  1.25 / BASE_PRICE,   // 4.17 (1.25× input)
   },
   // Claude Sonnet 5 — standard (regular) pricing, effective 2026-09-01 onward.
   // Identical to the prior Sonnet 4.6 rates ($3 / $15 per MTok). Until then the
@@ -105,6 +107,16 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     output:     12.00 / BASE_PRICE,   // 40.0
     cacheWrite:  2.00 / BASE_PRICE,   // 6.67 — cache write billed at full input price
   },
+  // xAI Grok 4.5. Pricing verified live against the API's cost_in_usd_ticks
+  // (1 tick = 1e-10 USD): $2 uncached / $0.50 cached / $6 output per MTok.
+  // Cache is passive/read-only (openai-chat cached_tokens, a subset of
+  // prompt_tokens) — no cache-write billing, so no cacheWrite field. Note the
+  // discount is only 75% ($2→$0.50), less than the 90% on most other models.
+  'grok-4.5': {
+    input:       2.00 / BASE_PRICE,   // 6.67
+    cachedInput: 0.50 / BASE_PRICE,   // 1.67
+    output:      6.00 / BASE_PRICE,   // 20.0
+  },
 };
 
 // Gemini 3.1 Pro pricing at >200K context length
@@ -117,14 +129,17 @@ const GEMINI_LONG_CONTEXT_PRICING: ModelPricing = {
 
 const GEMINI_LONG_CONTEXT_THRESHOLD = 200_000;
 
-// GPT-5.4 pricing at >272K context length
-const GPT54_LONG_CONTEXT_PRICING: ModelPricing = {
-  input:       5.00 / BASE_PRICE,   // 16.67
-  cachedInput: 0.50 / BASE_PRICE,   // 1.67
-  output:      22.50 / BASE_PRICE,  // 75.0
+// Grok 4.5 pricing above its long_context_threshold (200K) — EVERY axis
+// doubles, per xAI's own model metadata (prompt_text_token_price_long_context
+// 40000 = $4/MTok, cached 10000 = $1, completion 120000 = $12; all 2× the
+// ≤200K rates). Verified live against GET api.x.ai/v1/models/grok-4.5.
+const GROK_LONG_CONTEXT_PRICING: ModelPricing = {
+  input:       4.00 / BASE_PRICE,   // 13.33
+  cachedInput: 1.00 / BASE_PRICE,   // 3.33
+  output:     12.00 / BASE_PRICE,   // 40.0
 };
 
-const GPT54_LONG_CONTEXT_THRESHOLD = 272_000;
+const GROK_LONG_CONTEXT_THRESHOLD = 200_000;
 
 // Claude Sonnet 5 introductory pricing — $2 input / $10 output per MTok, a
 // temporary discount from the standard $3 / $15 rates in MODEL_PRICING above.
@@ -151,13 +166,14 @@ const SONNET5_INTRO_END = Date.UTC(2026, 8, 1); // 2026-09-01T00:00:00Z (month i
  */
 export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = {
   'fireworks-minimax-m3': 1,
-  'fireworks-glm-5p2': 3,
   'fireworks-kimi-k2p7': 3,
-  'gpt-5.3-codex': 4,
+  'gpt-5.6-luna': 3,
+  'grok-4.5': 4,
   'gemini-3.1-pro-preview': 5,
   'claude-sonnet-5': 5,
-  'gpt-5.4': 6,
+  'gpt-5.6-terra': 6,
   'claude-opus-4-8': 10,
+  'gpt-5.6-sol': 12,
   'gpt-5.5': 12,
   'claude-fable-5': 20,
 };
@@ -183,14 +199,14 @@ export function calculateCredits(params: CreditCalculationInput): number {
     pricing = MODEL_PRICING['fireworks-minimax-m3'];
   }
 
-  // GPT-5.4: use higher pricing tier if total input context exceeds 272K
-  if (model === 'gpt-5.4' && (inputTokens + cachedReadTokens) > GPT54_LONG_CONTEXT_THRESHOLD) {
-    pricing = GPT54_LONG_CONTEXT_PRICING;
-  }
-
   // Gemini 3.1 Pro: use higher pricing tier if total input context exceeds 200K
   if (model === 'gemini-3.1-pro-preview' && (inputTokens + cachedReadTokens) > GEMINI_LONG_CONTEXT_THRESHOLD) {
     pricing = GEMINI_LONG_CONTEXT_PRICING;
+  }
+
+  // Grok 4.5: every rate doubles above 200K total context (xAI long-context tier).
+  if (model === 'grok-4.5' && (inputTokens + cachedReadTokens) > GROK_LONG_CONTEXT_THRESHOLD) {
+    pricing = GROK_LONG_CONTEXT_PRICING;
   }
 
   // Claude Sonnet 5: introductory pricing applies through 2026-08-31 (UTC);
@@ -278,6 +294,10 @@ export async function incrementWeeklyCredits(userId: string, credits: number): P
  * Reservations are bounded by the existing WEEK_TTL, so a reservation that is
  * never reconciled (e.g. process death mid-stream) self-expires rather than
  * permanently inflating the counter.
+ *
+ * @deprecated Platform-billed flows should use reservePlatformCredits, which
+ * gates on the monthly ceiling with weekly-boundary spillover and maintains
+ * both KV counters together.
  */
 export async function reserveWeeklyCredits(
   userId: string,
@@ -308,10 +328,132 @@ export async function reserveWeeklyCredits(
  * reconcile a prior `reserveWeeklyCredits` down (or up) to the real cost, and to
  * release a reservation on abort. Unlike `incrementWeeklyCredits` it does not
  * touch the TTL, since the key already exists from the reservation.
+ *
+ * @deprecated Platform-billed flows should use reservePlatformCredits /
+ * adjustPlatformCredits, which maintain the weekly AND monthly KV counters
+ * together. Kept only so a straggling caller fails loudly in review, not
+ * silently at runtime.
  */
 export async function adjustWeeklyCredits(userId: string, delta: number): Promise<void> {
   if (delta === 0) return;
   await redis.incrby(weeklyRedisKey(userId), delta);
+}
+
+// ─── Redis: monthly credits (KV enforcement copy) ─────────────────────────────
+// Hot-path checks (turn pre-flight, per-request reservations) must NEVER hit
+// Neon. The monthly counter lives in Redis, lazily seeded from the Neon SUM
+// once per period (SET NX), then maintained by the same reserve/adjust flow as
+// the weekly counter. Neon stays the AUDIT source of truth (usage_records rows
+// written at settlement; /api/usage display reads) — this key is the
+// enforcement copy. Drift exposure: a crashed process's unreconciled
+// reservation inflates the counter until the month rolls over — the same class
+// of exposure the weekly key already accepts, with a longer window.
+
+const MONTH_TTL = 35 * 24 * 3600; // any month length + reconcile slack
+
+function monthlyRedisKey(userId: string): string {
+  return `mcred:${userId}:${currentPeriod()}`;
+}
+
+/** Seed the month's KV counter from Neon exactly once per period. Every
+ *  writer calls this BEFORE its INCRBY so the key is always created by the
+ *  SET NX (never by a bare INCRBY racing the seed to zero). */
+async function ensureMonthlySeeded(userId: string): Promise<void> {
+  const key = monthlyRedisKey(userId);
+  if (await redis.exists(key)) return;
+  const seed = await getMonthlyCredits(userId); // Neon SUM — once per period per user
+  await redis.set(key, seed, { nx: true, ex: MONTH_TTL });
+}
+
+/** Monthly usage from the KV enforcement counter (seeds from Neon if this is
+ *  the period's first read). Use THIS in hot paths, never getMonthlyCredits. */
+export async function getMonthlyCreditsKV(userId: string): Promise<number> {
+  await ensureMonthlySeeded(userId);
+  const val = await redis.get<number>(monthlyRedisKey(userId));
+  return val ?? 0;
+}
+
+export type PlatformReserveResult =
+  | { ok: true }
+  | { ok: false; reason: 'weekly_exhausted' | 'monthly_exceeded' };
+
+/**
+ * Atomically reserve `amount` credits for a platform-billed request.
+ *
+ * The paradigm — weekly pacing with monthly spillover:
+ *  - The WEEKLY budget paces usage. Once a user's week is exhausted
+ *    (weeklyUsed ≥ weeklyLimit BEFORE this request), requests are blocked
+ *    until the weekly reset.
+ *  - A single request that STRADDLES the weekly boundary — the user still has
+ *    weekly headroom, but the worst-case reservation overshoots it — is
+ *    ALLOWED. The overshoot spills into the monthly budget.
+ *  - The MONTHLY budget is the hard ceiling: a reservation that does not fit
+ *    the remaining monthly headroom is rejected outright. In the last week of
+ *    a month the two budgets converge, so spillover naturally shrinks to
+ *    zero — no calendar special-casing needed.
+ *
+ * Same INCRBY + rollback atomicity as reserveWeeklyCredits (closes the
+ * check-then-spend TOCTOU race). On success the caller MUST reconcile to the
+ * real cost via adjustPlatformCredits (onFinish), and release with
+ * adjustPlatformCredits(-amount) on abort.
+ */
+export async function reservePlatformCredits(
+  userId: string,
+  amount: number,
+  weeklyLimit: number,
+  monthlyLimit: number,
+): Promise<PlatformReserveResult> {
+  await ensureMonthlySeeded(userId);
+  const wKey = weeklyRedisKey(userId);
+  const mKey = monthlyRedisKey(userId);
+
+  if (amount <= 0) {
+    // Nothing to reserve — still enforce both limits against current usage.
+    const [w, m] = await Promise.all([getWeeklyCredits(userId), redis.get<number>(mKey)]);
+    if ((m ?? 0) >= monthlyLimit) return { ok: false, reason: 'monthly_exceeded' };
+    if (w >= weeklyLimit) return { ok: false, reason: 'weekly_exhausted' };
+    return { ok: true };
+  }
+
+  // Monthly first — the hard ceiling.
+  const mTotal = await redis.incrby(mKey, amount);
+  if (mTotal > monthlyLimit) {
+    await redis.incrby(mKey, -amount).catch(() => {});
+    return { ok: false, reason: 'monthly_exceeded' };
+  }
+
+  const wTotal = await redis.incrby(wKey, amount);
+  if (wTotal === amount) {
+    // First write this week — set TTL.
+    await redis.expire(wKey, WEEK_TTL);
+  }
+  // Spillover rule: reject only when the week was ALREADY exhausted before
+  // this request (pre-reservation usage ≥ limit). A request that STARTS under
+  // the weekly line may finish over it — that overshoot was covered by the
+  // monthly check above.
+  if (wTotal - amount >= weeklyLimit) {
+    await Promise.all([
+      redis.incrby(wKey, -amount).catch(() => {}),
+      redis.incrby(mKey, -amount).catch(() => {}),
+    ]);
+    return { ok: false, reason: 'weekly_exhausted' };
+  }
+  return { ok: true };
+}
+
+/**
+ * Adjust BOTH platform counters by `delta` (may be negative): reconcile a
+ * reservation to the real cost, or release it on abort/failure. The monthly
+ * key is re-seeded first if missing (eviction guard) so a bare INCRBY can
+ * never mint a fresh counter from zero.
+ */
+export async function adjustPlatformCredits(userId: string, delta: number): Promise<void> {
+  if (delta === 0) return;
+  await ensureMonthlySeeded(userId);
+  await Promise.all([
+    redis.incrby(weeklyRedisKey(userId), delta),
+    redis.incrby(monthlyRedisKey(userId), delta),
+  ]);
 }
 
 // ─── Neon: monthly credits ────────────────────────────────────────────────────

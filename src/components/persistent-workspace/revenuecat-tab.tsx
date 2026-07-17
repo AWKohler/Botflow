@@ -75,15 +75,24 @@ const EVENT_LABELS: Record<string, string> = {
  * development is ALWAYS test mode, published builds are ALWAYS live. Shown in
  * both tab states so the divergence is never a surprise.
  */
-function PaymentModeCard() {
+function PaymentModeCard({ testStoreReady }: { testStoreReady?: boolean }) {
   return (
     <div className="rounded-xl border border-border bg-elevated/40 p-4 space-y-2">
       <h3 className="text-sm font-semibold text-fg">How payments run</h3>
       <div className="text-xs text-muted space-y-1.5">
         <p>
           <span className="font-medium text-fg">Development (simulator &amp; dev devices):</span>{" "}
-          always <span className="text-amber-500 font-medium">test mode</span> — purchases are
-          simulated through RevenueCat&apos;s Test Store. No Apple setup, no real money, ever.
+          {testStoreReady ? (
+            <>
+              always <span className="text-amber-500 font-medium">test mode</span> — purchases are
+              simulated through RevenueCat&apos;s Test Store. No Apple setup, no real money, ever.
+            </>
+          ) : (
+            <>
+              requires RevenueCat&apos;s <span className="text-amber-500 font-medium">Test Store</span>.
+              Until it&apos;s ready, Botflow disables purchases in development rather than using a live key.
+            </>
+          )}
         </p>
         <p>
           <span className="font-medium text-fg">Published (App Store):</span> always{" "}
@@ -92,8 +101,8 @@ function PaymentModeCard() {
         </p>
         <p className="text-muted/80">
           There&apos;s no toggle: Botflow bakes the right RevenueCat key into each build kind
-          automatically, so a test build can never charge anyone and a store build can never
-          ship in test mode.
+          automatically. A test build without Test Store setup disables purchases, and a store
+          build can never ship in test mode.
         </p>
       </div>
     </div>
@@ -152,6 +161,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
   const { toast } = useToast();
   const [data, setData] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
 
   // Wizard form fields.
@@ -159,6 +169,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
   const [rcPublicSdkKey, setRcPublicSdkKey] = useState("");
   const [rcProjectId, setRcProjectId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   // Activity feed (connected state): recent entitlement events routed to this
   // project, from the platform's delivery log — no RevenueCat API calls.
@@ -188,9 +199,18 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
       const res = await fetch(`/api/projects/${projectId}/revenuecat/status`, {
         cache: "no-store",
       });
-      if (res.ok) setData((await res.json()) as StatusResponse);
+      const body = (await res.json().catch(() => null)) as StatusResponse | { error?: string } | null;
+      if (res.ok && body) {
+        setData(body as StatusResponse);
+        setLoadError(null);
+      } else {
+        setLoadError(
+          (body && "error" in body && body.error) ||
+            `Payments status could not be loaded (HTTP ${res.status}).`,
+        );
+      }
     } catch {
-      /* network blip */
+      setLoadError("Payments status could not be loaded. Check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -205,6 +225,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
       toast({ title: "Missing keys", description: "Secret key, public SDK key, and project id are all required." });
       return;
     }
+    setConnectError(null);
     setSubmitting(true);
     try {
       const res = await fetch(`/api/projects/${projectId}/revenuecat/connect`, {
@@ -227,10 +248,13 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
       // Drop all pasted credentials from client state once stored server-side.
       setRcSecretKey("");
       setRcPublicSdkKey("");
+      setConnectError(null);
       onChanged?.();
       await loadStatus();
     } catch (e) {
-      toast({ title: "Couldn't connect", description: e instanceof Error ? e.message : "Unknown error" });
+      const message = e instanceof Error ? e.message : "Unknown error";
+      setConnectError(message);
+      toast({ title: "Couldn't connect", description: message });
     } finally {
       setSubmitting(false);
     }
@@ -338,14 +362,15 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
             </div>
           </div>
 
-          <PaymentModeCard />
+          <PaymentModeCard testStoreReady={data?.checklist.testStoreReady} />
 
           {data && !data.checklist.testStoreReady && (
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-1">
               <p className="text-xs text-amber-500">
                 Your RevenueCat project has no Test Store, so the simulator can&apos;t make
-                test purchases yet. Enable it in RevenueCat (Project settings → Apps →
-                Test Store), then re-run setup below.
+                test purchases yet. Botflow keeps purchases disabled in development until
+                it&apos;s ready. Enable it in RevenueCat (Project settings → Apps → Test Store),
+                then re-run setup below.
               </p>
               <Button variant="outline" size="sm" onClick={handleRepairBackend} disabled={repairing}>
                 {repairing ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
@@ -475,6 +500,12 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
           </p>
         </div>
 
+        {loadError && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-xs text-amber-500">
+            {loadError}
+          </div>
+        )}
+
         {/* Step checklist */}
         <div className="rounded-xl border border-border bg-elevated/60 p-4 space-y-2">
           <ChecklistRow done={Boolean(cl?.keysProvided)}>RevenueCat keys provided</ChecklistRow>
@@ -482,14 +513,43 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
           <ChecklistRow done={Boolean(cl?.testStoreReady)}>Test Store found (simulator test purchases)</ChecklistRow>
         </div>
 
-        <PaymentModeCard />
+        <PaymentModeCard testStoreReady={cl?.testStoreReady} />
+
+        <div className="rounded-xl border border-accent/30 bg-accent/5 p-4 space-y-2.5">
+          <div className="flex items-center gap-2">
+            <ExternalLink size={15} className="text-accent shrink-0" />
+            <h3 className="text-sm font-semibold text-fg">Start with RevenueCat Test Store</h3>
+          </div>
+          <p className="text-xs text-muted leading-relaxed">
+            For a simulator or development build, you do not need App Store Connect first.
+            RevenueCat creates a Test Store for every project. In <span className="text-fg">Project settings → API keys</span>,
+            create a <span className="text-fg">V2</span> secret key, then copy the Test Store SDK key that starts with <code className="text-fg">test_</code>.
+            Copy the separate <code className="text-fg">proj…</code> Project ID from <span className="text-fg">Project settings → General</span> — not the ID in the dashboard URL.
+          </p>
+          <a
+            href="https://production-docs.revenuecat.com/docs/getting-started/configuring-sdk"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
+          >
+            <ArrowUpRight size={14} /> Follow RevenueCat&apos;s Test Store setup guide
+          </a>
+          <a
+            href="https://production-docs.revenuecat.com/docs/api-v2"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
+          >
+            <ArrowUpRight size={14} /> Create a RevenueCat V2 secret key
+          </a>
+        </div>
 
         {/* Step 1 */}
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-fg">1. Create a RevenueCat project</h3>
           <p className="text-xs text-muted">
-            Sign in to RevenueCat and create a project with an App Store app. Then open
-            its API keys.
+            Sign in to RevenueCat and create a project. For test purchases, use its built-in
+            Test Store — an App Store app and <code className="text-fg">appl_</code> key are only needed when you prepare a release.
           </p>
           <button
             onClick={() => window.open("https://app.revenuecat.com", "_blank", "noopener,noreferrer")}
@@ -502,9 +562,13 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
         {/* Step 2 */}
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-fg">2. Paste your keys</h3>
+          <p className="text-xs text-muted">
+            Use a <code className="text-fg">sk_</code> <span className="text-fg">V2</span> secret key and the <code className="text-fg">test_</code> Test Store key for simulator testing.
+            V1 secret keys cannot access RevenueCat&apos;s v2 API. Botflow keeps the test key out of App Store builds.
+          </p>
           <Field label="Secret key (sk_…)" value={rcSecretKey} onChange={setRcSecretKey} placeholder="sk_xxxxxxxx" mono type="password" />
-          <Field label="Public SDK key (appl_…)" value={rcPublicSdkKey} onChange={setRcPublicSdkKey} placeholder="appl_xxxxxxxx" mono />
-          <Field label="Project id (proj…)" value={rcProjectId} onChange={setRcProjectId} placeholder="proj1a2b3c4d" mono />
+          <Field label="SDK key (appl_… or test_…)" value={rcPublicSdkKey} onChange={setRcPublicSdkKey} placeholder="appl_xxxxxxxx or test_xxxxxxxx" mono />
+          <Field label="API v2 Project ID (Project settings → General, starts proj…)" value={rcProjectId} onChange={setRcProjectId} placeholder="proj1a2b3c4d" mono />
 
           <div className="flex items-center gap-2 pt-1">
             <Button onClick={handleConnect} disabled={submitting} className="font-semibold">
@@ -516,8 +580,8 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
               Verify
             </Button>
           </div>
-          {data?.connectionError && (
-            <p className="text-xs text-amber-500">{data.connectionError}</p>
+          {(connectError || data?.connectionError) && (
+            <p className="text-xs text-amber-500">{connectError || data?.connectionError}</p>
           )}
         </div>
 

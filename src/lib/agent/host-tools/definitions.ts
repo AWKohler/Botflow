@@ -88,7 +88,7 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       "On success it returns the exact convex/auth.ts import + providers-array line and the sign-in button to add — then run convex_deploy. " +
       "Outcomes: 'dismissed' means the user explicitly closed the modal — do NOT retry, and do not treat it as failure to configure later. " +
       "A 'still pending' result means the user simply hasn't finished YET — the modal stays open, you'll get a system note when they submit; " +
-      "NEVER report a still-pending modal as dismissed or declined.",
+      "NEVER report a still-pending modal as dismissed or declined. Until success is returned, do NOT edit convex/auth.ts or add/expose the provider sign-in button.",
     inputSchema: {
       type: "object",
       properties: {
@@ -160,6 +160,15 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       "Returns status='connected' on success; 'dismissed' means the user explicitly cancelled (do NOT retry — continue and tell the user they can connect later); " +
       "'still-pending' means the user hasn't finished YET — the modal stays open, so NEVER describe it as dismissed or declined; " +
       "'tier-blocked' (Free; relay message); 'backend-blocked' (no Convex backend).",
+    inputSchema: EMPTY_INPUT,
+  },
+  initialize_revenuecat_payments: {
+    name: "initialize_revenuecat_payments",
+    description:
+      "Set up RevenueCat in-app purchases for this Swift project. Call this FIRST when the user asks for a paywall, subscriptions, premium features, consumables, or any iOS payment flow. " +
+      "It opens the Payments setup wizard when the user has not linked RevenueCat yet, or enables the project immediately when they have. " +
+      "Do not hardcode a RevenueCat SDK key: Botflow writes Sources/Core/RevenueCatConfig.swift before builds. " +
+      "Returns status='already-connected', 'needs-connect', 'tier-blocked', or 'backend-blocked'.",
     inputSchema: EMPTY_INPUT,
   },
   get_stripe_products: {
@@ -442,6 +451,7 @@ export interface SelectHostToolsInput {
   hasBackend: boolean;
   hasGithub: boolean;
   stripeEnabled: boolean;
+  revenuecatEnabled: boolean;
 }
 
 /**
@@ -455,7 +465,7 @@ export interface SelectHostToolsInput {
  * enter the sandbox env.
  */
 export function selectHostTools(input: SelectHostToolsInput): string[] {
-  const { platform, hasBackend, hasGithub, stripeEnabled } = input;
+  const { platform, hasBackend, hasGithub, stripeEnabled, revenuecatEnabled } = input;
   const customTools: string[] = [];
   if (platform === "sandboxed-web") {
     customTools.push(
@@ -518,8 +528,26 @@ export function selectHostTools(input: SelectHostToolsInput): string[] {
     if (hasBackend) {
       // Swift + Convex backend: the deploy/logs/auth tools are platform-
       // agnostic server-side (the deploy pipeline zips /convex regardless of
-      // frontend language; setup_auth is platform-aware in the host route).
-      customTools.push("convex_deploy", "get_convex_logs", "setup_auth");
+      // frontend language; setup_auth and setup_oauth_provider are platform-
+      // aware in the host route — the Swift OAuth flow is served entirely by
+      // the generated convex/http.ts, no client work).
+      customTools.push("convex_deploy", "get_convex_logs", "setup_auth", "setup_oauth_provider");
+      if (revenuecatEnabled) customTools.push("initialize_revenuecat_payments");
+    }
+    // Git tools — same surface as sandboxed-web. The host route executes them
+    // via sandbox-git against the persistent sandbox, which is platform-
+    // agnostic, and re-checks project.githubRepoOwner at execution time.
+    if (hasGithub) {
+      customTools.push(
+        "git_status",
+        "git_diff",
+        "git_commit",
+        "git_push",
+        "git_pull",
+        "git_resolve_conflict",
+        "set_git_autonomy",
+        "open_pull_request",
+      );
     }
   }
   return customTools;

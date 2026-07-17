@@ -4,20 +4,17 @@ import Link from 'next/link';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
 import { ArrowRight, Cog } from 'lucide-react';
-import { Instrument_Serif } from 'next/font/google';
 import { cn } from '@/lib/utils';
 import { SettingsModal } from '@/components/settings/SettingsModal';
+import { serif } from './fonts';
 
 // ============================================================================
 // Typography + easing tokens shared across landing / subpages
 // ============================================================================
 
-export const serif = Instrument_Serif({
-  weight: '400',
-  style: ['normal', 'italic'],
-  subsets: ['latin'],
-  display: 'swap',
-});
+// Re-exported for client components; server components must import from
+// ./fonts directly (see the note there).
+export { serif };
 
 export const EASE_OUT = 'cubic-bezier(0.43, 0.195, 0.02, 1)';
 export const EASE_SNAP = 'cubic-bezier(0.5, 0, 0, 1)';

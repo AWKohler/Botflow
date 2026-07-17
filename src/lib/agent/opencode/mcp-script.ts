@@ -117,13 +117,28 @@ async function postHostTool(toolName, input) {
   if (process.env.BOTFLOW_VERCEL_BYPASS) {
     headers["x-vercel-protection-bypass"] = process.env.BOTFLOW_VERCEL_BYPASS;
   }
-  const response = await fetch(base + "/api/internal/claude-code-tool", {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ tool: toolName, input: input ?? {} }),
-  });
-  const contentType = response.headers.get("content-type") || "unknown";
-  const raw = await response.text().catch(() => "");
+  // A 429 from the host limiter is transient and self-clearing: the response
+  // carries Retry-After, so pace against it instead of surfacing a turn-killing
+  // "rate_limited" error the user has to manually retry. Bounded attempts so a
+  // genuinely stuck limiter still eventually errors out.
+  const MAX_429_RETRIES = 6;
+  let response, contentType, raw;
+  for (let attempt = 0; ; attempt++) {
+    response = await fetch(base + "/api/internal/claude-code-tool", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ tool: toolName, input: input ?? {} }),
+    });
+    if (response.status === 429 && attempt < MAX_429_RETRIES) {
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const waitSec = retryAfter > 0 ? retryAfter : Math.min(30, Math.pow(2, attempt));
+      await new Promise((r) => setTimeout(r, waitSec * 1000));
+      continue;
+    }
+    break;
+  }
+  contentType = response.headers.get("content-type") || "unknown";
+  raw = await response.text().catch(() => "");
   if (!response.ok) {
     throw new Error(
       "Host tool call failed (HTTP " + response.status + ", " + contentType + "): " + raw.slice(0, 300),
@@ -152,7 +167,7 @@ async function callHostTool(toolName, input) {
         ok: false,
         content:
           "Stopped waiting for the user after 30 minutes. The request may STILL be pending in their workspace — " +
-          "do NOT tell the user they dismissed or declined it. Continue with other work.",
+          "do NOT tell the user they dismissed or declined it. Continue only with unrelated work; do not implement or expose UI that depends on the pending setup until the host tool returns success.",
       };
     }
     const delay = Number(result.wait.pollDelayMs) > 0 ? Number(result.wait.pollDelayMs) : 2500;

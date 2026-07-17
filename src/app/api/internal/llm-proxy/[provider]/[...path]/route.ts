@@ -180,7 +180,7 @@ async function proxy(
         effectiveMaxOutput: rewritten.effectiveMaxOutput,
       });
       if (!reservation.ok) {
-        return creditsExhaustedResponse(provider);
+        return creditsExhaustedResponse(provider, reservation.reason);
       }
       reserved = reservation.reserved;
     }

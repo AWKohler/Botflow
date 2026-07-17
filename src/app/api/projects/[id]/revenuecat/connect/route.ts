@@ -89,12 +89,24 @@ export async function POST(
     );
   }
 
-  if (!rcPublicSdkKey.startsWith('appl_')) {
+  if (!rcProjectId.startsWith('proj')) {
     return NextResponse.json(
       {
         ok: false,
         error:
-          'The public SDK key should start with "appl_" (the Apple app-specific key from RevenueCat → API Keys).',
+          'RevenueCat API v2 needs the Project ID that starts with "proj". Copy it from RevenueCat → Project settings → General, not from the dashboard URL.',
+      },
+      { status: 400 },
+    );
+  }
+
+  const isTestStoreKey = rcPublicSdkKey.startsWith('test_');
+  if (!rcPublicSdkKey.startsWith('appl_') && !isTestStoreKey) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          'The SDK key should start with "appl_" for an App Store app or "test_" for RevenueCat Test Store.',
       },
       { status: 400 },
     );
@@ -103,10 +115,14 @@ export async function POST(
   // Validate the secret key actually works against this project.
   const validation = await validateConnection(rcSecretKey, rcProjectId);
   if (!validation.ok) {
+    const setupHint =
+      validation.status === 404
+        ? ' Make sure the secret key was created with API version V2 and the Project ID is the "proj…" value from Project settings.'
+        : '';
     return NextResponse.json(
       {
         ok: false,
-        error: `Could not verify your RevenueCat connection: ${validation.error}. Double-check the secret key and project id.`,
+        error: `Could not verify your RevenueCat connection: ${validation.error}.${setupHint} Double-check the secret key and project ID.`,
       },
       { status: validation.status >= 400 && validation.status < 500 ? 400 : 502 },
     );
@@ -151,7 +167,12 @@ export async function POST(
   const values = {
     userId,
     rcSecretKey: encryptSecret(rcSecretKey),
-    rcPublicSdkKey,
+    // A Test Store key is valid for development but must never become the
+    // production build key. Keep any prior appl_ key and store the test key in
+    // its dedicated field; release builds then remain unconfigured until the
+    // user adds a real App Store app.
+    rcPublicSdkKey: isTestStoreKey ? existing?.rcPublicSdkKey ?? null : rcPublicSdkKey,
+    ...(isTestStoreKey ? { rcTestStoreSdkKey: rcPublicSdkKey } : {}),
     rcProjectId,
     rcInboundWebhookSecret,
     rcInboundWebhookSecretDigest,

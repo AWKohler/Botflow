@@ -12,11 +12,10 @@ import OpenAI from "openai";
 import sharp from "sharp";
 import { getUserTier } from "@/lib/tier";
 import {
-  adjustWeeklyCredits,
-  getMonthlyCredits,
+  adjustPlatformCredits,
   getMonthlyLimit,
   getWeeklyLimit,
-  reserveWeeklyCredits,
+  reservePlatformCredits,
 } from "@/lib/credits";
 import { recordTokenUsage } from "@/lib/usage";
 import { sandboxBash, sandboxWriteBinaryFile, sandboxWriteFile } from "@/lib/vercel-sandbox";
@@ -101,29 +100,25 @@ export async function generateAppIcon(opts: {
     return { ok: false, status: 500, error: "Image generation isn't configured." };
   }
 
-  // ── Budget: monthly cap + atomic weekly reservation ──────────────────────
+  // ── Budget: one atomic KV reservation (weekly pacing, monthly ceiling) ───
+  // reservePlatformCredits gates the FULL cost against the monthly headroom
+  // (hard ceiling) and the weekly pace — a boundary-straddling generation may
+  // spill into monthly headroom. Redis-only; Neon never touched here.
   const tier = await getUserTier(opts.userId);
-  // Pre-check the FULL estimated cost against the monthly cap — not merely
-  // whether the user is already at it — so someone a credit under the cap can't
-  // still incur a whole icon's worth of credits.
-  if ((await getMonthlyCredits(opts.userId)) + ICON_GENERATION_CREDITS > getMonthlyLimit(tier)) {
-    return {
-      ok: false,
-      status: 402,
-      error: "You've reached your monthly credit limit.",
-      insufficientCredits: true,
-    };
-  }
-  const reserved = await reserveWeeklyCredits(
+  const reserved = await reservePlatformCredits(
     opts.userId,
     ICON_GENERATION_CREDITS,
     getWeeklyLimit(tier),
+    getMonthlyLimit(tier),
   );
-  if (!reserved) {
+  if (!reserved.ok) {
     return {
       ok: false,
       status: 402,
-      error: "Not enough weekly credits left to generate an icon.",
+      error:
+        reserved.reason === "monthly_exceeded"
+          ? "You've reached your monthly credit limit."
+          : "Not enough weekly credits left to generate an icon.",
       insufficientCredits: true,
     };
   }
@@ -147,7 +142,7 @@ export async function generateAppIcon(opts: {
     // …and flatten defensively in case the model still emits transparency.
     pngBuffer = await normalizeIconPng(Buffer.from(b64, "base64"));
   } catch (e) {
-    await adjustWeeklyCredits(opts.userId, -ICON_GENERATION_CREDITS).catch((err) =>
+    await adjustPlatformCredits(opts.userId, -ICON_GENERATION_CREDITS).catch((err) =>
       // The image failed AND the refund failed — log loudly; the user is owed
       // these credits back. (Durable retry is an app-wide credit concern.)
       console.error(
