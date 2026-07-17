@@ -10,6 +10,8 @@
  * tool-call semantics, etc.) we omit.
  */
 
+import { NETWORK_EGRESS_NOTE } from "@/lib/egress-hint";
+
 export interface BuildAppendPromptInput {
   platform: "sandboxed-web" | "swift";
   hasBackend: boolean;
@@ -212,6 +214,8 @@ export function buildClaudeCodeAppendPrompt(input: BuildAppendPromptInput): stri
     "- Tailwind tokens / semantic colors, mobile-first responsive",
     "- For brand-new scaffolds, lean toward beautiful, ambitious initial designs (wow factor)",
     "- Never write comments that just restate what the code does",
+    "",
+    NETWORK_EGRESS_NOTE,
   );
 
   return sections.join("\n");

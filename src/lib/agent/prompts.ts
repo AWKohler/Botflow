@@ -2,6 +2,7 @@
  * System prompts for the agent — extracted for maintainability.
  */
 import { REVENUECAT_ENABLED } from "@/lib/feature-flags";
+import { NETWORK_EGRESS_NOTE } from "@/lib/egress-hint";
 
 const END_TURN_INSTRUCTION = [
   "",
@@ -450,6 +451,7 @@ export function buildWebSystemPrompt({ hasBackend }: { hasBackend: boolean }): s
   const parts = hasBackend
     ? [...WEB_PROMPT_INTRO, ...WEB_PROMPT_CONVEX, ...WEB_PROMPT_OUTRO]
     : [...WEB_PROMPT_INTRO, ...WEB_PROMPT_NO_BACKEND_NOTE, ...WEB_PROMPT_OUTRO_NO_BACKEND];
+  parts.push("", "---", "", NETWORK_EGRESS_NOTE);
   return parts.join("\n") + END_TURN_INSTRUCTION;
 }
 
