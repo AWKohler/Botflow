@@ -9,7 +9,7 @@ import {
   sandboxTreeSignature,
   sandboxWriteFile,
 } from "@/lib/vercel-sandbox";
-import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { swiftProjectForbidden } from "@/lib/swift-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ async function getAuthorizedProject(projectId: string, userId: string) {
   const { project } = access;
   if (project.platform !== "swift" && project.platform !== "sandboxed-web") return null;
   // Swift's runtime is beta-only; deny non-beta owners of legacy swift projects.
-  if (await swiftRuntimeForbidden(project.platform, userId)) return null;
+  if (await swiftProjectForbidden(project)) return null;
   return project;
 }
 
@@ -111,12 +111,18 @@ export async function PUT(
       // window shrinks from minutes to ms, and version history restores the
       // loser — plan §6.1/§6.5).
       const current = await sandboxReadFile(project.id, filePath);
-      if (current && !current.binary && sha256Hex(current.content) !== baseHash) {
+      // A now-missing (deleted/renamed) file is itself a conflict when the
+      // caller edited from a known base — don't silently resurrect it.
+      const currentHash =
+        current && !current.binary ? sha256Hex(current.content) : null;
+      if (currentHash !== baseHash) {
         return NextResponse.json(
           {
             error: "conflict",
-            message: "This file changed since you opened it.",
-            currentHash: sha256Hex(current.content),
+            message: current
+              ? "This file changed since you opened it."
+              : "This file was deleted since you opened it.",
+            currentHash,
           },
           { status: 409 },
         );

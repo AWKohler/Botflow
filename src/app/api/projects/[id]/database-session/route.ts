@@ -14,9 +14,11 @@ export async function GET(
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  // This response carries the Convex admin/deploy key. Editors receive it only
+  // when the owner enabled "editors manage backend" in the share sheet
+  // (default off — sharing decision 2026-07-06).
   const access = await requireProjectAccess(id, userId);
-
-  if (!access) {
+  if (!access || (access.role !== 'owner' && !access.project.editorsManageBackend)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
   const proj = access.project;

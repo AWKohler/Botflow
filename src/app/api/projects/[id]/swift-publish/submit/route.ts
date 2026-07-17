@@ -9,7 +9,7 @@ import {
 } from "@/lib/asc-publish";
 import { materializeSwiftBuildConfig } from "@/lib/sandbox-env";
 import { submitAppStoreBuild } from "@/lib/sim-platform";
-import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { swiftProjectForbidden } from "@/lib/swift-access";
 import { recordSwiftPublishBuild } from "@/lib/swift-publish-store";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { tarSandboxProject } from "@/lib/vercel-sandbox";
@@ -51,7 +51,7 @@ export async function POST(
       { status: 400 },
     );
   }
-  if (await swiftRuntimeForbidden(project.platform, userId)) {
+  if (await swiftProjectForbidden(project)) {
     return NextResponse.json(
       { error: "Swift projects are currently in private beta." },
       { status: 403 },

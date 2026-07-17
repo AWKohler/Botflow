@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireProjectAccess } from "@/lib/project-access";
-import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { swiftProjectForbidden } from "@/lib/swift-access";
 import { draftAppStoreMetadata } from "@/lib/app-store-readiness/metadata-agent";
 
 export const runtime = "nodejs";
@@ -31,7 +31,7 @@ export async function POST(
   if (project.platform !== "swift") {
     return NextResponse.json({ error: "Project platform must be 'swift'." }, { status: 400 });
   }
-  if (await swiftRuntimeForbidden(project.platform, userId)) {
+  if (await swiftProjectForbidden(project)) {
     return NextResponse.json(
       { error: "Swift projects are currently in private beta." },
       { status: 403 },
