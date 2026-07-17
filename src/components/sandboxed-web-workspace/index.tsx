@@ -1283,10 +1283,7 @@ export function SandboxedWebWorkspace({
                     const path = previewPath.startsWith("/")
                       ? previewPath
                       : "/" + previewPath;
-                    window.open(
-                      `/preview-popup?url=${encodeURIComponent(buildPreviewUrl(baseUrl, path))}`,
-                      "_blank",
-                    );
+                    window.open(buildPreviewUrl(baseUrl, path), "_blank", "noopener,noreferrer");
                   }}
                   className="text-muted hover:text-fg"
                   title="Open preview in new tab"
@@ -1328,10 +1325,12 @@ export function SandboxedWebWorkspace({
 
         {/* Content area */}
         <div className="flex-1 min-h-0 relative bg-surface">
-          {/* Code view */}
+          {/* Code view — inset 10px from the bottom/right to match the
+              Preview/Database cards (which use `pb-2.5 pr-2.5`); flush to the
+              header (top) and agent sidebar (left). */}
           <div
             className={cn(
-              "absolute inset-0",
+              "absolute top-0 left-0 right-2.5 bottom-2.5",
               currentView === "code" ? "flex flex-col" : "hidden",
               "rounded-xl border border-border overflow-hidden",
             )}

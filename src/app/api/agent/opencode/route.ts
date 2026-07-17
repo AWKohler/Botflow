@@ -42,6 +42,7 @@ import { recordTokenUsage } from "@/lib/usage";
 
 import {
   OPENCODE_BACKEND_ENABLED,
+  REVENUECAT_ENABLED,
   STRIPE_CONNECT_ENABLED,
   USE_TOGETHER_KIMI,
 } from "@/lib/feature-flags";
@@ -356,6 +357,7 @@ export async function POST(req: Request) {
     hasBackend,
     hasGithub: Boolean(project.githubRepoOwner && project.githubRepoName),
     stripeEnabled: STRIPE_CONNECT_ENABLED,
+    revenuecatEnabled: REVENUECAT_ENABLED,
   });
 
   const toolToken = customTools.length

@@ -67,7 +67,7 @@ import {
   resolveWithContent,
   resolveWithSide,
 } from "@/lib/sandbox-git";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -723,6 +723,71 @@ export async function POST(req: Request) {
       });
     }
 
+    case "initialize_revenuecat_payments": {
+      const { REVENUECAT_ENABLED } = await import("@/lib/feature-flags");
+      if (!REVENUECAT_ENABLED) {
+        return NextResponse.json({ ok: false, content: "RevenueCat is not enabled on this deployment." });
+      }
+      if (project.backendType === "none") {
+        return NextResponse.json({
+          ok: false,
+          status: "backend-blocked",
+          content: "This project has no Convex backend. RevenueCat requires one to receive entitlement webhooks.",
+        });
+      }
+
+      const { canUseRevenueCat } = await import("@/lib/tier");
+      const gate = await canUseRevenueCat(binding.userId);
+      if (!gate.allowed) {
+        return NextResponse.json({ ok: false, status: "tier-blocked", content: gate.reason, tier: gate.tier });
+      }
+
+      const { userRevenueCatIdentity } = await import("@/db/schema");
+      const { decryptSecret } = await import("@/lib/secrets");
+      const [identity] = await db
+        .select()
+        .from(userRevenueCatIdentity)
+        .where(eq(userRevenueCatIdentity.userId, binding.userId))
+        .limit(1);
+      const linked = Boolean(identity && decryptSecret(identity.rcSecretKey) && identity.rcProjectId);
+      const webhookSecret = project.revenuecatWebhookSecret ?? `bfrc_${randomBytes(32).toString("hex")}`;
+
+      await db
+        .update(projects)
+        .set({
+          revenuecatStatus: linked ? "connected" : "connecting",
+          revenuecatWebhookSecret: webhookSecret,
+          ...(linked && identity?.rcProjectId ? { revenuecatProjectId: identity.rcProjectId } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(projects.id, binding.projectId));
+
+      if (!linked) {
+        return NextResponse.json({
+          ok: true,
+          status: "needs-connect",
+          content: "Opened the Payments tab with the RevenueCat setup wizard. Continue building the paywall, but do not hardcode keys; the user must finish the RevenueCat connection there.",
+        });
+      }
+
+      const { after } = await import("next/server");
+      after(async () => {
+        try {
+          const { scaffoldRevenueCatIntoProject } = await import("@/lib/revenuecat-scaffold");
+          await scaffoldRevenueCatIntoProject(binding.projectId);
+          const { materializeSwiftRevenueCatConfig } = await import("@/lib/sandbox-env");
+          await materializeSwiftRevenueCatConfig(binding.projectId);
+        } catch (error) {
+          console.error("[claude-code-tool/revenuecat] background setup failed:", error);
+        }
+      });
+      return NextResponse.json({
+        ok: true,
+        status: "already-connected",
+        content: "RevenueCat is already linked for this user. This project is enabled and its backend setup is running in the background. Use RevenueCatConfig.swift rather than hardcoding an SDK key.",
+      });
+    }
+
     case "get_stripe_products":
     case "create_stripe_product": {
       // Both tools list/create Products+Prices on the user's connected
@@ -1098,39 +1163,20 @@ export async function POST(req: Request) {
 
         if (statusRow.status === "completed") {
           const def = getOAuthProvider(inputProvider)!;
-          const imp = def.authImport.default
-            ? `import ${def.authImport.symbol} from "${def.authImport.from}";`
-            : `import { ${def.authImport.symbol} } from "${def.authImport.from}";`;
-          const appleNote =
-            inputProvider === "apple"
-              ? "\n\nAPPLE NOTE: name/email arrive ONLY on the first sign-in — capture them then. Apple can't be tested on localhost; use the deployed preview."
-              : "";
+          // Shared per-platform guidance (web wires a React button; Swift's
+          // hosted sign-in page needs no client work at all) with this rail's
+          // snake_case tool names.
+          const { buildOAuthProviderSuccessContext } = await import(
+            "@/lib/agent/oauth-provider-tool"
+          );
           return NextResponse.json({
             ok: true,
-            content: `=== ${def.displayName.toUpperCase()} OAUTH CREDENTIALS SAVED ===
-
-${def.envVars.join(", ")} now set on your Convex deployment.
-
-REQUIRED NEXT STEPS:
-
-1. Update convex/auth.ts — add the provider (pass NO arguments; extra config is
-   read from env automatically):
-
-   import { convexAuth } from "@convex-dev/auth/server";
-   import { Password } from "@convex-dev/auth/providers/Password";
-   ${imp}
-
-   export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-     providers: [Password, ${def.providerExpr}],
-     // keep the existing callbacks.redirect block intact
-   });
-
-2. Run convex_deploy to push the updated auth config.
-
-3. Add a sign-in button using startOAuthSignIn(signIn, "${inputProvider}") from
-   @/lib/botflowAuth (NOT signIn directly) so it works from the preview iframe,
-   and call resumePendingOAuthSignIn(signIn) once at app mount. On return, Convex
-   Auth creates or merges the user account automatically.${appleNote}`,
+            content: buildOAuthProviderSuccessContext(
+              project.platform === "swift" ? "swift" : "web",
+              inputProvider,
+              def,
+              { deploy: "convex_deploy", setupAuth: "setup_auth", setupOAuth: "setup_oauth_provider" },
+            ),
           });
         }
 
@@ -1165,7 +1211,9 @@ REQUIRED NEXT STEPS:
         return NextResponse.json({
           ok: false,
           status: "still-pending",
-          content: stillPendingGiveUpMessage(`${name} OAuth credentials`),
+          content:
+            stillPendingGiveUpMessage(`${name} OAuth credentials`) +
+            " You may continue unrelated work, but do NOT edit convex/auth.ts, add or expose this provider's sign-in button, or claim the provider is configured until the credentials are saved successfully.",
         });
       }
       return NextResponse.json({

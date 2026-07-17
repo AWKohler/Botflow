@@ -29,7 +29,7 @@ import { isSandboxPlatform } from "@/lib/project-platform";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 
 import { isClaudeCodeFlagEnabled } from "@/lib/agent/claude-code/feature-flag";
-import { STRIPE_CONNECT_ENABLED } from "@/lib/feature-flags";
+import { REVENUECAT_ENABLED, STRIPE_CONNECT_ENABLED } from "@/lib/feature-flags";
 import { OAUTH_PROVIDER_IDS } from "@/lib/oauth-providers/registry";
 import { deriveAgentBackend } from "@/lib/agent/derive-backend";
 import {
@@ -285,6 +285,7 @@ export async function POST(req: Request) {
     hasBackend,
     hasGithub: Boolean(project.githubRepoOwner && project.githubRepoName),
     stripeEnabled: STRIPE_CONNECT_ENABLED,
+    revenuecatEnabled: REVENUECAT_ENABLED,
   });
 
   const bridgeConfig = {
@@ -345,6 +346,12 @@ export async function POST(req: Request) {
   if (toolToken) {
     bridgeEnv.BOTFLOW_API_BASE = new URL(req.url).origin;
     bridgeEnv.BOTFLOW_TOOL_TOKEN = toolToken;
+    // On protected preview deployments the host-tool callback would otherwise
+    // die on Vercel's Deployment Protection wall (401 before our route runs) —
+    // every host tool (setup_auth, convex_deploy, ask_question, …) fails.
+    if (process.env.VERCEL_ENV === "preview" && process.env.VERCEL_AUTOMATION_BYPASS_SECRET) {
+      bridgeEnv.BOTFLOW_VERCEL_BYPASS = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    }
   }
   if (llmProxyToken) {
     bridgeEnv.ANTHROPIC_BASE_URL = `${llmProxyOrigin(new URL(req.url).origin)}/api/internal/llm-proxy/anthropic`;

@@ -134,12 +134,18 @@ export const LLM_PROXY_PROVIDERS: Record<LlmProxyProvider, LlmProxyProviderSpec>
   // clock heuristic. Passive read-only cache: no cache-write billing.
   xai: {
     upstreamBase: "https://api.x.ai",
-    pathAllowlist: /^v1\/chat\/completions$/,
+    // xAI is OpenAI-compatible on BOTH endpoints — opencode routes reasoning
+    // models (grok is one) through /v1/responses, others through
+    // /v1/chat/completions. Both verified live on api.x.ai. Mirror the openai
+    // spec exactly (allowlist + per-path dialect), or reasoning turns 404 with
+    // "Unknown proxy path".
+    pathAllowlist: /^v1\/(responses|chat\/completions)$/,
     authStyle: "bearer",
     platformKeyEnv: "XAI_API_KEY",
     byokCredField: "xaiApiKey",
     supportsOauth: false,
-    dialectForPath: () => "openai-chat",
+    dialectForPath: (path) =>
+      path === "v1/responses" ? "openai-responses" : "openai-chat",
     clockHeuristic: false,
     sandboxBasePath: "/v1",
   },

@@ -1,0 +1,121 @@
+---
+title: RevenueCat for iOS
+description: Set up Test Store purchases for a Botflow Swift app, then prepare it for the App Store.
+---
+
+Botflow uses [RevenueCat](https://www.revenuecat.com) for subscriptions and in-app purchases in Swift apps. This guide walks through the complete **Test Store** path first: it works in the simulator, needs no App Store Connect setup, and never charges real money.
+
+<Note>
+RevenueCat payments are available for **Pro and Max** Swift projects with a managed backend. The **Payments** tab appears after you ask the agent to add in-app purchases.
+</Note>
+
+## Before you start
+
+You will need a RevenueCat account and a RevenueCat project. You do **not** need an App Store Connect app to test purchases in the simulator.
+
+Ask the Botflow agent to open setup:
+
+```
+Set up RevenueCat payments using the Botflow integration.
+```
+
+Then open the **Payments** tab in the workspace. It contains the same checklist and links referenced below, so you can leave and resume setup at any time.
+
+## Connect RevenueCat to Botflow
+
+<Steps>
+  <Step title="Create or open a RevenueCat project">
+    In the [RevenueCat dashboard](https://app.revenuecat.com), create a project or open the project you want this app to use. Every new project includes a **Test Store** for development purchases.
+  </Step>
+  <Step title="Copy the API v2 Project ID">
+    Open **Project settings → General** and copy the **Project ID**. It begins with `proj` (for example, `proj1a2b3c4d`).
+
+    <Warning>
+    Do not use the short ID in the RevenueCat dashboard URL. Botflow calls RevenueCat's API v2, which requires the separate `proj…` Project ID shown in Project settings.
+    </Warning>
+  </Step>
+  <Step title="Create a V2 secret API key">
+    Open **Project settings → API keys**, click **New secret API key**, and choose **V2** for API version. Give it a descriptive label such as `Botflow` and generate the key.
+
+    Copy the `sk_…` value immediately and keep it private. RevenueCat V1 secret keys cannot access the API v2 endpoints Botflow uses.
+  </Step>
+  <Step title="Copy the Test Store SDK key">
+    On the same **API keys** page, find **Test Store** under SDK API keys. Reveal and copy the public key beginning with `test_`.
+  </Step>
+  <Step title="Paste the three values into Botflow">
+    Return to **Payments** in Botflow and paste:
+
+    - the V2 secret key (`sk_…`)
+    - the Test Store SDK key (`test_…`)
+    - the API v2 Project ID (`proj…`)
+
+    Select **Connect RevenueCat**. Botflow verifies the account before saving anything, encrypts the secret key, and writes the Test Store key only into development builds.
+  </Step>
+</Steps>
+
+<Card title="RevenueCat API v2 key guide" icon="key" href="https://production-docs.revenuecat.com/docs/api-v2">
+  RevenueCat's guide to creating V2 secret keys and choosing permissions.
+</Card>
+
+<Card title="RevenueCat Test Store guide" icon="flask" href="https://production-docs.revenuecat.com/docs/getting-started/configuring-sdk">
+  RevenueCat's current Test Store and SDK configuration reference.
+</Card>
+
+## Configure a test subscription
+
+Connecting the account enables Botflow to wire the SDK into your Swift app. RevenueCat still needs something to sell. In RevenueCat, configure these three pieces:
+
+1. In **Product catalog**, choose **New product** and select **Test Store**. Create a monthly product, for example `premium_monthly`.
+2. In **Entitlements**, create an entitlement such as `premium` and attach the product to it.
+3. In **Offerings**, create or edit the **Default** offering and add the product as its monthly package.
+
+Then tell the Botflow agent what the paywall should do:
+
+```
+Show a premium paywall using the default RevenueCat offering.
+Unlock the premium entitlement after purchase and add Restore Purchases.
+```
+
+Botflow uses RevenueCat's SDK and your configured offering rather than hand-written StoreKit purchase logic.
+
+## Test in the simulator
+
+Build and run the Swift app from Botflow's simulator preview. The Test Store purchase dialog is simulated: no Apple sandbox account and no real payment method are required.
+
+After a successful test purchase, verify all three outcomes:
+
+- The app unlocks the feature protected by your `premium` entitlement.
+- **Restore Purchases** restores the entitlement after restarting or signing in again.
+- The **Payments** tab records the test event and shows that it reached the backend receiver.
+
+<Tip>
+If no package appears, check that the product is attached to an entitlement and is part of the Default offering. A Test Store key can connect successfully even when no products or offerings exist yet.
+</Tip>
+
+## Set the webhook
+
+Once the connection is verified, Botflow displays a webhook URL and authorization value in the **Payments** tab. In RevenueCat, open **Integrations → Webhooks**, add a webhook, and paste both values.
+
+This lets Botflow deliver entitlement changes to your app's managed backend. Keep the authorization value private.
+
+## Go live on the App Store
+
+Test Store keys are for development only. Before shipping:
+
+1. Add your App Store app in RevenueCat and configure its App Store Connect credentials.
+2. Create the production products in App Store Connect and import or attach them in RevenueCat.
+3. Copy the app-specific SDK key beginning with `appl_` into Botflow's Payments tab.
+4. Validate a purchase with Apple's sandbox before submitting the app for review.
+
+Botflow keeps `test_` keys out of release builds. A release build needs an `appl_` key, so a Test Store key cannot accidentally reach the App Store.
+
+## Troubleshooting
+
+| What you see | What to do |
+| --- | --- |
+| `Resource not found` when connecting | Check that the Project ID begins with `proj`. The ID in the RevenueCat URL is not the API v2 Project ID. Also confirm the secret key was created as **V2**. |
+| The Payments tab says no Test Store is ready | In RevenueCat, verify that the project has a Test Store SDK key, then reconnect or select **Re-run setup** in Botflow. |
+| The paywall has no products | Add a Test Store product, attach it to an entitlement, and include it in the Default offering. |
+| A simulator purchase succeeds but the app stays locked | Ask the agent to check the entitlement identifier used by the app. It must match the RevenueCat entitlement exactly. |
+| A release build has purchases disabled | Add an App Store app in RevenueCat and connect its `appl_` SDK key. Test Store keys are intentionally development-only. |
+

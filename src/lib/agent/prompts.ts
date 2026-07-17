@@ -1093,12 +1093,12 @@ const SWIFT_CONVEX_SECTION: string[] = [
   "- Convex numbers need property wrappers on the Swift side: `@ConvexInt var n: Int`, `@ConvexFloat var x: Double`.",
   "- To deploy backend changes, use the `convexDeploy` tool — never hand-edit `convex/_generated/`.",
   "",
-  "### Auth (email + password)",
+  "### Auth (email + password, plus optional social sign-in)",
   "When the user wants sign-in / accounts / login / sign-up / per-user data, call the **`setupAuth`** tool. It uses Convex Auth (`@convex-dev/auth`) — the same backend the web template uses — and an **in-app browser** sign-in flow that already ships in this template (BotflowAuthProvider, Keychain, AuthStore, SignInView). You do NOT write a native login form or any Swift auth code.",
   "- After `setupAuth` returns: write every file in its `files` array (merge `...authTables` into an existing `convex/schema.ts` if present), run `cd convex && pnpm add @convex-dev/auth @auth/core`, then `convexDeploy`. Sign-in is not live until you deploy.",
   "- The tool flips the app into authenticated mode automatically (it sets `ConvexConfig.authEnabled`, which is **platform-managed — never edit**). `ContentView` then shows `SignInView` until the user signs in.",
   "- Protect per-user data with `getAuthUserId(ctx)` (returns null when signed out — null-check, never throws) using the **tolerant-reads, strict-writes** convention: queries (anything subscribed) return `[]`/`null` when unauthenticated — NEVER throw, because live subscriptions can fire before the SDK attaches the auth token and a throw surfaces as a generic ServerError in the app. Mutations/actions stay strict (throw when unauthenticated). Read the current user from Swift via the `users:viewer` query.",
-  "- **Password only.** Do NOT add Google/OAuth or other providers — there is no Swift OAuth path yet. Read the tool's `context` result for the full reference.",
+  "- **Social sign-in (Google/GitHub/Microsoft/Apple):** available via the `setupOAuthProvider` tool, but ONLY when the user explicitly asks — never proactively; password is the default. After it succeeds: add the provider to `convex/auth.ts` (the tool returns the snippet) and run `convexDeploy` — the hosted sign-in page shows the provider button automatically; there is NO Swift code to write. When the user enables Google/GitHub/Microsoft, remind them App Store guideline 4.8 also requires Sign in with Apple in apps offering third-party login and recommend adding it — but do NOT force it or block on it; proceed if they decline. Read the tool's `context` result for the full reference.",
   "",
 ];
 
@@ -1120,7 +1120,7 @@ const SWIFT_PROMPT_REVENUECAT: string[] = [
   "4. Provision products once the user is connected: `getRevenueCatProducts` reads the catalog (apps, products, entitlements, offerings + packages — use its real identifiers, never guess); `createRevenueCatProduct` provisions a product AND wires the paywall graph (entitlement attach + offering + package) in one idempotent call, including a Test Store twin so simulator test purchases work immediately. Example monthly sub: storeIdentifier 'com.<app>.premium.monthly', type 'subscription', entitlementLookupKey 'premium', offeringLookupKey 'default', packageLookupKey '$rc_monthly'. For REAL money the user must still create matching in-app purchase products in App Store Connect (same product ids — tell them exactly which) and pass App Review.",
   "5. Build the paywall with `RevenueCatUI`: `PaywallView` or the `.presentPaywallIfNeeded(requiredEntitlementIdentifier:)` modifier. The paywall renders the CURRENT offering's packages (createRevenueCatProduct makes the offering current when none is) — you don't hand-build the pricing UI.",
   "6. Gate features on entitlements: `Purchases.shared.customerInfo().entitlements.active[\"<entitlement lookup_key>\"]?.isActive == true` — the same lookup_key you passed to createRevenueCatProduct and the one arriving in `convex/revenueCatBilling.ts` events. Provide a Restore Purchases action (`Purchases.shared.restorePurchases()`).",
-  "7. Payment modes are FIXED per build kind (no toggle — unlike web/Stripe): development builds (simulator preview, dev devices) ALWAYS run in TEST MODE on RevenueCat's Test Store — purchases are simulated (no Apple account, no real money) but entitlements, webhooks, and your Convex billing logic behave exactly like production. Published App Store builds ALWAYS run LIVE on the user's real products. The platform bakes the right key automatically; `RevenueCatConfig.isTestStore` is true in test builds — use it to badge test-mode UI (e.g. a small 'Test purchases' label on the paywall). Do NOT use `.storekit` files (they don't apply to simctl launches) and do NOT promise real-money flows in the simulator — real purchases require the published app with App-Review-approved products.",
+  "7. Payment modes are FIXED per build kind (no toggle — unlike web/Stripe): development builds (simulator preview, dev devices) use RevenueCat's Test Store only. Once Test Store is ready, purchases are simulated (no Apple account, no real money) but entitlements, webhooks, and your Convex billing logic behave exactly like production. Until then, `RevenueCatConfig.isConfigured` is false and purchases are disabled rather than falling back to a live key. Published App Store builds ALWAYS run LIVE on the user's real products. The platform bakes the right key automatically; `RevenueCatConfig.isTestStore` is true in test builds — use it to badge test-mode UI (e.g. a small 'Test purchases' label on the paywall). Do NOT use `.storekit` files (they don't apply to simctl launches) and do NOT promise real-money flows in the simulator — real purchases require the published app with App-Review-approved products.",
   "",
   "**Reality to communicate (do not skip):** real purchases require the user to (a) connect RevenueCat in the Payments tab, (b) have a paid Apple Developer account with the Paid Apps agreement + banking/tax, and (c) create in-app products in App Store Connect that PASS App Review — you provision the RevenueCat side with `createRevenueCatProduct`, but the App Store Connect products (same product ids) are theirs to create. You can build and demo everything in the simulator now; real money has this Apple-side tail you cannot shortcut.",
   "",
@@ -1129,6 +1129,21 @@ const SWIFT_PROMPT_REVENUECAT: string[] = [
   "- Do NOT hardcode the RevenueCat API key and do NOT edit `Sources/Core/RevenueCatConfig.swift` — the platform regenerates it (key + routing prefix) before every build.",
   "- Entitlement reaction logic on the backend goes in `convex/revenueCatBilling.ts`, keyed on `event.data.appUserId` — the platform STRIPS the `bfp_<projectId>__` prefix before delivery, so this is your app's own user id (the raw value is in `event.data.rawAppUserId`). The platform sets `BOTFLOW_REVENUECAT_WEBHOOK_SECRET` on your Convex deployment and the scaffolded `convex/revenueCatWebhook.ts` verifies the `X-Botflow-Signature-V2` / `X-Botflow-Timestamp` headers (HMAC of `\"<ts>.<body>\"`, ≤5 min skew) before applying — do not weaken that check.",
   "- Do NOT edit `convex/revenueCatWebhook.ts` — it is auto-generated, re-written when RevenueCat is (re)connected, and the route is auto-mounted in `convex/http.ts`. Your edits will be lost. Put all your logic in `convex/revenueCatBilling.ts`.",
+];
+
+// Keep the agent from manufacturing a partial, non-functional payment flow
+// while the platform integration is deliberately disabled. Without the
+// platform's tool + generated config there is no safe SDK key, Test Store,
+// product provisioning, or webhook receiver for it to wire up.
+const SWIFT_PROMPT_REVENUECAT_UNAVAILABLE: string[] = [
+  "",
+  "## In-app purchases are temporarily unavailable",
+  "RevenueCat is not enabled in this Botflow deployment. If the user asks for subscriptions, a paywall, premium features, tips, credits, or purchases:",
+  "- Say clearly that Botflow's managed RevenueCat integration is temporarily unavailable in this deployment.",
+  "- Do NOT add the RevenueCat SDK, StoreKit code, a guessed API key, or a pretend Payments tab/configuration flow.",
+  "- Do NOT claim that purchases, Test Store, products, entitlements, webhooks, restores, or simulator validation are configured.",
+  "- You may build the non-payment UI only if the user explicitly asks, but label purchase controls unavailable and explain that the managed integration must be enabled first.",
+  "",
 ];
 
 function buildSwiftPromptLines(hasBackend: boolean): string[] {
@@ -1200,6 +1215,7 @@ function buildSwiftPromptLines(hasBackend: boolean): string[] {
   "",
   ...(hasBackend ? SWIFT_CONVEX_SECTION : []),
   ...(hasBackend && REVENUECAT_ENABLED ? SWIFT_PROMPT_REVENUECAT : []),
+  ...(!REVENUECAT_ENABLED ? SWIFT_PROMPT_REVENUECAT_UNAVAILABLE : []),
   "---",
   "",
   "## File Paths",

@@ -149,8 +149,10 @@ auth.addHttpRoutes(http);
 
 // ── In-app-browser sign-in page (Swift / ConvexMobile client) ──
 //
-// Opened by the native app inside an ASWebAuthenticationSession. On submit it
-// runs the "auth:signIn" action and redirects to:
+// Opened by the native app inside an ASWebAuthenticationSession. Password
+// sign-in POSTs back here; OAuth providers go through the server-driven
+// bridge (/auth/oauth/start → provider → /auth/oauth/finish). Both paths end
+// the same way — a 303 to the app's custom scheme with tokens in the fragment:
 //   botflowauth://auth-callback#token=<jwt>&refresh=<refreshToken>
 
 function esc(s: string): string {
@@ -161,6 +163,36 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+// OAuth providers the platform can configure on this deployment. A provider's
+// button renders only when its credentials are actually set (env pushed by
+// Botflow via setupOAuthProvider), so this list is safe to keep static.
+const OAUTH_PROVIDERS: Array<{ id: string; label: string; envVar: string }> = [
+  { id: "google", label: "Google", envVar: "AUTH_GOOGLE_ID" },
+  { id: "github", label: "GitHub", envVar: "AUTH_GITHUB_ID" },
+  { id: "microsoft-entra-id", label: "Microsoft", envVar: "AUTH_MICROSOFT_ENTRA_ID_ID" },
+  { id: "apple", label: "Apple", envVar: "AUTH_APPLE_ID" },
+];
+
+function enabledOAuthProviders(): Array<{ id: string; label: string }> {
+  return OAUTH_PROVIDERS.filter((p) => !!process.env[p.envVar]);
+}
+
+function oauthButtonsHtml(redirect: string, state: string): string {
+  if (!redirect) return ""; // error page with no valid redirect — no live links
+  const providers = enabledOAuthProviders();
+  if (providers.length === 0) return "";
+  const buttons = providers
+    .map((p) => {
+      const href =
+        "/auth/oauth/start?provider=" + encodeURIComponent(p.id) +
+        "&redirect=" + encodeURIComponent(redirect) +
+        (state ? "&state=" + encodeURIComponent(state) : "");
+      return '<a class="oauth" href="' + href + '">Continue with ' + esc(p.label) + "</a>";
+    })
+    .join("");
+  return buttons + '<div class="or"><span>or</span></div>';
+}
+
 function page(redirect: string, flow: string, error: string | null, state: string): string {
   const signUp = flow === "signUp";
   const title = signUp ? "Create account" : "Sign in";
@@ -169,6 +201,25 @@ function page(redirect: string, flow: string, error: string | null, state: strin
   const toggleHref = "/auth/signin?redirect=" + encodeURIComponent(redirect) + "&flow=" + toggleFlow +
     (state ? "&state=" + encodeURIComponent(state) : "");
   const errHtml = error ? '<p class="err">' + esc(error) + "</p>" : "";
+  // Without a redirect target there is nowhere to deliver tokens, so a form
+  // would only dead-end on submit — render the message alone instead (reached
+  // via the "/" recovery route and malformed sign-in links).
+  const formHtml = redirect
+    ? [
+        '<form method="POST" action="/auth/signin">',
+        '<input type="hidden" name="flow" value="' + flow + '">',
+        '<input type="hidden" name="redirect" value="' + esc(redirect) + '">',
+        '<input type="hidden" name="state" value="' + esc(state) + '">',
+        "<label>Email</label>",
+        '<input name="email" type="email" autocomplete="email" autocapitalize="none" required>',
+        "<label>Password</label>",
+        '<input name="password" type="password" autocomplete="' + (signUp ? "new-password" : "current-password") + '" minlength="8" required>',
+        errHtml,
+        '<button type="submit">' + esc(title) + "</button>",
+        "</form>",
+        '<a href="' + toggleHref + '">' + esc(toggleLabel) + "</a>",
+      ].join("")
+    : errHtml;
   return [
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8">',
@@ -189,21 +240,16 @@ function page(redirect: string, flow: string, error: string | null, state: strin
     "color:#000;font-size:16px;font-weight:600}",
     "a{display:block;text-align:center;margin-top:18px;color:rgba(255,255,255,.55);font-size:14px;text-decoration:none}",
     ".err{color:#ff9b6b;font-size:13px;text-align:center;margin:14px 0 0}",
+    "a.oauth{display:block;text-align:center;margin-top:12px;padding:14px;border-radius:14px;",
+    "border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#fff;",
+    "font-size:16px;font-weight:600;text-decoration:none}",
+    ".or{display:flex;align-items:center;gap:10px;margin:20px 0 4px;color:rgba(255,255,255,.35);font-size:12px}",
+    ".or:before,.or:after{content:'';flex:1;height:1px;background:rgba(255,255,255,.12)}",
     "</style></head><body><div class=\\"card\\">",
     "<h1>" + esc(title) + "</h1>",
     '<p class="sub">' + (signUp ? "Sign up to continue." : "Welcome back.") + "</p>",
-    '<form method="POST" action="/auth/signin">',
-    '<input type="hidden" name="flow" value="' + flow + '">',
-    '<input type="hidden" name="redirect" value="' + esc(redirect) + '">',
-    '<input type="hidden" name="state" value="' + esc(state) + '">',
-    "<label>Email</label>",
-    '<input name="email" type="email" autocomplete="email" autocapitalize="none" required>',
-    "<label>Password</label>",
-    '<input name="password" type="password" autocomplete="' + (signUp ? "new-password" : "current-password") + '" minlength="8" required>',
-    errHtml,
-    '<button type="submit">' + esc(title) + "</button>",
-    "</form>",
-    '<a href="' + toggleHref + '">' + esc(toggleLabel) + "</a>",
+    oauthButtonsHtml(redirect, state),
+    formHtml,
     "</div></body></html>",
   ].join("");
 }
@@ -222,6 +268,27 @@ function htmlResponse(body: string, status: number): Response {
 const ALLOWED_REDIRECT_PREFIX = "botflowauth://";
 function isAllowedRedirect(r: string): boolean {
   return r.startsWith(ALLOWED_REDIRECT_PREFIX);
+}
+
+// 303 into the native app with the tokens in the URL fragment (fragments never
+// reach a server, so tokens stay out of any request logs). The state nonce is
+// echoed back so the app can verify this callback belongs to the sign-in it
+// started. Callers MUST have validated redirect with isAllowedRedirect first.
+function tokenHandoffResponse(
+  redirect: string,
+  tokens: { token: string; refreshToken: string },
+  state: string,
+  extraHeaders?: Record<string, string>,
+): Response {
+  const dest =
+    redirect +
+    "#token=" + encodeURIComponent(tokens.token) +
+    "&refresh=" + encodeURIComponent(tokens.refreshToken) +
+    (state ? "&state=" + encodeURIComponent(state) : "");
+  return new Response(null, {
+    status: 303,
+    headers: { Location: dest, "Cache-Control": "no-store", ...(extraHeaders || {}) },
+  });
 }
 
 http.route({
@@ -266,22 +333,145 @@ http.route({
       if (!tokens || !tokens.token || !tokens.refreshToken) {
         return htmlResponse(page(redirect, flow, "Sign-in failed. Please try again.", state), 200);
       }
-      // Echo the nonce back in the fragment so the app can verify this callback
-      // belongs to the sign-in it started (reject otherwise before storing tokens).
-      const dest =
-        redirect +
-        "#token=" + encodeURIComponent(tokens.token) +
-        "&refresh=" + encodeURIComponent(tokens.refreshToken) +
-        (state ? "&state=" + encodeURIComponent(state) : "");
-      return new Response(null, {
-        status: 303,
-        headers: { Location: dest, "Cache-Control": "no-store" },
-      });
+      return tokenHandoffResponse(redirect, tokens, state);
     } catch (e) {
       const msg = flow === "signUp"
         ? "Could not sign up. The email may already be in use, or your password may be too short (8+ characters)."
         : "Could not sign in. Check your email and password.";
       return htmlResponse(page(redirect, flow, msg, state), 200);
+    }
+  }),
+});
+
+// ── OAuth bridge (server-driven — no client JS anywhere in this flow) ──
+//
+// Convex Auth's OAuth flow normally ends with a browser client exchanging a
+// one-time ?code= for tokens. This app has no web client, so these two routes
+// play that role server-side:
+//   start  → runs auth:signIn for the provider, stashes the returned verifier
+//            in a cookie, and 303s to Convex Auth's own authorize route
+//   finish → the post-callback redirectTo target; redeems code + verifier for
+//            tokens and hands them to the app exactly like the password path.
+
+// The verifier cookie needs the same cross-site attributes Convex Auth uses
+// for its PKCE/state cookies, or Safari drops it on the provider round-trip
+// (top-level cross-site navigation back to this origin).
+const VERIFIER_COOKIE = "botflow_oauth_verifier";
+const VERIFIER_COOKIE_ATTRS = "; Max-Age=900; Path=/; Secure; HttpOnly; SameSite=None; Partitioned";
+const CLEAR_VERIFIER_COOKIE =
+  VERIFIER_COOKIE + "=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None; Partitioned";
+
+function readCookie(request: Request, name: string): string {
+  const header = request.headers.get("Cookie") || "";
+  for (const part of header.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() === name) {
+      try {
+        return decodeURIComponent(part.slice(eq + 1).trim());
+      } catch (e) {
+        return "";
+      }
+    }
+  }
+  return "";
+}
+
+// Friendly landing for anything that falls off the flow. Convex Auth's
+// callback redirects to the bare SITE_URL origin when its redirect cookie is
+// missing (e.g. a silent provider re-auth bounce dropped cookies) — without
+// this route that's a dead-end "No matching routes found" page inside the
+// in-app browser. There's no redirect/state to resume with, so the honest
+// recovery is: close the sheet and start sign-in again from the app.
+http.route({
+  path: "/",
+  method: "GET",
+  handler: httpAction(async (_ctx, _request) => {
+    return htmlResponse(
+      page("", "signIn", "Sign-in did not complete. Close this window and try again from the app.", ""),
+      200,
+    );
+  }),
+});
+
+http.route({
+  path: "/auth/oauth/start",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const provider = url.searchParams.get("provider") || "";
+    const redirect = url.searchParams.get("redirect") || "";
+    const state = url.searchParams.get("state") || "";
+    if (!isAllowedRedirect(redirect)) {
+      return htmlResponse(page("", "signIn", "Invalid sign-in link.", ""), 400);
+    }
+    if (!OAUTH_PROVIDERS.some((p) => p.id === provider)) {
+      return htmlResponse(page(redirect, "signIn", "Unknown sign-in provider.", state), 400);
+    }
+    // redirectTo is RELATIVE on purpose: the redirect callback in convex/auth.ts
+    // always accepts relative paths, and Convex Auth resolves them against
+    // SITE_URL — which Botflow points at this deployment's own *.convex.site
+    // origin for Swift projects. The app's custom-scheme redirect and the state
+    // nonce ride along as query params (neither is a secret).
+    const finish =
+      "/auth/oauth/finish?redirect=" + encodeURIComponent(redirect) +
+      (state ? "&state=" + encodeURIComponent(state) : "");
+    try {
+      const result: any = await ctx.runAction(api.auth.signIn, {
+        provider,
+        params: { redirectTo: finish },
+      });
+      if (!result || !result.redirect || !result.verifier) {
+        return htmlResponse(page(redirect, "signIn", "Could not start sign-in. Please try again.", state), 200);
+      }
+      // The verifier is the secret half of the code exchange — without it the
+      // finish route's redemption silently fails. It never appears in a URL.
+      return new Response(null, {
+        status: 303,
+        headers: {
+          Location: String(result.redirect),
+          "Set-Cookie": VERIFIER_COOKIE + "=" + encodeURIComponent(String(result.verifier)) + VERIFIER_COOKIE_ATTRS,
+          "Cache-Control": "no-store",
+        },
+      });
+    } catch (e) {
+      return htmlResponse(page(redirect, "signIn", "Could not start sign-in. Please try again.", state), 200);
+    }
+  }),
+});
+
+http.route({
+  path: "/auth/oauth/finish",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const redirect = url.searchParams.get("redirect") || "";
+    const state = url.searchParams.get("state") || "";
+    const code = url.searchParams.get("code") || "";
+    if (!isAllowedRedirect(redirect)) {
+      return htmlResponse(page("", "signIn", "Invalid sign-in link.", ""), 400);
+    }
+    if (!code) {
+      // Convex Auth redirects here WITHOUT ?code= when the provider flow fails
+      // or the user cancels at the consent screen. Land back on the sign-in
+      // page (with its provider buttons) rather than a dead end.
+      return htmlResponse(page(redirect, "signIn", "Sign-in was cancelled or did not complete. Please try again.", state), 200);
+    }
+    try {
+      const verifier = readCookie(request, VERIFIER_COOKIE);
+      const args: any = { params: { code } };
+      if (verifier) args.verifier = verifier;
+      const result: any = await ctx.runAction(api.auth.signIn, args);
+      const tokens = result && result.tokens;
+      if (!tokens || !tokens.token || !tokens.refreshToken) {
+        // Missing/wrong verifier or expired code — Convex Auth returns
+        // tokens:null rather than throwing. The code is single-use and now
+        // burned, so the only recovery is starting over.
+        return htmlResponse(page(redirect, "signIn", "Sign-in expired or failed. Please try again.", state), 200);
+      }
+      return tokenHandoffResponse(redirect, tokens, state, { "Set-Cookie": CLEAR_VERIFIER_COOKIE });
+    } catch (e) {
+      return htmlResponse(page(redirect, "signIn", "Sign-in failed. Please try again.", state), 200);
     }
   }),
 });
@@ -602,6 +792,8 @@ ${buildOAuthProviderGuidance()}
            ${convexSiteUrl}/api/auth/callback/<id>) and BLOCKS until the user
            completes or dismisses it (up to 5 minutes). On ok: true the
            provider's env vars are set on the deployment — you never see them.
+           Until ok: true is returned, do NOT edit convex/auth.ts, add or expose
+           a provider sign-in button, or claim that provider setup is complete.
 
   Step 2 — After ok: true, edit convex/auth.ts: add the provider's import (see
            the list above) and add it to the providers array alongside Password.
@@ -682,8 +874,9 @@ HOW IT WORKS (you do NOT write any native auth UI):
     (opens that page in an ASWebAuthenticationSession), Keychain storage,
     AuthStore, and SignInView. Botflow flipped ConvexConfig.authEnabled to true,
     so ContentView now gates the app behind sign-in automatically.
-  • The user signs in with email + password on the hosted page. Tokens come back
-    to the app; refresh is automatic via the auth:signIn action.
+  • The user signs in with email + password on the hosted page (plus any social
+    providers enabled via setupOAuthProvider — see OAUTH below). Tokens come
+    back to the app; refresh is automatic via the auth:signIn action.
 
 WHAT YOU MUST DO AFTER setupAuth RETURNS:
   1. Write each file in the returned \`files\` array (convex/auth.ts,
@@ -733,8 +926,29 @@ READING THE CURRENT USER FROM SWIFT:
   • Gate views on AuthStore.state if you add more screens; SignInView is shown
     automatically when signed out.
 
-OAUTH / SOCIAL SIGN-IN: out of scope for now (password only). Do not add Google
-or other providers unless explicitly asked — there is no Swift OAuth path yet.
+OAUTH / SOCIAL SIGN-IN (Google, GitHub, Microsoft, Apple):
+  • Available via the setupOAuthProvider tool — but ONLY when the user
+    explicitly asks for social sign-in. Never add a provider proactively;
+    password is the default.
+  • The flow is entirely server-driven: after the tool succeeds you add the
+    provider to convex/auth.ts (the tool returns the exact snippet) and run
+    convexDeploy. The hosted sign-in page then shows a "Continue with …"
+    button automatically. There is NO Swift code to write, NO native SDK to
+    add, and NO redirect handling to build — the existing in-app-browser flow
+    (BotflowAuthProvider) receives OAuth tokens exactly like password tokens.
+  • Use the snippet's provider expression EXACTLY — for Google/GitHub/
+    Microsoft it includes authorization params (prompt: "select_account").
+    Those are REQUIRED on iOS: a returning user's silent provider bounce
+    drops the OAuth cookies in the in-app browser and repeat sign-ins fail
+    without the forced account picker.
+  • If this project's convex/http.ts predates OAuth support (it has no
+    /auth/oauth/start route), call setupAuth again to get the refreshed
+    http.ts before deploying.
+  • APP STORE RULE (nudge, don't force): guideline 4.8 requires iOS apps that
+    offer third-party login (Google/GitHub/Microsoft) to ALSO offer Sign in
+    with Apple. When the user enables one of those, tell them this and
+    recommend adding Apple too — but it is their decision; proceed without it
+    if they decline. Enforcement happens at App Review, not here.
 
 NOTES:
   • CONVEX_SITE_URL (auto-set by Convex) = ${convexSiteUrl}
