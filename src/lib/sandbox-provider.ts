@@ -21,11 +21,17 @@
  *   SANDBOX_HOST_TOKEN         — bearer token for the service.
  *   SANDBOX_HOST_TEAM_ID       — tenant team id (default "default").
  *   SANDBOX_HOST_PROJECT_ID    — tenant project id (default "default").
- *   SANDBOX_HOST_FOR_FREE_TIER — "1" routes NEW free-tier projects to
- *                                sandbox-host. Off by default so the service
- *                                can be configured and smoke-tested (by
- *                                flipping one project's column manually)
- *                                before any traffic is routed.
+ *   SANDBOX_HOST_ENABLED       — MASTER SWITCH. "1" routes NEW free-tier
+ *                                projects to sandbox-host. Off by default: with
+ *                                it unset the feature is inert — every new
+ *                                project goes to Vercel regardless of the other
+ *                                vars — so merging to main can't activate
+ *                                sandbox-host anywhere until this is explicitly
+ *                                set. Turning it OFF later stops routing NEW
+ *                                projects but does NOT disturb existing
+ *                                sandbox-host projects (they keep dispatching to
+ *                                the host by their stored column; there is no
+ *                                safe silent fallback to an empty Vercel VM).
  *   SANDBOX_HOST_STRICT        — "1" makes chooseProviderForNewProject THROW
  *                                (instead of silently returning "vercel") when
  *                                a free-tier project can't be placed on
@@ -51,9 +57,14 @@ export function sandboxHostConfigured(): boolean {
   return Boolean(process.env.SANDBOX_API_URL && process.env.SANDBOX_HOST_TOKEN);
 }
 
-/** Rollout switch for routing NEW free-tier projects (see env contract above). */
-export function sandboxHostFreeTierEnabled(): boolean {
-  return process.env.SANDBOX_HOST_FOR_FREE_TIER === "1" && sandboxHostConfigured();
+/**
+ * Master switch: are NEW free-tier projects routed to sandbox-host? Requires
+ * both the explicit SANDBOX_HOST_ENABLED opt-in AND a reachable host config.
+ * Gates routing only — never the dispatch of already-created sandbox-host
+ * projects (see the env contract note above).
+ */
+export function sandboxHostRoutingEnabled(): boolean {
+  return process.env.SANDBOX_HOST_ENABLED === "1" && sandboxHostConfigured();
 }
 
 /**
@@ -131,11 +142,11 @@ export async function chooseProviderForNewProject(
   // back to Vercel as a hard error instead of a silent downgrade.
   const strict = process.env.SANDBOX_HOST_STRICT === "1";
 
-  if (!sandboxHostFreeTierEnabled()) {
+  if (!sandboxHostRoutingEnabled()) {
     if (strict) {
       throw new Error(
         "[sandbox-host strict] rollout not active: " +
-          `SANDBOX_HOST_FOR_FREE_TIER=${process.env.SANDBOX_HOST_FOR_FREE_TIER ?? "unset"}, ` +
+          `SANDBOX_HOST_ENABLED=${process.env.SANDBOX_HOST_ENABLED ?? "unset"}, ` +
           `SANDBOX_API_URL=${process.env.SANDBOX_API_URL ? "set" : "unset"}, ` +
           `SANDBOX_HOST_TOKEN=${process.env.SANDBOX_HOST_TOKEN ? "set" : "unset"}`,
       );

@@ -43,7 +43,7 @@ To update: `cd ~/Documents/sandbox-host/sdk && pnpm build && npm pack
 | `SANDBOX_API_URL` | Host control plane, e.g. `https://ai-club-pc-….ts.net/api`. Read natively by the fork SDK at client construction. Verified **not** read by `@vercel/sandbox@2.0.0-beta.14`, so it can't redirect real Vercel traffic. |
 | `SANDBOX_HOST_TOKEN` | Bearer token (in `~ai-club-pc/sandbox-host-credentials` on the host). |
 | `SANDBOX_HOST_TEAM_ID` / `SANDBOX_HOST_PROJECT_ID` | Tenant scoping; default `default`. |
-| `SANDBOX_HOST_FOR_FREE_TIER` | `"1"` routes **new** free-tier projects to sandbox-host. Off by default. |
+| `SANDBOX_HOST_ENABLED` | `"1"` routes **new** free-tier projects to sandbox-host. Off by default. |
 | `SANDBOX_HOST_STRICT` | `"1"` makes free-tier provider selection THROW instead of silently falling back to Vercel. Testing aid — leave off in production. |
 | `PREVIEW_SIGNING_SECRET` | Shared with the host's `previewSigningSecret`; when set, sandbox-host preview URLs get a signed `?_bft` token. Unset = no-op (host running capability-URL-only). |
 
@@ -56,10 +56,10 @@ ambiguity with `@vercel/sandbox` in the same process.
 1. `node scripts/migrate-sandbox-provider.mjs` — adds the column (staging,
    then prod).
 2. Set `SANDBOX_API_URL` + `SANDBOX_HOST_TOKEN` in Vercel env. Leave
-   `SANDBOX_HOST_FOR_FREE_TIER` unset.
+   `SANDBOX_HOST_ENABLED` unset.
 3. Smoke test: manually flip one throwaway project's `sandbox_provider` to
    `'sandbox-host'`, open it, run the agent, start the dev server, publish.
-4. Set `SANDBOX_HOST_FOR_FREE_TIER=1` → new free-tier projects land on the
+4. Set `SANDBOX_HOST_ENABLED=1` → new free-tier projects land on the
    host.
 5. Bulk-move existing free projects:
    `node scripts/migrate-free-projects-to-sandbox-host.mjs --dry-run`, then
@@ -98,7 +98,7 @@ ambiguity with `@vercel/sandbox` in the same process.
   allow-all. Free-tier workloads (vite templates, pnpm, GitHub, publish
   builds) fit; anything new that needs another domain must be added to the
   host's admin ceiling.
-- **Concurrency: 10 running VMs per token.** 429s surface through the
+- **Concurrency: 25 running VMs per token** (`maxSessions`; ~62 GB ÷ 2 GB/VM with headroom). 429s surface through the
   existing `withSandboxRetry` / `SandboxRateLimitError` path. Watch this as
   free-tier adoption grows; it's a host-side capacity knob.
 - **Free tier has `maxConvexProjects: 0`**, so the Convex/OAuth-redirect
