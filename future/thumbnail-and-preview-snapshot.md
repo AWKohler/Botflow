@@ -1,5 +1,14 @@
 # Thumbnails, preview snapshots & the blurred "paused" preview
 
+> **Update (July 2026):** the server-side Puppeteer thumbnail renderer has been
+> REVIVED for the sandbox workspace as `src/lib/server-screenshot.ts`, invoked
+> from `POST /api/projects/[id]/snapshot` (Path B: rasterize the captured HTML
+> snapshot, rate-limited via the daily screenshot counter). The client-side
+> html2canvas rasterizer it describes is gone for good. Swift projects get
+> thumbnails from simulator screengrabs composited into the device bezel by
+> `src/lib/swift-thumbnail.ts` (from `swift-preview/screenshot`). The rest of
+> this doc remains historical reference.
+>
 > **Status:** REMOVED from the codebase during the WebContainer deprecation
 > (the capture routes + `snapshot-capture.ts` were deleted; the blur/HTML-display
 > still physically lives inside the dead `components/workspace/**` tree until that

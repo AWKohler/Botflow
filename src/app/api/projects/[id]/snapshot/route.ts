@@ -5,8 +5,11 @@
  *   - html: the rendered DOM grabbed from the live preview iframe (via the
  *     injected runtime's BF_SNAPSHOT_REQUEST/RESULT postMessage pair). Shown
  *     blurred in the preview pane while the dev server is off.
- *   - thumbnailDataUrl: a JPEG rasterization of that same HTML (client-side
- *     html2canvas), used as the project thumbnail in lists/showcase.
+ *   - thumbnail: rendered SERVER-SIDE from that same HTML with puppeteer-core
+ *     + @sparticuz/chromium (the revived pre-sandbox implementation — see
+ *     future/thumbnail-and-preview-snapshot.md), rate-limited per tier via the
+ *     daily screenshot counter. A client-supplied thumbnailDataUrl is still
+ *     accepted and skips the server render (used by the Swift simulator flow).
  *
  * Only ONE snapshot per kind is kept: each new upload evicts the previous
  * UploadThing file before the DB row is updated. Server-side UTApi (instead of
@@ -19,6 +22,9 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
 import { requireProjectAccess } from "@/lib/project-access";
+import { renderHtmlToThumbnail } from "@/lib/server-screenshot";
+import { getUserTierAndLimits } from "@/lib/tier";
+import { getDailyScreenshots, incrementDailyScreenshots } from "@/lib/usage";
 
 const utapi = new UTApi();
 
@@ -26,6 +32,7 @@ const MAX_HTML_BYTES = 8 * 1024 * 1024; // generous — inlined images add up
 const MAX_THUMB_BYTES = 2 * 1024 * 1024;
 
 export const runtime = "nodejs";
+export const maxDuration = 30; // headless Chromium cold start + render
 
 export async function POST(
   req: NextRequest,
@@ -69,6 +76,13 @@ export async function POST(
       if (project.htmlSnapshotKey) staleKeys.push(project.htmlSnapshotKey);
     }
 
+    // Resolve the thumbnail bytes: an explicit client-supplied image wins;
+    // otherwise rasterize the freshly-captured HTML with headless Chromium,
+    // gated by the per-tier daily screenshot budget. A skipped/failed render
+    // never fails the request — the HTML snapshot is the important part.
+    let thumb: { buf: Buffer; ext: string; mime: string } | null = null;
+    let thumbnailSkipped: string | null = null;
+
     if (typeof body.thumbnailDataUrl === "string" && body.thumbnailDataUrl.trim()) {
       const match = /^data:image\/(jpeg|png|webp);base64,(.+)$/.exec(body.thumbnailDataUrl);
       if (!match) {
@@ -78,8 +92,27 @@ export async function POST(
       if (buf.byteLength > MAX_THUMB_BYTES) {
         return NextResponse.json({ error: "Thumbnail too large" }, { status: 413 });
       }
-      const file = new File([new Uint8Array(buf)], `thumbnail-${id}.${match[1] === "jpeg" ? "jpg" : match[1]}`, {
-        type: `image/${match[1]}`,
+      thumb = { buf, ext: match[1] === "jpeg" ? "jpg" : match[1], mime: `image/${match[1]}` };
+    } else if (typeof body.html === "string" && body.html.trim()) {
+      const limits = await getUserTierAndLimits(userId);
+      if (isFinite(limits.maxScreenshotsPerDay)) {
+        const used = await getDailyScreenshots(userId);
+        if (used >= limits.maxScreenshotsPerDay) {
+          thumbnailSkipped = "rate_limited";
+        } else {
+          await incrementDailyScreenshots(userId);
+        }
+      }
+      if (!thumbnailSkipped) {
+        const rendered = await renderHtmlToThumbnail(body.html);
+        if (rendered) thumb = { buf: rendered, ext: "jpg", mime: "image/jpeg" };
+        else thumbnailSkipped = "render_failed";
+      }
+    }
+
+    if (thumb) {
+      const file = new File([new Uint8Array(thumb.buf)], `thumbnail-${id}.${thumb.ext}`, {
+        type: thumb.mime,
       });
       const uploaded = await utapi.uploadFiles(file);
       if (uploaded.error || !uploaded.data) {
@@ -107,6 +140,7 @@ export async function POST(
       ok: true,
       htmlSnapshotUrl: updates.htmlSnapshotUrl ?? project.htmlSnapshotUrl,
       thumbnailUrl: updates.thumbnailUrl ?? project.thumbnailUrl,
+      ...(thumbnailSkipped ? { thumbnailSkipped } : {}),
     });
   } catch (e) {
     console.error("[snapshot] error:", e);

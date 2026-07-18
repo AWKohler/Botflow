@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VisualEditorPanel } from "@/components/workspace/VisualEditorPanel";
-import { renderHtmlThumbnail } from "@/lib/html-thumbnail";
 import { PreviewInfo } from "@/lib/preview-store";
 import {
   isWebLikePlatform,
@@ -813,8 +812,9 @@ export function Preview({
 
   // ── Snapshot capture (sandboxed-web only) ────────────────────────────
   // Ask the injected runtime inside the live iframe for a serialized render of
-  // the DOM (BF_SNAPSHOT_REQUEST → BF_SNAPSHOT_RESULT), then persist it (plus
-  // an html2canvas thumbnail) via POST /api/projects/:id/snapshot. Triggers:
+  // the DOM (BF_SNAPSHOT_REQUEST → BF_SNAPSHOT_RESULT), then persist it via
+  // POST /api/projects/:id/snapshot, which also rasterizes the thumbnail
+  // server-side (puppeteer + @sparticuz/chromium). Triggers:
   //   1. ~8s after the real preview loads (fresh "last seen" state).
   //   2. When the agent finishes a turn while the server runs (it likely
   //      changed the app).
@@ -851,14 +851,10 @@ export function Preview({
       snapshotUploadInFlightRef.current = true;
       try {
         const html = data.html;
-        const thumbnailDataUrl = await renderHtmlThumbnail(html);
         const res = await fetch(`/api/projects/${projectId}/snapshot`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            html,
-            ...(thumbnailDataUrl ? { thumbnailDataUrl } : {}),
-          }),
+          body: JSON.stringify({ html }),
         });
         if (res.ok) {
           lastSnapshotUploadAtRef.current = Date.now();
