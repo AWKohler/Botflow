@@ -20,6 +20,7 @@ import { projects, type Project } from "@/db/schema";
 import { getUserTier } from "@/lib/tier";
 import { decideReapAction, WARN90_IDLE_DAYS } from "@/lib/reaper/policy";
 import { deletePersistentSandbox } from "@/lib/vercel-sandbox";
+import { sweepPromotionHostCleanup } from "@/lib/sandbox-promotion";
 import { deleteConvexBackend } from "@/lib/convex-platform";
 import { getEmailForClerkUser } from "@/lib/email";
 import { sendWarn90Email, sendWarn104Email } from "@/lib/reaper/emails";
@@ -131,7 +132,13 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, stats });
+  // Retry host-VM deletions owed by interrupted tier promotions (flip
+  // happened, delete didn't) so they can't leak indefinitely.
+  const promotionCleanup = dryRun
+    ? { swept: 0, failed: 0 }
+    : await sweepPromotionHostCleanup().catch(() => ({ swept: 0, failed: 0 }));
+
+  return NextResponse.json({ ok: true, stats: { ...stats, promotionCleanup } });
 }
 
 // ────────────────────────────────────────────────────────────────────────────

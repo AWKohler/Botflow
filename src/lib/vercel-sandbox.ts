@@ -276,7 +276,7 @@ export async function getOrCreateSandboxOnProvider(
     const status = apiErrorStatus(error);
     if (status === undefined || (status !== 404 && status !== 400)) throw error;
   }
-  return createSandboxForProject(provider, name, projectId);
+  return createOrAdoptSandbox(provider, name, projectId);
 }
 
 // Resume an existing sandbox by name on the project's backend.
@@ -350,16 +350,50 @@ async function createSandboxForProject(
         `Sandbox.create failed (${status}) for project ${projectId} [${provider}]:\n` +
           `  body: ${bodyText || "<empty>"}`,
       );
-      throw new Error(
+      const wrapped = new Error(
         `Failed to create sandbox (${status}): ${bodyText || (error as Error).message}`,
-      );
+      ) as Error & { status?: number };
+      // Preserve the HTTP status so callers can recover from specific
+      // failures (409 name-conflict → adopt the winner's sandbox).
+      wrapped.status = status;
+      throw wrapped;
     }
     throw error;
   }
 }
 
+// Create, but if another instance won a concurrent create race (409
+// name-exists on either backend), adopt the winner's sandbox instead of
+// failing the caller.
+async function createOrAdoptSandbox(
+  provider: SandboxProvider,
+  name: string,
+  projectId: string,
+): Promise<Sandbox> {
+  try {
+    return await createSandboxForProject(provider, name, projectId);
+  } catch (error) {
+    if ((error as { status?: number })?.status === 409) {
+      return getSandboxByName(provider, name);
+    }
+    throw error;
+  }
+}
+
+// True when the error is a 404/400 "sandbox is gone" — anything else should
+// surface to the caller (withSandboxRetry already exhausted 429/5xx retries).
+async function isSandboxGone(error: unknown): Promise<boolean> {
+  const status = apiErrorStatus(error);
+  if (status === undefined || (status !== 404 && status !== 400)) return false;
+  try {
+    const body = await apiErrorResponse(error)?.text();
+    console.error(`Sandbox.get failed (${status}): ${body}`);
+  } catch { /* body already consumed */ }
+  return true;
+}
+
 async function doAcquireSandbox(projectId: string): Promise<Sandbox> {
-  const provider = await getProjectSandboxProvider(projectId);
+  let provider = await getProjectSandboxProvider(projectId);
   assertSandboxAuth(provider);
 
   const name = getSandboxName(projectId);
@@ -368,18 +402,28 @@ async function doAcquireSandbox(projectId: string): Promise<Sandbox> {
   try {
     return await getSandboxByName(provider, name);
   } catch (error) {
-    const status = apiErrorStatus(error);
-    // 404 / 400 = truly gone; fall through to create. Any other status:
-    // surface (withSandboxRetry has already exhausted retries for 429/5xx).
-    if (status === undefined || (status !== 404 && status !== 400)) throw error;
-    try {
-      const body = await apiErrorResponse(error)?.text();
-      console.error(`Sandbox.get failed (${status}): ${body}`);
-    } catch { /* body already consumed */ }
+    if (!(await isSandboxGone(error))) throw error;
   }
 
-  // 2. Create a fresh sandbox.
-  const sandbox = await createSandboxForProject(provider, name, projectId);
+  // A 404 on sandbox-host is the signature of a just-promoted project whose
+  // host VM was deleted while this instance's provider cache lagged the
+  // column flip. Re-read the column fresh before creating, so we don't
+  // resurrect an empty host VM and split the project across backends.
+  if (provider === "sandbox-host") {
+    const fresh = await getProjectSandboxProvider(projectId, { fresh: true });
+    if (fresh !== provider) {
+      provider = fresh;
+      assertSandboxAuth(provider);
+      try {
+        return await getSandboxByName(provider, name);
+      } catch (error) {
+        if (!(await isSandboxGone(error))) throw error;
+      }
+    }
+  }
+
+  // 2. Create a fresh sandbox (adopting a concurrent winner's on 409).
+  const sandbox = await createOrAdoptSandbox(provider, name, projectId);
 
   // 3. After a true 404 → create, the sandbox is empty. Auto-reseed using the
   //    project's stored template so callers don't silently get a blank VM.
@@ -908,7 +952,7 @@ export async function sandboxGrep(
  */
 export async function tarSandboxProject(
   projectId: string,
-  opts: { excludeConvex?: boolean } = {},
+  opts: { excludeConvex?: boolean; strict?: boolean } = {},
 ): Promise<Buffer> {
   const excludes = [
     "--exclude=.git",
@@ -928,11 +972,15 @@ export async function tarSandboxProject(
   if (opts.excludeConvex) {
     excludes.push("--exclude=./convex", "--exclude=convex");
   }
+  // GNU tar exits 1 when a file changed/vanished mid-archive. That's fine for
+  // best-effort exports (publish bundles), but migrations must treat it as a
+  // hard failure — a rc=1 archive is not a consistent snapshot.
+  const rcCheck = opts.strict ? "[ $rc -eq 0 ]" : "[ $rc -eq 0 ] || [ $rc -eq 1 ]";
   const cmd = [
     "set -o pipefail",
     `tar czf - ${excludes.join(" ")} -C ${SANDBOX_ROOT} . 2>/dev/null | base64 -w 0`,
     'rc=$?',
-    '[ $rc -eq 0 ] || [ $rc -eq 1 ]',
+    rcCheck,
   ].join(" ; ");
   const res = await sandboxBash(projectId, cmd, { timeoutMs: 120_000 });
   if (res.exitCode !== 0) {

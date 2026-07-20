@@ -7,25 +7,30 @@
  * owner tier resolves to pro/max, we move the project's files onto a fresh
  * Vercel sandbox and retire the self-hosted VM. Modeled on the lazy
  * WebContainer migration (webcontainer-migration.ts): triggered on open,
- * idempotent, with ordering chosen so an interruption at any step leaves a
- * retryable state:
+ * idempotent, ordered so an interruption at any step leaves a retryable
+ * state:
  *
- *   1. tar the source tree out of the sandbox-host VM        (source intact)
- *   2. create the Vercel sandbox + extract + verify           (source intact)
- *   3. flip projects.sandbox_provider → 'vercel'              (target is now
- *      the project's backend; a crash after this point leaves a working
- *      Vercel project)
- *   4. delete the sandbox-host VM + snapshots                 (best-effort;
- *      failure only leaks an idle VM on our own hardware)
+ *   1. gates: provider, owner tier, real Redis, 5-min idle window
+ *   2. snapshot the source tree signature, tar it (strict — a tar that saw
+ *      concurrent changes is a hard failure, not a snapshot)
+ *   3. create the Vercel sandbox, WIPE any partial prior copy, extract, verify
+ *   4. re-check the source signature — any concurrent writer aborts pre-flip
+ *   5. record the host-VM cleanup obligation durably (Redis set, swept by the
+ *      reaper cron), then flip projects.sandbox_provider → 'vercel'
+ *   6. delete the sandbox-host VM; clear the obligation on success
  *
- * Failure BEFORE the flip is non-fatal by design: the caller proceeds on
- * sandbox-host exactly as before, and the next open retries.
+ * Failure anywhere BEFORE the flip is non-fatal by design: the caller
+ * proceeds on sandbox-host exactly as before, and the next open retries from
+ * scratch (the target is wiped and re-copied, so partial copies can't be
+ * mistaken for complete ones). A crash AFTER the flip leaves a working
+ * Vercel project plus a cleanup entry the reaper sweeps.
  *
- * Concurrency: a Redis NX lock serializes promotion across serverless
- * instances. Losers of the race wait for the winner (bounded) and then
- * re-read the column, so both boots converge on the promoted sandbox. The
- * copy window is quiet by construction — promotion runs inside the blocking
- * workspace-boot call, before the editor or agent can write.
+ * Writer safety: promotion is attempted only when the sandbox has been idle
+ * for IDLE_REQUIRED_MS (agent turns, saves, and crons all bump
+ * lastSandboxActivityAt), and the before/after tree-signature comparison
+ * catches anything that slips through (detached agent bridges, second tabs).
+ * A Redis NX lock serializes promotion attempts across serverless instances;
+ * losers wait bounded, then follow the flipped column.
  */
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -36,6 +41,7 @@ import { invalidateProviderCache } from "@/lib/sandbox-provider";
 import {
   deleteSandboxOnProvider,
   getOrCreateSandboxOnProvider,
+  sandboxTreeSignature,
   tarSandboxProject,
 } from "@/lib/vercel-sandbox";
 import { materializeFrontendEnv } from "@/lib/sandbox-env";
@@ -45,9 +51,19 @@ const LOCK_TTL_SECONDS = 300;
 // How long a losing boot waits for the winning instance's promotion.
 const WAIT_FOR_PEER_MS = 60_000;
 const WAIT_POLL_MS = 2_000;
+// Don't attempt promotion while the sandbox is (or was very recently) in
+// use — an in-flight agent turn or save would be lost with the source VM.
+const IDLE_REQUIRED_MS = 5 * 60 * 1000;
+
+/** Durable record of host VMs whose deletion is still owed (flip happened,
+ *  delete didn't). Swept by the sandbox-reaper cron. */
+export const PROMOTION_CLEANUP_SET = "sandbox-promotion:pending-host-cleanup";
 
 export type PromotionResult =
-  | { status: "skipped"; reason: "not-sandbox-host" | "owner-not-paid" | "tier-unknown" }
+  | {
+      status: "skipped";
+      reason: "not-sandbox-host" | "owner-not-paid" | "tier-unknown" | "recently-active";
+    }
   | { status: "promoted" }
   | { status: "promoted-elsewhere" }
   | { status: "in-progress" }
@@ -57,10 +73,19 @@ function lockKey(projectId: string): string {
   return `sandbox-promote:${projectId}`;
 }
 
+/** The Redis client degrades to a no-op stub without these — and a no-op
+ *  "lock" would let every instance promote at once. */
+function hasRealRedis(): boolean {
+  return Boolean(
+    process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN,
+  );
+}
+
 type PromotableProject = {
   id: string;
   userId: string;
   sandboxProvider: string;
+  lastSandboxActivityAt: Date | null;
 };
 
 type SandboxHandle = Awaited<ReturnType<typeof getOrCreateSandboxOnProvider>>;
@@ -74,15 +99,18 @@ async function sandboxHasContent(sandbox: SandboxHandle): Promise<boolean> {
   return Boolean((await check.stdout()).trim());
 }
 
-async function copyIntoVercelSandbox(projectId: string): Promise<void> {
-  // Source: the sandbox-host VM (the provider column still points there, so
-  // the column-driven tar helper reads from the right backend).
-  const tarBuf = await tarSandboxProject(projectId);
-
+/**
+ * Copy the source (sandbox-host) tree into a Vercel sandbox. The target is
+ * wiped first: pre-flip it serves no one, and a partial copy from an
+ * interrupted run must never be mistaken for a completed one.
+ */
+async function copyIntoVercelSandbox(projectId: string, tarBuf: Buffer): Promise<void> {
   const target = await getOrCreateSandboxOnProvider(projectId, "vercel");
 
-  // Idempotency: a prior interrupted run may have copied already.
-  if (await sandboxHasContent(target)) return;
+  await target.runCommand("sh", [
+    "-c",
+    `find ${SANDBOX_ROOT} -mindepth 1 -maxdepth 1 -exec rm -rf {} +`,
+  ]);
 
   const tmp = `/tmp/promote-${projectId}.tar.gz`;
   await target.writeFiles([{ path: tmp, content: tarBuf }]);
@@ -123,6 +151,18 @@ export async function maybePromoteSandboxToVercel(
   }
   if (!paid) return { status: "skipped", reason: "owner-not-paid" };
 
+  // Idle gate: any recent activity (agent turn, save, cron touch) means a
+  // writer may still be in flight. Defer to a later, quieter boot. Note this
+  // reads the row fetched by the route BEFORE this boot touched the sandbox.
+  const lastActivity = project.lastSandboxActivityAt?.getTime() ?? 0;
+  if (Date.now() - lastActivity < IDLE_REQUIRED_MS) {
+    return { status: "skipped", reason: "recently-active" };
+  }
+
+  if (!hasRealRedis()) {
+    // Without a real lock, concurrent boots could race the copy/delete.
+    return { status: "failed", reason: "redis-not-configured" };
+  }
   const redis = getRedis();
   const key = lockKey(project.id);
 
@@ -130,7 +170,6 @@ export async function maybePromoteSandboxToVercel(
   try {
     locked = await redis.set(key, "1", { nx: true, ex: LOCK_TTL_SECONDS });
   } catch {
-    // Redis down — don't promote without a lock; boot on sandbox-host.
     return { status: "failed", reason: "lock-unavailable" };
   }
 
@@ -161,31 +200,55 @@ export async function maybePromoteSandboxToVercel(
   try {
     console.log(`[sandbox-promotion] promoting project ${project.id} to Vercel`);
 
-    // 1–2. Copy + verify (source untouched throughout).
-    await copyIntoVercelSandbox(project.id);
+    // 2. Snapshot + strict tar. The signature covers path/size/mtime of the
+    //    full tree, so any concurrent write flips it.
+    const preSig = await sandboxTreeSignature(project.id);
+    const tarBuf = await tarSandboxProject(project.id, { strict: true });
 
-    // Regenerate .env on the new sandbox (VITE_CONVEX_URL + user vars) so a
-    // backend added post-upgrade works immediately. Best-effort.
-    try {
-      await materializeFrontendEnv(project.id);
-    } catch (e) {
-      console.warn(`[sandbox-promotion] env materialize failed (non-fatal)`, e);
+    // 3. Copy into a wiped Vercel sandbox and verify.
+    await copyIntoVercelSandbox(project.id, tarBuf);
+
+    // 4. Writer detection: if the source changed while we copied, abort
+    //    before the flip — nothing is lost, and the next open retries.
+    const postSig = await sandboxTreeSignature(project.id);
+    if (preSig && postSig && preSig !== postSig) {
+      return { status: "failed", reason: "source-changed-during-copy" };
+    }
+    if (!preSig || !postSig) {
+      console.warn(
+        `[sandbox-promotion] tree signature unavailable for ${project.id} — proceeding on strict-tar guarantee alone`,
+      );
     }
 
-    // 3. Flip — from here the project lives on Vercel.
+    // 5. Record the cleanup obligation BEFORE the flip so a crash between
+    //    flip and delete can't orphan the host VM (reaper sweeps this set).
+    try {
+      await redis.sadd(PROMOTION_CLEANUP_SET, project.id);
+    } catch (e) {
+      console.warn(`[sandbox-promotion] cleanup-set record failed (non-fatal)`, e);
+    }
+
     await getDb()
       .update(projects)
       .set({ sandboxProvider: "vercel", updatedAt: new Date() })
       .where(eq(projects.id, project.id));
     invalidateProviderCache(project.id);
 
-    // 4. Retire the sandbox-host VM + snapshots. Best-effort: a failure here
-    // only leaks an idle VM on our own hardware (flag it loudly for ops).
+    // Regenerate .env on the NEW sandbox (the column now points at Vercel, so
+    // the column-driven env writer targets it). Best-effort.
+    try {
+      await materializeFrontendEnv(project.id);
+    } catch (e) {
+      console.warn(`[sandbox-promotion] env materialize failed (non-fatal)`, e);
+    }
+
+    // 6. Retire the sandbox-host VM + snapshots; clear the obligation.
     try {
       await deleteSandboxOnProvider(project.id, "sandbox-host");
+      await redis.srem(PROMOTION_CLEANUP_SET, project.id).catch(() => undefined);
     } catch (e) {
       console.error(
-        `[sandbox-promotion] ORPHANED sandbox-host VM for project ${project.id} — delete failed`,
+        `[sandbox-promotion] host VM delete failed for ${project.id} — reaper will retry via cleanup set`,
         e,
       );
     }
@@ -199,4 +262,37 @@ export async function maybePromoteSandboxToVercel(
   } finally {
     await redis.del(key).catch(() => undefined);
   }
+}
+
+/**
+ * Retry host-VM deletions owed by interrupted promotions. Called by the
+ * sandbox-reaper cron; idempotent (deleteSandboxOnProvider treats 404 as
+ * success).
+ */
+export async function sweepPromotionHostCleanup(
+  limit = 20,
+): Promise<{ swept: number; failed: number }> {
+  if (!hasRealRedis()) return { swept: 0, failed: 0 };
+  const redis = getRedis();
+
+  let ids: string[];
+  try {
+    ids = ((await redis.smembers(PROMOTION_CLEANUP_SET)) ?? []) as string[];
+  } catch {
+    return { swept: 0, failed: 0 };
+  }
+
+  let swept = 0;
+  let failed = 0;
+  for (const id of ids.slice(0, limit)) {
+    try {
+      await deleteSandboxOnProvider(id, "sandbox-host");
+      await redis.srem(PROMOTION_CLEANUP_SET, id);
+      swept++;
+    } catch (e) {
+      failed++;
+      console.error(`[sandbox-promotion] cleanup sweep failed for ${id}`, e);
+    }
+  }
+  return { swept, failed };
 }

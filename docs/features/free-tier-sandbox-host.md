@@ -73,18 +73,30 @@ ambiguity with `@vercel/sandbox` in the same process.
 Paid tiers are guaranteed unrestricted sandbox internet, so a sandbox-host
 project whose OWNER has upgraded to pro/max (beta's pro floor counts) is
 promoted on next workspace open (`src/lib/sandbox-promotion.ts`, hooked into
-POST /sandbox/session): tar out of the host VM → fresh Vercel sandbox +
-extract + verify → flip `sandbox_provider` → delete the host VM. Ordering
-means an interruption before the flip is retried on next open; after the
-flip the project is already a working Vercel project. A Redis NX lock
-serializes concurrent boots (losers wait, then follow the flipped column).
-Failure is non-fatal — the project boots on sandbox-host as before. Caveats:
-node_modules aren't copied (same excludes as `tarSandboxProject`; the next
-dev-server start reinstalls), and a source tree whose gzipped tar exceeds the
-~32 MiB command-output cap can't be promoted this way (promotion aborts
-pre-flip; move it with the offline migrator instead). There is deliberately
-NO demotion on downgrade — existing projects stay on Vercel; only the reaper
-retires them.
+POST /sandbox/session): strict tar out of the host VM → fresh Vercel sandbox
+(wiped, so partial prior copies never masquerade as complete) → extract +
+verify → flip `sandbox_provider` → regenerate .env on the new sandbox →
+delete the host VM. Interruption before the flip retries from scratch on
+next open; after the flip the project is already a working Vercel project.
+
+Writer safety (post-review hardening): promotion only runs after ≥5 min of
+sandbox idleness, the tar is strict (GNU tar rc=1 "file changed as we read
+it" is a hard abort), and the source's tree signature is compared
+before-tar vs after-copy — any concurrent writer (detached agent bridge,
+second tab, cron) aborts pre-flip. A Redis NX lock (with a hard
+env-configured check — the local no-op Redis stub can't fake it) serializes
+instances; losers wait bounded then follow the flipped column. Stale
+provider caches on other instances can't resurrect the deleted host VM: a
+404 on a sandbox-host acquire triggers a fresh column re-read before any
+create, and host-provider cache entries TTL at 10s. A crash between flip
+and delete leaves the host VM in a durable Redis cleanup set that the
+sandbox-reaper cron sweeps.
+
+Caveats: node_modules aren't copied (same excludes as `tarSandboxProject`;
+the next dev-server start reinstalls), and a source tree whose gzipped tar
+exceeds the ~32 MiB command-output cap can't be promoted this way (aborts
+pre-flip; use the offline migrator). There is deliberately NO demotion on
+downgrade — existing projects stay on Vercel; only the reaper retires them.
 
 ## Behavioral differences vs Vercel Sandbox
 

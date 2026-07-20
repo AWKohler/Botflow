@@ -89,17 +89,26 @@ export function getSandboxHostCredentials(): SandboxHostCredentials {
   };
 }
 
-// Per-instance cache of projectId → provider. The column effectively never
-// changes outside the offline migration, so a short TTL only bounds staleness
-// across serverless instances after a migration run.
+// Per-instance cache of projectId → provider. 'vercel' entries cache for 60s
+// ('vercel' is terminal — nothing moves a project off Vercel), but
+// 'sandbox-host' entries only 10s: a paid-owner promotion can flip
+// host→vercel at any moment, and invalidateProviderCache only reaches the
+// promoting instance — other instances must notice via TTL. The remaining
+// window is closed by doAcquireSandbox's fresh re-read on a host 404.
 const providerCache = new Map<string, { provider: SandboxProvider; at: number }>();
 const PROVIDER_CACHE_TTL_MS = 60_000;
+const HOST_PROVIDER_CACHE_TTL_MS = 10_000;
 
 export async function getProjectSandboxProvider(
   projectId: string,
+  opts: { fresh?: boolean } = {},
 ): Promise<SandboxProvider> {
-  const hit = providerCache.get(projectId);
-  if (hit && Date.now() - hit.at < PROVIDER_CACHE_TTL_MS) return hit.provider;
+  const hit = opts.fresh ? undefined : providerCache.get(projectId);
+  if (hit) {
+    const ttl =
+      hit.provider === "sandbox-host" ? HOST_PROVIDER_CACHE_TTL_MS : PROVIDER_CACHE_TTL_MS;
+    if (Date.now() - hit.at < ttl) return hit.provider;
+  }
 
   const [row] = await getDb()
     .select({ sandboxProvider: projects.sandboxProvider })
