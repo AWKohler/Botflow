@@ -160,8 +160,42 @@ async function postHostTool(toolName, input) {
   }
 }
 
+// ask_question is the one waitable tool worth blocking on: without the answer
+// the model would have to guess. The host enforces its own ~5-min ceiling
+// (auto-dismiss → terminal timeout result), which fits comfortably inside the
+// 600s MCP request timeout; the client cap is only a runaway backstop.
+const ASK_QUESTION_CLIENT_CAP_MS = 8 * 60 * 1000;
+
 async function callHostTool(toolName, input) {
-  const result = await postHostTool(toolName, input);
+  let result = await postHostTool(toolName, input);
+  if (toolName === "ask_question") {
+    const startedWaiting = Date.now();
+    let transientFailures = 0;
+    while (
+      result && result.pending === true && result.wait && result.wait.requestId &&
+      Date.now() - startedWaiting < ASK_QUESTION_CLIENT_CAP_MS
+    ) {
+      const delay = Number(result.wait.pollDelayMs) > 0 ? Number(result.wait.pollDelayMs) : 2000;
+      await new Promise((r) => setTimeout(r, delay));
+      try {
+        result = await postHostTool(toolName, { ...(input ?? {}), waitRequestId: result.wait.requestId });
+        transientFailures = 0;
+      } catch (err) {
+        transientFailures += 1;
+        if (transientFailures >= 5) throw err;
+      }
+    }
+    if (result && result.pending === true) {
+      return {
+        ok: true,
+        content:
+          "No answer arrived in time. Continue with a reasonable default; do not block on this question.",
+        answered: false,
+        timedOut: true,
+      };
+    }
+    return result;
+  }
   if (result && result.pending === true && result.wait && result.wait.requestId) {
     // Still pending after the host's poll window. Return guidance instead of
     // re-polling — blocking here trips OpenCode's MCP request timeout, which

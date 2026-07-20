@@ -1636,28 +1636,64 @@ export async function POST(req: Request) {
 
     case "ask_question": {
       // Mirror of the Botflow askQuestion execute: insert a chat_questions
-      // row keyed by a synthetic tool_call_id, poll for an answer, return.
-      const inputQuestions = body.input?.questions;
-      if (!Array.isArray(inputQuestions) || inputQuestions.length === 0) {
-        return NextResponse.json({
-          ok: false,
-          content: "askQuestion requires a non-empty questions array.",
+      // row keyed by a synthetic tool_call_id and poll for an answer — but as
+      // a WAITABLE-TOOL HANDSHAKE (see setup_oauth_provider): each invocation
+      // runs one short window and returns { pending, wait } so the sandbox
+      // bridge carries the wait. Unlike the modal tools, the bridges keep
+      // re-polling ask_question until a terminal result (an unanswered
+      // question means the model would have to guess), and the ceiling below
+      // preserves the original 5-minute auto-dismiss semantics.
+      const dbLocal = getDb();
+      const questionWaitId =
+        typeof body.input?.waitRequestId === "string" ? body.input.waitRequestId : null;
+
+      let toolCallId: string;
+      let askStartedAt: number;
+      if (questionWaitId) {
+        const [existingQ] = await dbLocal
+          .select({ createdAt: chatQuestions.createdAt })
+          .from(chatQuestions)
+          .where(
+            and(
+              eq(chatQuestions.toolCallId, questionWaitId),
+              eq(chatQuestions.projectId, binding.projectId),
+            ),
+          )
+          .limit(1);
+        if (!existingQ) {
+          return NextResponse.json({
+            ok: true,
+            content:
+              "The question no longer exists. Continue with a reasonable default.",
+            answered: false,
+            dismissed: true,
+          });
+        }
+        toolCallId = questionWaitId;
+        askStartedAt = existingQ.createdAt.getTime();
+      } else {
+        const inputQuestions = body.input?.questions;
+        if (!Array.isArray(inputQuestions) || inputQuestions.length === 0) {
+          return NextResponse.json({
+            ok: false,
+            content: "askQuestion requires a non-empty questions array.",
+          });
+        }
+        toolCallId = `claude-${randomUUID()}`;
+        askStartedAt = Date.now();
+        await dbLocal.insert(chatQuestions).values({
+          projectId: binding.projectId,
+          userId: binding.userId,
+          segmentId: project.currentSegmentId,
+          toolCallId,
+          questions: inputQuestions as unknown as object,
+          status: "pending",
         });
       }
 
-      const toolCallId = `claude-${randomUUID()}`;
-      const dbLocal = getDb();
-      await dbLocal.insert(chatQuestions).values({
-        projectId: binding.projectId,
-        userId: binding.userId,
-        segmentId: project.currentSegmentId,
-        toolCallId,
-        questions: inputQuestions as unknown as object,
-        status: "pending",
-      });
-
-      const deadline = Date.now() + 270 * 1000; // < maxDuration, leaves cleanup headroom
-      while (Date.now() < deadline) {
+      const ASK_CEILING_MS = 270 * 1000; // preserves the original 5-min semantics
+      const askWindowDeadline = Date.now() + 20_000;
+      for (;;) {
         await new Promise<void>((r) => setTimeout(r, 2000));
         const [row] = await dbLocal
           .select({ status: chatQuestions.status, answer: chatQuestions.answer })
@@ -1694,6 +1730,19 @@ export async function POST(req: Request) {
             answered: false,
             dismissed: true,
           });
+        }
+        if (Date.now() >= askWindowDeadline) {
+          // Window closed while still pending. Under the ceiling, hand the
+          // wait back to the bridge; past it, fall through to auto-dismiss.
+          if (Date.now() - askStartedAt < ASK_CEILING_MS) {
+            return NextResponse.json({
+              ok: true,
+              pending: true,
+              wait: { requestId: toolCallId, pollDelayMs: 2000 },
+              content: "Waiting for the user to answer…",
+            });
+          }
+          break;
         }
       }
 

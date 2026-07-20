@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "30";
+export const BRIDGE_SCRIPT_VERSION = "31";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -118,6 +118,14 @@ process.on("SIGTERM", () => {
 // open, system note fires on submit, tools are idempotent on re-call).
 // ---------------------------------------------------------------------------
 const WAIT_CLIENT_CAP_MS = 20 * 1000;
+// ask_question is the one waitable tool worth blocking on: without the answer
+// the model would have to guess. The host enforces its own ~5-min ceiling
+// (auto-dismiss → terminal timeout result); this cap is a runaway backstop.
+const ASK_QUESTION_CLIENT_CAP_MS = 8 * 60 * 1000;
+
+function waitCapFor(toolName) {
+  return toolName === "ask_question" ? ASK_QUESTION_CLIENT_CAP_MS : WAIT_CLIENT_CAP_MS;
+}
 
 async function postHostTool(toolName, input) {
   const base = process.env.BOTFLOW_API_BASE;
@@ -173,7 +181,18 @@ async function callHostTool(toolName, input) {
     // pendingGuidance: the modal stays open, a system note fires on submit,
     // and the waitable tools are idempotent (re-call returns success
     // instantly once the user has finished).
-    if (Date.now() - startedWaiting > WAIT_CLIENT_CAP_MS) {
+    if (Date.now() - startedWaiting > waitCapFor(toolName)) {
+      if (toolName === "ask_question") {
+        // Questions have no wait marker or system-note path — past the
+        // backstop just tell the model to proceed with a default.
+        return {
+          ok: true,
+          content:
+            "No answer arrived in time. Continue with a reasonable default; do not block on this question.",
+          answered: false,
+          timedOut: true,
+        };
+      }
       // First tell the host we stopped so it clears the "agent is waiting"
       // marker (otherwise a save within the marker's TTL would skip the
       // workspace system-note and the completion would be lost). The host's

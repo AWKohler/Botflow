@@ -13,7 +13,10 @@ import { projects, projectOAuthProviders } from "@/db/schema";
 import { eq, and, lt } from "drizzle-orm";
 import { encryptSecret, decryptSecret } from "@/lib/secrets";
 import { buildOAuthEnvVars, signAppleClientSecret } from "@/lib/oauth-providers/server";
-import { buildCookieFixGuidance } from "@/lib/convex-auth-cookie-fix";
+import {
+  buildCookieFixGuidance,
+  fixAuthCookiesPackageJsonLine,
+} from "@/lib/convex-auth-cookie-fix";
 import {
   OAUTH_PROVIDERS,
   OAUTH_PROVIDER_IDS,
@@ -915,9 +918,25 @@ WHAT YOU MUST DO AFTER setupAuth RETURNS:
      schema, MERGE your existing tables into the new one (keep ...authTables).
      NOTE: if the returned http.ts also mounts /revenuecat/webhook, KEEP that
      route exactly as provided — it receives the platform's payment events.
-  2. cd convex && pnpm add @convex-dev/auth @auth/core   (deps for the backend)
-  3. Run convexDeploy. The sign-in page and auth functions are NOT live until you do.
-  4. That is it for enabling sign-in — do NOT edit ConvexConfig.swift (platform-
+  2. Add the mobile-WebKit OAuth cookie-fix postinstall to the SAME
+     package.json that will carry @convex-dev/auth (the one your pnpm add in
+     step 3 modifies — postinstall runs in that package.json's own directory,
+     which is exactly where the fix script must scan). Copy this line into
+     its "scripts" object EXACTLY as written (one long line; if a postinstall
+     already exists, chain with " && "):
+
+       ${fixAuthCookiesPackageJsonLine()}
+
+     Why: @convex-dev/auth's OAuth cookies carry \`partitioned: true\`, which
+     WebKit drops across the sign-in round-trip — the in-app-browser flow
+     (ASWebAuthenticationSession IS WebKit) then fails the token exchange.
+     The script strips that attribute; it is idempotent and also runs inside
+     every Convex deploy. After installing, READ its "[fix-auth-cookies]"
+     output line: "patched"/"ok" = in place; "WARNING" = could not land,
+     follow its instructions; no line at all = the entry was mis-pasted.
+  3. pnpm add @convex-dev/auth @auth/core   (in that same directory)
+  4. Run convexDeploy. The sign-in page and auth functions are NOT live until you do.
+  5. That is it for enabling sign-in — do NOT edit ConvexConfig.swift (platform-
      managed) and do NOT build a native login form; the hosted page IS the form.
 
 PROTECTING DATA — tolerant reads, strict writes (IMPORTANT):
