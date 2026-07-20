@@ -257,6 +257,28 @@ async function acquireSandbox(projectId: string): Promise<Sandbox> {
   return p;
 }
 
+/**
+ * Get-or-create a project's sandbox on an EXPLICIT backend, bypassing the
+ * projects.sandbox_provider lookup. Exists for cross-provider migrations
+ * (sandbox-promotion.ts), which must reach the TARGET backend while the
+ * column still points at the source. Performs no template auto-reseed —
+ * the migration owns populating the new sandbox.
+ */
+export async function getOrCreateSandboxOnProvider(
+  projectId: string,
+  provider: SandboxProvider,
+): Promise<Sandbox> {
+  assertSandboxAuth(provider);
+  const name = getSandboxName(projectId);
+  try {
+    return await getSandboxByName(provider, name);
+  } catch (error) {
+    const status = apiErrorStatus(error);
+    if (status === undefined || (status !== 404 && status !== 400)) throw error;
+  }
+  return createSandboxForProject(provider, name, projectId);
+}
+
 // Resume an existing sandbox by name on the project's backend.
 async function getSandboxByName(
   provider: SandboxProvider,
@@ -602,6 +624,19 @@ export async function runPersistentSandboxSmokeTest(
  */
 export async function deletePersistentSandbox(projectId: string): Promise<void> {
   const provider = await getProjectSandboxProvider(projectId);
+  return deleteSandboxOnProvider(projectId, provider);
+}
+
+/**
+ * Delete a project's sandbox on an EXPLICIT backend, bypassing the column
+ * lookup. Needed by cross-provider migrations, which flip the column BEFORE
+ * cleaning up the source backend (safe ordering: copy → verify → flip →
+ * delete source) — at cleanup time the column already points at the target.
+ */
+export async function deleteSandboxOnProvider(
+  projectId: string,
+  provider: SandboxProvider,
+): Promise<void> {
   assertSandboxAuth(provider);
   const name = getSandboxName(projectId);
   try {

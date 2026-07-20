@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireProjectAccess } from "@/lib/project-access";
+import { maybePromoteSandboxToVercel } from "@/lib/sandbox-promotion";
 import { getOrCreatePersistentSandbox, SandboxAtCapacityError, SandboxRateLimitError } from "@/lib/vercel-sandbox";
 import { swiftRuntimeForbidden } from "@/lib/swift-access";
 import { enforce, identifierFor } from "@/lib/rate-limit";
@@ -87,6 +88,18 @@ export async function POST(
   const { id } = await params;
   const project = await getAuthorizedProject(id, userId);
   if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  // Paid tiers are guaranteed unrestricted sandbox internet — before booting,
+  // lazily move a free-tier (sandbox-host) project whose owner has upgraded
+  // onto a Vercel sandbox. No-op for everyone else; a failed promotion is
+  // non-fatal (the project boots on sandbox-host exactly as before).
+  const promotion = await maybePromoteSandboxToVercel(project);
+  if (promotion.status === "in-progress") {
+    return NextResponse.json(
+      { error: "Your project is being upgraded to an unrestricted sandbox. Please retry in a moment." },
+      { status: 503, headers: { "Retry-After": "15" } },
+    );
+  }
 
   try {
     const sandbox = await getOrCreatePersistentSandbox(project.id);

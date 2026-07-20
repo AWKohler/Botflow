@@ -68,6 +68,24 @@ ambiguity with `@vercel/sandbox` in the same process.
    Rollback for any project = flip its column back to `'vercel'` (as long as
    the Vercel sandbox wasn't deleted).
 
+## Upgrade path: lazy promotion to Vercel
+
+Paid tiers are guaranteed unrestricted sandbox internet, so a sandbox-host
+project whose OWNER has upgraded to pro/max (beta's pro floor counts) is
+promoted on next workspace open (`src/lib/sandbox-promotion.ts`, hooked into
+POST /sandbox/session): tar out of the host VM → fresh Vercel sandbox +
+extract + verify → flip `sandbox_provider` → delete the host VM. Ordering
+means an interruption before the flip is retried on next open; after the
+flip the project is already a working Vercel project. A Redis NX lock
+serializes concurrent boots (losers wait, then follow the flipped column).
+Failure is non-fatal — the project boots on sandbox-host as before. Caveats:
+node_modules aren't copied (same excludes as `tarSandboxProject`; the next
+dev-server start reinstalls), and a source tree whose gzipped tar exceeds the
+~32 MiB command-output cap can't be promoted this way (promotion aborts
+pre-flip; move it with the offline migrator instead). There is deliberately
+NO demotion on downgrade — existing projects stay on Vercel; only the reaper
+retires them.
+
 ## Behavioral differences vs Vercel Sandbox
 
 - **Previews: Cloudflare tunnel (implemented) or tailnet-only (fallback).**
