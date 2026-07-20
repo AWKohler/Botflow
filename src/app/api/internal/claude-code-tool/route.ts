@@ -1732,9 +1732,11 @@ export async function POST(req: Request) {
           });
         }
         if (Date.now() >= askWindowDeadline) {
-          // Window closed while still pending. Under the ceiling, hand the
-          // wait back to the bridge; past it, fall through to auto-dismiss.
-          if (Date.now() - askStartedAt < ASK_CEILING_MS) {
+          // Window closed while still pending. Grant another window only if
+          // it fits INSIDE the ceiling (projecting the next ~20s window keeps
+          // the effective ceiling at ~250-270s instead of overshooting to
+          // ~285s); past that, fall through to auto-dismiss.
+          if (Date.now() - askStartedAt < ASK_CEILING_MS - 20_000) {
             return NextResponse.json({
               ok: true,
               pending: true,
@@ -1746,7 +1748,7 @@ export async function POST(req: Request) {
         }
       }
 
-      await dbLocal
+      const dismissed = await dbLocal
         .update(chatQuestions)
         .set({ status: "dismissed", updatedAt: new Date() })
         .where(
@@ -1757,10 +1759,43 @@ export async function POST(req: Request) {
             eq(chatQuestions.status, "pending"),
           ),
         )
-        .catch(() => undefined);
+        .returning({ id: chatQuestions.id })
+        .catch(() => [] as { id: string }[]);
+      if (dismissed.length === 0) {
+        // The guarded dismiss updated nothing — an answer (or a user dismiss)
+        // won the race after our final pending read. Re-read and return the
+        // real terminal state instead of discarding the user's answer.
+        const [finalQ] = await dbLocal
+          .select({ status: chatQuestions.status, answer: chatQuestions.answer })
+          .from(chatQuestions)
+          .where(
+            and(
+              eq(chatQuestions.toolCallId, toolCallId),
+              eq(chatQuestions.projectId, binding.projectId),
+            ),
+          )
+          .limit(1);
+        if (finalQ?.status === "answered") {
+          const ans = finalQ.answer as
+            | { selectedIds?: string[]; selectedLabels?: string[]; text?: string | null }
+            | null;
+          const labels = ans?.selectedLabels ?? [];
+          const summary = labels.length > 0
+            ? `User picked: ${labels.join(", ")}${ans?.text ? ` (with custom note: "${ans.text}")` : ""}`
+            : (ans?.text ?? "Answered");
+          return NextResponse.json({
+            ok: true,
+            content: summary,
+            answered: true,
+            selectedIds: ans?.selectedIds ?? [],
+            selectedLabels: labels,
+            customText: ans?.text ?? null,
+          });
+        }
+      }
       return NextResponse.json({
         ok: true,
-        content: "Question timed out (5 minutes) without an answer. Continue with a reasonable default.",
+        content: "Question timed out without an answer. Continue with a reasonable default.",
         answered: false,
         timedOut: true,
       });

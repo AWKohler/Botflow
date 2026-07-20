@@ -133,25 +133,59 @@ export async function wasResultDelivered(
   }
 }
 
-/** Claim the (single) right to serve a late-completion system-note for this
- *  request. NX so reloads, remounts, and concurrent workspace tabs can't
- *  each fire the same note. Returns true exactly once per request (per TTL).
+/** TWO-PHASE note delivery. Phase 1 (serve): a SHORT-TTL NX claim dampens
+ *  concurrent tabs — only one poll response per 30s carries the note trigger,
+ *  but if that tab dies before dispatching, the claim expires and the next
+ *  poll re-serves. Phase 2 (ack): after the client has actually dispatched
+ *  the note it acks, which sets the DURABLE served flag and retires the note
+ *  for good. A claim is deliberately NOT durable — consuming the only
+ *  delivery attempt before delivery happened is how notes get lost.
  *  In no-Redis dev the stub always returns OK — notes may duplicate there,
  *  which is the documented degraded behavior. */
+const NOTE_CLAIM_TTL_SECONDS = 30;
+
 export async function claimCompletionNote(
   kind: ModalWaitKind,
   requestId: string,
 ): Promise<boolean> {
   try {
-    const res = await redis.set(`agent-note-served:${kind}:${requestId}`, "1", {
+    const res = await redis.set(`agent-note-claim:${kind}:${requestId}`, "1", {
       nx: true,
-      ex: DELIVERED_TTL_SECONDS,
+      ex: NOTE_CLAIM_TTL_SECONDS,
     });
     return res === "OK";
   } catch {
     // If Redis is down we'd rather risk a duplicate note than lose the only
     // delivery path.
     return true;
+  }
+}
+
+/** Durable phase-2 ack: the workspace dispatched the note. */
+export async function markCompletionNoteServed(
+  kind: ModalWaitKind,
+  requestId: string,
+): Promise<void> {
+  try {
+    await redis.setex(
+      `agent-note-served:${kind}:${requestId}`,
+      DELIVERED_TTL_SECONDS,
+      "1",
+    );
+  } catch {
+    /* best-effort — worst case the note re-serves and duplicates */
+  }
+}
+
+export async function wasCompletionNoteServed(
+  kind: ModalWaitKind,
+  requestId: string,
+): Promise<boolean> {
+  try {
+    const v = await redis.get(`agent-note-served:${kind}:${requestId}`);
+    return v !== null && v !== undefined;
+  } catch {
+    return false;
   }
 }
 

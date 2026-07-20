@@ -30,7 +30,6 @@ import {
   createConnectRequest,
   mintStripeAuthorizeUrl,
   pollConnectRequest,
-  pollConnectRequestOnce,
 } from '@/lib/stripe-connect';
 import { ensureDemoProductPrice, scaffoldStripeIntoProject } from '@/lib/stripe-scaffold';
 import { STRIPE_CONNECT_ENABLED } from '@/lib/feature-flags';
@@ -218,11 +217,27 @@ export async function POST(
     // that landed between the last poll and the marker clear would otherwise
     // be swallowed (no system-note fired, no poller left to read it). A
     // terminal status found here falls through to the normal branches below.
+    // Direct DB read, NOT pollConnectRequestOnce — the poller helper re-marks
+    // the agent as waiting, which would suppress the workspace note for
+    // another marker-TTL right after we stopped listening.
     const { clearAgentWaiting } = await import('@/lib/agent/modal-wait');
     await clearAgentWaiting('stripe-connect', requestId);
-    const final = await pollConnectRequestOnce({ requestId, projectId, windowMs: 1 });
-    if (final === 'completed' || final === 'dismissed' || final === 'gone') {
-      result = final;
+    const { stripeConnectRequests } = await import('@/db/schema');
+    const { and: andOp } = await import('drizzle-orm');
+    const [finalRow] = await db
+      .select({ status: stripeConnectRequests.status })
+      .from(stripeConnectRequests)
+      .where(
+        andOp(
+          eq(stripeConnectRequests.id, requestId),
+          eq(stripeConnectRequests.projectId, projectId),
+        ),
+      )
+      .limit(1);
+    if (!finalRow) {
+      result = 'gone';
+    } else if (finalRow.status === 'completed' || finalRow.status === 'dismissed') {
+      result = finalRow.status;
     }
   }
 

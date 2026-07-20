@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "31";
+export const BRIDGE_SCRIPT_VERSION = "32";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -127,12 +127,18 @@ function waitCapFor(toolName) {
   return toolName === "ask_question" ? ASK_QUESTION_CLIENT_CAP_MS : WAIT_CLIENT_CAP_MS;
 }
 
-async function postHostTool(toolName, input) {
+// Per-request hard deadline. The host route's maxDuration is 300s (a cold
+// convex_deploy legitimately runs minutes), so the default must exceed one
+// full invocation — this only guards against a request that HANGS.
+const DEFAULT_FETCH_TIMEOUT_MS = 330 * 1000;
+
+async function postHostTool(toolName, input, timeoutMs) {
   const base = process.env.BOTFLOW_API_BASE;
   const token = process.env.BOTFLOW_TOOL_TOKEN;
   if (!base || !token) {
     throw new Error("Host callback not configured (BOTFLOW_API_BASE / BOTFLOW_TOOL_TOKEN missing)");
   }
+  const deadlineMs = Number(timeoutMs) > 0 ? Number(timeoutMs) : DEFAULT_FETCH_TIMEOUT_MS;
   const headers = {
     "authorization": "Bearer " + token,
     "content-type": "application/json",
@@ -154,6 +160,9 @@ async function postHostTool(toolName, input) {
       method: "POST",
       headers,
       body: JSON.stringify({ tool: toolName, input: input ?? {} }),
+      // Fresh deadline per attempt — a hung request aborts instead of
+      // pinning the tool call open indefinitely.
+      signal: AbortSignal.timeout(deadlineMs),
     });
     if (response.status === 429 && attempt < MAX_429_RETRIES) {
       const retryAfter = Number(response.headers.get("retry-after"));

@@ -107,12 +107,20 @@ const tools = enabled
 // success instantly).
 // ---------------------------------------------------------------------------
 
-async function postHostTool(toolName, input) {
+// Per-request hard deadline. The host route's maxDuration is 300s (a cold
+// convex_deploy legitimately runs minutes), so the default must exceed one
+// full invocation. ask_question re-polls use a short window (~25s) and get a
+// tight deadline so the 8-min loop cap plus one hung request can never
+// exceed OpenCode's 600s MCP timeout.
+const DEFAULT_FETCH_TIMEOUT_MS = 330 * 1000;
+
+async function postHostTool(toolName, input, timeoutMs) {
   const base = process.env.BOTFLOW_API_BASE;
   const token = process.env.BOTFLOW_TOOL_TOKEN;
   if (!base || !token) {
     throw new Error("Host callback not configured (BOTFLOW_API_BASE / BOTFLOW_TOOL_TOKEN missing)");
   }
+  const deadlineMs = Number(timeoutMs) > 0 ? Number(timeoutMs) : DEFAULT_FETCH_TIMEOUT_MS;
   const headers = {
     "authorization": "Bearer " + token,
     "content-type": "application/json",
@@ -131,6 +139,9 @@ async function postHostTool(toolName, input) {
       method: "POST",
       headers,
       body: JSON.stringify({ tool: toolName, input: input ?? {} }),
+      // Fresh deadline per attempt — a hung request aborts instead of
+      // pinning the MCP call past its transport timeout.
+      signal: AbortSignal.timeout(deadlineMs),
     });
     if (response.status === 429 && attempt < MAX_429_RETRIES) {
       const retryAfter = Number(response.headers.get("retry-after"));
@@ -178,7 +189,14 @@ async function callHostTool(toolName, input) {
       const delay = Number(result.wait.pollDelayMs) > 0 ? Number(result.wait.pollDelayMs) : 2000;
       await new Promise((r) => setTimeout(r, delay));
       try {
-        result = await postHostTool(toolName, { ...(input ?? {}), waitRequestId: result.wait.requestId });
+        // Tight per-request deadline: each host window is ~20s, so 60s means
+        // the loop cap plus one hung request stays well inside the 600s MCP
+        // transport timeout.
+        result = await postHostTool(
+          toolName,
+          { ...(input ?? {}), waitRequestId: result.wait.requestId },
+          60 * 1000,
+        );
         transientFailures = 0;
       } catch (err) {
         transientFailures += 1;
