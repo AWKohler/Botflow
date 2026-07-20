@@ -565,6 +565,9 @@ export async function POST(req: Request) {
           )
           .limit(1);
         if (stripeFinal?.status === "completed") {
+          // In-band delivery — suppress the workspace's late-completion note.
+          const { markResultDelivered } = await import("@/lib/agent/modal-wait");
+          void markResultDelivered("stripe-connect", stripeWaitRequestId);
           return NextResponse.json({
             ok: true,
             finalized: true,
@@ -740,6 +743,9 @@ export async function POST(req: Request) {
       }
 
       if (result === "completed") {
+        // In-band delivery — suppress the workspace's late-completion note.
+        const { markResultDelivered } = await import("@/lib/agent/modal-wait");
+        void markResultDelivered("stripe-connect", requestId);
         const [linked] = await db
           .select()
           .from(userStripeIdentity)
@@ -1316,7 +1322,11 @@ export async function POST(req: Request) {
           // then create the new one. A 'completing' row can NOT be dismissed —
           // its submit is mid-apply — and the one-active-request unique index
           // spans it, so racing an insert would 500. Tell the model to retry
-          // in a moment instead.
+          // in a moment instead. The age guard (>5s) keeps a CONCURRENT
+          // call's just-inserted row alive: dismissing it would strand that
+          // caller mid-wait; our own insert then hits the unique index and
+          // the adoption path below resolves the conflict.
+          const { lt: ltLocal } = await import("drizzle-orm");
           await dbLocal
             .update(oauthTable)
             .set({ status: "dismissed", updatedAt: new Date() })
@@ -1324,6 +1334,7 @@ export async function POST(req: Request) {
               andLocal(
                 eqLocal(oauthTable.projectId, project.id),
                 eqLocal(oauthTable.status, "pending"),
+                ltLocal(oauthTable.updatedAt, new Date(Date.now() - 5000)),
               ),
             );
           const [completingOther] = await dbLocal
@@ -1358,6 +1369,8 @@ export async function POST(req: Request) {
               .returning();
             requestId = oauthRecord.id;
           } catch (insertErr) {
+            const { isUniqueViolation } = await import("@/lib/agent/oauth-provider-tool");
+            if (!isUniqueViolation(insertErr)) throw insertErr;
             // Lost a race with a concurrent call: the one-active-request
             // unique index rejected our insert. Adopt the winner if it's for
             // the same provider; otherwise ask for a short retry.
@@ -1382,7 +1395,14 @@ export async function POST(req: Request) {
                   "Wait ~15 seconds, then call setup_oauth_provider again.",
               });
             } else {
-              throw insertErr;
+              // The racing winner reached a terminal state between our insert
+              // and this lookup — the conflict is already gone. Retry, don't 500.
+              return NextResponse.json({
+                ok: true,
+                status: "busy",
+                content:
+                  "A concurrent OAuth setup call just resolved. Call setup_oauth_provider again now.",
+              });
             }
           }
         }

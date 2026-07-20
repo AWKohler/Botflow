@@ -884,21 +884,19 @@ export function SandboxedWebWorkspace({
         mode: "test" | "live";
         authorizeUrl: string;
       } | null;
-      justCompleted?: { id: string; agentWaiting: boolean } | null;
+      justCompleted?: { id: string } | null;
     };
     if (!signal.aborted && data.ok) {
       setPendingStripeRequest(data.pending);
       // Stripe completion happens in a server-side OAuth callback (no modal
       // POST like the OAuth/env-var flows), so this poll is where the
-      // workspace learns of it. If the agent stopped waiting (no active
-      // poller marker), send the late-completion system-note — once per
-      // request id.
+      // workspace learns of it. The server only returns justCompleted when
+      // no agent poller is active, no in-band delivery happened, AND this
+      // response won a once-only serve claim — so dispatching here is safe
+      // across tabs and reloads. The local ref is just belt-and-suspenders
+      // against a duplicate response in no-Redis dev.
       const completed = data.justCompleted;
-      if (
-        completed &&
-        !completed.agentWaiting &&
-        stripeCompletionNotifiedRef.current !== completed.id
-      ) {
+      if (completed && stripeCompletionNotifiedRef.current !== completed.id) {
         stripeCompletionNotifiedRef.current = completed.id;
         window.dispatchEvent(
           new CustomEvent("agent-modal-completed", {

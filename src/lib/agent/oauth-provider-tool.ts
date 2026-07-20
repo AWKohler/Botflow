@@ -14,7 +14,7 @@
  */
 import { tool } from "ai";
 import { z } from "zod";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, lt } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects, oauthProviderRequests } from "@/db/schema";
 import {
@@ -35,6 +35,19 @@ export type OAuthToolPlatform = "web" | "swift";
 // violate it, and a fast-path success during 'completing' would report stale
 // credentials.
 const ACTIVE_REQUEST_STATUSES = ["pending", "completing"];
+
+/** Postgres unique-constraint violation (the one-active-request index). The
+ *  driver may nest the code (drizzle wraps Neon errors), so walk the cause
+ *  chain. Only THIS error means "lost a race — adopt the winner"; anything
+ *  else must propagate. */
+export function isUniqueViolation(err: unknown): boolean {
+  let cur: unknown = err;
+  for (let depth = 0; cur && depth < 5; depth++) {
+    if (typeof cur === "object" && (cur as { code?: unknown }).code === "23505") return true;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return false;
+}
 
 function buildAuthTsSnippet(def: OAuthProviderDef, platform: OAuthToolPlatform): string {
   const imp = def.authImport.default
@@ -326,6 +339,10 @@ export function createSetupOAuthProviderTool(
           .set({ updatedAt: new Date() })
           .where(eq(oauthProviderRequests.id, existingReq.id));
       } else {
+        // The age guard (>5s) keeps a CONCURRENT call's just-inserted row
+        // alive: dismissing it would strand that caller mid-wait; our own
+        // insert then hits the unique index and the adoption path below
+        // resolves the conflict.
         await db
           .update(oauthProviderRequests)
           .set({ status: "dismissed", updatedAt: new Date() })
@@ -333,6 +350,7 @@ export function createSetupOAuthProviderTool(
             and(
               eq(oauthProviderRequests.projectId, projectId),
               eq(oauthProviderRequests.status, "pending"),
+              lt(oauthProviderRequests.updatedAt, new Date(Date.now() - 5000)),
             ),
           );
 
@@ -376,6 +394,7 @@ export function createSetupOAuthProviderTool(
             .returning();
           requestId = record.id;
         } catch (insertErr) {
+          if (!isUniqueViolation(insertErr)) throw insertErr;
           // Lost a race with a concurrent call: the one-active-request unique
           // index rejected our insert. Adopt the winner if it's for the same
           // provider; otherwise ask for a short retry.
@@ -403,7 +422,14 @@ export function createSetupOAuthProviderTool(
                 "Wait ~15 seconds, then call setupOAuthProvider again.",
             };
           } else {
-            throw insertErr;
+            // The racing winner reached a terminal state between our insert
+            // and this lookup — the conflict is already gone. Retry, don't throw.
+            return {
+              ok: true,
+              status: "busy",
+              context:
+                "A concurrent OAuth setup call just resolved. Call setupOAuthProvider again now.",
+            };
           }
         }
       }

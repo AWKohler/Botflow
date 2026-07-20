@@ -30,6 +30,7 @@ import {
   createConnectRequest,
   mintStripeAuthorizeUrl,
   pollConnectRequest,
+  pollConnectRequestOnce,
 } from '@/lib/stripe-connect';
 import { ensureDemoProductPrice, scaffoldStripeIntoProject } from '@/lib/stripe-scaffold';
 import { STRIPE_CONNECT_ENABLED } from '@/lib/feature-flags';
@@ -209,9 +210,27 @@ export async function POST(
   });
 
   const deadlineMs = Date.now() + POLL_DEADLINE_MS;
-  const result = await pollConnectRequest({ requestId, projectId, deadlineMs });
+  let result = await pollConnectRequest({ requestId, projectId, deadlineMs });
+
+  if (result === 'timeout') {
+    // Giving up: drop the wait marker NOW so a completion seconds later
+    // correctly notifies the agent, then do one FINAL status read — a connect
+    // that landed between the last poll and the marker clear would otherwise
+    // be swallowed (no system-note fired, no poller left to read it). A
+    // terminal status found here falls through to the normal branches below.
+    const { clearAgentWaiting } = await import('@/lib/agent/modal-wait');
+    await clearAgentWaiting('stripe-connect', requestId);
+    const final = await pollConnectRequestOnce({ requestId, projectId, windowMs: 1 });
+    if (final === 'completed' || final === 'dismissed' || final === 'gone') {
+      result = final;
+    }
+  }
 
   if (result === 'completed') {
+    // The result reaches the agent in-band right here — suppress the
+    // workspace's late-completion system-note for this request.
+    const { markResultDelivered } = await import('@/lib/agent/modal-wait');
+    void markResultDelivered('stripe-connect', requestId);
     // Re-read identity (callback wrote the acct id).
     const [linked] = await db
       .select()
@@ -248,11 +267,8 @@ export async function POST(
     });
   }
 
-  // Drop the wait marker NOW so a completion seconds later correctly
-  // notifies the agent instead of assuming an active waiter.
-  const { clearAgentWaiting } = await import('@/lib/agent/modal-wait');
-  void clearAgentWaiting('stripe-connect', requestId);
-
+  // Marker already cleared and final status read above — the row is still
+  // genuinely pending.
   return NextResponse.json({
     ok: false,
     status: 'timeout',

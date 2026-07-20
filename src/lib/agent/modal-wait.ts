@@ -90,6 +90,71 @@ export async function isAgentWaiting(
   }
 }
 
+/** DELIVERY SEMANTICS: at-least-once, by design. A completion must reach the
+ *  agent through in-band tool results OR a workspace system-note — losing one
+ *  entirely (the pre-2026-07 failure mode) strands the whole setup flow,
+ *  while a rare duplicate is harmless: the note tells the agent to re-call
+ *  the tool, and the waitable tools are idempotent. The two helpers below
+ *  suppress the SYSTEMATIC duplicate paths; sub-second races may still
+ *  double-deliver and that is the accepted trade.
+ */
+
+const DELIVERED_TTL_SECONDS = 60 * 60;
+
+function deliveredKey(kind: ModalWaitKind, requestId: string): string {
+  return `agent-delivered:${kind}:${requestId}`;
+}
+
+/** Record that a terminal result for this request reached the agent IN-BAND
+ *  (a poll return or a finalized stopWaiting reply), so late-completion
+ *  notification paths (e.g. the Stripe connect-request poll) don't
+ *  re-announce it after the wait marker expires. Fire-and-forget safe. */
+export async function markResultDelivered(
+  kind: ModalWaitKind,
+  requestId: string,
+): Promise<void> {
+  try {
+    await redis.setex(deliveredKey(kind, requestId), DELIVERED_TTL_SECONDS, "1");
+  } catch {
+    /* best-effort — worst case a redundant system-note fires */
+  }
+}
+
+/** Did an in-band delivery already happen for this request? */
+export async function wasResultDelivered(
+  kind: ModalWaitKind,
+  requestId: string,
+): Promise<boolean> {
+  try {
+    const v = await redis.get(deliveredKey(kind, requestId));
+    return v !== null && v !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/** Claim the (single) right to serve a late-completion system-note for this
+ *  request. NX so reloads, remounts, and concurrent workspace tabs can't
+ *  each fire the same note. Returns true exactly once per request (per TTL).
+ *  In no-Redis dev the stub always returns OK — notes may duplicate there,
+ *  which is the documented degraded behavior. */
+export async function claimCompletionNote(
+  kind: ModalWaitKind,
+  requestId: string,
+): Promise<boolean> {
+  try {
+    const res = await redis.set(`agent-note-served:${kind}:${requestId}`, "1", {
+      nx: true,
+      ex: DELIVERED_TTL_SECONDS,
+    });
+    return res === "OK";
+  } catch {
+    // If Redis is down we'd rather risk a duplicate note than lose the only
+    // delivery path.
+    return true;
+  }
+}
+
 /** Canonical give-up message when the wait ceiling passes with the modal
  *  still pending. The request row is left pending (modal stays open) and the
  *  wording forbids the "user dismissed it" misreport. */

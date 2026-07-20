@@ -15,7 +15,12 @@ import { and, eq, desc } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { stripeConnectRequests } from '@/db/schema';
 import { requireProjectAccess } from '@/lib/project-access';
-import { isAgentWaiting, MODAL_STALE_AFTER_MS } from '@/lib/agent/modal-wait';
+import {
+  isAgentWaiting,
+  wasResultDelivered,
+  claimCompletionNote,
+  MODAL_STALE_AFTER_MS,
+} from '@/lib/agent/modal-wait';
 
 export const runtime = 'nodejs';
 
@@ -81,13 +86,15 @@ export async function GET(
   // No pending request: surface a JUST-COMPLETED one so the workspace can
   // fire the late-completion system-note. Stripe's completion happens in a
   // server-side OAuth callback redirect (no modal POST like the OAuth/env-var
-  // flows), so this poll is the only place the workspace can observe it. The
-  // agentWaiting flag mirrors the other modals: an active agent poller will
-  // deliver the result in-band, so the workspace stays quiet; when the agent
-  // has stopped waiting (marker cleared by the stopWaiting handshake or
-  // expired), the workspace sends the note. The 2-minute window plus a
-  // client-side per-request dedupe keeps this once-only.
-  let justCompleted: { id: string; agentWaiting: boolean } | null = null;
+  // flows), so this poll is the only place the workspace can observe it.
+  // Suppression, in order:
+  //   • delivered flag — an agent poller (or finalized stopWaiting) already
+  //     returned the result in-band; never re-announce it.
+  //   • agentWaiting marker — a poller is active right now and will deliver.
+  //   • NX serve-claim — exactly one poll response (across tabs, reloads,
+  //     remounts) carries the note trigger; the 60-min window means an idle
+  //     or hidden workspace still gets it on its next active poll.
+  let justCompleted: { id: string } | null = null;
   if (!pending) {
     const [recent] = await db
       .select({
@@ -102,12 +109,12 @@ export async function GET(
     if (
       recent &&
       recent.status === 'completed' &&
-      Date.now() - recent.updatedAt.getTime() < 2 * 60 * 1000
+      Date.now() - recent.updatedAt.getTime() < 60 * 60 * 1000 &&
+      !(await wasResultDelivered('stripe-connect', recent.id)) &&
+      !(await isAgentWaiting('stripe-connect', recent.id)) &&
+      (await claimCompletionNote('stripe-connect', recent.id))
     ) {
-      justCompleted = {
-        id: recent.id,
-        agentWaiting: await isAgentWaiting('stripe-connect', recent.id),
-      };
+      justCompleted = { id: recent.id };
     }
   }
 
