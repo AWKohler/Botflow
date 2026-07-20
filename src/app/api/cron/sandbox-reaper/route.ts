@@ -135,8 +135,8 @@ export async function GET(req: Request) {
   // Retry host-VM deletions owed by interrupted tier promotions (flip
   // happened, delete didn't) so they can't leak indefinitely.
   const promotionCleanup = dryRun
-    ? { swept: 0, failed: 0 }
-    : await sweepPromotionHostCleanup().catch(() => ({ swept: 0, failed: 0 }));
+    ? { swept: 0, droppedStale: 0, failed: 0 }
+    : await sweepPromotionHostCleanup().catch(() => ({ swept: 0, droppedStale: 0, failed: 0 }));
 
   return NextResponse.json({ ok: true, stats: { ...stats, promotionCleanup } });
 }
