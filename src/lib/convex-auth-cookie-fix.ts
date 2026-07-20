@@ -31,16 +31,19 @@
 //   skip    — package not installed yet (expected before deps are added)
 //   patched — the fix was applied to N files
 //   ok      — nothing to patch (already applied, or fixed upstream)
-//   WARNING — partitioned survived the patch attempt (layout changed) — the
-//             mobile-Safari bug is live; fix manually / report it
+//   WARNING — the package is installed but the fix could not land (cookies.js
+//             moved, or partitioned survived the rewrite) — the mobile-Safari
+//             bug is live; the message names what to patch manually
 const FIX_AUTH_COOKIES_JS =
   "const fs=require('fs'),p=require('path'),r=process.cwd();" +
-  "const t=[];" +
-  "const d=p.join(r,'node_modules/@convex-dev/auth/dist/server/cookies.js');" +
+  "const t=[];let pkgSeen=false;" +
+  "const pkgDir=p.join(r,'node_modules/@convex-dev/auth');" +
+  "if(fs.existsSync(pkgDir))pkgSeen=true;" +
+  "const d=p.join(pkgDir,'dist/server/cookies.js');" +
   "if(fs.existsSync(d))t.push(d);" +
   "const pn=p.join(r,'node_modules/.pnpm');" +
   "if(fs.existsSync(pn))for(const e of fs.readdirSync(pn)){" +
-  "if(e.startsWith('@convex-dev+auth@')){" +
+  "if(e.startsWith('@convex-dev+auth@')){pkgSeen=true;" +
   "const c=p.join(pn,e,'node_modules/@convex-dev/auth/dist/server/cookies.js');" +
   "if(fs.existsSync(c))t.push(c);}}" +
   "const files=[...new Set(t.map(x=>{try{return fs.realpathSync(x);}catch{return x;}}))];" +
@@ -49,9 +52,10 @@ const FIX_AUTH_COOKIES_JS =
   "const s=fs.readFileSync(f,'utf8');" +
   "if(!/partitioned:\\s*true/.test(s))continue;" +
   "fs.writeFileSync(f,s.replace(/\\s*partitioned:\\s*true,?/g,''));n++;}" +
-  "const bad=files.filter(f=>/partitioned:\\s*true/.test(fs.readFileSync(f,'utf8'))).length;" +
-  "if(!files.length)console.log('[fix-auth-cookies] skip: @convex-dev/auth not installed yet');" +
-  "else if(bad)console.log('[fix-auth-cookies] WARNING: partitioned still present in '+bad+' file(s) after patching - mobile Safari OAuth will fail; the package layout changed, remove partitioned:true from its cookie options manually');" +
+  "const bad=files.filter(f=>/partitioned:\\s*true/.test(fs.readFileSync(f,'utf8')));" +
+  "if(!pkgSeen)console.log('[fix-auth-cookies] skip: @convex-dev/auth not installed yet');" +
+  "else if(!files.length)console.log('[fix-auth-cookies] WARNING: @convex-dev/auth is installed but dist/server/cookies.js was not found - the package layout changed; locate its OAuth cookie options and remove partitioned:true manually or mobile Safari OAuth will fail');" +
+  "else if(bad.length)console.log('[fix-auth-cookies] WARNING: partitioned still present after patching in: '+bad.join(', ')+' - remove partitioned:true there manually or mobile Safari OAuth will fail');" +
   "else if(n)console.log('[fix-auth-cookies] patched '+n+' file(s)');" +
   "else console.log('[fix-auth-cookies] ok (already patched)')";
 
@@ -86,13 +90,18 @@ export function buildCookieFixGuidance(): string {
     ${fixAuthCookiesPackageJsonLine()}
 
   Then run \`pnpm install\` once and READ the "[fix-auth-cookies]" line it
-  prints. After @convex-dev/auth is installed, "patched N file(s)" (N ≥ 1) or
-  "ok (already patched)" both mean the fix is in place; "skip" at that point
-  means the entry was mis-pasted (re-check it), and "WARNING" means the
-  package layout changed and the mobile-Safari bug is still live — tell the
-  user and patch the named file manually. The script is idempotent and
-  self-contained; it also runs automatically inside every Convex deploy,
-  which is what makes the fix reach the deployed auth code. If package.json
-  already has a postinstall script, chain them with " && ". Do NOT remove
-  this entry later.`;
+  prints. Interpreting it:
+    - "patched N file(s)" or "ok (already patched)" — the fix is in place.
+    - "skip: not installed yet" — fine before @convex-dev/auth is added; if
+      it still says this AFTER the auth packages are installed, something is
+      wrong with the install itself.
+    - "WARNING: …" — the fix could NOT land (package layout changed); the
+      mobile-Safari bug is live. Follow the message: it names the file(s) to
+      patch manually. Tell the user.
+    - NO [fix-auth-cookies] line at all — the postinstall entry was
+      mis-pasted; re-check package.json.
+  The script is idempotent and self-contained; it also runs automatically
+  inside every Convex deploy, which is what makes the fix reach the deployed
+  auth code. If package.json already has a postinstall script, chain them
+  with " && ". Do NOT remove this entry later.`;
 }

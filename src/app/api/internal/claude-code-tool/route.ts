@@ -1345,17 +1345,46 @@ export async function POST(req: Request) {
                 "Wait ~15 seconds, then call setup_oauth_provider again.",
             });
           }
-          const [oauthRecord] = await dbLocal
-            .insert(oauthTable)
-            .values({
-              projectId: project.id,
-              userId: binding.userId,
-              provider: inputProvider,
-              status: "pending",
-              convexSiteUrl,
-            })
-            .returning();
-          requestId = oauthRecord.id;
+          try {
+            const [oauthRecord] = await dbLocal
+              .insert(oauthTable)
+              .values({
+                projectId: project.id,
+                userId: binding.userId,
+                provider: inputProvider,
+                status: "pending",
+                convexSiteUrl,
+              })
+              .returning();
+            requestId = oauthRecord.id;
+          } catch (insertErr) {
+            // Lost a race with a concurrent call: the one-active-request
+            // unique index rejected our insert. Adopt the winner if it's for
+            // the same provider; otherwise ask for a short retry.
+            const [winner] = await dbLocal
+              .select({ id: oauthTable.id, provider: oauthTable.provider })
+              .from(oauthTable)
+              .where(
+                andLocal(
+                  eqLocal(oauthTable.projectId, project.id),
+                  inArrayLocal(oauthTable.status, ACTIVE_STATUSES),
+                ),
+              )
+              .limit(1);
+            if (winner?.provider === inputProvider) {
+              requestId = winner.id;
+            } else if (winner) {
+              return NextResponse.json({
+                ok: true,
+                status: "busy",
+                content:
+                  `Another OAuth setup (${winner.provider}) is active on this project right now. ` +
+                  "Wait ~15 seconds, then call setup_oauth_provider again.",
+              });
+            } else {
+              throw insertErr;
+            }
+          }
         }
       }
 

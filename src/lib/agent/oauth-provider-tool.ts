@@ -363,17 +363,49 @@ export function createSetupOAuthProviderTool(
         }
 
         // ── Create pending request — workspace modal appears on next poll ──
-        const [record] = await db
-          .insert(oauthProviderRequests)
-          .values({
-            projectId,
-            userId: proj.userId,
-            provider,
-            status: "pending",
-            convexSiteUrl,
-          })
-          .returning();
-        requestId = record.id;
+        try {
+          const [record] = await db
+            .insert(oauthProviderRequests)
+            .values({
+              projectId,
+              userId: proj.userId,
+              provider,
+              status: "pending",
+              convexSiteUrl,
+            })
+            .returning();
+          requestId = record.id;
+        } catch (insertErr) {
+          // Lost a race with a concurrent call: the one-active-request unique
+          // index rejected our insert. Adopt the winner if it's for the same
+          // provider; otherwise ask for a short retry.
+          const [winner] = await db
+            .select({
+              id: oauthProviderRequests.id,
+              provider: oauthProviderRequests.provider,
+            })
+            .from(oauthProviderRequests)
+            .where(
+              and(
+                eq(oauthProviderRequests.projectId, projectId),
+                inArray(oauthProviderRequests.status, ACTIVE_REQUEST_STATUSES),
+              ),
+            )
+            .limit(1);
+          if (winner?.provider === provider) {
+            requestId = winner.id;
+          } else if (winner) {
+            return {
+              ok: true,
+              status: "busy",
+              context:
+                `Another OAuth setup (${winner.provider}) is active on this project right now. ` +
+                "Wait ~15 seconds, then call setupOAuthProvider again.",
+            };
+          } else {
+            throw insertErr;
+          }
+        }
       }
 
       // ── Short grace poll only (45s). Console setup takes the user

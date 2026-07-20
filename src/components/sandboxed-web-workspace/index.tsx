@@ -161,6 +161,8 @@ export function SandboxedWebWorkspace({
     mode: "test" | "live";
     authorizeUrl: string;
   } | null>(null);
+  /** Last Stripe connect request id we sent a late-completion note for. */
+  const stripeCompletionNotifiedRef = useRef<string | null>(null);
   /** Pending env-var entry request surfaced by the agent's requestEnvVar tool. */
   const [pendingEnvVarRequest, setPendingEnvVarRequest] = useState<{
     id: string;
@@ -882,9 +884,28 @@ export function SandboxedWebWorkspace({
         mode: "test" | "live";
         authorizeUrl: string;
       } | null;
+      justCompleted?: { id: string; agentWaiting: boolean } | null;
     };
     if (!signal.aborted && data.ok) {
       setPendingStripeRequest(data.pending);
+      // Stripe completion happens in a server-side OAuth callback (no modal
+      // POST like the OAuth/env-var flows), so this poll is where the
+      // workspace learns of it. If the agent stopped waiting (no active
+      // poller marker), send the late-completion system-note — once per
+      // request id.
+      const completed = data.justCompleted;
+      if (
+        completed &&
+        !completed.agentWaiting &&
+        stripeCompletionNotifiedRef.current !== completed.id
+      ) {
+        stripeCompletionNotifiedRef.current = completed.id;
+        window.dispatchEvent(
+          new CustomEvent("agent-modal-completed", {
+            detail: { projectId, kind: "stripe-connect", subject: "Stripe" },
+          }),
+        );
+      }
     }
   }, 2500, hasBackend && sandboxStatus === "ready");
 

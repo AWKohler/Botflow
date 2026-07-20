@@ -78,6 +78,39 @@ export async function GET(
     return NextResponse.json({ ok: true, pending: null });
   }
 
+  // No pending request: surface a JUST-COMPLETED one so the workspace can
+  // fire the late-completion system-note. Stripe's completion happens in a
+  // server-side OAuth callback redirect (no modal POST like the OAuth/env-var
+  // flows), so this poll is the only place the workspace can observe it. The
+  // agentWaiting flag mirrors the other modals: an active agent poller will
+  // deliver the result in-band, so the workspace stays quiet; when the agent
+  // has stopped waiting (marker cleared by the stopWaiting handshake or
+  // expired), the workspace sends the note. The 2-minute window plus a
+  // client-side per-request dedupe keeps this once-only.
+  let justCompleted: { id: string; agentWaiting: boolean } | null = null;
+  if (!pending) {
+    const [recent] = await db
+      .select({
+        id: stripeConnectRequests.id,
+        status: stripeConnectRequests.status,
+        updatedAt: stripeConnectRequests.updatedAt,
+      })
+      .from(stripeConnectRequests)
+      .where(eq(stripeConnectRequests.projectId, projectId))
+      .orderBy(desc(stripeConnectRequests.updatedAt))
+      .limit(1);
+    if (
+      recent &&
+      recent.status === 'completed' &&
+      Date.now() - recent.updatedAt.getTime() < 2 * 60 * 1000
+    ) {
+      justCompleted = {
+        id: recent.id,
+        agentWaiting: await isAgentWaiting('stripe-connect', recent.id),
+      };
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     pending: pending
@@ -88,6 +121,7 @@ export async function GET(
           createdAt: pending.createdAt,
         }
       : null,
+    justCompleted,
   });
 }
 
