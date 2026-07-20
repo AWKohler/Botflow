@@ -253,18 +253,22 @@ function Toggle({
   return (
     <label className={cn("flex items-start gap-3 select-none", disabled ? "opacity-60" : "cursor-pointer")}>
       <button
+        type="button"
         role="switch"
         aria-checked={checked}
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cn(
-          "relative mt-0.5 w-8 h-[18px] rounded-full transition-colors shrink-0",
+          // appearance-none + border-0 + p-0 strip the UA button chrome that
+          // was shifting the knob; inline-flex/items-center centers the knob
+          // so its slide is purely the transform below.
+          "relative mt-0.5 inline-flex h-[18px] w-8 shrink-0 cursor-pointer items-center rounded-full border-0 p-0 appearance-none transition-colors",
           checked ? "bg-accent" : "bg-soft",
         )}
       >
         <span
           className={cn(
-            "absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow transition-transform",
+            "inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform",
             checked ? "translate-x-[16px]" : "translate-x-[2px]",
           )}
         />
