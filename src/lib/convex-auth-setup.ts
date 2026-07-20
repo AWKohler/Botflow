@@ -13,6 +13,7 @@ import { projects, projectOAuthProviders } from "@/db/schema";
 import { eq, and, lt } from "drizzle-orm";
 import { encryptSecret, decryptSecret } from "@/lib/secrets";
 import { buildOAuthEnvVars, signAppleClientSecret } from "@/lib/oauth-providers/server";
+import { buildCookieFixGuidance } from "@/lib/convex-auth-cookie-fix";
 import {
   OAUTH_PROVIDERS,
   OAUTH_PROVIDER_IDS,
@@ -649,12 +650,18 @@ FILES WRITTEN (WRITE THESE EXACTLY AS PROVIDED IN THE files ARRAY):
                            needed once you add an OAuth provider — see below.
 
 REQUIRED SEQUENCE AFTER WRITING FILES:
-  1. pnpm add @convex-dev/auth @auth/core
-  2. convexDeploy  ← MUST run this before the frontend can sign in
-  3. After wiring the sign-in form, sign up with a test email then call
+  1. Add the mobile-Safari OAuth cookie-fix postinstall entry to package.json
+     (see MOBILE SAFARI OAUTH COOKIE FIX below — copy the line exactly).
+  2. pnpm add @convex-dev/auth @auth/core   (the postinstall runs during this
+     install; its "[fix-auth-cookies]" line in the output confirms it)
+  3. convexDeploy  ← MUST run this before the frontend can sign in
+  4. After wiring the sign-in form, sign up with a test email then call
      getBrowserLog. If the catch handler fires, READ the logged error before
      deciding what to tell the user — do NOT assume "email taken." Most auth
      bugs surface as console errors here.
+
+─────────────────────────────────────────────────────────────
+${buildCookieFixGuidance()}
 
 ─────────────────────────────────────────────────────────────
 BACKEND PATTERN — protecting queries and mutations:
@@ -789,17 +796,26 @@ ${buildOAuthProviderGuidance()}
 
   Step 1 — Call setupOAuthProvider({ provider: "<id>" }). It opens the modal
            (which shows the user the redirect URI to register,
-           ${convexSiteUrl}/api/auth/callback/<id>) and BLOCKS until the user
-           completes or dismisses it (up to 5 minutes). On ok: true the
-           provider's env vars are set on the deployment — you never see them.
+           ${convexSiteUrl}/api/auth/callback/<id>) and waits briefly. Console
+           setup takes the user minutes, so a 'still-pending' result is NORMAL:
+           the modal stays open — continue other work or end your turn, and a
+           system note arrives when they save; then call setupOAuthProvider
+           again (it is idempotent: once credentials are saved it returns
+           instantly with the registration snippet). On ok: true the provider's
+           env vars are set on the deployment — you never see them.
            Until ok: true is returned, do NOT edit convex/auth.ts, add or expose
            a provider sign-in button, or claim that provider setup is complete.
 
-  Step 2 — After ok: true, edit convex/auth.ts: add the provider's import (see
-           the list above) and add it to the providers array alongside Password.
-           Keep the existing callbacks.redirect block intact — only edit the
-           providers array. Pass NO arguments to the provider; Microsoft and
-           Apple read their extra env vars (issuer / client secret) automatically.
+  Step 2 — After ok: true, edit convex/auth.ts: add the provider's import and
+           register it in the providers array alongside Password (and any
+           providers already there) using the provider expression from the list
+           above EXACTLY as written. Where the expression includes arguments —
+           Apple's custom profile() mapping — they are REQUIRED: Apple's default
+           profile returns image: null, which the authTables users schema
+           rejects, and every first sign-in fails with a schema-validation
+           error. Secrets (Microsoft issuer, Apple client secret) are read from
+           env automatically — never inline credentials. Keep the existing
+           callbacks.redirect block intact — only edit the providers array.
 
   Step 3 — Run convexDeploy to push the updated auth config.
 
@@ -822,6 +838,17 @@ ${buildOAuthProviderGuidance()}
              import { useEffect } from "react";
              import { resumePendingOAuthSignIn } from "@/lib/botflowAuth";
              useEffect(() => { resumePendingOAuthSignIn(signIn); }, [signIn]);
+
+  Step 5 — VERIFY before declaring the provider done. You cannot complete
+           OAuth from the preview iframe yourself, so ask the user to do ONE
+           test sign-in with the provider, then immediately check
+           getConvexLogs for auth errors (failures surface as auth:store /
+           auth:signIn errors — schema validation, token exchange, redirect
+           mismatches). Only report success after a clean test sign-in;
+           "deployed" is not "working". If the user reports sign-in failing
+           on MOBILE while desktop works, first confirm the
+           "[fix-auth-cookies]" postinstall entry exists in package.json and
+           a convexDeploy ran after it was added.
 
   APPLE — extra: Apple returns the user's name/email ONLY on the first sign-in.
   If you need their name, capture it then (it is never sent again). Apple also

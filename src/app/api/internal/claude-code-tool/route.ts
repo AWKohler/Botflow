@@ -687,6 +687,12 @@ export async function POST(req: Request) {
           ok: true,
           pending: true,
           wait: { requestId, pollDelayMs: 3000 },
+          pendingGuidance:
+            "The user hasn't finished connecting their Stripe account yet — the connect flow is STILL OPEN; " +
+            "nothing was dismissed or declined (Stripe onboarding takes minutes). " +
+            "Stop waiting: continue unrelated work or end your turn. You'll receive a system note when they connect; " +
+            "then call initialize_stripe_payments again — it returns already-connected with next steps. " +
+            "Until then do NOT scaffold or claim Stripe is set up, and NEVER describe this as the user declining.",
           content: "Waiting for the user to connect their Stripe account…",
         });
       }
@@ -1107,10 +1113,54 @@ export async function POST(req: Request) {
       // the bridge (sandbox side, no execution ceiling): each invocation here
       // does one SHORT polling window and either returns a terminal result or
       // { pending: true, wait: { requestId } } — which makes the bridge sleep
-      // and call again with waitRequestId. From the model's perspective the
-      // tool simply blocks until the user acts or the wait ceiling passes.
+      // and call again with waitRequestId. Bridges cap how long they re-poll
+      // (transports and turns must not pin open for minutes) and surface
+      // pendingGuidance when they stop; the late-submit system-note plus the
+      // idempotent fast path below complete the flow on the next call.
       const waitRequestId =
         typeof body.input?.waitRequestId === "string" ? body.input.waitRequestId : null;
+
+      // IDEMPOTENT FAST PATH — credentials already saved for this provider.
+      // Return the registration context immediately instead of reopening the
+      // modal (a post-save re-call used to create a fresh pending request,
+      // yanking the modal back open in the user's workspace — and on rails
+      // whose transport had already timed out, the agent could NEVER observe
+      // success in-band). reconfigure:true opts out so the user can
+      // intentionally replace credentials.
+      if (!waitRequestId && body.input?.reconfigure !== true) {
+        const { projectOAuthProviders } = await import("@/db/schema");
+        const [enabledRow] = await dbLocal
+          .select({ id: projectOAuthProviders.id })
+          .from(projectOAuthProviders)
+          .where(
+            andLocal(
+              eqLocal(projectOAuthProviders.projectId, project.id),
+              eqLocal(projectOAuthProviders.provider, inputProvider),
+              eqLocal(projectOAuthProviders.status, "enabled"),
+            ),
+          )
+          .limit(1);
+        if (enabledRow) {
+          const def = getOAuthProvider(inputProvider)!;
+          const { buildOAuthProviderSuccessContext } = await import(
+            "@/lib/agent/oauth-provider-tool"
+          );
+          return NextResponse.json({
+            ok: true,
+            alreadyConfigured: true,
+            content:
+              `${def.displayName} OAuth credentials are ALREADY saved on this project — no modal was opened. ` +
+              "If the provider isn't wired into the app yet, complete the steps below. " +
+              "To REPLACE the saved credentials, call again with reconfigure: true (only if the user explicitly asked).\n\n" +
+              buildOAuthProviderSuccessContext(
+                project.platform === "swift" ? "swift" : "web",
+                inputProvider,
+                def,
+                { deploy: "convex_deploy", setupAuth: "setup_auth", setupOAuth: "setup_oauth_provider", logs: "get_convex_logs" },
+              ),
+          });
+        }
+      }
 
       let requestId: string;
       if (waitRequestId) {
@@ -1205,7 +1255,7 @@ export async function POST(req: Request) {
               project.platform === "swift" ? "swift" : "web",
               inputProvider,
               def,
-              { deploy: "convex_deploy", setupAuth: "setup_auth", setupOAuth: "setup_oauth_provider" },
+              { deploy: "convex_deploy", setupAuth: "setup_auth", setupOAuth: "setup_oauth_provider", logs: "get_convex_logs" },
             ),
           });
         }
@@ -1246,10 +1296,20 @@ export async function POST(req: Request) {
             " You may continue unrelated work, but do NOT edit convex/auth.ts, add or expose this provider's sign-in button, or claim the provider is configured until the credentials are saved successfully.",
         });
       }
+      const pendingName = getOAuthProvider(inputProvider)?.displayName ?? inputProvider;
       return NextResponse.json({
         ok: true,
         pending: true,
         wait: { requestId, pollDelayMs: 2500 },
+        // Surfaced to the model by bridges that stop re-polling (they must not
+        // pin a transport/turn open for the minutes a console setup takes).
+        pendingGuidance:
+          `The user hasn't finished entering the ${pendingName} OAuth credentials yet — the modal is STILL OPEN in their workspace; ` +
+          "nothing was dismissed or declined, and this is normal (provider console setup takes minutes). " +
+          "Stop waiting: continue unrelated work or end your turn. You'll receive a system note when they save; " +
+          "then call setup_oauth_provider again — once credentials are saved it returns the registration snippet instantly. " +
+          "Until then do NOT edit convex/auth.ts, add or expose this provider's sign-in UI, or claim the provider is configured, " +
+          "and NEVER describe this as the user dismissing or declining.",
         content: "Waiting for the user to finish the OAuth credentials modal…",
       });
     }
@@ -1338,6 +1398,12 @@ export async function POST(req: Request) {
           ok: true,
           pending: true,
           wait: { requestId, pollDelayMs: 2500 },
+          pendingGuidance:
+            `The user hasn't entered ${key as string} yet — the env-var modal is STILL OPEN in their workspace; ` +
+            "nothing was dismissed (finding an API key can take a while). " +
+            "Stop waiting: continue work that doesn't need this value or end your turn. " +
+            "You'll receive a system note when they save it; the value is stored server-side and never shown to you. " +
+            "Do NOT claim the variable is set, and NEVER describe this as the user dismissing or declining.",
           content: `Waiting for the user to enter ${key as string}…`,
         });
       }

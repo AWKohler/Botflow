@@ -25,6 +25,7 @@ import {
   type OAuthProviderDef,
 } from "@/lib/oauth-providers/registry";
 import { markAgentWaiting } from "@/lib/agent/modal-wait";
+import { fixAuthCookiesPackageJsonLine } from "@/lib/convex-auth-cookie-fix";
 
 export type OAuthToolPlatform = "web" | "swift";
 
@@ -42,6 +43,8 @@ function buildAuthTsSnippet(def: OAuthProviderDef, platform: OAuthToolPlatform):
    ${imp}
 
    export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
+     // ADD ${def.authImport.symbol} to the existing providers array — keep Password and any
+     // previously registered providers exactly as they are.
      providers: [Password, ${expr}],
      // keep the existing callbacks.redirect block intact
    });`;
@@ -57,7 +60,7 @@ export function buildOAuthProviderSuccessContext(
   provider: string,
   def: OAuthProviderDef,
   /** Rail-specific tool names — the CC/OpenCode MCP rails use snake_case. */
-  toolNames?: { deploy?: string; setupAuth?: string; setupOAuth?: string },
+  toolNames?: { deploy?: string; setupAuth?: string; setupOAuth?: string; logs?: string },
 ): string {
   const deployTool = toolNames?.deploy ?? "convexDeploy";
   const setupAuthTool = toolNames?.setupAuth ?? "setupAuth";
@@ -68,8 +71,12 @@ ${def.envVars.join(", ")} now set on your Convex deployment.
 
 REQUIRED NEXT STEPS:
 
-1. Update convex/auth.ts — add the provider (pass NO arguments; extra config such
-   as the Microsoft issuer or Apple client secret is read from env automatically):
+1. Update convex/auth.ts — register the provider with the EXACT expression below
+   (do not simplify it: where it includes a custom profile() mapping — Apple —
+   that mapping is REQUIRED; the provider's default returns image: null, which
+   the authTables users schema rejects and every first sign-in fails. Secrets
+   such as the Microsoft issuer or Apple client secret are read from env
+   automatically; never inline credentials):
 
 ${buildAuthTsSnippet(def, platform)}
 
@@ -77,6 +84,7 @@ ${buildAuthTsSnippet(def, platform)}
 `;
 
   if (platform === "web") {
+    const logsTool = toolNames?.logs ?? "getConvexLogs";
     const appleNote =
       provider === "apple"
         ? "\n\nAPPLE NOTE: the user's name/email are returned ONLY on the first sign-in — capture them then. Apple can't be tested on localhost; use the deployed preview."
@@ -94,7 +102,23 @@ ${buildAuthTsSnippet(def, platform)}
 
    Also call resumePendingOAuthSignIn(signIn) once at app mount so the new-tab
    handoff resumes the flow. On return, Convex Auth creates or merges the user
-   account automatically and <Authenticated> updates reactively.` +
+   account automatically and <Authenticated> updates reactively.
+
+4. Check package.json for the "[fix-auth-cookies]" postinstall entry that
+   setup_auth prescribes (strips \`partitioned: true\` from @convex-dev/auth's
+   OAuth cookies — without it, sign-in fails on mobile Safari with
+   invalid_grant while desktop works). If this project predates the fix and
+   the entry is missing, add it now exactly as given below, then run
+   \`pnpm install\` once:
+
+     ${fixAuthCookiesPackageJsonLine()}
+
+5. VERIFY before declaring the provider done: you cannot complete OAuth from
+   the preview iframe yourself, so after the deploy ask the user to do ONE
+   test sign-in with ${def.displayName}, then immediately check ${logsTool}
+   for auth errors (failures surface as auth:store / auth:signIn errors, e.g.
+   schema-validation or token-exchange failures). Only report success after a
+   clean test sign-in — "deployed" is not "working".` +
       appleNote
     );
   }
@@ -143,15 +167,20 @@ function buildDescription(platform: OAuthToolPlatform): string {
     "developer account and complete a console setup, so never add it proactively — default to the Password provider when auth is needed.\n\n" +
     "PREREQUISITES:\n" +
     "  • setupAuth must have been called first.\n\n" +
+    "IDEMPOTENT: once the provider's credentials are saved this returns success IMMEDIATELY (no modal) with the exact " +
+    "registration snippet — safe to call any time you need the wiring instructions. Pass reconfigure:true ONLY when the " +
+    "user explicitly wants to REPLACE saved credentials (reopens the modal).\n\n" +
     "FLOW:\n" +
     "  1. This tool creates a pending request and the workspace shows a modal immediately.\n" +
     "  2. The user registers the app in the provider's console and pastes the credentials (Apple uploads a .p8).\n" +
-    "  3. This tool blocks (polls) until the user completes or dismisses the modal (a few minutes).\n" +
-    "  4. On success: credentials are saved server-side. You then update convex/auth.ts and run convexDeploy.\n" +
+    "  3. This tool waits only briefly — console setup takes the user minutes, so a 'still-pending' result is NORMAL: " +
+    "the modal STAYS OPEN. Continue other work or end your turn; a system note arrives when they save, then call this " +
+    "tool again for the snippet. NEVER re-call in a tight loop, and NEVER report still-pending as the user dismissing or declining.\n" +
+    "  4. On success: credentials are saved server-side. You then update convex/auth.ts (using the returned snippet " +
+    "EXACTLY — Apple requires its custom profile() mapping) and run convexDeploy.\n" +
     "  5. If the user explicitly DISMISSES the modal: returns an error saying so. Stop trying — do not call this again unless the user asks.\n" +
-    "  6. If it times out, the user simply hasn't finished YET — the modal STAYS OPEN. NEVER report a timeout as the user dismissing " +
-    "or declining; you'll get a system note when they submit, and you can call this tool again later to resume waiting. " +
-    "Until this tool returns success, do NOT edit convex/auth.ts or add/expose the provider's sign-in UI.\n\n" +
+    "  6. Until this tool returns success, do NOT edit convex/auth.ts or add/expose the provider's sign-in UI.\n" +
+    "  7. VERIFY before declaring done: after deploying, ask the user for one test sign-in and check getConvexLogs for auth errors.\n\n" +
     afterSuccess
   );
 }
@@ -166,8 +195,14 @@ export function createSetupOAuthProviderTool(
       provider: z
         .enum(OAUTH_PROVIDER_IDS as [string, ...string[]])
         .describe(`Provider to add (required, no default): ${oauthProviderIdList()}.`),
+      reconfigure: z
+        .boolean()
+        .optional()
+        .describe(
+          "Reopen the credentials modal even though this provider is already configured — ONLY when the user explicitly asks to replace the saved credentials.",
+        ),
     }),
-    async execute({ provider }) {
+    async execute({ provider, reconfigure }) {
       // Direct DB access — avoids the Clerk auth problem that would arise
       // from server→server fetch calls which carry no session cookies.
       const db = getDb();
@@ -193,6 +228,38 @@ export function createSetupOAuthProviderTool(
           error:
             "Auth must be set up before adding OAuth providers. Call setupAuth first.",
         };
+      }
+
+      // ── IDEMPOTENT FAST PATH — credentials already saved. Return the
+      //    registration context immediately instead of reopening the modal
+      //    (a post-save re-call used to yank a fresh modal open in the
+      //    user's workspace). reconfigure:true opts out intentionally. ──
+      if (reconfigure !== true) {
+        const { projectOAuthProviders } = await import("@/db/schema");
+        const [enabledRow] = await db
+          .select({ id: projectOAuthProviders.id })
+          .from(projectOAuthProviders)
+          .where(
+            and(
+              eq(projectOAuthProviders.projectId, projectId),
+              eq(projectOAuthProviders.provider, provider),
+              eq(projectOAuthProviders.status, "enabled"),
+            ),
+          )
+          .limit(1);
+        if (enabledRow) {
+          const def = getOAuthProvider(provider)!;
+          return {
+            ok: true,
+            provider,
+            alreadyConfigured: true,
+            context:
+              `${def.displayName} OAuth credentials are ALREADY saved on this project — no modal was opened. ` +
+              "If the provider isn't wired into the app yet, complete the steps below. " +
+              "To REPLACE the saved credentials, call again with reconfigure: true (only if the user explicitly asked).\n\n" +
+              buildOAuthProviderSuccessContext(platform, provider, def),
+          };
+        }
       }
 
       const deployUrl = proj.userConvexUrl ?? proj.convexDeployUrl ?? null;
@@ -246,9 +313,12 @@ export function createSetupOAuthProviderTool(
         requestId = record.id;
       }
 
-      // ── Poll until completed/dismissed (270s, bounded by the agent
-      //    route's serverless maxDuration) ──
-      const deadline = Date.now() + 270 * 1000;
+      // ── Short grace poll only (45s). Console setup takes the user
+      //    MINUTES — blocking a live turn that long is how turns die
+      //    mid-modal. Past the grace we return an honest still-pending
+      //    result; the workspace fires a system note on submit and the
+      //    idempotent fast path above makes the follow-up call instant. ──
+      const deadline = Date.now() + 45 * 1000;
       while (Date.now() < deadline) {
         void markAgentWaiting("oauth-provider", requestId);
         await new Promise<void>((r) => setTimeout(r, 3000));
@@ -288,20 +358,24 @@ export function createSetupOAuthProviderTool(
         // status === 'pending' — keep polling
       }
 
-      // Timed out — the row stays PENDING and the modal stays open. A
-      // timeout means "the user hasn't finished yet", never "the user
-      // declined"; a late submit triggers a system-note back to the agent.
-      // Drop the wait marker NOW so that late submit notifies correctly.
+      // Grace passed — the row stays PENDING and the modal stays open. A
+      // still-pending result means "the user hasn't finished yet", never
+      // "the user declined"; a late submit triggers a system-note back to
+      // the agent. Drop the wait marker NOW so that late submit notifies
+      // correctly. NOT an error: a human mid-modal is an expected state.
       const { clearAgentWaiting } = await import("@/lib/agent/modal-wait");
       void clearAgentWaiting("oauth-provider", requestId);
       return {
-        ok: false,
-        error:
-          `The user has NOT finished entering ${getOAuthProvider(provider)?.displayName ?? provider} OAuth credentials yet — ` +
-          "the modal is still open in their workspace; nothing was dismissed or declined. " +
-          "Do NOT say the user dismissed or declined it. You may continue unrelated work, but do NOT edit convex/auth.ts, " +
-          "add or expose this provider's sign-in UI, or claim the provider is configured. You'll get a system note when " +
-          "they submit, or you can call setupOAuthProvider again later to resume waiting.",
+        ok: true,
+        status: "still-pending",
+        context:
+          `The user hasn't finished entering the ${getOAuthProvider(provider)?.displayName ?? provider} OAuth credentials yet — ` +
+          "the modal is STILL OPEN in their workspace; nothing was dismissed or declined, and this is normal " +
+          "(provider console setup takes minutes). Stop waiting: continue unrelated work or end your turn. " +
+          "You'll receive a system note when they save; then call setupOAuthProvider again — once credentials are " +
+          "saved it returns the registration snippet instantly. Until then do NOT edit convex/auth.ts, add or expose " +
+          "this provider's sign-in UI, or claim the provider is configured, and NEVER describe this as the user " +
+          "dismissing or declining.",
       };
     },
   });

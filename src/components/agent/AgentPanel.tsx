@@ -1282,7 +1282,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         case 'oauth-provider':
           note =
             `[system-note] The user just saved ${detail.subject} OAuth credentials in the workspace modal — it was still pending from earlier and was never dismissed. ` +
-            'Finish the wiring now: make sure convex/auth.ts registers the provider, run the Convex deploy, and confirm the sign-in button exists.';
+            'Finish the wiring now: call the setup_oauth_provider / setupOAuthProvider tool again — with credentials saved it returns INSTANTLY with the exact registration snippet (including any required profile() mapping). ' +
+            'Register the provider in convex/auth.ts exactly as that snippet shows (keep existing providers), run the Convex deploy, confirm the sign-in button exists, then ask the user for one test sign-in and check the Convex logs for auth errors before reporting success.';
           break;
         case 'env-var':
           note =
