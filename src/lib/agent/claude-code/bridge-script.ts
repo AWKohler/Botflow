@@ -174,14 +174,23 @@ async function callHostTool(toolName, input) {
     // and the waitable tools are idempotent (re-call returns success
     // instantly once the user has finished).
     if (Date.now() - startedWaiting > WAIT_CLIENT_CAP_MS) {
-      // Tell the host we stopped (fire-and-forget) so it clears the
-      // "agent is waiting" marker — otherwise a save within the marker's TTL
-      // would skip the workspace system-note and the completion would be lost.
-      postHostTool(toolName, {
-        ...(input ?? {}),
-        waitRequestId: result.wait.requestId,
-        stopWaiting: true,
-      }).catch(() => {});
+      // First tell the host we stopped so it clears the "agent is waiting"
+      // marker (otherwise a save within the marker's TTL would skip the
+      // workspace system-note and the completion would be lost). The host's
+      // reply doubles as a final status check: if the user's save slipped
+      // into the gap, it returns the terminal result with finalized:true —
+      // deliver THAT to the model instead of "still pending".
+      try {
+        const stopRes = await postHostTool(toolName, {
+          ...(input ?? {}),
+          waitRequestId: result.wait.requestId,
+          stopWaiting: true,
+        });
+        if (stopRes && stopRes.finalized === true) return stopRes;
+      } catch {
+        // Marker clearing is best-effort; the still-pending guidance below
+        // is still correct and the marker TTL expires on its own.
+      }
       return {
         ok: true,
         status: "still-pending",

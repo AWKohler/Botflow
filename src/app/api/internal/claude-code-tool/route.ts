@@ -548,9 +548,41 @@ export async function POST(req: Request) {
         typeof body.input?.waitRequestId === "string" ? body.input.waitRequestId : null;
 
       // Bridge stopped re-polling — clear the wait marker so a late connect
-      // correctly fires the workspace system-note (see setup_oauth_provider).
+      // correctly fires the workspace system-note, then do one final status
+      // check so a connect that slipped into the gap is delivered instead of
+      // swallowed (see setup_oauth_provider for the full rationale).
       if (stripeWaitRequestId && body.input?.stopWaiting === true) {
         await clearAgentWaiting("stripe-connect", stripeWaitRequestId);
+        const { stripeConnectRequests: stripeStopTable } = await import("@/db/schema");
+        const [stripeFinal] = await db
+          .select({ status: stripeStopTable.status })
+          .from(stripeStopTable)
+          .where(
+            and(
+              eq(stripeStopTable.id, stripeWaitRequestId),
+              eq(stripeStopTable.projectId, binding.projectId),
+            ),
+          )
+          .limit(1);
+        if (stripeFinal?.status === "completed") {
+          return NextResponse.json({
+            ok: true,
+            finalized: true,
+            status: "connected",
+            content:
+              "The user just finished connecting their Stripe account. " +
+              "Call initialize_stripe_payments again now — it returns already-connected with the scaffold and next steps.",
+          });
+        }
+        if (stripeFinal?.status === "dismissed") {
+          return NextResponse.json({
+            ok: false,
+            finalized: true,
+            status: "dismissed",
+            content:
+              "The user cancelled the Stripe connect flow. Do not retry automatically — continue and mention they can connect later.",
+          });
+        }
         return NextResponse.json({
           ok: true,
           content: "Stopped waiting; the connect flow stays open and a system note fires on completion.",
@@ -1139,9 +1171,50 @@ export async function POST(req: Request) {
       // Bridge stopped re-polling (short client-side grace passed). Clear the
       // wait marker NOW so a save seconds later correctly fires the workspace
       // system-note instead of assuming an active poller (the marker's 60s
-      // TTL would otherwise swallow the completion).
+      // TTL would otherwise swallow the completion). Then do one FINAL status
+      // check: if the user's save slipped in between the poll window closing
+      // and this call, no poller will ever read it and the modal saw the
+      // marker still alive (no system-note) — returning the terminal result
+      // here (finalized: true, which the bridge forwards to the model in
+      // place of "still pending") is the only delivery path left.
       if (waitRequestId && body.input?.stopWaiting === true) {
         await clearAgentWaiting("oauth-provider", waitRequestId);
+        const [finalRow] = await dbLocal
+          .select({ status: oauthTable.status })
+          .from(oauthTable)
+          .where(
+            andLocal(
+              eqLocal(oauthTable.id, waitRequestId),
+              eqLocal(oauthTable.projectId, project.id),
+            ),
+          )
+          .limit(1);
+        if (finalRow?.status === "completed") {
+          const def = getOAuthProvider(inputProvider)!;
+          const { buildOAuthProviderSuccessContext } = await import(
+            "@/lib/agent/oauth-provider-tool"
+          );
+          return NextResponse.json({
+            ok: true,
+            finalized: true,
+            content: buildOAuthProviderSuccessContext(
+              project.platform === "swift" ? "swift" : "web",
+              inputProvider,
+              def,
+              { deploy: "convex_deploy", setupAuth: "setup_auth", setupOAuth: "setup_oauth_provider", logs: "get_convex_logs" },
+            ),
+          });
+        }
+        if (finalRow?.status === "dismissed") {
+          const name = getOAuthProvider(inputProvider)?.displayName ?? inputProvider;
+          return NextResponse.json({
+            ok: false,
+            finalized: true,
+            content:
+              `The user explicitly closed the ${name} OAuth modal without saving credentials. ` +
+              "Do not retry automatically. Continue with other work and mention they can set it up later.",
+          });
+        }
         return NextResponse.json({
           ok: true,
           content: "Stopped waiting; the modal stays open and a system note fires on submit.",
@@ -1434,9 +1507,30 @@ export async function POST(req: Request) {
         typeof body.input?.waitRequestId === "string" ? body.input.waitRequestId : null;
 
       // Bridge stopped re-polling — clear the wait marker so a late save
-      // correctly fires the workspace system-note (see setup_oauth_provider).
+      // correctly fires the workspace system-note, then do one final status
+      // check so a save that slipped into the gap is delivered instead of
+      // swallowed (see setup_oauth_provider for the full rationale).
       if (envWaitRequestId && body.input?.stopWaiting === true) {
         await clearAgentWaiting("env-var", envWaitRequestId);
+        const { envVarRequests: envStopTable } = await import("@/db/schema");
+        const [envFinal] = await getDb()
+          .select({ status: envStopTable.status })
+          .from(envStopTable)
+          .where(
+            and(
+              eq(envStopTable.id, envWaitRequestId),
+              eq(envStopTable.projectId, binding.projectId),
+            ),
+          )
+          .limit(1);
+        if (envFinal?.status === "completed" || envFinal?.status === "dismissed") {
+          const finalMsg = envVarOutcomeMessage(
+            envFinal.status,
+            key as string,
+            target as EnvVarTarget,
+          );
+          return NextResponse.json({ ok: finalMsg.ok, finalized: true, content: finalMsg.content });
+        }
         return NextResponse.json({
           ok: true,
           content: "Stopped waiting; the modal stays open and a system note fires on save.",

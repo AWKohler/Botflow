@@ -425,9 +425,41 @@ export function createSetupOAuthProviderTool(
       // still-pending result means "the user hasn't finished yet", never
       // "the user declined"; a late submit triggers a system-note back to
       // the agent. Drop the wait marker NOW so that late submit notifies
-      // correctly. NOT an error: a human mid-modal is an expected state.
+      // correctly, then do one FINAL status check: a save that slipped in
+      // between the last poll and the marker clear would otherwise be
+      // swallowed (the modal saw an active waiter, so no system-note, but
+      // no poller will ever read the result). NOT an error: a human
+      // mid-modal is an expected state.
       const { clearAgentWaiting } = await import("@/lib/agent/modal-wait");
-      void clearAgentWaiting("oauth-provider", requestId);
+      await clearAgentWaiting("oauth-provider", requestId);
+      const [finalRow] = await db
+        .select({ status: oauthProviderRequests.status })
+        .from(oauthProviderRequests)
+        .where(
+          and(
+            eq(oauthProviderRequests.id, requestId),
+            eq(oauthProviderRequests.projectId, projectId),
+          ),
+        )
+        .limit(1);
+      if (finalRow?.status === "completed") {
+        const def = getOAuthProvider(provider)!;
+        return {
+          ok: true,
+          provider,
+          context: buildOAuthProviderSuccessContext(platform, provider, def),
+        };
+      }
+      if (finalRow?.status === "dismissed") {
+        const name = getOAuthProvider(provider)?.displayName ?? provider;
+        return {
+          ok: false,
+          error:
+            `User declined to set up ${name} sign-in. The modal was dismissed and no credentials were saved. ` +
+            "Do not retry automatically. Continue with the rest of the implementation and tell the user " +
+            "they can add it later from the workspace.",
+        };
+      }
       return {
         ok: true,
         status: "still-pending",
