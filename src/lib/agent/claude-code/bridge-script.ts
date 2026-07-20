@@ -174,6 +174,14 @@ async function callHostTool(toolName, input) {
     // and the waitable tools are idempotent (re-call returns success
     // instantly once the user has finished).
     if (Date.now() - startedWaiting > WAIT_CLIENT_CAP_MS) {
+      // Tell the host we stopped (fire-and-forget) so it clears the
+      // "agent is waiting" marker — otherwise a save within the marker's TTL
+      // would skip the workspace system-note and the completion would be lost.
+      postHostTool(toolName, {
+        ...(input ?? {}),
+        waitRequestId: result.wait.requestId,
+        stopWaiting: true,
+      }).catch(() => {});
       return {
         ok: true,
         status: "still-pending",
@@ -357,8 +365,9 @@ function buildCustomTools(customTools, oauthProviderIds) {
         "NEVER re-call in a tight loop, and NEVER report a still-pending modal as dismissed or declined. " +
         "'dismissed' means the user explicitly closed the modal — do NOT retry. " +
         "On success: register the provider in convex/auth.ts EXACTLY as the returned snippet shows (Apple REQUIRES the custom profile() mapping in it — " +
-        "omitting it breaks account creation), run convex_deploy, then wire the sign-in button. " +
-        "Until success is returned, do NOT edit convex/auth.ts or add/expose the provider sign-in button. " +
+        "omitting it breaks account creation), run convex_deploy, then follow the snippet's remaining platform steps " +
+        "(web: wire the sign-in button via startOAuthSignIn; Swift: NO client code — the hosted sign-in page updates automatically). " +
+        "Until success is returned, do NOT edit convex/auth.ts or add/expose the provider sign-in UI. " +
         "VERIFY before declaring done: after deploying, ask the user for one test sign-in and check get_convex_logs for auth errors.",
         {
           provider: z

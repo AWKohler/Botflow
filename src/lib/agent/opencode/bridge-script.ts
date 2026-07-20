@@ -191,9 +191,14 @@ if (mcp && mcp.scriptPath) {
         ...(mcp.vercelBypass ? { BOTFLOW_VERCEL_BYPASS: mcp.vercelBypass } : {}),
       },
       enabled: true,
-      // Tool-LIST fetch timeout (default 5000ms) — generous headroom for cold
-      // node startup of the MCP script.
-      timeout: 15000,
+      // MCP request timeout — OpenCode applies this to BOTH the tool-list
+      // fetch AND every client.callTool (verified against pinned OpenCode's
+      // mcp/index.ts). It must comfortably exceed the slowest host tool:
+      // convex_deploy (installs + push) can run minutes, and the waitable
+      // modal tools hold one ~20s host poll window before returning
+      // still-pending. The old 15s value made both surface as raw
+      // "MCP error -32001: Request timed out" to the model.
+      timeout: 600000,
     },
   };
 }

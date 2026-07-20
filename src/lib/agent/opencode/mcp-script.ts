@@ -167,6 +167,14 @@ async function callHostTool(toolName, input) {
     // re-polling — blocking here trips OpenCode's MCP request timeout, which
     // reaches the model as an unactionable transport error. NOT isError: a
     // human mid-modal is an expected state, not a failure.
+    // Tell the host we stopped (fire-and-forget) so it clears the
+    // "agent is waiting" marker — otherwise a save within the marker's TTL
+    // would skip the workspace system-note and the completion would be lost.
+    postHostTool(toolName, {
+      ...(input ?? {}),
+      waitRequestId: result.wait.requestId,
+      stopWaiting: true,
+    }).catch(() => {});
     return {
       ok: true,
       status: "still-pending",

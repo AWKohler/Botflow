@@ -547,6 +547,16 @@ export async function POST(req: Request) {
       const stripeWaitRequestId =
         typeof body.input?.waitRequestId === "string" ? body.input.waitRequestId : null;
 
+      // Bridge stopped re-polling — clear the wait marker so a late connect
+      // correctly fires the workspace system-note (see setup_oauth_provider).
+      if (stripeWaitRequestId && body.input?.stopWaiting === true) {
+        await clearAgentWaiting("stripe-connect", stripeWaitRequestId);
+        return NextResponse.json({
+          ok: true,
+          content: "Stopped waiting; the connect flow stays open and a system note fires on completion.",
+        });
+      }
+
       const [identity] = await db
         .select()
         .from(userStripeIdentity)
@@ -1085,7 +1095,13 @@ export async function POST(req: Request) {
       // via a server-side URL call. Instead, we duplicate the minimal logic here.
       const { getDb: getDbLocal } = await import("@/db");
       const { oauthProviderRequests: oauthTable } = await import("@/db/schema");
-      const { eq: eqLocal, and: andLocal } = await import("drizzle-orm");
+      const { eq: eqLocal, and: andLocal, inArray: inArrayLocal } = await import("drizzle-orm");
+      // 'completing' = a submit is mid-apply (the env push can take ~20s).
+      // Everywhere we look for "the active request", both states count: the
+      // one-active-request unique index spans both, so an insert that only
+      // checked 'pending' would violate it, and a fast-path success during
+      // 'completing' would report stale credentials.
+      const ACTIVE_STATUSES = ["pending", "completing"];
 
       const dbLocal = getDbLocal();
 
@@ -1120,6 +1136,18 @@ export async function POST(req: Request) {
       const waitRequestId =
         typeof body.input?.waitRequestId === "string" ? body.input.waitRequestId : null;
 
+      // Bridge stopped re-polling (short client-side grace passed). Clear the
+      // wait marker NOW so a save seconds later correctly fires the workspace
+      // system-note instead of assuming an active poller (the marker's 60s
+      // TTL would otherwise swallow the completion).
+      if (waitRequestId && body.input?.stopWaiting === true) {
+        await clearAgentWaiting("oauth-provider", waitRequestId);
+        return NextResponse.json({
+          ok: true,
+          content: "Stopped waiting; the modal stays open and a system note fires on submit.",
+        });
+      }
+
       // IDEMPOTENT FAST PATH — credentials already saved for this provider.
       // Return the registration context immediately instead of reopening the
       // modal (a post-save re-call used to create a fresh pending request,
@@ -1140,7 +1168,24 @@ export async function POST(req: Request) {
             ),
           )
           .limit(1);
-        if (enabledRow) {
+        // Skip the fast path while a modal for this provider is pending or a
+        // submit is mid-apply (a reconfigure in progress) — returning stale
+        // success would strand the open modal or report old credentials as
+        // current. The normal flow below re-attaches to that request.
+        const [activeForProvider] = enabledRow
+          ? await dbLocal
+              .select({ id: oauthTable.id })
+              .from(oauthTable)
+              .where(
+                andLocal(
+                  eqLocal(oauthTable.projectId, project.id),
+                  inArrayLocal(oauthTable.status, ACTIVE_STATUSES),
+                  eqLocal(oauthTable.provider, inputProvider),
+                ),
+              )
+              .limit(1)
+          : [undefined];
+        if (enabledRow && !activeForProvider) {
           const def = getOAuthProvider(inputProvider)!;
           const { buildOAuthProviderSuccessContext } = await import(
             "@/lib/agent/oauth-provider-tool"
@@ -1171,16 +1216,17 @@ export async function POST(req: Request) {
           ? deployUrl.replace(".convex.cloud", ".convex.site")
           : null;
 
-        // Reuse a pending request for the SAME provider — the user may be
-        // mid-typing in that very modal, and a fresh agent call must not yank
-        // it away. Bump updatedAt so the wait ceiling restarts from now.
+        // Reuse an ACTIVE request for the SAME provider — 'pending' means the
+        // user may be mid-typing in that very modal, 'completing' means their
+        // submit is being applied right now; a fresh agent call must not yank
+        // either away. Bump updatedAt so the wait ceiling restarts from now.
         const [existing] = await dbLocal
           .select({ id: oauthTable.id })
           .from(oauthTable)
           .where(
             andLocal(
               eqLocal(oauthTable.projectId, project.id),
-              eqLocal(oauthTable.status, "pending"),
+              inArrayLocal(oauthTable.status, ACTIVE_STATUSES),
               eqLocal(oauthTable.provider, inputProvider),
             ),
           )
@@ -1194,7 +1240,10 @@ export async function POST(req: Request) {
             .where(eqLocal(oauthTable.id, existing.id));
         } else {
           // Cancel pending requests for OTHER providers (one modal at a time),
-          // then create the new one.
+          // then create the new one. A 'completing' row can NOT be dismissed —
+          // its submit is mid-apply — and the one-active-request unique index
+          // spans it, so racing an insert would 500. Tell the model to retry
+          // in a moment instead.
           await dbLocal
             .update(oauthTable)
             .set({ status: "dismissed", updatedAt: new Date() })
@@ -1204,6 +1253,25 @@ export async function POST(req: Request) {
                 eqLocal(oauthTable.status, "pending"),
               ),
             );
+          const [completingOther] = await dbLocal
+            .select({ id: oauthTable.id, provider: oauthTable.provider })
+            .from(oauthTable)
+            .where(
+              andLocal(
+                eqLocal(oauthTable.projectId, project.id),
+                eqLocal(oauthTable.status, "completing"),
+              ),
+            )
+            .limit(1);
+          if (completingOther) {
+            return NextResponse.json({
+              ok: true,
+              status: "busy",
+              content:
+                `The ${completingOther.provider} OAuth credentials the user just submitted are being applied right now. ` +
+                "Wait ~15 seconds, then call setup_oauth_provider again.",
+            });
+          }
           const [oauthRecord] = await dbLocal
             .insert(oauthTable)
             .values({
@@ -1364,6 +1432,17 @@ export async function POST(req: Request) {
       // inside one serverless invocation.
       const envWaitRequestId =
         typeof body.input?.waitRequestId === "string" ? body.input.waitRequestId : null;
+
+      // Bridge stopped re-polling — clear the wait marker so a late save
+      // correctly fires the workspace system-note (see setup_oauth_provider).
+      if (envWaitRequestId && body.input?.stopWaiting === true) {
+        await clearAgentWaiting("env-var", envWaitRequestId);
+        return NextResponse.json({
+          ok: true,
+          content: "Stopped waiting; the modal stays open and a system note fires on save.",
+        });
+      }
+
       const requestId =
         envWaitRequestId ??
         (await createEnvVarRequest({

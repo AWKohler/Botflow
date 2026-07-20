@@ -14,7 +14,7 @@
  */
 import { tool } from "ai";
 import { z } from "zod";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects, oauthProviderRequests } from "@/db/schema";
 import {
@@ -28,6 +28,13 @@ import { markAgentWaiting } from "@/lib/agent/modal-wait";
 import { fixAuthCookiesPackageJsonLine } from "@/lib/convex-auth-cookie-fix";
 
 export type OAuthToolPlatform = "web" | "swift";
+
+// 'completing' = a submit is mid-apply (the env push can take ~20s). Everywhere
+// we look for "the active request", both states count: the one-active-request
+// unique index spans both, so an insert that only checked 'pending' would
+// violate it, and a fast-path success during 'completing' would report stale
+// credentials.
+const ACTIVE_REQUEST_STATUSES = ["pending", "completing"];
 
 function buildAuthTsSnippet(def: OAuthProviderDef, platform: OAuthToolPlatform): string {
   const imp = def.authImport.default
@@ -131,6 +138,7 @@ ${buildAuthTsSnippet(def, platform)}
         `it via ${setupOAuthTool} with provider "apple" before they submit to the App Store — but it is ` +
         "their call; proceed without it if they decline (enforcement happens at App Review, not here)."
       : "\n\nAPPLE NOTE: the user's name/email are returned ONLY on the first sign-in — capture them then.";
+  const swiftLogsTool = toolNames?.logs ?? "getConvexLogs";
   return (
     header +
     `
@@ -143,7 +151,18 @@ ${buildAuthTsSnippet(def, platform)}
    bounce drops the OAuth cookies in the in-app browser and repeat sign-ins fail.
    IMPORTANT: if this project's convex/http.ts predates OAuth support (no
    /auth/oauth/start route in it), call ${setupAuthTool} again to get the
-   refreshed http.ts before deploying.` +
+   refreshed http.ts before deploying.
+   IMPORTANT: if convex/http.ts sets "Partitioned" on the botflow_oauth_verifier
+   cookie (older scaffold), call ${setupAuthTool} again for the refreshed
+   http.ts and redeploy — WebKit drops partitioned cookies across the OAuth
+   round-trip and sign-in fails in the in-app browser.
+
+4. VERIFY before declaring the provider done: ask the user to do ONE test
+   sign-in with ${def.displayName} from the app, then immediately check
+   ${swiftLogsTool} for auth errors (failures surface as auth:store /
+   auth:signIn errors — schema validation, token exchange, redirect
+   mismatches). Only report success after a clean test sign-in — "deployed"
+   is not "working".` +
     appleNudge
   );
 }
@@ -247,7 +266,24 @@ export function createSetupOAuthProviderTool(
             ),
           )
           .limit(1);
-        if (enabledRow) {
+        // Skip the fast path while a modal for this provider is pending or a
+        // submit is mid-apply (a reconfigure in progress) — returning stale
+        // success would strand the open modal or report old credentials as
+        // current. The normal flow below re-attaches to that request.
+        const [activeForProvider] = enabledRow
+          ? await db
+              .select({ id: oauthProviderRequests.id })
+              .from(oauthProviderRequests)
+              .where(
+                and(
+                  eq(oauthProviderRequests.projectId, projectId),
+                  inArray(oauthProviderRequests.status, ACTIVE_REQUEST_STATUSES),
+                  eq(oauthProviderRequests.provider, provider),
+                ),
+              )
+              .limit(1)
+          : [undefined];
+        if (enabledRow && !activeForProvider) {
           const def = getOAuthProvider(provider)!;
           return {
             ok: true,
@@ -267,15 +303,16 @@ export function createSetupOAuthProviderTool(
         ? deployUrl.replace(".convex.cloud", ".convex.site")
         : null;
 
-      // ── Reuse a pending request for the SAME provider (the user may be
-      //    mid-typing in that very modal); replace pending ones for others ──
+      // ── Reuse an ACTIVE request for the SAME provider ('pending' = user
+      //    mid-typing in that modal, 'completing' = submit mid-apply);
+      //    replace pending ones for other providers ──
       const [existingReq] = await db
         .select({ id: oauthProviderRequests.id })
         .from(oauthProviderRequests)
         .where(
           and(
             eq(oauthProviderRequests.projectId, projectId),
-            eq(oauthProviderRequests.status, "pending"),
+            inArray(oauthProviderRequests.status, ACTIVE_REQUEST_STATUSES),
             eq(oauthProviderRequests.provider, provider),
           ),
         )
@@ -298,6 +335,32 @@ export function createSetupOAuthProviderTool(
               eq(oauthProviderRequests.status, "pending"),
             ),
           );
+
+        // A 'completing' row for ANOTHER provider can't be dismissed
+        // (its submit is mid-apply) and the one-active-request unique index
+        // spans it — racing an insert would throw. Ask for a short retry.
+        const [completingOther] = await db
+          .select({
+            id: oauthProviderRequests.id,
+            provider: oauthProviderRequests.provider,
+          })
+          .from(oauthProviderRequests)
+          .where(
+            and(
+              eq(oauthProviderRequests.projectId, projectId),
+              eq(oauthProviderRequests.status, "completing"),
+            ),
+          )
+          .limit(1);
+        if (completingOther) {
+          return {
+            ok: true,
+            status: "busy",
+            context:
+              `The ${completingOther.provider} OAuth credentials the user just submitted are being applied right now. ` +
+              "Wait ~15 seconds, then call setupOAuthProvider again.",
+          };
+        }
 
         // ── Create pending request — workspace modal appears on next poll ──
         const [record] = await db

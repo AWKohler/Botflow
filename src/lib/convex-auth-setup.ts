@@ -354,13 +354,16 @@ http.route({
 //   finish → the post-callback redirectTo target; redeems code + verifier for
 //            tokens and hands them to the app exactly like the password path.
 
-// The verifier cookie needs the same cross-site attributes Convex Auth uses
-// for its PKCE/state cookies, or Safari drops it on the provider round-trip
-// (top-level cross-site navigation back to this origin).
+// The verifier cookie needs SameSite=None; Secure so it survives the
+// provider round-trip (top-level cross-site navigation back to this origin).
+// Deliberately NO "Partitioned": WebKit drops CHIPS cookies across that
+// top-level origin flip, which loses the verifier and fails the token
+// exchange — the same mobile-Safari bug the fix-auth-cookies postinstall
+// patches out of @convex-dev/auth's own PKCE cookies.
 const VERIFIER_COOKIE = "botflow_oauth_verifier";
-const VERIFIER_COOKIE_ATTRS = "; Max-Age=900; Path=/; Secure; HttpOnly; SameSite=None; Partitioned";
+const VERIFIER_COOKIE_ATTRS = "; Max-Age=900; Path=/; Secure; HttpOnly; SameSite=None";
 const CLEAR_VERIFIER_COOKIE =
-  VERIFIER_COOKIE + "=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None; Partitioned";
+  VERIFIER_COOKIE + "=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None";
 
 function readCookie(request: Request, name: string): string {
   const header = request.headers.get("Cookie") || "";
@@ -971,6 +974,13 @@ OAUTH / SOCIAL SIGN-IN (Google, GitHub, Microsoft, Apple):
   • If this project's convex/http.ts predates OAuth support (it has no
     /auth/oauth/start route), call setupAuth again to get the refreshed
     http.ts before deploying.
+  • If convex/http.ts sets "Partitioned" on the botflow_oauth_verifier cookie
+    (older scaffold), call setupAuth again for the refreshed http.ts and
+    redeploy — WebKit drops partitioned cookies across the OAuth round-trip
+    and sign-in fails in the in-app browser.
+  • VERIFY before declaring a provider done: ask the user for ONE test
+    sign-in from the app, then check getConvexLogs for auth:store /
+    auth:signIn errors. Only report success after a clean test sign-in.
   • APP STORE RULE (nudge, don't force): guideline 4.8 requires iOS apps that
     offer third-party login (Google/GitHub/Microsoft) to ALSO offer Sign in
     with Apple. When the user enables one of those, tell them this and
