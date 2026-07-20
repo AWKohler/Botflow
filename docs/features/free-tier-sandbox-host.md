@@ -74,23 +74,27 @@ Paid tiers are guaranteed unrestricted sandbox internet, so a sandbox-host
 project whose OWNER has upgraded to pro/max (beta's pro floor counts) is
 promoted on next workspace open (`src/lib/sandbox-promotion.ts`, hooked into
 POST /sandbox/session): strict tar out of the host VM → fresh Vercel sandbox
-(wiped, so partial prior copies never masquerade as complete) → extract +
-verify → flip `sandbox_provider` → regenerate .env on the new sandbox →
-delete the host VM. Interruption before the flip retries from scratch on
-next open; after the flip the project is already a working Vercel project.
+(wiped, wipe-checked, so partial prior copies never masquerade as complete)
+→ extract + verify → durable retirement record (mandatory) → flip
+`sandbox_provider` → regenerate .env on the new sandbox. Interruption before
+the flip retries from scratch on next open; after the flip the project is
+already a working Vercel project. The host VM is **never deleted inline** —
+only the sandbox-reaper cron's provider-verified sweep retires it, after
+confirming the column is committed to `vercel` (stale records are dropped
+without deleting), which also leaves a ≤1-day recovery window.
 
-Writer safety (post-review hardening): promotion only runs after ≥5 min of
-sandbox idleness, the tar is strict (GNU tar rc=1 "file changed as we read
-it" is a hard abort), and the source's tree signature is compared
-before-tar vs after-copy — any concurrent writer (detached agent bridge,
-second tab, cron) aborts pre-flip. A Redis NX lock (with a hard
-env-configured check — the local no-op Redis stub can't fake it) serializes
-instances; losers wait bounded then follow the flipped column. Stale
-provider caches on other instances can't resurrect the deleted host VM: a
-404 on a sandbox-host acquire triggers a fresh column re-read before any
-create, and host-provider cache entries TTL at 10s. A crash between flip
-and delete leaves the host VM in a durable Redis cleanup set that the
-sandbox-reaper cron sweeps.
+Writer safety (two Codex review rounds): promotion only runs after ≥5 min of
+sandbox idleness — re-checked fresh from the DB **after** taking the Redis
+NX lock, alongside a provider re-read so a stale request can never wipe a
+live Vercel sandbox; the tar is strict (GNU tar rc=1 "file changed as we
+read it" is a hard abort); and the source's tree signature is compared
+before-tar vs after-copy, so any concurrent writer (detached agent bridge,
+second tab, cron) aborts pre-flip. The lock requires real Upstash env (the
+local no-op Redis stub can't fake it); losers wait bounded then follow the
+flipped column. Stale provider caches on other instances can't resurrect a
+retired host VM: a 404 on a sandbox-host acquire triggers a fresh column
+re-read before any create, host-provider cache entries TTL at 10s, and
+cross-instance create races adopt the winner on 409.
 
 Caveats: node_modules aren't copied (same excludes as `tarSandboxProject`;
 the next dev-server start reinstalls), and a source tree whose gzipped tar
