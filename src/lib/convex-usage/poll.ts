@@ -94,8 +94,14 @@ export async function fetchNewFunctionCalls(
   const countsByDay: Record<string, number> = {};
   let firstTsMs = Number.POSITIVE_INFINITY;
   let lastTsMs = 0;
+  const nowMs = Date.now();
   for (const e of entries) {
-    const tsMs = typeof e.timestamp === "number" && e.timestamp > 0 ? e.timestamp * 1000 : Date.now();
+    // Clamp to now: a corrupt future-dated timestamp would otherwise create a
+    // future day bucket that inflates the 30-day rollup and outlives pruning.
+    const tsMs =
+      typeof e.timestamp === "number" && e.timestamp > 0
+        ? Math.min(e.timestamp * 1000, nowMs)
+        : nowMs;
     if (tsMs < firstTsMs) firstTsMs = tsMs;
     if (tsMs > lastTsMs) lastTsMs = tsMs;
     const day = utcDayKey(tsMs);

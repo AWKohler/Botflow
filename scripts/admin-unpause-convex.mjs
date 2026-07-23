@@ -70,7 +70,19 @@ async function run() {
     [projectId],
   );
   console.log("convex_status reset to 'active'.");
-  console.log('\n✅ Unpaused. Note: if the workload is still abusive, the next poller tick will warn/pause again.');
+
+  // Zero today's usage bucket. The daily counter is CUMULATIVE — without this,
+  // a bucket already over the pause bar makes the next poller tick re-pause
+  // immediately (pause_repeat) even though the abusive workload was fixed,
+  // and the unpause can't stick until the UTC midnight reset.
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  await sql.query(
+    `UPDATE convex_usage_daily SET calls = 0, updated_at = now()
+     WHERE project_id = $1 AND day = $2`,
+    [projectId, todayUtc],
+  );
+  console.log(`today's usage bucket (${todayUtc}) zeroed so the unpause sticks.`);
+  console.log('\n✅ Unpaused. The poller resumes counting from now; it will warn/pause again only on NEW abusive traffic.');
 }
 
 run().catch((err) => {

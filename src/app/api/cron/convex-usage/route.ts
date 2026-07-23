@@ -84,6 +84,7 @@ type ResultAction =
   | "would_pause"
   | "pause_failed"
   | "repause"
+  | "drift"
   | "skip"
   | "error";
 
@@ -151,7 +152,20 @@ export async function GET(req: Request) {
     const deployUrl = project.convexDeployUrl;
     const deployKey = project.convexDeployKey;
     const deployment = project.convexDeploymentId;
+    // Skip/error rows must still stamp convexCallsCheckedAt: the candidate
+    // ordering is least-recently-checked first, so an unstamped row would sit
+    // at the front of the queue every tick and — once there are ≥limit such
+    // rows — starve every healthy project behind it.
+    async function stampCheckedOnly(): Promise<void> {
+      if (dryRun) return;
+      await db
+        .update(projects)
+        .set({ convexCallsCheckedAt: new Date() })
+        .where(eq(projects.id, project.id));
+    }
+
     if (!deployUrl || !deployKey) {
+      await stampCheckedOnly();
       results.push({ projectId: project.id, deployment, action: "skip", detail: "missing deploy url/key" });
       return;
     }
@@ -161,6 +175,7 @@ export async function GET(req: Request) {
     const cursor = project.convexUsageCursor ?? now;
     const poll = await fetchNewFunctionCalls(deployUrl, deployKey, cursor, POLL_TIMEOUT_MS);
     if (!poll.ok) {
+      await stampCheckedOnly();
       results.push({ projectId: project.id, deployment, action: "error", detail: poll.error });
       return;
     }
@@ -268,12 +283,18 @@ export async function GET(req: Request) {
           }
         }
       } else {
-        // Alert-only mode: escalate status for the UI, email once per day
-        // (only on the crossing tick — 'pause', not 'pause_repeat').
+        // Alert-only mode: escalate status for the UI, email once per day —
+        // on the crossing tick ('pause'), OR on pause_repeat from a still-
+        // 'active' status (crash recovery: the crossing tick's status write +
+        // alert were lost, so the crossing email never went out).
+        const lostCrossing = decision === "pause_repeat" && status === "active";
         if (status === "active") nextStatus = "warned";
-        if (decision === "pause") alert = { kind: "would_pause", ...alertBase };
+        if (decision === "pause" || lostCrossing) {
+          alert = { kind: "would_pause", ...alertBase };
+        } else {
+          detail = "already alerted today (no re-send)";
+        }
         action = "would_pause";
-        if (decision === "pause_repeat") detail = "already alerted today (no re-send)";
       }
     } else if (decision === "clear") {
       nextStatus = "active";
@@ -294,7 +315,7 @@ export async function GET(req: Request) {
       // First activity of the UTC day → one drift alert per day, not 48.
       if (!alert && callsTodayBefore === 0) {
         alert = { kind: "paused_but_active", ...alertBase, detail: `${poll.count} calls observed while status='paused'` };
-        if (action === "noop") action = "error";
+        if (action === "noop") action = "drift";
       }
     }
 
@@ -368,6 +389,7 @@ export async function GET(req: Request) {
     wouldPause: tally("would_pause"),
     pauseFailed: tally("pause_failed"),
     repaused: tally("repause"),
+    drift: tally("drift"),
     cleared: tally("clear"),
     errors: tally("error"),
     skipped: tally("skip"),
