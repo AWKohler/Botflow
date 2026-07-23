@@ -1,4 +1,4 @@
-import { pgTable, uuid, timestamp, text, jsonb, integer, bigint, uniqueIndex, index, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, timestamp, text, jsonb, integer, bigint, uniqueIndex, index, boolean, primaryKey } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const projects = pgTable('projects', {
@@ -115,6 +115,17 @@ export const projects = pgTable('projects', {
   // last 30 days, refreshed by the reaper before deciding to act.
   convexCallsLast30d: bigint('convex_calls_last_30d', { mode: 'number' }),
   convexCallsCheckedAt: timestamp('convex_calls_checked_at'),
+  // ─── Convex usage guardrails (managed backends) ───────────────────────────
+  // Populated by /api/cron/convex-usage. See src/lib/convex-usage/policy.ts
+  // for the status machine; 'migrating' | 'transferred' are owned by the BYOC
+  // transfer flow (Phase 3).
+  // 'active' | 'warned' | 'paused' | 'migrating' | 'transferred'
+  convexStatus: text('convex_status').notNull().default('active'),
+  convexPausedAt: timestamp('convex_paused_at'),
+  convexPauseReason: text('convex_pause_reason'), // 'usage_spike' | 'abuse' | 'spend_cap'
+  // ms cursor into the deployment's stream_function_logs admin endpoint —
+  // where the usage poller resumes counting from.
+  convexUsageCursor: bigint('convex_usage_cursor', { mode: 'number' }),
   // ─── Stripe Connect (Express) ─────────────────────────────────────────────
   // See drizzle/0017_add_stripe_integration.sql + src/lib/stripe.ts.
   // Each project is one Express connected account per mode. Test account is
@@ -161,6 +172,24 @@ export const projects = pgTable('projects', {
 
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
+
+// ─── Convex usage buckets (managed backends) ────────────────────────────────
+// One row per (project, UTC day) of counted function calls, written by
+// /api/cron/convex-usage and pruned past ~35 days. Rolled up into
+// projects.convexCallsLast30d; also feeds the usage sparkline in the
+// backends portal (Phase 3).
+export const convexUsageDaily = pgTable('convex_usage_daily', {
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  /** UTC day, 'YYYY-MM-DD'. */
+  day: text('day').notNull(),
+  calls: bigint('calls', { mode: 'number' }).notNull().default(0),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  projectDayPk: primaryKey({ columns: [t.projectId, t.day] }),
+  dayIdx: index('convex_usage_daily_day_idx').on(t.day),
+}));
+
+export type ConvexUsageDaily = typeof convexUsageDaily.$inferSelect;
 
 // ─── Project sharing (docs/features/project-sharing-plan.md §3) ─────────────
 // One row per (project, invited person), including invitees who haven't
