@@ -94,14 +94,15 @@ export async function fetchNewFunctionCalls(
   const countsByDay: Record<string, number> = {};
   let firstTsMs = Number.POSITIVE_INFINITY;
   let lastTsMs = 0;
+  let maxRawTsMs = 0; // unclamped — cursor must never regress below a real entry
   const nowMs = Date.now();
   for (const e of entries) {
-    // Clamp to now: a corrupt future-dated timestamp would otherwise create a
-    // future day bucket that inflates the 30-day rollup and outlives pruning.
-    const tsMs =
-      typeof e.timestamp === "number" && e.timestamp > 0
-        ? Math.min(e.timestamp * 1000, nowMs)
-        : nowMs;
+    const rawTsMs = typeof e.timestamp === "number" && e.timestamp > 0 ? e.timestamp * 1000 : nowMs;
+    if (rawTsMs > maxRawTsMs) maxRawTsMs = rawTsMs;
+    // Clamp to now for BUCKETING only: a corrupt future-dated timestamp would
+    // otherwise create a future day bucket that inflates the 30-day rollup
+    // and outlives pruning.
+    const tsMs = Math.min(rawTsMs, nowMs);
     if (tsMs < firstTsMs) firstTsMs = tsMs;
     if (tsMs > lastTsMs) lastTsMs = tsMs;
     const day = utcDayKey(tsMs);
@@ -110,14 +111,15 @@ export async function fetchNewFunctionCalls(
   const spanMs = count >= 2 ? Math.max(0, lastTsMs - firstTsMs) : 0;
 
   // If the payload carries entries but no usable cursor (schema drift), fall
-  // back to the newest entry timestamp — NEVER return the old cursor alongside
-  // a nonzero count, or every subsequent tick re-counts the same entries and
-  // ratchets the buckets toward a false pause.
+  // back to the newest RAW entry timestamp (unclamped — a clamped fallback
+  // could sit below a clock-skewed entry and re-count it next tick). NEVER
+  // return the old cursor alongside a nonzero count, or every subsequent tick
+  // re-counts the same entries and ratchets the buckets toward a false pause.
   let newCursor: number;
   if (typeof data.newCursor === "number" && Number.isFinite(data.newCursor)) {
     newCursor = data.newCursor;
   } else if (count > 0) {
-    newCursor = lastTsMs;
+    newCursor = maxRawTsMs;
   } else {
     newCursor = cursor;
   }
