@@ -62,13 +62,28 @@ and a per-project kill switch. Design chat: 2026-07-23.
 - **Unpause**: `node scripts/admin-unpause-convex.mjs <projectId>` — resumes
   the deployment and resets `convex_status` to `active`. If the workload is
   still hot, the next tick will warn/pause again.
-- **Saturation extrapolation**: the log-stream buffer caps at 1000 entries
-  per poll (measured live: fired 1200, got 1000). A saturated poll is scaled
-  by wall-time coverage (elapsed ÷ entry-span, capped at 20×) so multi-million
-  call/day abusers still cross the pause bar despite the bounded buffer. Still
-  an outlier detector, not billing-grade metering. If exact numbers ever
-  matter, `api/app_metrics/udf_rate` exists on the same admin surface (probe:
+- **Completion-only counting**: `stream_function_logs` entries carry
+  `kind='Completion'` (one per finished execution) and `kind='Progress'` —
+  actions emit one Progress entry PER console.log line (measured: 5 actions ×
+  20 logs = 100 Progress + 5 Completion). Only Completions are counted, or a
+  chatty legit app meters at ~21× its real rate and gets false-paused.
+- **Saturation extrapolation**: the log-stream buffer caps at 1000 RAW
+  entries per poll (measured live: fired 1200, got 1000). A saturated poll is
+  scaled by wall-time coverage (elapsed ÷ entry-span, capped at **50×**;
+  zero-span burst ⇒ full factor). 48 ticks × 1000 × 50 = 2.4M recordable
+  calls/day — the pause bar stays reachable under sustained saturation (at
+  20× the daily max was 960k, under the 1M default — Codex catch). First poll
+  uses cursor 0 to count the retained buffer (closes the front-loaded-abuse
+  window between provisioning and first sweep). Still an outlier detector,
+  not billing-grade metering. If exact numbers ever matter,
+  `api/app_metrics/udf_rate` exists on the same admin surface (probe:
   responds, needs param-shape work).
+- **Write ordering**: cursor advances via compare-and-set BEFORE bucket
+  upserts (concurrent sweep → loser skips, no double-count; crash → ≤1 tick
+  undercount). Enforcement re-reads live status first (admin unpause /
+  transfer mid-sweep is respected); status transitions are CAS'd; one-shot
+  alerts send before their deduping status write and hold the write back on
+  failure so the next tick retries.
 - **Quiet deployments long-poll** `stream_function_logs` until the 8s fetch
   timeout — the sweep polls in batches of 10 and caps candidates at 350/tick
   (350/10 × 8s = 280s worst case inside the 300s maxDuration). Fleets beyond

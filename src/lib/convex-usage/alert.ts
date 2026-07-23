@@ -43,13 +43,18 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export async function sendUsageAlert(input: UsageAlertInput): Promise<void> {
+/**
+ * Returns true when the alert was delivered OR alerting is deliberately
+ * unconfigured (env unset); false only on an attempted-but-failed send, so
+ * callers can hold back a status transition and retry next tick.
+ */
+export async function sendUsageAlert(input: UsageAlertInput): Promise<boolean> {
   const to = process.env.CONVEX_USAGE_ALERT_EMAIL;
   if (!to) {
     console.warn(
       `[convex-usage] CONVEX_USAGE_ALERT_EMAIL not set — dropping ${input.kind} alert for project ${input.projectId}`,
     );
-    return;
+    return true;
   }
 
   const lines = [
@@ -74,4 +79,5 @@ export async function sendUsageAlert(input: UsageAlertInput): Promise<void> {
   if (!result.ok) {
     console.error(`[convex-usage] alert email failed: ${result.error}`);
   }
+  return result.ok;
 }

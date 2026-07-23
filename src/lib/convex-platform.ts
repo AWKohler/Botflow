@@ -238,6 +238,9 @@ export async function changeConvexDeploymentState(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ newState }),
+    // A hung pause request would stall an entire poller batch inside the
+    // cron's maxDuration budget — bound it.
+    signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) {
     await response.text().catch(() => '');

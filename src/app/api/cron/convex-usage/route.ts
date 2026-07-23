@@ -4,12 +4,12 @@
  *
  * Every tick (vercel.json, every 30 min), for each platform-managed deployment:
  *
- *   1. Count new function executions since the stored cursor via the
- *      deployment's admin log stream (src/lib/convex-usage/poll.ts), bucketed
- *      per UTC day from each entry's own timestamp (midnight straddles and
- *      cron-downtime backlogs land on the day they actually ran). Saturated
- *      polls (buffer cap hit) are extrapolated from the covered time span,
- *      capped at SATURATION_MAX_FACTOR — a deliberate anti-abuse bias.
+ *   1. Count new COMPLETED function executions since the stored cursor via
+ *      the deployment's admin log stream (src/lib/convex-usage/poll.ts),
+ *      bucketed per UTC day from each entry's own timestamp. Saturated polls
+ *      (raw buffer cap hit) are extrapolated from the covered time span,
+ *      capped at SATURATION_MAX_FACTOR; a zero-span saturated poll (burst)
+ *      gets the full factor — a deliberate anti-abuse bias.
  *   2. Roll the 30-day sum into projects.convexCallsLast30d (also the
  *      reaper's liveness signal).
  *   3. Apply the pure policy (src/lib/convex-usage/policy.ts):
@@ -22,12 +22,26 @@
  *      A 'paused' project that still serves traffic (unpaused behind our
  *      back, e.g. via the Convex dashboard) is re-paused / alerted.
  *
+ * Write-ordering contracts (Codex round, 2026-07-23):
+ *  - The cursor is advanced with a COMPARE-AND-SET **before** the bucket
+ *    upserts. A raced concurrent sweep loses the CAS and skips the project
+ *    (no double-count); a crash after CAS but before the upserts loses ≤1
+ *    tick of counts (undercount — can't contribute to a false pause).
+ *  - Enforcement (the pause call) re-reads the CURRENT status first, so an
+ *    admin unpause / Phase-3 transfer that landed mid-sweep isn't stomped;
+ *    the status write itself is CAS'd on the status we selected.
+ *  - One-shot alerts whose dedup is the status transition (warn, would_pause
+ *    crossing) are sent BEFORE the status write and the write is withheld on
+ *    send failure, so the policy re-emits (= retries the alert) next tick.
+ *    Auto-pause records 'paused' regardless of alert outcome — enforcement
+ *    primacy.
+ *
  * Deployments with nothing new LONG-POLL until the fetch timeout, so quiet
  * projects cost ~POLL_TIMEOUT_MS each — polls run in concurrent batches, and
  * `limit` is capped so the worst-case sweep fits maxDuration. Candidates are
  * ordered by least-recently-checked so a fleet larger than `limit` rotates
- * fairly instead of starving the tail. Every per-project step is try/caught
- * so one bad deployment can't abort the sweep (same contract as the reaper).
+ * fairly; EVERY per-project exit path (skip/error/throw) stamps
+ * convexCallsCheckedAt or the row would hog the front of that queue forever.
  */
 
 import { NextResponse } from "next/server";
@@ -58,8 +72,14 @@ const LIMIT_CAP = 350;
 const PRUNE_AFTER_DAYS = 35;
 // Rollup window = today + 29 prior days = 30 buckets.
 const ROLLUP_WINDOW_DAYS = 29;
-// A saturated poll extrapolates count × (elapsed / covered-span), capped here.
-const SATURATION_MAX_FACTOR = 20;
+// A saturated poll extrapolates count × (elapsed / covered-span), capped
+// here. 48 ticks/day × 1000-entry buffer × 50 = 2.4M recordable calls/day —
+// comfortably above the default 1M pause bar, so saturation can't be ridden
+// under the threshold (Codex finding: at 20× the daily max was 960k < 1M).
+const SATURATION_MAX_FACTOR = 50;
+// Stored cursors are clamped to now + this: one corrupt far-future cursor
+// would otherwise blind the poller until the wall clock catches up.
+const CURSOR_FUTURE_SLACK_MS = 60_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function isAuthorized(req: Request): boolean {
@@ -148,45 +168,57 @@ export async function GET(req: Request) {
   type Candidate = (typeof candidates)[number];
   const results: ProjectResult[] = [];
 
+  async function stampCheckedOnly(projectId: string): Promise<void> {
+    if (dryRun) return;
+    await db
+      .update(projects)
+      .set({ convexCallsCheckedAt: new Date() })
+      .where(eq(projects.id, projectId));
+  }
+
+  /** Re-read the live status right before enforcement / status writes. */
+  async function freshStatus(projectId: string): Promise<ConvexUsageStatus | null> {
+    const [row] = await db
+      .select({ s: projects.convexStatus })
+      .from(projects)
+      .where(eq(projects.id, projectId));
+    return (row?.s as ConvexUsageStatus | undefined) ?? null;
+  }
+
   async function processProject(project: Candidate): Promise<void> {
     const deployUrl = project.convexDeployUrl;
     const deployKey = project.convexDeployKey;
     const deployment = project.convexDeploymentId;
-    // Skip/error rows must still stamp convexCallsCheckedAt: the candidate
-    // ordering is least-recently-checked first, so an unstamped row would sit
-    // at the front of the queue every tick and — once there are ≥limit such
-    // rows — starve every healthy project behind it.
-    async function stampCheckedOnly(): Promise<void> {
-      if (dryRun) return;
-      await db
-        .update(projects)
-        .set({ convexCallsCheckedAt: new Date() })
-        .where(eq(projects.id, project.id));
-    }
-
     if (!deployUrl || !deployKey) {
-      await stampCheckedOnly();
+      await stampCheckedOnly(project.id);
       results.push({ projectId: project.id, deployment, action: "skip", detail: "missing deploy url/key" });
       return;
     }
 
-    // First poll for a project starts counting from now — we deliberately
-    // don't count the pre-existing buffer into today's bucket.
-    const cursor = project.convexUsageCursor ?? now;
+    // First poll starts from 0: the retained buffer (≤1000 raw entries) is
+    // counted rather than skipped, closing the front-loaded-abuse window
+    // between provisioning and the first sweep. For pre-existing deployments
+    // at rollout this attributes at most ~1000 historical completions to
+    // today — noise against a 100k warn bar.
+    const cursor = project.convexUsageCursor ?? 0;
     const poll = await fetchNewFunctionCalls(deployUrl, deployKey, cursor, POLL_TIMEOUT_MS);
     if (!poll.ok) {
-      await stampCheckedOnly();
+      await stampCheckedOnly(project.id);
       results.push({ projectId: project.id, deployment, action: "error", detail: poll.error });
       return;
     }
 
-    // Saturated poll: the buffer capped out, so the real count is higher.
-    // Extrapolate by wall-time coverage (entries spanned spanMs of an
-    // elapsed-since-cursor window), capped to avoid wild swings.
+    // Saturated poll: the raw buffer capped out, so the completion count is a
+    // floor. Extrapolate by wall-time coverage; a zero-span burst gets the
+    // FULL factor (its true rate is effectively unbounded — treating it as 1×
+    // was a measured bypass).
     let scale = 1;
-    if (poll.saturated && poll.spanMs > 0) {
+    if (poll.saturated) {
       const elapsedMs = Math.max(now - cursor, poll.spanMs);
-      scale = Math.min(elapsedMs / poll.spanMs, SATURATION_MAX_FACTOR);
+      scale =
+        poll.spanMs > 0
+          ? Math.min(elapsedMs / poll.spanMs, SATURATION_MAX_FACTOR)
+          : SATURATION_MAX_FACTOR;
     }
     const increments = new Map<string, number>();
     for (const [day, calls] of Object.entries(poll.countsByDay)) {
@@ -198,7 +230,33 @@ export async function GET(req: Request) {
       .filter(([day]) => day >= rollupCutoff)
       .reduce((sum, [, calls]) => sum + calls, 0);
 
+    // Advance the cursor with a CAS *before* writing buckets: a concurrent
+    // sweep that read the same cursor loses here and skips (no double-count);
+    // a crash after this point costs at most one tick of counts (undercount).
+    // Clamp: monotonic, and never far-future (a corrupt timestamp would blind
+    // the poller until the wall clock caught up).
+    const cursorToStore = Math.ceil(
+      Math.min(Math.max(poll.newCursor, cursor), now + CURSOR_FUTURE_SLACK_MS),
+    );
     if (!dryRun) {
+      const claimed = await db
+        .update(projects)
+        .set({ convexUsageCursor: cursorToStore })
+        .where(
+          and(
+            eq(projects.id, project.id),
+            project.convexUsageCursor === null
+              ? isNull(projects.convexUsageCursor)
+              : eq(projects.convexUsageCursor, project.convexUsageCursor),
+          ),
+        )
+        .returning({ id: projects.id });
+      if (claimed.length === 0) {
+        // Another invocation already processed this cursor window.
+        results.push({ projectId: project.id, deployment, action: "skip", detail: "cursor raced (concurrent sweep)" });
+        return;
+      }
+
       for (const [day, calls] of increments) {
         await db
           .insert(convexUsageDaily)
@@ -249,72 +307,117 @@ export async function GET(req: Request) {
       pauseThreshold: thresholds.pauseCallsPerDay,
     };
 
-    // Resolve the decision into: the status to persist, the alert to send,
-    // and the result action to report. Enforcement (the pause call) happens
-    // BEFORE the status write — never record 'paused' for a running backend.
-    let nextStatus: ConvexUsageStatus = status;
-    let pausedAtUpdate: { convexPausedAt?: Date; convexPauseReason?: string } = {};
-    let alert: Parameters<typeof sendUsageAlert>[0] | null = null;
+    /**
+     * Pause the deployment after re-reading the live status. Returns 'ok'
+     * when paused, 'raced' when the live status no longer expects enforcement
+     * (admin unpause / transfer landed mid-sweep), 'failed' on API error.
+     */
+    async function gatedPause(expect: ConvexUsageStatus[]): Promise<"ok" | "raced" | "failed"> {
+      const live = await freshStatus(project.id);
+      if (live === null || !expect.includes(live)) return "raced";
+      try {
+        await pauseConvexDeployment(deployUrl!, deployKey!);
+        return "ok";
+      } catch {
+        return "failed";
+      }
+    }
+
+    /** CAS the status transition on the status we based the decision on. */
+    async function casStatus(
+      next: ConvexUsageStatus,
+      extra: Partial<{ convexPausedAt: Date; convexPauseReason: string }> = {},
+    ): Promise<boolean> {
+      const updated = await db
+        .update(projects)
+        .set({ convexStatus: next, ...extra })
+        .where(and(eq(projects.id, project.id), eq(projects.convexStatus, status)))
+        .returning({ id: projects.id });
+      return updated.length > 0;
+    }
+
     let action: ResultAction = decision;
     let detail: string | undefined;
 
-    if (decision === "warn") {
-      nextStatus = "warned";
-      alert = { kind: "warn", ...alertBase };
+    if (dryRun) {
+      // Report the decision; touch nothing.
+      if (decision === "pause" || decision === "pause_repeat") {
+        action = autoPause ? "pause" : "would_pause";
+      }
+    } else if (decision === "warn") {
+      // Alert BEFORE the status write: the transition is the alert's dedup,
+      // so a failed send must leave status 'active' and retry next tick.
+      const sent = await sendUsageAlert({ kind: "warn", ...alertBase });
+      if (sent) {
+        if (!(await casStatus("warned"))) detail = "status raced; transition skipped";
+      } else {
+        detail = "warn alert failed; will retry next tick";
+      }
     } else if (decision === "pause" || decision === "pause_repeat") {
       if (autoPause) {
-        if (dryRun) {
-          action = "pause";
-        } else {
-          try {
-            await pauseConvexDeployment(deployUrl, deployKey);
-            nextStatus = "paused";
-            pausedAtUpdate = { convexPausedAt: new Date(), convexPauseReason: "usage_spike" };
-            alert = { kind: "pause", ...alertBase };
-            action = "pause";
-          } catch (err) {
-            // Loud failure: the exact runaway that most needs attention must
-            // never be silent. Status stays un-paused; policy re-emits
-            // pause_repeat next tick, so this retries until it sticks.
-            detail = `pause failed: ${err instanceof Error ? err.message : String(err)}`;
-            if (status === "active") nextStatus = "warned";
-            alert = { kind: "pause_failed", ...alertBase, detail };
-            action = "pause_failed";
+        const paused = await gatedPause(["active", "warned"]);
+        if (paused === "ok") {
+          // Enforcement primacy: record 'paused' regardless of alert outcome
+          // (the deployment IS paused; policy must go sticky-noop).
+          if (!(await casStatus("paused", { convexPausedAt: new Date(), convexPauseReason: "usage_spike" }))) {
+            detail = "status raced after pause; deployment paused, status not recorded";
           }
+          await sendUsageAlert({ kind: "pause", ...alertBase });
+          action = "pause";
+        } else if (paused === "raced") {
+          action = "skip";
+          detail = "status changed mid-sweep (admin/transfer); enforcement skipped";
+        } else {
+          // Loud failure: the exact runaway that most needs attention must
+          // never be silent. Status stays un-paused; policy re-emits
+          // pause_repeat next tick, so this retries until it sticks.
+          detail = "pause API call failed";
+          if (status === "active") await casStatus("warned");
+          await sendUsageAlert({ kind: "pause_failed", ...alertBase, detail });
+          action = "pause_failed";
         }
       } else {
         // Alert-only mode: escalate status for the UI, email once per day —
         // on the crossing tick ('pause'), OR on pause_repeat from a still-
         // 'active' status (crash recovery: the crossing tick's status write +
         // alert were lost, so the crossing email never went out).
-        const lostCrossing = decision === "pause_repeat" && status === "active";
-        if (status === "active") nextStatus = "warned";
-        if (decision === "pause" || lostCrossing) {
-          alert = { kind: "would_pause", ...alertBase };
-        } else {
-          detail = "already alerted today (no re-send)";
-        }
+        const shouldAlert = decision === "pause" || status === "active";
+        let sent = true;
+        if (shouldAlert) sent = await sendUsageAlert({ kind: "would_pause", ...alertBase });
+        else detail = "already alerted today (no re-send)";
+        // Escalation is also the crash-recovery alert's dedup — hold it back
+        // if the send failed so the next tick retries.
+        if (status === "active" && sent) await casStatus("warned");
         action = "would_pause";
       }
     } else if (decision === "clear") {
-      nextStatus = "active";
+      if (!(await casStatus("active"))) detail = "status raced; transition skipped";
     } else if (status === "paused" && poll.count > 0) {
       // State drift: we believe it's paused but it just served traffic
       // (unpaused via the Convex dashboard, or our pause silently lapsed).
-      if (autoPause && !dryRun) {
-        try {
-          await pauseConvexDeployment(deployUrl, deployKey);
+      // gatedPause re-checks the live status, so an admin unpause that landed
+      // after our candidate select is respected, not stomped.
+      if (autoPause) {
+        const repaused = await gatedPause(["paused"]);
+        if (repaused === "ok") {
           action = "repause";
           detail = `re-paused after drift (${poll.count} calls observed)`;
-        } catch (err) {
-          detail = `re-pause failed: ${err instanceof Error ? err.message : String(err)}`;
-          alert = { kind: "pause_failed", ...alertBase, detail };
+        } else if (repaused === "failed") {
+          detail = "re-pause failed";
+          await sendUsageAlert({ kind: "pause_failed", ...alertBase, detail });
           action = "pause_failed";
+        } else {
+          action = "skip";
+          detail = "status changed mid-sweep (admin unpause?); drift enforcement skipped";
         }
       }
       // First activity of the UTC day → one drift alert per day, not 48.
-      if (!alert && callsTodayBefore === 0) {
-        alert = { kind: "paused_but_active", ...alertBase, detail: `${poll.count} calls observed while status='paused'` };
+      if (action !== "pause_failed" && action !== "skip" && callsTodayBefore === 0) {
+        await sendUsageAlert({
+          kind: "paused_but_active",
+          ...alertBase,
+          detail: `${poll.count} calls observed while status='paused'`,
+        });
         if (action === "noop") action = "drift";
       }
     }
@@ -322,19 +425,8 @@ export async function GET(req: Request) {
     if (!dryRun) {
       await db
         .update(projects)
-        .set({
-          // newCursor is a float (fractional ms, observed live 2026-07-23);
-          // the column is bigint. Ceil biases toward missing ≤1 boundary entry
-          // per tick rather than re-counting one — undercount can't contribute
-          // to a false-positive pause.
-          convexUsageCursor: Math.ceil(poll.newCursor),
-          convexCallsLast30d: last30d,
-          convexCallsCheckedAt: new Date(),
-          ...(nextStatus !== status ? { convexStatus: nextStatus } : {}),
-          ...pausedAtUpdate,
-        })
+        .set({ convexCallsLast30d: last30d, convexCallsCheckedAt: new Date() })
         .where(eq(projects.id, project.id));
-      if (alert) await sendUsageAlert(alert);
     }
 
     results.push({
@@ -356,6 +448,14 @@ export async function GET(req: Request) {
         try {
           await processProject(project);
         } catch (err) {
+          // Even hard failures must stamp checkedAt, or this row sits at the
+          // front of the NULLS-FIRST queue every tick and (past `limit` such
+          // rows) starves the whole fleet behind it.
+          try {
+            await stampCheckedOnly(project.id);
+          } catch {
+            /* stamping is best-effort */
+          }
           results.push({
             projectId: project.id,
             deployment: project.convexDeploymentId,

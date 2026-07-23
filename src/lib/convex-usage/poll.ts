@@ -1,43 +1,51 @@
 /**
  * Function-call counter for platform-managed Convex deployments.
  *
- * Counts new entries on the deployment's admin log stream
- * (GET {deployUrl}/api/stream_function_logs?cursor=<ms> → { entries, newCursor },
- * one entry per function execution — same endpoint convex-admin.ts reads).
- * Entries are bucketed per UTC day from their own execution timestamps, so a
- * poll that straddles midnight (or catches up after cron downtime) attributes
- * calls to the day they actually ran instead of collapsing them into "today"
- * and false-tripping a daily threshold.
+ * Counts new COMPLETED function executions on the deployment's admin log
+ * stream (GET {deployUrl}/api/stream_function_logs?cursor=<ms> →
+ * { entries, newCursor } — same endpoint convex-admin.ts reads). Entries are
+ * bucketed per UTC day from their own execution timestamps, so a poll that
+ * straddles midnight (or catches up after cron downtime) attributes calls to
+ * the day they actually ran instead of collapsing them into "today" and
+ * false-tripping a daily threshold.
  *
  * Operational properties (measured live against a scratch deployment,
  * 2026-07-23):
  *
+ *  - Entries carry kind='Completion' (one per finished execution) and
+ *    kind='Progress' (actions emit one PER console.log LINE — measured: 5
+ *    actions × 20 logs = 100 Progress + 5 Completion). Only Completions are
+ *    counted, or a chatty-but-legit app would meter at ~21× its real rate.
+ *    If the schema ever drops `kind` (drift), we fall back to counting
+ *    everything — over-counting alerts an operator; under-counting hides
+ *    abuse forever.
  *  - The endpoint LONG-POLLS when the cursor is current. We always race a
  *    timeout and treat it as "no new calls" so one quiet deployment can't
  *    stall the sweep.
- *  - The server-side buffer holds at most BUFFER_CAP entries (measured: fired
- *    1200 calls, got exactly 1000 back). A deployment doing more than that
- *    between polls undercounts; we surface `saturated` + the covered time
- *    span so the caller can extrapolate. This is an outlier detector, not
- *    billing-grade accounting.
+ *  - The server-side buffer holds at most BUFFER_CAP raw entries (measured:
+ *    fired 1200, got exactly 1000). `saturated` is judged on RAW entries —
+ *    Progress spam fills the buffer and displaces Completions, so a
+ *    saturated poll means the completion count is a floor, not a total.
  *  - `newCursor` is fractional ms (a float).
  */
 
-/** Measured cap of entries one stream_function_logs response returns. */
+/** Measured cap of raw entries one stream_function_logs response returns. */
 export const BUFFER_CAP = 1000;
 
 export type PollCallsResult =
   | {
       ok: true;
-      /** Total new executions observed (≤ BUFFER_CAP per poll). */
+      /** Completed executions observed this poll. */
       count: number;
-      /** Executions bucketed by UTC day ('YYYY-MM-DD') of their timestamp. */
+      /** Raw entries returned (Completions + Progress etc.). */
+      rawCount: number;
+      /** Completions bucketed by UTC day ('YYYY-MM-DD') of their timestamp. */
       countsByDay: Record<string, number>;
-      /** Float ms cursor to persist (ceil before storing in a bigint). */
+      /** Float ms cursor to persist (clamp + ceil before storing). */
       newCursor: number;
-      /** True when the buffer cap was hit — real count is likely higher. */
+      /** True when the RAW buffer cap was hit — real count is likely higher. */
       saturated: boolean;
-      /** ms between first and last returned entry (0 when count < 2). */
+      /** ms between first and last raw entry (0 when rawCount < 2). */
       spanMs: number;
     }
   | { ok: false; error: string };
@@ -49,7 +57,7 @@ function utcDayKey(ms: number): string {
 export async function fetchNewFunctionCalls(
   deployUrl: string,
   deployKey: string,
-  /** ms cursor from the previous poll; pass Date.now() on first poll. */
+  /** ms cursor from the previous poll; pass 0 on first poll to count the retained buffer. */
   cursor: number,
   timeoutMs = 10_000,
 ): Promise<PollCallsResult> {
@@ -65,7 +73,15 @@ export async function fetchNewFunctionCalls(
   } catch (err) {
     // Timeout = the long-poll had nothing to say. Cursor stands.
     if (err instanceof Error && err.name === "TimeoutError") {
-      return { ok: true, count: 0, countsByDay: {}, newCursor: cursor, saturated: false, spanMs: 0 };
+      return {
+        ok: true,
+        count: 0,
+        rawCount: 0,
+        countsByDay: {},
+        newCursor: cursor,
+        saturated: false,
+        spanMs: 0,
+      };
     }
     return {
       ok: false,
@@ -86,43 +102,60 @@ export async function fetchNewFunctionCalls(
   }
 
   const entries = Array.isArray(data.entries) ? data.entries : [];
-  const count = entries.length;
+  const rawCount = entries.length;
 
-  // Bucket by each entry's own execution timestamp (float seconds — same
-  // field convex-admin.ts reads). Entries with a missing/bogus timestamp are
-  // attributed to the current UTC day rather than dropped.
+  // Count Completions only (one per finished execution). Schema-drift
+  // fallback: if NO entry carries a kind field, count everything.
+  const anyKind = entries.some((e) => typeof e.kind === "string");
+  const completions = anyKind ? entries.filter((e) => e.kind === "Completion") : entries;
+
   const countsByDay: Record<string, number> = {};
   let firstTsMs = Number.POSITIVE_INFINITY;
   let lastTsMs = 0;
   let maxRawTsMs = 0; // unclamped — cursor must never regress below a real entry
   const nowMs = Date.now();
+
+  const tsOf = (e: Record<string, unknown>): number =>
+    typeof e.timestamp === "number" && e.timestamp > 0 ? e.timestamp * 1000 : nowMs;
+
+  // Span/coverage from ALL raw entries (they share the buffer)…
   for (const e of entries) {
-    const rawTsMs = typeof e.timestamp === "number" && e.timestamp > 0 ? e.timestamp * 1000 : nowMs;
+    const rawTsMs = tsOf(e);
     if (rawTsMs > maxRawTsMs) maxRawTsMs = rawTsMs;
-    // Clamp to now for BUCKETING only: a corrupt future-dated timestamp would
-    // otherwise create a future day bucket that inflates the 30-day rollup
-    // and outlives pruning.
     const tsMs = Math.min(rawTsMs, nowMs);
     if (tsMs < firstTsMs) firstTsMs = tsMs;
     if (tsMs > lastTsMs) lastTsMs = tsMs;
-    const day = utcDayKey(tsMs);
+  }
+  // …but day buckets from Completions only. Clamp to now for BUCKETING: a
+  // corrupt future-dated timestamp would otherwise create a future day bucket
+  // that inflates the 30-day rollup and outlives pruning.
+  for (const e of completions) {
+    const day = utcDayKey(Math.min(tsOf(e), nowMs));
     countsByDay[day] = (countsByDay[day] ?? 0) + 1;
   }
-  const spanMs = count >= 2 ? Math.max(0, lastTsMs - firstTsMs) : 0;
+  const spanMs = rawCount >= 2 ? Math.max(0, lastTsMs - firstTsMs) : 0;
 
   // If the payload carries entries but no usable cursor (schema drift), fall
   // back to the newest RAW entry timestamp (unclamped — a clamped fallback
   // could sit below a clock-skewed entry and re-count it next tick). NEVER
-  // return the old cursor alongside a nonzero count, or every subsequent tick
+  // return the old cursor alongside nonzero entries, or every subsequent tick
   // re-counts the same entries and ratchets the buckets toward a false pause.
   let newCursor: number;
   if (typeof data.newCursor === "number" && Number.isFinite(data.newCursor)) {
     newCursor = data.newCursor;
-  } else if (count > 0) {
+  } else if (rawCount > 0) {
     newCursor = maxRawTsMs;
   } else {
     newCursor = cursor;
   }
 
-  return { ok: true, count, countsByDay, newCursor, saturated: count >= BUFFER_CAP, spanMs };
+  return {
+    ok: true,
+    count: completions.length,
+    rawCount,
+    countsByDay,
+    newCursor,
+    saturated: rawCount >= BUFFER_CAP,
+    spanMs,
+  };
 }
