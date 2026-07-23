@@ -1,7 +1,7 @@
 /**
  * Unit tests for the Convex usage guardrail policy: threshold parsing
- * (defaults + env overrides + garbage), the decision matrix, sticky pause,
- * and clear hysteresis.
+ * (defaults + env overrides + garbage), the decision matrix, pause-crossing
+ * vs pause-repeat dedup, sticky pause, and clear hysteresis.
  *
  * Uses Node's built-in test runner (no extra dependency). Run with:
  *   node --import tsx --test src/lib/convex-usage/policy.test.ts
@@ -20,8 +20,20 @@ import {
 
 const T: UsageThresholds = { warnCallsPerDay: 100, pauseCallsPerDay: 1000 };
 
-const decide = (status: ConvexUsageStatus, callsToday: number, callsYesterday = 0) =>
-  decideUsageAction({ status, callsToday, callsYesterday, thresholds: T });
+// callsTodayBefore defaults to callsToday (steady state, nothing new this
+// tick); crossing tests pass an explicit lower value.
+const decide = (
+  status: ConvexUsageStatus,
+  callsToday: number,
+  opts: { before?: number; yesterday?: number } = {},
+) =>
+  decideUsageAction({
+    status,
+    callsToday,
+    callsTodayBefore: opts.before ?? callsToday,
+    callsYesterday: opts.yesterday ?? 0,
+    thresholds: T,
+  });
 
 describe('usageThresholds', () => {
   test('defaults when env is empty', () => {
@@ -75,39 +87,46 @@ describe('decideUsageAction', () => {
 
   test('warned and still over warn bar: noop (no re-warn spam)', () => {
     assert.equal(decide('warned', 100), 'noop');
-    assert.equal(decide('warned', 999, 5000), 'noop');
+    assert.equal(decide('warned', 999, { yesterday: 5000 }), 'noop');
   });
 
-  test('over pause threshold: pause from active AND from warned (inclusive bound)', () => {
-    assert.equal(decide('active', 1000), 'pause');
-    assert.equal(decide('warned', 1000), 'pause');
-    assert.equal(decide('warned', 999_999), 'pause');
+  test('crossing the pause bar this tick: pause (inclusive bound)', () => {
+    assert.equal(decide('active', 1000, { before: 0 }), 'pause');
+    assert.equal(decide('warned', 1000, { before: 999 }), 'pause');
+    assert.equal(decide('warned', 999_999, { before: 500 }), 'pause');
   });
 
-  test('pause re-emits while over the bar (route retries a failed pause)', () => {
-    assert.equal(decide('warned', 2000), 'pause');
-    assert.equal(decide('warned', 2000), 'pause');
+  test('already over the bar before this tick: pause_repeat (route retries pause / suppresses re-alert)', () => {
+    assert.equal(decide('warned', 2000, { before: 2000 }), 'pause_repeat');
+    assert.equal(decide('warned', 2500, { before: 1500 }), 'pause_repeat');
+    // Boundary: before exactly at the bar means the crossing already happened.
+    assert.equal(decide('warned', 1500, { before: 1000 }), 'pause_repeat');
+  });
+
+  test('new UTC day re-arms the crossing (bucket resets to 0)', () => {
+    // First tick after midnight for a persistently-hot deployment.
+    assert.equal(decide('warned', 1200, { before: 0, yesterday: 50_000 }), 'pause');
   });
 
   test('paused is sticky: never auto-unpause, even when fully quiet', () => {
-    assert.equal(decide('paused', 0, 0), 'noop');
-    assert.equal(decide('paused', 1_000_000), 'noop');
+    assert.equal(decide('paused', 0), 'noop');
+    assert.equal(decide('paused', 1_000_000, { before: 0 }), 'noop');
   });
 
   test('migrating / transferred are never touched', () => {
-    assert.equal(decide('migrating', 1_000_000), 'noop');
-    assert.equal(decide('transferred', 1_000_000), 'noop');
+    assert.equal(decide('migrating', 1_000_000, { before: 0 }), 'noop');
+    assert.equal(decide('transferred', 1_000_000, { before: 0 }), 'noop');
   });
 
   test('clear requires a full quiet yesterday, not just a quiet morning', () => {
     // Yesterday was over the warn bar → today being quiet may just be 1am.
-    assert.equal(decide('warned', 0, 500), 'noop');
+    assert.equal(decide('warned', 0, { yesterday: 500 }), 'noop');
     // Yesterday finished under the bar → de-escalate.
-    assert.equal(decide('warned', 0, 99), 'clear');
-    assert.equal(decide('warned', 50, 0), 'clear');
+    assert.equal(decide('warned', 0, { yesterday: 99 }), 'clear');
+    assert.equal(decide('warned', 50, { yesterday: 0 }), 'clear');
   });
 
   test('clear never fires from active', () => {
-    assert.equal(decide('active', 0, 0), 'noop');
+    assert.equal(decide('active', 0), 'noop');
   });
 });

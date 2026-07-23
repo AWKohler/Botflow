@@ -123,6 +123,11 @@ export function decideReapAction(input: ReapDecisionInput): ReapAction {
 /**
  * Whether the reaper should bother polling Convex usage for this project.
  * BYOC projects: no — we don't have admin creds. Managed projects: yes.
+ *
+ * NOTE: actual polling is owned by /api/cron/convex-usage, whose candidate
+ * WHERE clause is the authority (it additionally excludes deleted rows and
+ * 'migrating'/'transferred' statuses). Keep this predicate consistent with it
+ * if either changes.
  */
 export function shouldPollConvexUsage(p: Pick<Project, "backendType" | "convexDeploymentId">): boolean {
   if (!p.convexDeploymentId) return false;

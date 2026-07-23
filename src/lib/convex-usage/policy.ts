@@ -15,14 +15,24 @@
  * state machine (Phase 3) and are never touched here.
  */
 
-export type ConvexUsageStatus =
-  | "active"
-  | "warned"
-  | "paused"
-  | "migrating"
-  | "transferred";
+export const CONVEX_USAGE_STATUSES = [
+  "active",
+  "warned",
+  "paused",
+  "migrating",
+  "transferred",
+] as const;
 
-export type UsageAction = "noop" | "warn" | "pause" | "clear";
+export type ConvexUsageStatus = (typeof CONVEX_USAGE_STATUSES)[number];
+
+/**
+ * 'pause' fires on the tick that CROSSES the pause bar; 'pause_repeat' on
+ * every subsequent tick still over it. The route treats them identically for
+ * enforcement (retry a failed pause until the status flips) but alerts only
+ * on 'pause' — so alert-only mode sends at most one would-pause email per
+ * project per UTC day (buckets reset at midnight).
+ */
+export type UsageAction = "noop" | "warn" | "pause" | "pause_repeat" | "clear";
 
 // Defaults chosen 2026-07-23 (chat w/ Aronne): warn at 100k calls/day, pause
 // at 1M. Both env-overridable; defaults apply when the var is unset or not a
@@ -70,25 +80,31 @@ export function autoPauseEnabled(
 
 export type UsageDecisionInput = {
   status: ConvexUsageStatus;
-  /** Function calls counted so far in today's UTC bucket. */
+  /** Function calls in today's UTC bucket AFTER this tick's counting. */
   callsToday: number;
+  /** Today's bucket BEFORE this tick's counting (crossing detection). */
+  callsTodayBefore: number;
   /** Yesterday's full UTC bucket (0 if absent). Used for clear hysteresis. */
   callsYesterday: number;
   thresholds: UsageThresholds;
 };
 
 export function decideUsageAction(input: UsageDecisionInput): UsageAction {
-  const { status, callsToday, callsYesterday, thresholds } = input;
+  const { status, callsToday, callsTodayBefore, callsYesterday, thresholds } = input;
 
-  // Terminal-ish states the poller must never touch.
+  // Terminal-ish states the poller must never transition. (The route
+  // separately watches for the paused-but-active anomaly — a deployment
+  // unpaused behind our back, e.g. via the Convex dashboard.)
   if (status === "paused" || status === "migrating" || status === "transferred") {
     return "noop";
   }
 
-  if (callsToday >= thresholds.pauseCallsPerDay) return "pause";
+  if (callsToday >= thresholds.pauseCallsPerDay) {
+    return callsTodayBefore < thresholds.pauseCallsPerDay ? "pause" : "pause_repeat";
+  }
 
   if (callsToday >= thresholds.warnCallsPerDay) {
-    // Already warned: don't re-emit every poll tick.
+    // Status is the warn dedup: once 'warned', stay silent until clear/pause.
     return status === "warned" ? "noop" : "warn";
   }
 
