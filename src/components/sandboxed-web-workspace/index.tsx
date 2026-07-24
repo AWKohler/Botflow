@@ -109,6 +109,9 @@ export function SandboxedWebWorkspace({
   const [showConvexPausedModal, setShowConvexPausedModal] = useState(false);
   // Once per workspace-open (returns on refresh/reopen by design).
   const convexPausedModalShownRef = useRef(false);
+  // The mount metadata fetch races the status poll: if the poll lands a
+  // newer status first, the slow mount response must not regress it.
+  const convexStatusFromPollRef = useRef(false);
 
   // ── File state ───────────────────────────────────────────────────────
   const [files, setFiles] = useState<Record<string, FileEntry>>({});
@@ -232,7 +235,9 @@ export function SandboxedWebWorkspace({
         }
         if (proj?.authConfigured === true) setHasAuth(true);
         if (proj?.viewerRole === "editor") setViewerIsOwner(false);
-        if (typeof proj?.convexStatus === "string") setConvexStatus(proj.convexStatus);
+        if (typeof proj?.convexStatus === "string" && !convexStatusFromPollRef.current) {
+          setConvexStatus(proj.convexStatus);
+        }
         if (proj?.viewerRole === "editor" && proj?.editorsCanPush !== true) {
           setGitTabAllowed(false);
         }
@@ -816,17 +821,23 @@ export function SandboxedWebWorkspace({
     if (!res.ok) return;
     const proj = await res.json();
     if (signal.aborted) return;
-    if (typeof proj?.convexStatus === "string") setConvexStatus(proj.convexStatus);
+    if (typeof proj?.convexStatus === "string") {
+      convexStatusFromPollRef.current = true;
+      setConvexStatus(proj.convexStatus);
+    }
+    // Role rides the poll too — the one-shot mount fetch can fail, and an
+    // editor must never fail open into owner-only CTAs.
+    if (proj?.viewerRole === "editor") setViewerIsOwner(false);
   }, 45_000, backendType === "platform" && sandboxStatus === "ready");
 
-  // Paused modal: fire once per workspace-open when the status is (or
+  // Paused modal: fire once per workspace-open when a MANAGED backend is (or
   // becomes) 'paused'. Refresh/reopen re-arms it — deliberate persistence.
   useEffect(() => {
-    if (convexStatus === "paused" && !convexPausedModalShownRef.current) {
+    if (backendType === "platform" && convexStatus === "paused" && !convexPausedModalShownRef.current) {
       convexPausedModalShownRef.current = true;
       setShowConvexPausedModal(true);
     }
-  }, [convexStatus]);
+  }, [backendType, convexStatus]);
 
   // ── Stripe checkout iframe handoff ───────────────────────────────────
   // Stripe Checkout (and the Connect dashboard) refuse to load in an iframe.

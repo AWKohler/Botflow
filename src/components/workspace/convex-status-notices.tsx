@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, PauseCircle, X } from "lucide-react";
 
 /**
@@ -33,6 +33,12 @@ export function ConvexStatusBanner({
   isOwner: boolean;
 }) {
   const [warnDismissed, setWarnDismissed] = useState(false);
+
+  // A dismissal covers ONE warning episode: leaving 'warned' (cleared, or
+  // escalated to paused) re-arms the banner for the next episode.
+  useEffect(() => {
+    if (status !== "warned") setWarnDismissed(false);
+  }, [status]);
 
   if (status === "paused") {
     return (

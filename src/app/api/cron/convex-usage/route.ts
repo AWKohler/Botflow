@@ -494,8 +494,12 @@ export async function GET(req: Request) {
             const comp = await compensatePauseRace();
             detail = comp.detail;
             if (comp.endedPaused) {
+              // Operator alert only — NO owner email here: this invocation
+              // did not persist the paused status, so either the CAS winner
+              // already emailed the owner, or there was no real transition
+              // (unpause-failed drift / migration race). Owner emails ride
+              // exclusively on our own successful CAS.
               await sendUsageAlert({ kind: "pause", ...alertBase, detail });
-              await emailOwner("paused");
               action = "pause";
             } else if (comp.repauseFailed) {
               // Deployment running while the DB says paused/migrating — the
@@ -514,7 +518,11 @@ export async function GET(req: Request) {
           // never be silent. Status stays un-paused; policy re-emits
           // pause_repeat next tick, so this retries until it sticks.
           detail = "pause API call failed";
-          if (status === "active") await casStatus("warned", status);
+          // This is still an active→warned transition — the owner gets the
+          // same heads-up email as the normal warn path.
+          if (status === "active" && (await casStatus("warned", status))) {
+            await emailOwner("warned");
+          }
           await sendUsageAlert({ kind: "pause_failed", ...alertBase, detail });
           action = "pause_failed";
         }
@@ -531,7 +539,12 @@ export async function GET(req: Request) {
         // if the send failed so the next tick retries. (Known residual: a
         // crossing from 'warned' whose send fails both in-tick retries has no
         // persisted retry state — next crossing re-arms at UTC midnight.)
-        if (status === "active" && sent) await casStatus("warned", status);
+        // An active→warned persist here is a real transition: the owner gets
+        // the warned email even though this project skipped straight past the
+        // warn bar (in alert-only mode this may be their ONLY notification).
+        if (status === "active" && sent && (await casStatus("warned", status))) {
+          await emailOwner("warned");
+        }
         action = "would_pause";
       }
     } else if (decision === "clear") {

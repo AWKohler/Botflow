@@ -25,9 +25,13 @@ export function ConvexDashboard({ projectId, convexStatus, isOwner = true }: Con
 
   // Fetch credentials once per projectId
   useEffect(() => {
-    if (paused) return; // interstitial replaces the dashboard; skip the session fetch
+    // Paused: interstitial replaces the dashboard. Clear any session/error so
+    // an unpause re-fetches fresh instead of flashing a stale iframe, and so
+    // an in-flight response from before the pause can't land afterwards.
+    let stale = false;
     setSession(null);
     setError(null);
+    if (paused) return;
     fetch(`/api/projects/${projectId}/database-session`)
       .then(async (res) => {
         if (!res.ok) {
@@ -36,8 +40,15 @@ export function ConvexDashboard({ projectId, convexStatus, isOwner = true }: Con
         }
         return res.json() as Promise<DashboardSession>;
       })
-      .then(setSession)
-      .catch((err) => setError(err.message));
+      .then((s) => {
+        if (!stale) setSession(s);
+      })
+      .catch((err) => {
+        if (!stale) setError(err.message);
+      });
+    return () => {
+      stale = true;
+    };
   }, [projectId, paused]);
 
   // Listen for credential requests from the embedded dashboard and respond
