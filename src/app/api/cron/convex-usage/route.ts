@@ -390,8 +390,11 @@ export async function GET(req: Request) {
               "status raced during pause; COMPENSATING UNPAUSE FAILED — deployment paused while status is 'active'",
           };
         }
+        // 'paused' too: a concurrent sweep may have paused + CAS'd while our
+        // compensating unpause was in flight — without re-pausing here the
+        // deployment runs while the DB says paused.
         const after = await freshStatus(project.id);
-        if (after === "migrating" || after === "transferred") {
+        if (after === "migrating" || after === "transferred" || after === "paused") {
           try {
             await pauseConvexDeployment(deployUrl!, deployKey!);
             return { endedPaused: true, detail: `compensation raced transfer (live='${after}'); re-paused` };
