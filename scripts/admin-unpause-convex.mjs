@@ -53,25 +53,23 @@ async function run() {
   // poller's fresh-status gate sees 'active' and refuses to re-pause, THEN
   // resume the deployment. Resuming first left a window where the poller's
   // drift branch re-paused the deployment while the DB said 'active'.
-  await sql.query(
-    `UPDATE projects
-     SET convex_status = 'active', convex_paused_at = NULL, convex_pause_reason = NULL
-     WHERE id = $1`,
-    [projectId],
-  );
-  console.log("convex_status reset to 'active'.");
-
-  // Zero today's usage bucket. The daily counter is CUMULATIVE — without this,
-  // a bucket already over the pause bar makes the next poller tick re-pause
-  // immediately (pause_repeat) even though the abusive workload was fixed,
-  // and the unpause can't stick until the UTC midnight reset.
+  //
+  // Status reset + bucket zeroing are ONE statement (CTE): the daily counter
+  // is cumulative, so a poller tick landing between "status=active" and
+  // "bucket=0" would read the still-over-threshold bucket against an active
+  // status and immediately re-pause.
   const todayUtc = new Date().toISOString().slice(0, 10);
   await sql.query(
-    `UPDATE convex_usage_daily SET calls = 0, updated_at = now()
+    `WITH status_reset AS (
+       UPDATE projects
+       SET convex_status = 'active', convex_paused_at = NULL, convex_pause_reason = NULL
+       WHERE id = $1
+     )
+     UPDATE convex_usage_daily SET calls = 0, updated_at = now()
      WHERE project_id = $1 AND day = $2`,
     [projectId, todayUtc],
   );
-  console.log(`today's usage bucket (${todayUtc}) zeroed so the unpause sticks.`);
+  console.log(`convex_status reset to 'active' + today's bucket (${todayUtc}) zeroed (atomic).`);
 
   const res = await fetch(`${p.convex_deploy_url}/api/change_deployment_state`, {
     method: 'POST',

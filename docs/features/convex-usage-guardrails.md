@@ -68,11 +68,12 @@ and a per-project kill switch. Design chat: 2026-07-23.
   20 logs = 100 Progress + 5 Completion). Only Completions are counted, or a
   chatty legit app meters at ~21× its real rate and gets false-paused.
 - **Saturation extrapolation**: the log-stream buffer caps at 1000 RAW
-  entries per poll (measured live: fired 1200, got 1000). A saturated poll is
-  scaled by wall-time coverage (elapsed ÷ entry-span, capped at **50×**;
-  zero-span burst ⇒ full factor). 48 ticks × 1000 × 50 = 2.4M recordable
-  calls/day — the pause bar stays reachable under sustained saturation (at
-  20× the daily max was 960k, under the 1M default — Codex catch). First poll
+  entries per poll (measured live: fired 1200, got 1000). A saturated poll
+  extrapolates completions by wall-time coverage (rate × elapsed), with the
+  per-poll ESTIMATE capped at 2M (a fixed scale factor left the pause bar
+  unreachable for chatty-action apps — Codex catch) and the assumed coverage
+  window capped at 1h (or a first poll's cursor-0 elapsed would ride to the
+  estimate cap and false-pause a new chatty app — Codex catch). First poll
   uses cursor 0 to count the retained buffer (closes the front-loaded-abuse
   window between provisioning and first sweep). Still an outlier detector,
   not billing-grade metering. If exact numbers ever matter,

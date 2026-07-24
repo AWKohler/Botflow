@@ -81,6 +81,11 @@ const ROLLUP_WINDOW_DAYS = 29;
 // claim. Known residual: a saturated buffer with ZERO completions counts 0 —
 // surfaced via the `saturated` flag/detail, not auto-actioned.
 const MAX_ESTIMATED_CALLS_PER_POLL = 2_000_000;
+// Extrapolation never assumes coverage beyond this window (2 tick intervals).
+// Without it, a FIRST poll (cursor 0 → elapsed ≈ epoch) that saturates with
+// even one Completion would ride rate × ∞ straight to the estimate cap and
+// false-pause a brand-new chatty app.
+const MAX_EXTRAPOLATION_WINDOW_MS = 60 * 60 * 1000;
 // Stored cursors are clamped to now + this: one corrupt far-future cursor
 // would otherwise blind the poller until the wall clock catches up.
 const CURSOR_FUTURE_SLACK_MS = 60_000;
@@ -218,7 +223,10 @@ export async function GET(req: Request) {
     // effectively unbounded rate and gets the full estimate cap.
     let scale = 1;
     if (poll.saturated && poll.count > 0) {
-      const elapsedMs = Math.max(Date.now() - cursor, poll.spanMs, 1);
+      const elapsedMs = Math.min(
+        Math.max(Date.now() - cursor, poll.spanMs, 1),
+        MAX_EXTRAPOLATION_WINDOW_MS,
+      );
       const rawScale = poll.spanMs > 0 ? elapsedMs / poll.spanMs : Number.POSITIVE_INFINITY;
       scale = Math.max(1, Math.min(rawScale, MAX_ESTIMATED_CALLS_PER_POLL / poll.count));
     }
@@ -242,9 +250,14 @@ export async function GET(req: Request) {
     // Always advance ≥1ms past the read cursor so the CAS is a real claim —
     // a same-value UPDATE would let two concurrent quiet sweeps both proceed
     // into the alert/pause paths.
-    const cursorToStore = Math.max(
-      Math.ceil(Math.min(Math.max(poll.newCursor, cursor), Date.now() + CURSOR_FUTURE_SLACK_MS)),
-      Math.floor(cursor) + 1,
+    // The future-clamp applies LAST: it must be able to pull an already-
+    // corrupt far-future stored cursor back toward now (the ≥1ms advance
+    // would otherwise keep re-asserting the bogus value and blind the poller
+    // until wall time caught up). Pulling back recounts nothing — entries
+    // beyond a bogus future cursor were skipped, never counted.
+    const cursorToStore = Math.min(
+      Math.max(Math.ceil(poll.newCursor), Math.floor(cursor) + 1),
+      Date.now() + CURSOR_FUTURE_SLACK_MS,
     );
     if (!dryRun) {
       const claimed = await db
@@ -354,18 +367,44 @@ export async function GET(req: Request) {
      * by the live intent: 'active' (admin says run) → unpause our pause;
      * 'migrating'/'transferred' → leave paused, the transfer flow wants the
      * source frozen; anything else → leave paused, next tick re-evaluates.
+     *
+     * Returns whether the deployment ended up paused, so callers report the
+     * truth instead of a 'pause' that compensation immediately reverted.
+     *
+     * The unpause itself has a TOCTOU tail (a transfer could set 'migrating'
+     * between our read and the unpause): we re-read after unpausing and
+     * re-pause if the live intent flipped to migrating/transferred.
+     * CONTRACT for the Phase-3 transfer flow: re-assert the source pause
+     * immediately before export and treat "running at export time" as a
+     * retryable precondition failure — never assume a prior pause held.
      */
-    async function compensatePauseRace(): Promise<string> {
+    async function compensatePauseRace(): Promise<{ endedPaused: boolean; detail: string }> {
       const live = await freshStatus(project.id);
       if (live === "active") {
         try {
           await unpauseConvexDeployment(deployUrl!, deployKey!);
-          return "status raced during pause; compensated by unpausing";
         } catch {
-          return "status raced during pause; COMPENSATING UNPAUSE FAILED — deployment paused while status is 'active'";
+          return {
+            endedPaused: true,
+            detail:
+              "status raced during pause; COMPENSATING UNPAUSE FAILED — deployment paused while status is 'active'",
+          };
         }
+        const after = await freshStatus(project.id);
+        if (after === "migrating" || after === "transferred") {
+          try {
+            await pauseConvexDeployment(deployUrl!, deployKey!);
+            return { endedPaused: true, detail: `compensation raced transfer (live='${after}'); re-paused` };
+          } catch {
+            return {
+              endedPaused: false,
+              detail: `compensation raced transfer (live='${after}') and RE-PAUSE FAILED — transfer flow must re-assert`,
+            };
+          }
+        }
+        return { endedPaused: false, detail: "status raced during pause; compensated by unpausing" };
       }
-      return `status raced during pause (live='${live}'); left paused`;
+      return { endedPaused: true, detail: `status raced during pause (live='${live}'); left paused` };
     }
 
     let action: ResultAction = decision;
@@ -398,15 +437,27 @@ export async function GET(req: Request) {
           // the LIVE status gatedPause accepted, not the possibly-stale
           // candidate status.
           if (
-            !(await casStatus("paused", paused.live!, {
+            await casStatus("paused", paused.live!, {
               convexPausedAt: new Date(),
               convexPauseReason: "usage_spike",
-            }))
+            })
           ) {
-            detail = await compensatePauseRace();
+            await sendUsageAlert({ kind: "pause", ...alertBase });
+            action = "pause";
+          } else {
+            // CAS lost → compensation decides the truth. Only report/alert
+            // 'pause' if the deployment actually ended up paused — a
+            // compensated (reverted) pause must not tell the operator the
+            // backend is down.
+            const comp = await compensatePauseRace();
+            detail = comp.detail;
+            if (comp.endedPaused) {
+              await sendUsageAlert({ kind: "pause", ...alertBase, detail });
+              action = "pause";
+            } else {
+              action = "skip";
+            }
           }
-          await sendUsageAlert({ kind: "pause", ...alertBase });
-          action = "pause";
         } else if (paused.outcome === "raced") {
           action = "skip";
           detail = "status changed mid-sweep (admin/transfer); enforcement skipped";
@@ -448,9 +499,15 @@ export async function GET(req: Request) {
           action = "repause";
           detail = `re-paused after drift (${poll.count} calls observed)`;
           // Close the TOCTOU tail: if an admin unpause landed DURING our
-          // pause call, the live status is no longer 'paused' — reconcile.
+          // pause call, the live status is no longer 'paused' — reconcile,
+          // and report the truth (a compensated re-pause is a skip, not a
+          // 'repause', and must not fire the drift alert below).
           const live = await freshStatus(project.id);
-          if (live !== "paused") detail = await compensatePauseRace();
+          if (live !== "paused") {
+            const comp = await compensatePauseRace();
+            detail = comp.detail;
+            action = comp.endedPaused ? "repause" : "skip";
+          }
         } else if (repaused.outcome === "failed") {
           detail = "re-pause failed";
           await sendUsageAlert({ kind: "pause_failed", ...alertBase, detail });
