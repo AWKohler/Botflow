@@ -57,6 +57,8 @@ import {
 } from "@/lib/convex-usage/policy";
 import { fetchNewFunctionCalls } from "@/lib/convex-usage/poll";
 import { sendUsageAlert } from "@/lib/convex-usage/alert";
+import { sendConvexPausedEmail, sendConvexWarnedEmail } from "@/lib/convex-usage/user-emails";
+import { getEmailForClerkUser } from "@/lib/email";
 import { pauseConvexDeployment, unpauseConvexDeployment } from "@/lib/convex-platform";
 
 export const runtime = "nodejs";
@@ -423,6 +425,28 @@ export async function GET(req: Request) {
     let action: ResultAction = decision;
     let detail: string | undefined;
 
+    // Owner-facing email (Phase 2) — strictly best-effort AFTER a transition
+    // persists: never gates status writes (that contract belongs to the
+    // operator alert), never aborts the sweep. Dedup rides the same status
+    // transition that triggered it.
+    async function emailOwner(kind: "warned" | "paused"): Promise<void> {
+      try {
+        const contact = await getEmailForClerkUser(project.userId);
+        if (!contact?.email) return;
+        const opts = {
+          to: contact.email,
+          name: contact.name,
+          projectName: project.name,
+          projectId: project.id,
+        };
+        const result =
+          kind === "warned" ? await sendConvexWarnedEmail(opts) : await sendConvexPausedEmail(opts);
+        if (!result.ok) console.error(`[convex-usage] owner ${kind} email failed: ${result.error}`);
+      } catch (err) {
+        console.error(`[convex-usage] owner ${kind} email failed:`, err);
+      }
+    }
+
     if (dryRun) {
       // Report the decision; touch nothing. The drift branch is reported too
       // (below) so dry runs can verify every enforcement path.
@@ -437,7 +461,11 @@ export async function GET(req: Request) {
       // so a failed send must leave status 'active' and retry next tick.
       const sent = await sendUsageAlert({ kind: "warn", ...alertBase });
       if (sent) {
-        if (!(await casStatus("warned", status))) detail = "status raced; transition skipped";
+        if (await casStatus("warned", status)) {
+          await emailOwner("warned");
+        } else {
+          detail = "status raced; transition skipped";
+        }
       } else {
         detail = "warn alert failed; will retry next tick";
       }
@@ -456,6 +484,7 @@ export async function GET(req: Request) {
             })
           ) {
             await sendUsageAlert({ kind: "pause", ...alertBase });
+            await emailOwner("paused");
             action = "pause";
           } else {
             // CAS lost → compensation decides the truth. Only report/alert
@@ -466,6 +495,7 @@ export async function GET(req: Request) {
             detail = comp.detail;
             if (comp.endedPaused) {
               await sendUsageAlert({ kind: "pause", ...alertBase, detail });
+              await emailOwner("paused");
               action = "pause";
             } else if (comp.repauseFailed) {
               // Deployment running while the DB says paused/migrating — the

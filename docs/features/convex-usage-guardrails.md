@@ -1,4 +1,4 @@
-# Convex usage guardrails (Phase 1)
+# Convex usage guardrails (Phases 1–2)
 
 Platform-managed Convex deployments all live in ONE shared Convex team, and
 Convex bills usage **team-wide with no per-project caps on paid plans** — the
@@ -33,8 +33,26 @@ and a per-project kill switch. Design chat: 2026-07-23.
   day), `pause_failed` (pause API call failed — retried every tick until it
   sticks), `paused_but_active` (state drift: a deployment we recorded as
   paused served traffic, e.g. someone unpaused it in the Convex dashboard;
-  auto-re-paused when CONVEX_AUTO_PAUSE=true). User-facing email + UI is
-  Phase 2.
+  auto-re-paused when CONVEX_AUTO_PAUSE=true).
+- **Owner emails + UI (Phase 2)** — every surface reads `projects.convexStatus`
+  (already role-sanitized; NOT secret-bearing):
+  - owner emails (`src/lib/convex-usage/user-emails.ts`, reaper shell):
+    `warned` = congratulatory heads-up on active→warned; `paused` = factual +
+    contact CTA, sent only when a pause actually landed (alert-only mode
+    emails nobody about a pause that didn't happen). Best-effort AFTER the
+    status transition persists — never gates writes.
+  - projects-grid badge (`src/app/projects/page.tsx`): amber "High usage" /
+    red "Backend paused" chips, platform backends only.
+  - workspace (`sandboxed-web-workspace/index.tsx` +
+    `workspace/convex-status-notices.tsx`): paused = non-dismissible red
+    banner + once-per-open modal (ref-guarded, re-arms on refresh);
+    warned = per-mount dismissible amber banner. 45s status poll
+    (`useWorkspacePoll`, platform backends, ready sandbox only). Editors see
+    banners; resolution CTAs are owner-only.
+  - database panel (`ConvexDashboard` `convexStatus` prop, both mounts):
+    paused interstitial explains the failing queries; session fetch skipped.
+  - CTA is contact-support (mailto:support@botflow.io) until the Phase 3
+    transfer portal ships, then it deep-links there.
 
 ## Env vars
 

@@ -19,6 +19,8 @@ import {
   Star,
   Copy,
   Check,
+  AlertTriangle,
+  PauseCircle,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { SettingsModal } from '@/components/settings/SettingsModal';
@@ -301,11 +303,24 @@ export default function ProjectsPage() {
                             </div>
                           )}
 
-                          <div className="absolute top-3 left-3">
+                          <div className="absolute top-3 left-3 flex items-center gap-1.5">
                             <span className="inline-flex items-center gap-1 rounded-full bg-surface text-fg px-2 py-1 text-xs font-medium backdrop-blur-sm">
                               <Laptop className="h-3 w-3" />
                               {getProjectPlatformLabel(project.platform)}
                             </span>
+                            {/* Convex usage guardrail badge (managed backends only) */}
+                            {project.backendType === 'platform' && project.convexStatus === 'paused' && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-red-500/90 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm shadow-sm">
+                                <PauseCircle className="h-3 w-3" />
+                                Backend paused
+                              </span>
+                            )}
+                            {project.backendType === 'platform' && project.convexStatus === 'warned' && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/90 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm shadow-sm">
+                                <AlertTriangle className="h-3 w-3" />
+                                High usage
+                              </span>
+                            )}
                           </div>
 
                           {project.isPublic && (

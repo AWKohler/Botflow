@@ -66,6 +66,11 @@ import {
 } from "@/lib/project-platform";
 import { FileSearch } from "@/components/persistent-workspace/file-search";
 import { OAuthProviderModal } from "@/components/workspace/oauth-provider-modal";
+import {
+  ConvexPausedModal,
+  ConvexStatusBanner,
+  type ConvexNoticeStatus,
+} from "@/components/workspace/convex-status-notices";
 import { StripeConnectModal } from "@/components/workspace/stripe-connect-modal";
 import { EnvVarModal } from "@/components/workspace/env-var-modal";
 import { StripeTab, StripeModeToggle } from "@/components/sandboxed-web-workspace/stripe-tab";
@@ -94,6 +99,16 @@ export function SandboxedWebWorkspace({
   const [sandboxStatus, setSandboxStatus] = useState<SandboxStatus>("idle");
   const [bootError, setBootError] = useState<string | null>(null);
   const initializedRef = useRef(false);
+
+  // ── Convex usage guardrails (docs/features/convex-usage-guardrails.md) ─
+  // 'active' | 'warned' | 'paused' | 'migrating' | 'transferred'; written by
+  // the convex-usage cron, read here for the banner / paused modal / DB
+  // interstitial. Owner-vs-editor gates the resolution CTA.
+  const [convexStatus, setConvexStatus] = useState<string>("active");
+  const [viewerIsOwner, setViewerIsOwner] = useState(true);
+  const [showConvexPausedModal, setShowConvexPausedModal] = useState(false);
+  // Once per workspace-open (returns on refresh/reopen by design).
+  const convexPausedModalShownRef = useRef(false);
 
   // ── File state ───────────────────────────────────────────────────────
   const [files, setFiles] = useState<Record<string, FileEntry>>({});
@@ -216,6 +231,8 @@ export function SandboxedWebWorkspace({
           setBackendType(normalizeBackendType(proj.backendType));
         }
         if (proj?.authConfigured === true) setHasAuth(true);
+        if (proj?.viewerRole === "editor") setViewerIsOwner(false);
+        if (typeof proj?.convexStatus === "string") setConvexStatus(proj.convexStatus);
         if (proj?.viewerRole === "editor" && proj?.editorsCanPush !== true) {
           setGitTabAllowed(false);
         }
@@ -786,6 +803,31 @@ export function SandboxedWebWorkspace({
     }
   }, 10_000, !stripeEnabled && sandboxStatus === "ready");
 
+  // Convex guardrail status poll — separate from the Stripe poll above (that
+  // one stops once stripeEnabled flips) and slower: a warn/pause transition
+  // surfacing within a minute is plenty, and this GET shares the interactive
+  // 'read' rate-limit budget. Platform-managed backends only.
+  useWorkspacePoll(async (signal) => {
+    const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+      cache: "no-store",
+      signal,
+    });
+    if (res.status === 429) return rateLimitDelayMs(res);
+    if (!res.ok) return;
+    const proj = await res.json();
+    if (signal.aborted) return;
+    if (typeof proj?.convexStatus === "string") setConvexStatus(proj.convexStatus);
+  }, 45_000, backendType === "platform" && sandboxStatus === "ready");
+
+  // Paused modal: fire once per workspace-open when the status is (or
+  // becomes) 'paused'. Refresh/reopen re-arms it — deliberate persistence.
+  useEffect(() => {
+    if (convexStatus === "paused" && !convexPausedModalShownRef.current) {
+      convexPausedModalShownRef.current = true;
+      setShowConvexPausedModal(true);
+    }
+  }, [convexStatus]);
+
   // ── Stripe checkout iframe handoff ───────────────────────────────────
   // Stripe Checkout (and the Connect dashboard) refuse to load in an iframe.
   // The previewed app runs in our preview iframe, so the scaffolded
@@ -975,6 +1017,13 @@ export function SandboxedWebWorkspace({
   // ── Render ───────────────────────────────────────────────────────────
   return (
     <div className="h-screen flex bolt-bg text-fg">
+      {/* Convex paused modal — once per workspace-open while paused */}
+      {showConvexPausedModal && (
+        <ConvexPausedModal
+          isOwner={viewerIsOwner}
+          onClose={() => setShowConvexPausedModal(false)}
+        />
+      )}
       {/* OAuth credential modal — shown when agent calls setupOAuthProvider */}
       {pendingOAuthRequest && (
         <OAuthProviderModal
@@ -1093,6 +1142,14 @@ export function SandboxedWebWorkspace({
               Retry
             </button>
           </div>
+        )}
+
+        {/* Convex usage guardrail banner (paused: sticky red; warned: dismissible amber) */}
+        {backendType === "platform" && (
+          <ConvexStatusBanner
+            status={convexStatus as ConvexNoticeStatus}
+            isOwner={viewerIsOwner}
+          />
         )}
 
         {/* Header */}
@@ -1423,7 +1480,11 @@ export function SandboxedWebWorkspace({
           {currentView === "database" && hasBackend && (
             <div className="absolute inset-0 pb-2.5 pr-2.5">
               <div className="w-full h-full rounded-xl border border-border overflow-hidden">
-                <ConvexDashboard projectId={projectId} />
+                <ConvexDashboard
+                  projectId={projectId}
+                  convexStatus={backendType === "platform" ? convexStatus : undefined}
+                  isOwner={viewerIsOwner}
+                />
               </div>
             </div>
           )}

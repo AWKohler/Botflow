@@ -13,7 +13,8 @@ import { sendEmail, type SendEmailResult } from "@/lib/email";
 
 const SITE = "https://botflow.io";
 
-function shell(title: string, bodyHtml: string): string {
+// Exported for reuse by other transactional mails (convex-usage guardrails).
+export function shell(title: string, bodyHtml: string): string {
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${esc(title)}</title></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;line-height:1.55;color:#0a0a0a;background:#f7f7f7;margin:0;padding:24px;">
@@ -28,7 +29,7 @@ function shell(title: string, bodyHtml: string): string {
 </body></html>`;
 }
 
-function esc(s: string): string {
+export function esc(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
