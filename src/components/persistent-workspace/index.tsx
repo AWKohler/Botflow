@@ -153,10 +153,18 @@ export function PersistentWorkspace({
     }
   }, [projectId]);
 
+  // Latest-wins: the 45s guardrail poll below overlaps other refresh callers,
+  // and an older response resolving last must not regress newer row state
+  // (convexStatus/viewerRole/backendType drive the paused UI).
+  const refreshGenRef = useRef(0);
   const refreshProject = useCallback(async () => {
+    const gen = ++refreshGenRef.current;
     try {
       const res = await fetch(`/api/projects/${projectId}`);
-      if (res.ok) setProject((await res.json()) as ProjectRow);
+      if (res.ok) {
+        const row = (await res.json()) as ProjectRow;
+        if (gen === refreshGenRef.current) setProject(row);
+      }
     } catch (e) {
       console.warn("Failed to load project", e);
     }
@@ -469,8 +477,10 @@ export function PersistentWorkspace({
           onClose={() => setPendingOAuthRequest(null)}
         />
       )}
-      {/* Convex paused modal — once per workspace-open while paused */}
-      {showConvexPausedModal && (
+      {/* Convex paused modal — once per workspace-open while paused. Render
+          re-gated on managed+paused so a mid-session BYOC transfer or unpause
+          closes it rather than stranding stale managed-hosting copy. */}
+      {showConvexPausedModal && managedBackend && convexStatus === "paused" && (
         <ConvexPausedModal
           isOwner={viewerIsOwner}
           onClose={() => setShowConvexPausedModal(false)}

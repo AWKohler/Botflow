@@ -1028,8 +1028,10 @@ export function SandboxedWebWorkspace({
   // ── Render ───────────────────────────────────────────────────────────
   return (
     <div className="h-screen flex bolt-bg text-fg">
-      {/* Convex paused modal — once per workspace-open while paused */}
-      {showConvexPausedModal && (
+      {/* Convex paused modal — once per workspace-open while paused. Render
+          re-gated on managed+paused so a mid-session BYOC transfer or unpause
+          closes it rather than stranding stale managed-hosting copy. */}
+      {showConvexPausedModal && backendType === "platform" && convexStatus === "paused" && (
         <ConvexPausedModal
           isOwner={viewerIsOwner}
           onClose={() => setShowConvexPausedModal(false)}
