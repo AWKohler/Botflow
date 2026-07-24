@@ -378,7 +378,13 @@ export async function GET(req: Request) {
      * immediately before export and treat "running at export time" as a
      * retryable precondition failure — never assume a prior pause held.
      */
-    async function compensatePauseRace(): Promise<{ endedPaused: boolean; detail: string }> {
+    async function compensatePauseRace(): Promise<{
+      endedPaused: boolean;
+      /** A re-pause the DB state REQUIRES failed → deployment running while
+       *  the DB says paused/migrating; callers must alert pause_failed. */
+      repauseFailed: boolean;
+      detail: string;
+    }> {
       const live = await freshStatus(project.id);
       if (live === "active") {
         try {
@@ -386,28 +392,32 @@ export async function GET(req: Request) {
         } catch {
           return {
             endedPaused: true,
+            repauseFailed: false,
             detail:
               "status raced during pause; COMPENSATING UNPAUSE FAILED — deployment paused while status is 'active'",
           };
         }
-        // 'paused' too: a concurrent sweep may have paused + CAS'd while our
-        // compensating unpause was in flight — without re-pausing here the
-        // deployment runs while the DB says paused.
+        // Recheck after unpausing: 'migrating'/'transferred' (transfer wants
+        // the source frozen) and 'paused' (a concurrent sweep paused + CAS'd
+        // while our unpause was in flight) all require re-pausing — else the
+        // deployment runs while the DB says otherwise.
         const after = await freshStatus(project.id);
         if (after === "migrating" || after === "transferred" || after === "paused") {
+          const who = after === "paused" ? "a concurrent pause" : `transfer (live='${after}')`;
           try {
             await pauseConvexDeployment(deployUrl!, deployKey!);
-            return { endedPaused: true, detail: `compensation raced transfer (live='${after}'); re-paused` };
+            return { endedPaused: true, repauseFailed: false, detail: `compensation raced ${who}; re-paused` };
           } catch {
             return {
               endedPaused: false,
-              detail: `compensation raced transfer (live='${after}') and RE-PAUSE FAILED — transfer flow must re-assert`,
+              repauseFailed: true,
+              detail: `compensation raced ${who} and RE-PAUSE FAILED — deployment running while DB says '${after}'`,
             };
           }
         }
-        return { endedPaused: false, detail: "status raced during pause; compensated by unpausing" };
+        return { endedPaused: false, repauseFailed: false, detail: "status raced during pause; compensated by unpausing" };
       }
-      return { endedPaused: true, detail: `status raced during pause (live='${live}'); left paused` };
+      return { endedPaused: true, repauseFailed: false, detail: `status raced during pause (live='${live}'); left paused` };
     }
 
     let action: ResultAction = decision;
@@ -457,6 +467,11 @@ export async function GET(req: Request) {
             if (comp.endedPaused) {
               await sendUsageAlert({ kind: "pause", ...alertBase, detail });
               action = "pause";
+            } else if (comp.repauseFailed) {
+              // Deployment running while the DB says paused/migrating — the
+              // loudest possible failure, never a silent skip.
+              await sendUsageAlert({ kind: "pause_failed", ...alertBase, detail });
+              action = "pause_failed";
             } else {
               action = "skip";
             }
@@ -509,7 +524,14 @@ export async function GET(req: Request) {
           if (live !== "paused") {
             const comp = await compensatePauseRace();
             detail = comp.detail;
-            action = comp.endedPaused ? "repause" : "skip";
+            if (comp.endedPaused) {
+              action = "repause";
+            } else if (comp.repauseFailed) {
+              await sendUsageAlert({ kind: "pause_failed", ...alertBase, detail });
+              action = "pause_failed";
+            } else {
+              action = "skip";
+            }
           }
         } else if (repaused.outcome === "failed") {
           detail = "re-pause failed";
