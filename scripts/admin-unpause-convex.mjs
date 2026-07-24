@@ -49,20 +49,10 @@ async function run() {
     process.exit(1);
   }
 
-  const res = await fetch(`${p.convex_deploy_url}/api/change_deployment_state`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Convex ${p.convex_deploy_key}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ newState: 'running' }),
-  });
-  if (!res.ok) {
-    console.error(`change_deployment_state failed: HTTP ${res.status}`);
-    process.exit(1);
-  }
-  console.log('Deployment resumed (newState=running).');
-
+  // Order matters (poller race): write intent to the DB FIRST, so the
+  // poller's fresh-status gate sees 'active' and refuses to re-pause, THEN
+  // resume the deployment. Resuming first left a window where the poller's
+  // drift branch re-paused the deployment while the DB said 'active'.
   await sql.query(
     `UPDATE projects
      SET convex_status = 'active', convex_paused_at = NULL, convex_pause_reason = NULL
@@ -82,6 +72,21 @@ async function run() {
     [projectId, todayUtc],
   );
   console.log(`today's usage bucket (${todayUtc}) zeroed so the unpause sticks.`);
+
+  const res = await fetch(`${p.convex_deploy_url}/api/change_deployment_state`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Convex ${p.convex_deploy_key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ newState: 'running' }),
+  });
+  if (!res.ok) {
+    console.error(`change_deployment_state failed: HTTP ${res.status}`);
+    console.error('DB already says active — re-run this script to retry the resume.');
+    process.exit(1);
+  }
+  console.log('Deployment resumed (newState=running).');
   console.log('\n✅ Unpaused. The poller resumes counting from now; it will warn/pause again only on NEW abusive traffic.');
 }
 

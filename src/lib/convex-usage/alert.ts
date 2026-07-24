@@ -70,14 +70,22 @@ export async function sendUsageAlert(input: UsageAlertInput): Promise<boolean> {
     .join("\n")}</pre>
 <p>Admin unpause: <code>node scripts/admin-unpause-convex.mjs ${esc(input.projectId)}</code></p>`;
 
-  const result = await sendEmail({
-    to,
-    subject: `${KIND_SUBJECT[input.kind]} — ${input.projectName}`,
-    html,
-    text: lines.join("\n"),
-  });
-  if (!result.ok) {
-    console.error(`[convex-usage] alert email failed: ${result.error}`);
+  // One in-tick retry: several alert kinds are one-shot (their dedup is a
+  // persisted transition or a daily crossing), so a transient Resend blip
+  // must not permanently eat them. A sustained outage still can — documented
+  // residual in docs/features/convex-usage-guardrails.md.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 2_000));
+    const result = await sendEmail({
+      to,
+      subject: `${KIND_SUBJECT[input.kind]} — ${input.projectName}`,
+      html,
+      text: lines.join("\n"),
+    });
+    if (result.ok) return true;
+    console.error(
+      `[convex-usage] alert email failed (attempt ${attempt + 1}/2): ${result.error}`,
+    );
   }
-  return result.ok;
+  return false;
 }

@@ -79,11 +79,23 @@ and a per-project kill switch. Design chat: 2026-07-23.
   `api/app_metrics/udf_rate` exists on the same admin surface (probe:
   responds, needs param-shape work).
 - **Write ordering**: cursor advances via compare-and-set BEFORE bucket
-  upserts (concurrent sweep → loser skips, no double-count; crash → ≤1 tick
+  upserts, always ≥1ms past the read cursor so the CAS is a real claim
+  (concurrent sweep → loser skips, no double-count; crash → ≤1 tick
   undercount). Enforcement re-reads live status first (admin unpause /
-  transfer mid-sweep is respected); status transitions are CAS'd; one-shot
-  alerts send before their deduping status write and hold the write back on
-  failure so the next tick retries.
+  transfer mid-sweep is respected); status transitions are CAS'd on the live
+  status; a pause whose status-CAS loses is compensated (unpause if the live
+  intent is 'active', left paused for migrating/transferred). One-shot alerts
+  send before their deduping status write (with one in-tick retry) and hold
+  the write back on failure so the next tick retries. Admin unpause writes
+  DB intent first, then resumes the deployment.
+- **Accepted residuals** (reviewed, deliberate): alerts are at-least-once
+  under pathological sweep overlap, not exactly-once; a would-pause crossing
+  from 'warned' whose email fails both in-tick retries re-arms at UTC
+  midnight (no persisted alert-retry state); a saturated buffer containing
+  zero Completions counts 0 (surfaced via `saturated` in the cron response);
+  `convexCallsLast30d` can be transiently stale for one tick under
+  overlapping sweeps (self-heals; reaper decisions operate on 90-day idle
+  windows, unaffected in practice).
 - **Quiet deployments long-poll** `stream_function_logs` until the 8s fetch
   timeout — the sweep polls in batches of 10 and caps candidates at 350/tick
   (350/10 × 8s = 280s worst case inside the 300s maxDuration). Fleets beyond

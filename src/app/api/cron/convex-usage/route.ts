@@ -57,7 +57,7 @@ import {
 } from "@/lib/convex-usage/policy";
 import { fetchNewFunctionCalls } from "@/lib/convex-usage/poll";
 import { sendUsageAlert } from "@/lib/convex-usage/alert";
-import { pauseConvexDeployment } from "@/lib/convex-platform";
+import { pauseConvexDeployment, unpauseConvexDeployment } from "@/lib/convex-platform";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,11 +72,15 @@ const LIMIT_CAP = 350;
 const PRUNE_AFTER_DAYS = 35;
 // Rollup window = today + 29 prior days = 30 buckets.
 const ROLLUP_WINDOW_DAYS = 29;
-// A saturated poll extrapolates count × (elapsed / covered-span), capped
-// here. 48 ticks/day × 1000-entry buffer × 50 = 2.4M recordable calls/day —
-// comfortably above the default 1M pause bar, so saturation can't be ridden
-// under the threshold (Codex finding: at 20× the daily max was 960k < 1M).
-const SATURATION_MAX_FACTOR = 50;
+// A saturated poll extrapolates completions × (elapsed / covered-span). The
+// cap is on the ESTIMATE per poll, not the factor: a fixed factor re-created
+// the unreachable-pause-bar bug for chatty-action apps whose Progress spam
+// leaves few completions per buffer (Codex round 2: 91 completions × 50 ×
+// 48 ticks ≈ 218k/day, under the 1M bar). 2M/poll keeps the bar reachable in
+// a single tick of genuine runaway while bounding what one measurement can
+// claim. Known residual: a saturated buffer with ZERO completions counts 0 —
+// surfaced via the `saturated` flag/detail, not auto-actioned.
+const MAX_ESTIMATED_CALLS_PER_POLL = 2_000_000;
 // Stored cursors are clamped to now + this: one corrupt far-future cursor
 // would otherwise blind the poller until the wall clock catches up.
 const CURSOR_FUTURE_SLACK_MS = 60_000;
@@ -209,16 +213,14 @@ export async function GET(req: Request) {
     }
 
     // Saturated poll: the raw buffer capped out, so the completion count is a
-    // floor. Extrapolate by wall-time coverage; a zero-span burst gets the
-    // FULL factor (its true rate is effectively unbounded — treating it as 1×
-    // was a measured bypass).
+    // floor. Extrapolate by wall-time coverage (rate × elapsed), bounding the
+    // per-poll ESTIMATE rather than the factor; a zero-span burst implies an
+    // effectively unbounded rate and gets the full estimate cap.
     let scale = 1;
-    if (poll.saturated) {
-      const elapsedMs = Math.max(now - cursor, poll.spanMs);
-      scale =
-        poll.spanMs > 0
-          ? Math.min(elapsedMs / poll.spanMs, SATURATION_MAX_FACTOR)
-          : SATURATION_MAX_FACTOR;
+    if (poll.saturated && poll.count > 0) {
+      const elapsedMs = Math.max(Date.now() - cursor, poll.spanMs, 1);
+      const rawScale = poll.spanMs > 0 ? elapsedMs / poll.spanMs : Number.POSITIVE_INFINITY;
+      scale = Math.max(1, Math.min(rawScale, MAX_ESTIMATED_CALLS_PER_POLL / poll.count));
     }
     const increments = new Map<string, number>();
     for (const [day, calls] of Object.entries(poll.countsByDay)) {
@@ -234,9 +236,15 @@ export async function GET(req: Request) {
     // sweep that read the same cursor loses here and skips (no double-count);
     // a crash after this point costs at most one tick of counts (undercount).
     // Clamp: monotonic, and never far-future (a corrupt timestamp would blind
-    // the poller until the wall clock caught up).
-    const cursorToStore = Math.ceil(
-      Math.min(Math.max(poll.newCursor, cursor), now + CURSOR_FUTURE_SLACK_MS),
+    // the poller until the wall clock caught up). Fresh clock, NOT the
+    // sweep-start `now` — a project processed 200s into the sweep would get
+    // its legitimate cursor clamped backward and recount the tail next tick.
+    // Always advance ≥1ms past the read cursor so the CAS is a real claim —
+    // a same-value UPDATE would let two concurrent quiet sweeps both proceed
+    // into the alert/pause paths.
+    const cursorToStore = Math.max(
+      Math.ceil(Math.min(Math.max(poll.newCursor, cursor), Date.now() + CURSOR_FUTURE_SLACK_MS)),
+      Math.floor(cursor) + 1,
     );
     if (!dryRun) {
       const claimed = await db
@@ -308,63 +316,98 @@ export async function GET(req: Request) {
     };
 
     /**
-     * Pause the deployment after re-reading the live status. Returns 'ok'
-     * when paused, 'raced' when the live status no longer expects enforcement
-     * (admin unpause / transfer landed mid-sweep), 'failed' on API error.
+     * Pause the deployment after re-reading the live status. Returns the
+     * live status alongside the outcome so the follow-up status CAS can
+     * expect what was actually accepted (the candidate's selected status may
+     * be stale — e.g. another sweep already escalated active→warned).
      */
-    async function gatedPause(expect: ConvexUsageStatus[]): Promise<"ok" | "raced" | "failed"> {
+    async function gatedPause(
+      expect: ConvexUsageStatus[],
+    ): Promise<{ outcome: "ok" | "raced" | "failed"; live: ConvexUsageStatus | null }> {
       const live = await freshStatus(project.id);
-      if (live === null || !expect.includes(live)) return "raced";
+      if (live === null || !expect.includes(live)) return { outcome: "raced", live };
       try {
         await pauseConvexDeployment(deployUrl!, deployKey!);
-        return "ok";
+        return { outcome: "ok", live };
       } catch {
-        return "failed";
+        return { outcome: "failed", live };
       }
     }
 
-    /** CAS the status transition on the status we based the decision on. */
+    /** CAS the status transition on the given expected current status. */
     async function casStatus(
       next: ConvexUsageStatus,
+      expect: ConvexUsageStatus,
       extra: Partial<{ convexPausedAt: Date; convexPauseReason: string }> = {},
     ): Promise<boolean> {
       const updated = await db
         .update(projects)
         .set({ convexStatus: next, ...extra })
-        .where(and(eq(projects.id, project.id), eq(projects.convexStatus, status)))
+        .where(and(eq(projects.id, project.id), eq(projects.convexStatus, expect)))
         .returning({ id: projects.id });
       return updated.length > 0;
+    }
+
+    /**
+     * A pause landed but the status CAS lost — someone changed the status
+     * during the pause call (TOCTOU window ≈ one HTTP round-trip). Reconcile
+     * by the live intent: 'active' (admin says run) → unpause our pause;
+     * 'migrating'/'transferred' → leave paused, the transfer flow wants the
+     * source frozen; anything else → leave paused, next tick re-evaluates.
+     */
+    async function compensatePauseRace(): Promise<string> {
+      const live = await freshStatus(project.id);
+      if (live === "active") {
+        try {
+          await unpauseConvexDeployment(deployUrl!, deployKey!);
+          return "status raced during pause; compensated by unpausing";
+        } catch {
+          return "status raced during pause; COMPENSATING UNPAUSE FAILED — deployment paused while status is 'active'";
+        }
+      }
+      return `status raced during pause (live='${live}'); left paused`;
     }
 
     let action: ResultAction = decision;
     let detail: string | undefined;
 
     if (dryRun) {
-      // Report the decision; touch nothing.
+      // Report the decision; touch nothing. The drift branch is reported too
+      // (below) so dry runs can verify every enforcement path.
       if (decision === "pause" || decision === "pause_repeat") {
         action = autoPause ? "pause" : "would_pause";
+      } else if (decision === "noop" && status === "paused" && poll.count > 0) {
+        action = autoPause ? "repause" : "drift";
+        detail = `dryRun: would ${autoPause ? "re-pause" : "alert"} — ${poll.count} calls observed while status='paused'`;
       }
     } else if (decision === "warn") {
       // Alert BEFORE the status write: the transition is the alert's dedup,
       // so a failed send must leave status 'active' and retry next tick.
       const sent = await sendUsageAlert({ kind: "warn", ...alertBase });
       if (sent) {
-        if (!(await casStatus("warned"))) detail = "status raced; transition skipped";
+        if (!(await casStatus("warned", status))) detail = "status raced; transition skipped";
       } else {
         detail = "warn alert failed; will retry next tick";
       }
     } else if (decision === "pause" || decision === "pause_repeat") {
       if (autoPause) {
         const paused = await gatedPause(["active", "warned"]);
-        if (paused === "ok") {
+        if (paused.outcome === "ok") {
           // Enforcement primacy: record 'paused' regardless of alert outcome
-          // (the deployment IS paused; policy must go sticky-noop).
-          if (!(await casStatus("paused", { convexPausedAt: new Date(), convexPauseReason: "usage_spike" }))) {
-            detail = "status raced after pause; deployment paused, status not recorded";
+          // (the deployment IS paused; policy must go sticky-noop). CAS on
+          // the LIVE status gatedPause accepted, not the possibly-stale
+          // candidate status.
+          if (
+            !(await casStatus("paused", paused.live!, {
+              convexPausedAt: new Date(),
+              convexPauseReason: "usage_spike",
+            }))
+          ) {
+            detail = await compensatePauseRace();
           }
           await sendUsageAlert({ kind: "pause", ...alertBase });
           action = "pause";
-        } else if (paused === "raced") {
+        } else if (paused.outcome === "raced") {
           action = "skip";
           detail = "status changed mid-sweep (admin/transfer); enforcement skipped";
         } else {
@@ -372,7 +415,7 @@ export async function GET(req: Request) {
           // never be silent. Status stays un-paused; policy re-emits
           // pause_repeat next tick, so this retries until it sticks.
           detail = "pause API call failed";
-          if (status === "active") await casStatus("warned");
+          if (status === "active") await casStatus("warned", status);
           await sendUsageAlert({ kind: "pause_failed", ...alertBase, detail });
           action = "pause_failed";
         }
@@ -386,12 +429,14 @@ export async function GET(req: Request) {
         if (shouldAlert) sent = await sendUsageAlert({ kind: "would_pause", ...alertBase });
         else detail = "already alerted today (no re-send)";
         // Escalation is also the crash-recovery alert's dedup — hold it back
-        // if the send failed so the next tick retries.
-        if (status === "active" && sent) await casStatus("warned");
+        // if the send failed so the next tick retries. (Known residual: a
+        // crossing from 'warned' whose send fails both in-tick retries has no
+        // persisted retry state — next crossing re-arms at UTC midnight.)
+        if (status === "active" && sent) await casStatus("warned", status);
         action = "would_pause";
       }
     } else if (decision === "clear") {
-      if (!(await casStatus("active"))) detail = "status raced; transition skipped";
+      if (!(await casStatus("active", status))) detail = "status raced; transition skipped";
     } else if (status === "paused" && poll.count > 0) {
       // State drift: we believe it's paused but it just served traffic
       // (unpaused via the Convex dashboard, or our pause silently lapsed).
@@ -399,10 +444,14 @@ export async function GET(req: Request) {
       // after our candidate select is respected, not stomped.
       if (autoPause) {
         const repaused = await gatedPause(["paused"]);
-        if (repaused === "ok") {
+        if (repaused.outcome === "ok") {
           action = "repause";
           detail = `re-paused after drift (${poll.count} calls observed)`;
-        } else if (repaused === "failed") {
+          // Close the TOCTOU tail: if an admin unpause landed DURING our
+          // pause call, the live status is no longer 'paused' — reconcile.
+          const live = await freshStatus(project.id);
+          if (live !== "paused") detail = await compensatePauseRace();
+        } else if (repaused.outcome === "failed") {
           detail = "re-pause failed";
           await sendUsageAlert({ kind: "pause_failed", ...alertBase, detail });
           action = "pause_failed";
