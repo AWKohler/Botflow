@@ -94,22 +94,33 @@ const tools = enabled
 // POST {BOTFLOW_API_BASE}/api/internal/claude-code-tool with a bearer token;
 // { ok: false } responses surface as isError tool results.
 //
-// Waitable-modal handshake: human-input tools (ask_question, request_env_var,
+// Waitable-modal handshake: human-input tools (request_env_var,
 // setup_oauth_provider, initialize_stripe_payments) return
 //   { ok: true, pending: true, wait: { requestId, pollDelayMs } }
-// after a short host-side poll window, and THIS loop — running in the
-// sandbox, where there is no execution ceiling — re-polls with waitRequestId
-// until the host returns a terminal result. From the model's perspective the
-// tool call simply blocks until the user acts (or the 30-min client cap).
+// after a short host-side poll window (~20s). Unlike the CC bridge, THIS
+// server answers an MCP CallTool request — OpenCode's MCP client enforces its
+// own request timeout, and blocking past it surfaces as a raw
+// "MCP error -32001: Request timed out" the model can't act on. So we do NOT
+// re-poll: the first pending response is converted into the host's
+// pendingGuidance (modal stays open; a system note fires when the user
+// submits, and the tools are idempotent — re-calling after the save returns
+// success instantly).
 // ---------------------------------------------------------------------------
-const WAIT_CLIENT_CAP_MS = 30 * 60 * 1000;
 
-async function postHostTool(toolName, input) {
+// Per-request hard deadline. The host route's maxDuration is 300s (a cold
+// convex_deploy legitimately runs minutes), so the default must exceed one
+// full invocation. ask_question re-polls use a short window (~25s) and get a
+// tight deadline so the 8-min loop cap plus one hung request can never
+// exceed OpenCode's 600s MCP timeout.
+const DEFAULT_FETCH_TIMEOUT_MS = 330 * 1000;
+
+async function postHostTool(toolName, input, timeoutMs) {
   const base = process.env.BOTFLOW_API_BASE;
   const token = process.env.BOTFLOW_TOOL_TOKEN;
   if (!base || !token) {
     throw new Error("Host callback not configured (BOTFLOW_API_BASE / BOTFLOW_TOOL_TOKEN missing)");
   }
+  const deadlineMs = Number(timeoutMs) > 0 ? Number(timeoutMs) : DEFAULT_FETCH_TIMEOUT_MS;
   const headers = {
     "authorization": "Bearer " + token,
     "content-type": "application/json",
@@ -128,6 +139,9 @@ async function postHostTool(toolName, input) {
       method: "POST",
       headers,
       body: JSON.stringify({ tool: toolName, input: input ?? {} }),
+      // Fresh deadline per attempt — a hung request aborts instead of
+      // pinning the MCP call past its transport timeout.
+      signal: AbortSignal.timeout(deadlineMs),
     });
     if (response.status === 429 && attempt < MAX_429_RETRIES) {
       const retryAfter = Number(response.headers.get("retry-after"));
@@ -157,30 +171,80 @@ async function postHostTool(toolName, input) {
   }
 }
 
+// ask_question is the one waitable tool worth blocking on: without the answer
+// the model would have to guess. The host enforces its own ~5-min ceiling
+// (auto-dismiss → terminal timeout result), which fits comfortably inside the
+// 600s MCP request timeout; the client cap is only a runaway backstop.
+const ASK_QUESTION_CLIENT_CAP_MS = 8 * 60 * 1000;
+
 async function callHostTool(toolName, input) {
   let result = await postHostTool(toolName, input);
-  const startedWaiting = Date.now();
-  let transientFailures = 0;
-  while (result && result.pending === true && result.wait && result.wait.requestId) {
-    if (Date.now() - startedWaiting > WAIT_CLIENT_CAP_MS) {
+  if (toolName === "ask_question") {
+    const startedWaiting = Date.now();
+    let transientFailures = 0;
+    while (
+      result && result.pending === true && result.wait && result.wait.requestId &&
+      Date.now() - startedWaiting < ASK_QUESTION_CLIENT_CAP_MS
+    ) {
+      const delay = Number(result.wait.pollDelayMs) > 0 ? Number(result.wait.pollDelayMs) : 2000;
+      await new Promise((r) => setTimeout(r, delay));
+      try {
+        // Tight per-request deadline: each host window is ~20s, so 60s means
+        // the loop cap plus one hung request stays well inside the 600s MCP
+        // transport timeout.
+        result = await postHostTool(
+          toolName,
+          { ...(input ?? {}), waitRequestId: result.wait.requestId },
+          60 * 1000,
+        );
+        transientFailures = 0;
+      } catch (err) {
+        transientFailures += 1;
+        if (transientFailures >= 5) throw err;
+      }
+    }
+    if (result && result.pending === true) {
       return {
-        ok: false,
+        ok: true,
         content:
-          "Stopped waiting for the user after 30 minutes. The request may STILL be pending in their workspace — " +
-          "do NOT tell the user they dismissed or declined it. Continue only with unrelated work; do not implement or expose UI that depends on the pending setup until the host tool returns success.",
+          "No answer arrived in time. Continue with a reasonable default; do not block on this question.",
+        answered: false,
+        timedOut: true,
       };
     }
-    const delay = Number(result.wait.pollDelayMs) > 0 ? Number(result.wait.pollDelayMs) : 2500;
-    await new Promise((r) => setTimeout(r, delay));
+    return result;
+  }
+  if (result && result.pending === true && result.wait && result.wait.requestId) {
+    // Still pending after the host's poll window. Return guidance instead of
+    // re-polling — blocking here trips OpenCode's MCP request timeout, which
+    // reaches the model as an unactionable transport error. NOT isError: a
+    // human mid-modal is an expected state, not a failure.
+    // First tell the host we stopped so it clears the "agent is waiting"
+    // marker (otherwise a save within the marker's TTL would skip the
+    // workspace system-note and the completion would be lost). The host's
+    // reply doubles as a final status check: if the user's save slipped into
+    // the gap, it returns the terminal result with finalized:true — deliver
+    // THAT to the model instead of "still pending".
     try {
-      result = await postHostTool(toolName, { ...(input ?? {}), waitRequestId: result.wait.requestId });
-      transientFailures = 0;
-    } catch (err) {
-      // Don't let one blip (redeploy, network hiccup) abort a long human
-      // wait — retry a few times before surfacing the error.
-      transientFailures += 1;
-      if (transientFailures >= 5) throw err;
+      const stopRes = await postHostTool(toolName, {
+        ...(input ?? {}),
+        waitRequestId: result.wait.requestId,
+        stopWaiting: true,
+      });
+      if (stopRes && stopRes.finalized === true) return stopRes;
+    } catch {
+      // Marker clearing is best-effort; the still-pending guidance below is
+      // still correct and the marker TTL expires on its own.
     }
+    return {
+      ok: true,
+      status: "still-pending",
+      content:
+        (typeof result.pendingGuidance === "string" && result.pendingGuidance) ||
+        ("The user has not finished this yet — the request is still pending and the modal stays open in their workspace. " +
+          "Do NOT report it as dismissed or declined. Continue other work or end your turn; " +
+          "you'll get a system note when the user completes it, and calling the tool again later is safe."),
+    };
   }
   return result;
 }

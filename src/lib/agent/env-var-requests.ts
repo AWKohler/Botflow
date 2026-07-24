@@ -177,8 +177,23 @@ export async function pollEnvVarRequest(params: {
     if (row.status === "dismissed") return "dismissed";
   }
   // Giving up: drop the wait marker NOW so a submit seconds later correctly
-  // notifies the agent instead of assuming an active waiter.
-  void clearAgentWaiting("env-var", params.requestId);
+  // notifies the agent instead of assuming an active waiter, then do one
+  // FINAL status read — a save that landed between the last poll and the
+  // marker clear would otherwise be swallowed (the modal saw an active
+  // waiter, so no system-note, but no poller will ever read the result).
+  await clearAgentWaiting("env-var", params.requestId);
+  const [finalRow] = await db
+    .select({ status: envVarRequests.status })
+    .from(envVarRequests)
+    .where(
+      and(
+        eq(envVarRequests.id, params.requestId),
+        eq(envVarRequests.projectId, params.projectId),
+      ),
+    )
+    .limit(1);
+  if (finalRow?.status === "completed") return "completed";
+  if (finalRow?.status === "dismissed") return "dismissed";
   return "timeout";
 }
 

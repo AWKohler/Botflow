@@ -14,6 +14,10 @@ import { eq, and, lt } from "drizzle-orm";
 import { encryptSecret, decryptSecret } from "@/lib/secrets";
 import { buildOAuthEnvVars, signAppleClientSecret } from "@/lib/oauth-providers/server";
 import {
+  buildCookieFixGuidance,
+  fixAuthCookiesPackageJsonLine,
+} from "@/lib/convex-auth-cookie-fix";
+import {
   OAUTH_PROVIDERS,
   OAUTH_PROVIDER_IDS,
   oauthCallbackUrl,
@@ -353,13 +357,16 @@ http.route({
 //   finish → the post-callback redirectTo target; redeems code + verifier for
 //            tokens and hands them to the app exactly like the password path.
 
-// The verifier cookie needs the same cross-site attributes Convex Auth uses
-// for its PKCE/state cookies, or Safari drops it on the provider round-trip
-// (top-level cross-site navigation back to this origin).
+// The verifier cookie needs SameSite=None; Secure so it survives the
+// provider round-trip (top-level cross-site navigation back to this origin).
+// Deliberately NO "Partitioned": WebKit drops CHIPS cookies across that
+// top-level origin flip, which loses the verifier and fails the token
+// exchange — the same mobile-Safari bug the fix-auth-cookies postinstall
+// patches out of @convex-dev/auth's own PKCE cookies.
 const VERIFIER_COOKIE = "botflow_oauth_verifier";
-const VERIFIER_COOKIE_ATTRS = "; Max-Age=900; Path=/; Secure; HttpOnly; SameSite=None; Partitioned";
+const VERIFIER_COOKIE_ATTRS = "; Max-Age=900; Path=/; Secure; HttpOnly; SameSite=None";
 const CLEAR_VERIFIER_COOKIE =
-  VERIFIER_COOKIE + "=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None; Partitioned";
+  VERIFIER_COOKIE + "=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None";
 
 function readCookie(request: Request, name: string): string {
   const header = request.headers.get("Cookie") || "";
@@ -649,12 +656,18 @@ FILES WRITTEN (WRITE THESE EXACTLY AS PROVIDED IN THE files ARRAY):
                            needed once you add an OAuth provider — see below.
 
 REQUIRED SEQUENCE AFTER WRITING FILES:
-  1. pnpm add @convex-dev/auth @auth/core
-  2. convexDeploy  ← MUST run this before the frontend can sign in
-  3. After wiring the sign-in form, sign up with a test email then call
+  1. Add the mobile-Safari OAuth cookie-fix postinstall entry to package.json
+     (see MOBILE SAFARI OAUTH COOKIE FIX below — copy the line exactly).
+  2. pnpm add @convex-dev/auth @auth/core   (the postinstall runs during this
+     install; its "[fix-auth-cookies]" line in the output confirms it)
+  3. convexDeploy  ← MUST run this before the frontend can sign in
+  4. After wiring the sign-in form, sign up with a test email then call
      getBrowserLog. If the catch handler fires, READ the logged error before
      deciding what to tell the user — do NOT assume "email taken." Most auth
      bugs surface as console errors here.
+
+─────────────────────────────────────────────────────────────
+${buildCookieFixGuidance()}
 
 ─────────────────────────────────────────────────────────────
 BACKEND PATTERN — protecting queries and mutations:
@@ -789,17 +802,26 @@ ${buildOAuthProviderGuidance()}
 
   Step 1 — Call setupOAuthProvider({ provider: "<id>" }). It opens the modal
            (which shows the user the redirect URI to register,
-           ${convexSiteUrl}/api/auth/callback/<id>) and BLOCKS until the user
-           completes or dismisses it (up to 5 minutes). On ok: true the
-           provider's env vars are set on the deployment — you never see them.
+           ${convexSiteUrl}/api/auth/callback/<id>) and waits briefly. Console
+           setup takes the user minutes, so a 'still-pending' result is NORMAL:
+           the modal stays open — continue other work or end your turn, and a
+           system note arrives when they save; then call setupOAuthProvider
+           again (it is idempotent: once credentials are saved it returns
+           instantly with the registration snippet). On ok: true the provider's
+           env vars are set on the deployment — you never see them.
            Until ok: true is returned, do NOT edit convex/auth.ts, add or expose
            a provider sign-in button, or claim that provider setup is complete.
 
-  Step 2 — After ok: true, edit convex/auth.ts: add the provider's import (see
-           the list above) and add it to the providers array alongside Password.
-           Keep the existing callbacks.redirect block intact — only edit the
-           providers array. Pass NO arguments to the provider; Microsoft and
-           Apple read their extra env vars (issuer / client secret) automatically.
+  Step 2 — After ok: true, edit convex/auth.ts: add the provider's import and
+           register it in the providers array alongside Password (and any
+           providers already there) using the provider expression from the list
+           above EXACTLY as written. Where the expression includes arguments —
+           Apple's custom profile() mapping — they are REQUIRED: Apple's default
+           profile returns image: null, which the authTables users schema
+           rejects, and every first sign-in fails with a schema-validation
+           error. Secrets (Microsoft issuer, Apple client secret) are read from
+           env automatically — never inline credentials. Keep the existing
+           callbacks.redirect block intact — only edit the providers array.
 
   Step 3 — Run convexDeploy to push the updated auth config.
 
@@ -822,6 +844,17 @@ ${buildOAuthProviderGuidance()}
              import { useEffect } from "react";
              import { resumePendingOAuthSignIn } from "@/lib/botflowAuth";
              useEffect(() => { resumePendingOAuthSignIn(signIn); }, [signIn]);
+
+  Step 5 — VERIFY before declaring the provider done. You cannot complete
+           OAuth from the preview iframe yourself, so ask the user to do ONE
+           test sign-in with the provider, then immediately check
+           getConvexLogs for auth errors (failures surface as auth:store /
+           auth:signIn errors — schema validation, token exchange, redirect
+           mismatches). Only report success after a clean test sign-in;
+           "deployed" is not "working". If the user reports sign-in failing
+           on MOBILE while desktop works, first confirm the
+           "[fix-auth-cookies]" postinstall entry exists in package.json and
+           a convexDeploy ran after it was added.
 
   APPLE — extra: Apple returns the user's name/email ONLY on the first sign-in.
   If you need their name, capture it then (it is never sent again). Apple also
@@ -885,9 +918,25 @@ WHAT YOU MUST DO AFTER setupAuth RETURNS:
      schema, MERGE your existing tables into the new one (keep ...authTables).
      NOTE: if the returned http.ts also mounts /revenuecat/webhook, KEEP that
      route exactly as provided — it receives the platform's payment events.
-  2. cd convex && pnpm add @convex-dev/auth @auth/core   (deps for the backend)
-  3. Run convexDeploy. The sign-in page and auth functions are NOT live until you do.
-  4. That is it for enabling sign-in — do NOT edit ConvexConfig.swift (platform-
+  2. Add the mobile-WebKit OAuth cookie-fix postinstall to the SAME
+     package.json that will carry @convex-dev/auth (the one your pnpm add in
+     step 3 modifies — postinstall runs in that package.json's own directory,
+     which is exactly where the fix script must scan). Copy this line into
+     its "scripts" object EXACTLY as written (one long line; if a postinstall
+     already exists, chain with " && "):
+
+       ${fixAuthCookiesPackageJsonLine()}
+
+     Why: @convex-dev/auth's OAuth cookies carry \`partitioned: true\`, which
+     WebKit drops across the sign-in round-trip — the in-app-browser flow
+     (ASWebAuthenticationSession IS WebKit) then fails the token exchange.
+     The script strips that attribute; it is idempotent and also runs inside
+     every Convex deploy. After installing, READ its "[fix-auth-cookies]"
+     output line: "patched"/"ok" = in place; "WARNING" = could not land,
+     follow its instructions; no line at all = the entry was mis-pasted.
+  3. pnpm add @convex-dev/auth @auth/core   (in that same directory)
+  4. Run convexDeploy. The sign-in page and auth functions are NOT live until you do.
+  5. That is it for enabling sign-in — do NOT edit ConvexConfig.swift (platform-
      managed) and do NOT build a native login form; the hosted page IS the form.
 
 PROTECTING DATA — tolerant reads, strict writes (IMPORTANT):
@@ -944,6 +993,13 @@ OAUTH / SOCIAL SIGN-IN (Google, GitHub, Microsoft, Apple):
   • If this project's convex/http.ts predates OAuth support (it has no
     /auth/oauth/start route), call setupAuth again to get the refreshed
     http.ts before deploying.
+  • If convex/http.ts sets "Partitioned" on the botflow_oauth_verifier cookie
+    (older scaffold), call setupAuth again for the refreshed http.ts and
+    redeploy — WebKit drops partitioned cookies across the OAuth round-trip
+    and sign-in fails in the in-app browser.
+  • VERIFY before declaring a provider done: ask the user for ONE test
+    sign-in from the app, then check getConvexLogs for auth:store /
+    auth:signIn errors. Only report success after a clean test sign-in.
   • APP STORE RULE (nudge, don't force): guideline 4.8 requires iOS apps that
     offer third-party login (Google/GitHub/Microsoft) to ALSO offer Sign in
     with Apple. When the user enables one of those, tell them this and
