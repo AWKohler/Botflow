@@ -9,7 +9,7 @@ import {
   getConvexAggregates,
   getWebhookHealth,
 } from '@/lib/panel/queries';
-import { planPriceUsd, planPricesConfigured, creditsToUsd } from '@/lib/panel/pricing';
+import { planPriceUsd, creditsToUsd } from '@/lib/panel/pricing';
 import { getStripeRevenue } from '@/lib/panel/stripe';
 import { getMonthlyLimit } from '@/lib/credits';
 import type { Tier } from '@/lib/tier-shared';
@@ -143,7 +143,8 @@ async function computeOverview() {
     revenue: {
       mrrUsd,
       estimated: true,
-      pricesConfigured: planPricesConfigured(),
+      proPriceUsd: planPriceUsd('pro'),
+      maxPriceUsd: planPriceUsd('max'),
       paidPro,
       paidMax,
       subscribers: paidPro + paidMax,

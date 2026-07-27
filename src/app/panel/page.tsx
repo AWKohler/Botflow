@@ -21,7 +21,8 @@ interface OverviewData {
   revenue: {
     mrrUsd: number;
     estimated: boolean;
-    pricesConfigured: boolean;
+    proPriceUsd: number;
+    maxPriceUsd: number;
     paidPro: number;
     paidMax: number;
     subscribers: number;
@@ -176,11 +177,9 @@ export default function PanelOverviewPage() {
 
       <Section
         title="Revenue — plan estimate"
-        hint={
-          revenue.pricesConfigured
-            ? 'subscribers × configured plan price'
-            : 'DEFAULT prices — set PANEL_PRICE_PRO_USD / PANEL_PRICE_MAX_USD'
-        }
+        hint={`subscribers × plan price (${fmtUsd(revenue.proPriceUsd)} Pro / ${fmtUsd(
+          revenue.maxPriceUsd,
+        )} Max)`}
       >
         <StatGrid>
           <StatTile label="MRR (est.)" value={fmtUsd(revenue.mrrUsd)}

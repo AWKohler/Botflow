@@ -16,7 +16,11 @@ function envNum(key: string, fallback: number): number {
   return isNaN(n) ? fallback : n;
 }
 
-/** Monthly sticker price per tier, USD. Tune via env without a deploy. */
+/**
+ * Monthly sticker price per tier, USD. The defaults are the real published
+ * prices (confirmed 2026-07-27); env vars exist to retune them without a
+ * deploy if pricing changes, not because the defaults are placeholders.
+ */
 export function planPriceUsd(tier: Tier): number {
   switch (tier) {
     case 'free':
@@ -24,13 +28,8 @@ export function planPriceUsd(tier: Tier): number {
     case 'pro':
       return envNum('PANEL_PRICE_PRO_USD', 20);
     case 'max':
-      return envNum('PANEL_PRICE_MAX_USD', 100);
+      return envNum('PANEL_PRICE_MAX_USD', 50);
   }
-}
-
-/** Whether the operator has overridden the default sticker prices. */
-export function planPricesConfigured(): boolean {
-  return Boolean(process.env.PANEL_PRICE_PRO_USD && process.env.PANEL_PRICE_MAX_USD);
 }
 
 // 1 credit = 1 MiniMax uncached input token = $0.30 / 1M tokens. Matches
