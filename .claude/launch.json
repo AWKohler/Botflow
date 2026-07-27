@@ -6,6 +6,12 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["dev", "--port", "3001"],
       "port": 3001
+    },
+    {
+      "name": "panel-dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev", "--port", "3002"],
+      "port": 3002
     }
   ]
 }

@@ -4,6 +4,7 @@ import { classifyApiRequest } from '@/lib/rate-limit-classify';
 
 const isProtectedRoute = createRouteMatcher([
   '/workspace(.*)',
+  '/panel(.*)',
   '/api/(.*)'
 ]);
 
