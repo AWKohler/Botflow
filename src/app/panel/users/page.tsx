@@ -45,6 +45,10 @@ interface UserRow {
   models: string[];
   budgetUtilPct: number;
   monthRevenueUsd: number;
+  revenueBasis: 'stripe' | 'estimate';
+  lifetimeRevenueUsd: number;
+  stripeMonthRevenueUsd: number;
+  stripeSubscription: { status: string; product: string; monthlyUsd: number } | null;
   monthMarginUsd: number;
 }
 
@@ -52,6 +56,14 @@ interface UsersData {
   rows: UserRow[];
   totalCount: number;
   truncated: boolean;
+  stripe: {
+    configured: boolean;
+    error: string | null;
+    attributedUsers: number;
+    unattributedRevenueUsd: number;
+    unattributedPayers: number;
+    lifetimeNetUsd: number;
+  };
   generatedAt: string;
 }
 
@@ -59,6 +71,7 @@ type SortKey =
   | 'monthMarginUsd'
   | 'monthCostUsd'
   | 'monthRevenueUsd'
+  | 'lifetimeRevenueUsd'
   | 'lifetimeCostUsd'
   | 'projectCount'
   | 'convexInstances'
@@ -67,9 +80,10 @@ type SortKey =
   | 'joinedAt';
 
 const COLUMNS: Array<{ key: SortKey; label: string; title?: string }> = [
-  { key: 'monthMarginUsd', label: 'Margin/mo', title: 'Est. revenue − LLM cost, this month' },
-  { key: 'monthRevenueUsd', label: 'Revenue/mo' },
+  { key: 'monthMarginUsd', label: 'Margin/mo', title: 'Revenue − LLM cost, this month' },
+  { key: 'monthRevenueUsd', label: 'Revenue/mo', title: 'Stripe subscription if linked, else plan sticker price' },
   { key: 'monthCostUsd', label: 'Cost/mo' },
+  { key: 'lifetimeRevenueUsd', label: 'Lifetime rev', title: 'Real Stripe revenue, net of refunds' },
   { key: 'lifetimeCostUsd', label: 'Lifetime cost' },
   { key: 'budgetUtilPct', label: 'Budget' },
   { key: 'projectCount', label: 'Projects' },
@@ -207,8 +221,20 @@ export default function PanelUsersPage() {
         </table>
       </div>
       <p className="text-xs text-muted mt-3">
-        Margin = estimated plan revenue − platform LLM cost this month. Sandbox and
-        Convex costs aren&apos;t metered per-user yet, so margin is an upper bound.
+        Revenue/mo is a live Stripe subscription where one is linked to the user,
+        otherwise the plan sticker price. Lifetime rev is real Stripe money, net of
+        refunds. Margin = revenue − platform LLM cost this month; sandbox and Convex
+        costs aren&apos;t metered per-user yet, so margin is an upper bound.
+        {data.stripe.configured && data.stripe.unattributedRevenueUsd > 0 && (
+          <>
+            {' '}
+            {fmtUsd(data.stripe.unattributedRevenueUsd)} of lifetime Stripe revenue
+            (from {data.stripe.unattributedPayers} customer
+            {data.stripe.unattributedPayers === 1 ? '' : 's'} with no Clerk id) is not
+            attributed to any row.
+          </>
+        )}
+        {data.stripe.error && <> Stripe unavailable: {data.stripe.error}</>}
       </p>
     </div>
   );
@@ -256,8 +282,18 @@ function UserTableRow({
           marginNegative ? 'text-red-600 dark:text-red-400' : 'text-fg')}>
           {fmtUsd(row.monthMarginUsd)}
         </td>
-        <td className="px-3 py-2.5 tabular-nums text-fg">{fmtUsd(row.monthRevenueUsd)}</td>
+        <td className="px-3 py-2.5 tabular-nums text-fg whitespace-nowrap">
+          {fmtUsd(row.monthRevenueUsd)}
+          {row.revenueBasis === 'stripe' && (
+            <span className="text-xs text-muted ml-1" title="from a live Stripe subscription">
+              live
+            </span>
+          )}
+        </td>
         <td className="px-3 py-2.5 tabular-nums text-fg">{fmtUsd(row.monthCostUsd)}</td>
+        <td className={cn('px-3 py-2.5 tabular-nums', row.lifetimeRevenueUsd > 0 ? 'text-fg font-medium' : 'text-muted')}>
+          {fmtUsd(row.lifetimeRevenueUsd)}
+        </td>
         <td className="px-3 py-2.5 tabular-nums text-fg">{fmtUsd(row.lifetimeCostUsd)}</td>
         <td className="px-3 py-2.5"><Meter pct={row.budgetUtilPct} /></td>
         <td className="px-3 py-2.5 tabular-nums text-fg">{row.projectCount}</td>
@@ -274,7 +310,7 @@ function UserTableRow({
       </tr>
       {expanded && (
         <tr className="border-b border-border/60 bg-elevated/30">
-          <td colSpan={10} className="px-3 py-3">
+          <td colSpan={COLUMNS.length + 1} className="px-3 py-3">
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-x-6 gap-y-2 text-xs">
               <Detail label="User ID" value={row.userId} mono />
               <Detail label="Turns this month" value={fmtNum(row.monthTurns)} />
@@ -287,6 +323,15 @@ function UserTableRow({
               <Detail label="RevenueCat" value={String(row.revenuecatProjects)} />
               <Detail label="Managed domains" value={String(row.managedDomains)} />
               <Detail label="Last sign-in" value={timeAgo(row.lastSignInAt)} />
+              <Detail label="Stripe rev, this month" value={fmtUsd(row.stripeMonthRevenueUsd)} />
+              <Detail
+                label="Stripe subscription"
+                value={
+                  row.stripeSubscription
+                    ? `${row.stripeSubscription.product} · ${fmtUsd(row.stripeSubscription.monthlyUsd)}/mo · ${row.stripeSubscription.status}`
+                    : '—'
+                }
+              />
               <Detail
                 label="Models used"
                 value={row.models.length ? row.models.join(', ') : '—'}

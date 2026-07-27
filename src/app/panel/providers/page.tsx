@@ -38,6 +38,16 @@ interface ProvidersData {
     error?: string;
     databases?: Array<{ name: string; region: string; state: string; type: string }>;
   };
+  stripe: {
+    configured: boolean;
+    error: string | null;
+    account: { id: string; name: string | null } | null;
+    mrrUsd: number;
+    lifetimeNetUsd: number;
+    last30dNetUsd: number;
+    payingCustomers: number;
+    products: Array<{ name: string; monthlyUsd: number; active: boolean }>;
+  };
   meteredThisMonth: Array<{
     provider: string;
     costUsd: number;
@@ -48,6 +58,7 @@ interface ProvidersData {
 }
 
 const DASHBOARDS: Record<string, string> = {
+  stripe: 'https://dashboard.stripe.com',
   openai: 'https://platform.openai.com/usage',
   anthropic: 'https://console.anthropic.com/settings/usage',
   fireworks: 'https://fireworks.ai/account/billing',
@@ -106,7 +117,7 @@ export default function PanelProvidersPage() {
   if (loading) return <LoadingState />;
   if (error || !data) return <ErrorState message={error ?? 'No data'} />;
 
-  const { openai, neon, upstash, meteredThisMonth } = data;
+  const { openai, neon, upstash, stripe, meteredThisMonth } = data;
 
   return (
     <div>
@@ -140,6 +151,53 @@ export default function PanelProvidersPage() {
 
       <Section title="Provider accounts">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Stripe — live revenue */}
+          <ProviderCard
+            name="Stripe"
+            dashboardKey="stripe"
+            status={
+              !stripe.configured ? (
+                <StatusPill kind="neutral" label="not configured" />
+              ) : stripe.error ? (
+                <StatusPill kind="warning" label="error" />
+              ) : (
+                <StatusPill kind="good" label="live" />
+              )
+            }
+          >
+            {!stripe.configured && (
+              <p className="text-sm text-muted">
+                Set <code className="font-mono text-xs">STRIPE_READ_ONLY_KEY</code> (restricted
+                read key) to pull real revenue.
+              </p>
+            )}
+            {stripe.error && <p className="text-sm text-muted break-words">{stripe.error}</p>}
+            {stripe.configured && !stripe.error && (
+              <>
+                <div className="text-2xl font-semibold tracking-tight text-fg mb-1">
+                  {fmtUsd(stripe.mrrUsd, { cents: true })}
+                  <span className="text-xs font-normal text-muted ml-2">
+                    MRR · {fmtUsd(stripe.lifetimeNetUsd, { cents: true })} lifetime
+                  </span>
+                </div>
+                <div className="text-xs text-muted mb-2">
+                  {stripe.account?.name ?? stripe.account?.id} · {stripe.payingCustomers} paying
+                  customers · {fmtUsd(stripe.last30dNetUsd, { cents: true })} last 30d
+                </div>
+                <div className="space-y-1">
+                  {stripe.products.map((p) => (
+                    <div key={p.name} className="flex justify-between text-xs">
+                      <span className="text-muted truncate mr-2">{p.name}</span>
+                      <span className="tabular-nums text-fg">
+                        {fmtUsd(p.monthlyUsd, { cents: true })}/mo
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </ProviderCard>
+
           {/* OpenAI — live Costs API */}
           <ProviderCard
             name="OpenAI"

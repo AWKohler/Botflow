@@ -27,7 +27,34 @@ interface OverviewData {
     subscribers: number;
     betaUsers: number;
     grossMarginUsd: number;
+    marginBasis: 'stripe' | 'estimate';
     llmCostThisMonthUsd: number;
+  };
+  stripe: {
+    configured: boolean;
+    error: string | null;
+    account: { id: string; name: string | null } | null;
+    mrrUsd: number;
+    subscriptions: {
+      total: number;
+      byStatus: Array<{ status: string; count: number }>;
+      pastDue: number;
+      canceledLast30d: number;
+      linkedToClerk: number;
+    };
+    revenue: {
+      lifetimeGrossUsd: number;
+      lifetimeRefundedUsd: number;
+      lifetimeNetUsd: number;
+      last30dNetUsd: number;
+      payingCustomers: number;
+      unlinkedNetUsd: number;
+      unlinkedPayers: number;
+    };
+    health: { failedChargesLast30d: number; currencies: string[] };
+    products: Array<{ name: string; monthlyUsd: number; active: boolean }>;
+    attributedUsers: number;
+    truncated: boolean;
   };
   users: {
     total: number;
@@ -81,7 +108,7 @@ export default function PanelOverviewPage() {
   if (loading) return <LoadingState />;
   if (error || !data) return <ErrorState message={error ?? 'No data'} />;
 
-  const { revenue, users, usage, activity, alerts } = data;
+  const { revenue, users, usage, activity, alerts, stripe } = data;
 
   return (
     <div>
@@ -109,25 +136,59 @@ export default function PanelOverviewPage() {
         </Section>
       )}
 
+      {stripe.configured && !stripe.error && (
+        <Section
+          title="Revenue — Stripe"
+          hint={`actual, from ${stripe.account?.name ?? 'the platform account'}${
+            stripe.truncated ? ' (paged data truncated — figures are a lower bound)' : ''
+          }`}
+        >
+          <StatGrid>
+            <StatTile label="MRR (actual)" value={fmtUsd(stripe.mrrUsd)} accent
+              sub={`${stripe.subscriptions.byStatus.find((s) => s.status === 'active')?.count ?? 0} active sub${
+                (stripe.subscriptions.byStatus.find((s) => s.status === 'active')?.count ?? 0) === 1 ? '' : 's'
+              }`} />
+            <StatTile label="Lifetime revenue" value={fmtUsd(stripe.revenue.lifetimeNetUsd, { cents: true })}
+              sub={`net of ${fmtUsd(stripe.revenue.lifetimeRefundedUsd, { cents: true })} refunded`} />
+            <StatTile label="Revenue, last 30d" value={fmtUsd(stripe.revenue.last30dNetUsd, { cents: true })} />
+            <StatTile label="Paying customers" value={String(stripe.revenue.payingCustomers)}
+              sub={`${stripe.attributedUsers} linked to a Clerk user`} />
+            <StatTile label="Past due" value={String(stripe.subscriptions.pastDue)}
+              warn={stripe.subscriptions.pastDue > 0} sub="failing payments" />
+            <StatTile label="Canceled, 30d" value={String(stripe.subscriptions.canceledLast30d)}
+              warn={stripe.subscriptions.canceledLast30d > 0} sub="churn" />
+          </StatGrid>
+          {stripe.revenue.unlinkedNetUsd > 0 && (
+            <p className="text-xs text-muted mt-3">
+              {fmtUsd(stripe.revenue.unlinkedNetUsd)} of lifetime revenue comes from{' '}
+              {stripe.revenue.unlinkedPayers} customer
+              {stripe.revenue.unlinkedPayers === 1 ? '' : 's'} with no Clerk id in metadata
+              (legacy products: {stripe.products.map((p) => p.name).join(', ') || 'n/a'}) — that
+              revenue can&apos;t be attributed to a user in the table.
+            </p>
+          )}
+        </Section>
+      )}
+
       <Section
-        title="Revenue"
+        title="Revenue — plan estimate"
         hint={
           revenue.pricesConfigured
-            ? 'estimated: subscribers × configured plan price'
-            : 'estimated with DEFAULT prices — set PANEL_PRICE_PRO_USD / PANEL_PRICE_MAX_USD'
+            ? 'subscribers × configured plan price'
+            : 'DEFAULT prices — set PANEL_PRICE_PRO_USD / PANEL_PRICE_MAX_USD'
         }
       >
         <StatGrid>
-          <StatTile label="MRR (est.)" value={fmtUsd(revenue.mrrUsd)} accent
+          <StatTile label="MRR (est.)" value={fmtUsd(revenue.mrrUsd)}
             sub={`${revenue.subscribers} paying subscriber${revenue.subscribers === 1 ? '' : 's'}`} />
           <StatTile label="Pro subscribers" value={String(revenue.paidPro)} />
           <StatTile label="Max subscribers" value={String(revenue.paidMax)} />
           <StatTile label="LLM cost this month" value={fmtUsd(revenue.llmCostThisMonthUsd)} />
           <StatTile
-            label="Gross margin (est.)"
+            label="Gross margin"
             value={fmtUsd(revenue.grossMarginUsd)}
             warn={revenue.grossMarginUsd < 0}
-            sub="MRR − LLM cost; excludes sandbox/Convex"
+            sub={`${revenue.marginBasis === 'stripe' ? 'Stripe MRR' : 'est. MRR'} − LLM cost; excludes sandbox/Convex`}
           />
           <StatTile label="Lifetime LLM cost" value={fmtUsd(usage.lifetimeCostUsd)} />
         </StatGrid>

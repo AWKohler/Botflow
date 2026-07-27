@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requirePanelAdmin } from '@/lib/panel/auth';
 import { panelCached } from '@/lib/panel/cache';
 import { getUsageOverview } from '@/lib/panel/queries';
+import { getStripeRevenue } from '@/lib/panel/stripe';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -203,11 +204,12 @@ function providerOfModel(model: string): string {
 }
 
 async function computeProviders() {
-  const [openai, neon, upstash, usage] = await Promise.all([
+  const [openai, neon, upstash, usage, stripe] = await Promise.all([
     fetchOpenAICosts(),
     fetchNeon(),
     fetchUpstash(),
     getUsageOverview(),
+    getStripeRevenue(),
   ]);
 
   const meteredByProvider = new Map<
@@ -239,6 +241,16 @@ async function computeProviders() {
     google: { configured: false, dashboardOnly: true },
     neon,
     upstash,
+    stripe: {
+      configured: stripe.configured,
+      error: stripe.error ?? null,
+      account: stripe.account ?? null,
+      mrrUsd: stripe.mrrUsd,
+      lifetimeNetUsd: stripe.revenue.lifetimeNetUsd,
+      last30dNetUsd: stripe.revenue.last30dNetUsd,
+      payingCustomers: stripe.revenue.payingCustomers,
+      products: stripe.products,
+    },
     // Our own settlement records (what the platform actually metered), for
     // cross-checking provider dashboards.
     meteredThisMonth: [...meteredByProvider.entries()]

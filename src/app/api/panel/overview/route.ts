@@ -10,6 +10,7 @@ import {
   getWebhookHealth,
 } from '@/lib/panel/queries';
 import { planPriceUsd, planPricesConfigured, creditsToUsd } from '@/lib/panel/pricing';
+import { getStripeRevenue } from '@/lib/panel/stripe';
 import { getMonthlyLimit } from '@/lib/credits';
 import type { Tier } from '@/lib/tier-shared';
 
@@ -23,14 +24,16 @@ export interface PanelAlert {
 }
 
 async function computeOverview() {
-  const [directory, usage, perUser, projects, convex, webhooks] = await Promise.all([
-    getPanelUserDirectory(),
-    getUsageOverview(),
-    getPerUserUsage(),
-    getProjectAggregates(),
-    getConvexAggregates(),
-    getWebhookHealth(),
-  ]);
+  const [directory, usage, perUser, projects, convex, webhooks, stripe] =
+    await Promise.all([
+      getPanelUserDirectory(),
+      getUsageOverview(),
+      getPerUserUsage(),
+      getProjectAggregates(),
+      getConvexAggregates(),
+      getWebhookHealth(),
+      getStripeRevenue(),
+    ]);
 
   // ── Subscribers & estimated MRR ───────────────────────────────────────────
   // Beta users get a pro-tier FLOOR but pay nothing — MRR counts only users
@@ -48,9 +51,12 @@ async function computeOverview() {
     (u) => now - Date.parse(u.createdAt) < 30 * 864e5,
   ).length;
 
-  // ── Margin (estimated revenue − platform LLM cost, this month) ────────────
+  // ── Margin ────────────────────────────────────────────────────────────────
+  // Prefer Stripe's real MRR when the account has any live subscription;
+  // otherwise fall back to the plan-price estimate so margin is never blank.
   const llmCostThisMonth = usage.thisMonth.costUsd;
-  const grossMarginUsd = mrrUsd - llmCostThisMonth;
+  const mrrForMargin = stripe.configured && stripe.mrrUsd > 0 ? stripe.mrrUsd : mrrUsd;
+  const grossMarginUsd = mrrForMargin - llmCostThisMonth;
 
   // ── Budget pressure: paying users near their monthly credit ceiling ───────
   const tierOf = new Map(directory.users.map((u) => [u.userId, u.tier]));
@@ -109,6 +115,39 @@ async function computeOverview() {
       label: 'Users near credit ceiling',
       detail: `${usersOver80Pct} user(s) have used ≥80% of their monthly credit budget.`,
     });
+  if (stripe.error)
+    alerts.push({
+      severity: 'warning',
+      label: 'Stripe unreachable',
+      detail: stripe.error,
+    });
+  if (stripe.subscriptions.pastDue > 0)
+    alerts.push({
+      severity: 'serious',
+      label: 'Subscriptions past due',
+      detail: `${stripe.subscriptions.pastDue} live subscription(s) are past_due — payment is failing.`,
+    });
+  if (stripe.health.failedChargesLast30d > 0)
+    alerts.push({
+      severity: 'warning',
+      label: 'Failed charges',
+      detail: `${stripe.health.failedChargesLast30d} charge(s) failed in the last 30 days.`,
+    });
+  // The headline discrepancy: real subscription revenue exists but none of it
+  // is attributable to a Clerk user, so per-user revenue can't be trusted.
+  if (
+    stripe.configured &&
+    !stripe.error &&
+    stripe.mrrUsd > 0 &&
+    stripe.subscriptions.linkedToClerk === 0
+  )
+    alerts.push({
+      severity: 'warning',
+      label: 'Stripe subscriptions not linked to Clerk',
+      detail:
+        `$${stripe.mrrUsd.toFixed(2)}/mo of live subscription revenue comes from customers with no ` +
+        `Clerk user id in metadata (legacy products). Per-user revenue attribution is incomplete.`,
+    });
 
   return {
     revenue: {
@@ -120,7 +159,20 @@ async function computeOverview() {
       subscribers: paidPro + paidMax,
       betaUsers,
       grossMarginUsd,
+      marginBasis: stripe.configured && stripe.mrrUsd > 0 ? 'stripe' : 'estimate',
       llmCostThisMonthUsd: llmCostThisMonth,
+    },
+    stripe: {
+      configured: stripe.configured,
+      error: stripe.error ?? null,
+      account: stripe.account ?? null,
+      mrrUsd: stripe.mrrUsd,
+      subscriptions: stripe.subscriptions,
+      revenue: stripe.revenue,
+      health: stripe.health,
+      products: stripe.products,
+      attributedUsers: Object.keys(stripe.byClerkUserId).length,
+      truncated: stripe.truncated,
     },
     users: {
       total: directory.totalCount,
