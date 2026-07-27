@@ -45,6 +45,8 @@ To update: `cd ~/Documents/sandbox-host/sdk && pnpm build && npm pack
 | `SANDBOX_HOST_TEAM_ID` / `SANDBOX_HOST_PROJECT_ID` | Tenant scoping; default `default`. |
 | `SANDBOX_HOST_ENABLED` | `"1"` routes **new** free-tier projects to sandbox-host. Off by default. |
 | `SANDBOX_HOST_STRICT` | `"1"` makes free-tier provider selection THROW instead of silently falling back to Vercel. Testing aid — leave off in production. |
+| `SANDBOX_HOST_OVERFLOW_TO_VERCEL` | `"1"` lets a **new** free-tier project go to Vercel when the host has no free slot (or is unreachable), instead of being stamped `sandbox-host` and hitting the "at capacity" wall on first open. **Off by default** (`0`) — overflow costs real Vercel spend and is sticky for the project's life. |
+| `SANDBOX_HOST_MAX_SESSIONS` | Soft capacity threshold for the overflow probe; keep in sync with the host's per-token `maxSessions` in `/etc/sandbox-host/api.json` (default 25). |
 | `PREVIEW_SIGNING_SECRET` | Shared with the host's `previewSigningSecret`; when set, sandbox-host preview URLs get a signed `?_bft` token. Unset = no-op (host running capability-URL-only). |
 
 Credentials are always passed per-call — never via the SDK's own
@@ -132,9 +134,18 @@ downgrade — existing projects stay on Vercel; only the reaper retires them.
   allow-all. Free-tier workloads (vite templates, pnpm, GitHub, publish
   builds) fit; anything new that needs another domain must be added to the
   host's admin ceiling.
-- **Concurrency: 25 running VMs per token** (`maxSessions`; ~62 GB ÷ 2 GB/VM with headroom). 429s surface through the
-  existing `withSandboxRetry` / `SandboxRateLimitError` path. Watch this as
-  free-tier adoption grows; it's a host-side capacity knob.
+- **Concurrency: 25 running VMs per token** (`maxSessions`). The box has ~59
+  GiB usable and every session is a fixed 2 GiB (2048 MiB × 1 vCPU), so ~29
+  VMs is the hard ceiling; 25 leaves room for the host OS,
+  Firecracker/jailer overhead, page cache, and the resume-over-commit burst
+  (reopens bypass the cap by design, so live usage can exceed 25). Raising it
+  toward 29 trades that safety margin for capacity — an OOM kill would take
+  running VMs with it. At the wall: **creates** 429 (surfacing through
+  `withSandboxRetry` / `SandboxAtCapacityError`) so a new project either
+  waits behind the "at capacity" toast or, with
+  `SANDBOX_HOST_OVERFLOW_TO_VERCEL=1`, is placed on Vercel instead;
+  **reopens of existing projects always succeed**, so capacity alone never
+  strands a user's data. Only a host *outage* does that.
 - **Free tier has `maxConvexProjects: 0`**, so the Convex/OAuth-redirect
   flows that would need a public sandbox URL don't apply to host projects
   today.

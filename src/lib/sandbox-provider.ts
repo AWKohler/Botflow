@@ -38,7 +38,25 @@
  *                                sandbox-host. Temporary rollout-testing aid so
  *                                misconfiguration is loud, not a silent Vercel
  *                                sandbox. Leave OFF in production.
+ *   SANDBOX_HOST_OVERFLOW_TO_VERCEL
+ *                              — "1" lets a NEW free-tier project fall back to
+ *                                Vercel when the host has no free session slot
+ *                                (or is unreachable), instead of being stamped
+ *                                'sandbox-host' and hitting an "at capacity"
+ *                                wall on first open. OFF by default: overflow
+ *                                costs real Vercel spend and is STICKY (the
+ *                                project stays on Vercel for life), so it's an
+ *                                explicit decision to trade money for
+ *                                availability. Only ever consulted at project
+ *                                CREATION, where no files exist yet — never for
+ *                                an existing project, which must always resolve
+ *                                to the backend holding its data.
+ *   SANDBOX_HOST_MAX_SESSIONS  — soft capacity threshold used by the overflow
+ *                                probe; keep in sync with the host's per-token
+ *                                `maxSessions` in /etc/sandbox-host/api.json
+ *                                (default 25).
  */
+import { Sandbox as HostSandbox } from "@sandbox-host/sdk";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
@@ -65,6 +83,67 @@ export function sandboxHostConfigured(): boolean {
  */
 export function sandboxHostRoutingEnabled(): boolean {
   return process.env.SANDBOX_HOST_ENABLED === "1" && sandboxHostConfigured();
+}
+
+/**
+ * Overflow switch: may a NEW free-tier project be placed on Vercel when the
+ * host has no free slot? See the env contract above for why this is opt-in.
+ */
+export function sandboxHostOverflowEnabled(): boolean {
+  return process.env.SANDBOX_HOST_OVERFLOW_TO_VERCEL === "1";
+}
+
+function hostMaxSessions(): number {
+  const raw = parseInt(process.env.SANDBOX_HOST_MAX_SESSIONS ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 25;
+}
+
+// The probe costs one HTTP round-trip to the host, so cache it briefly: a
+// burst of signups shouldn't turn into a burst of list calls. Short enough
+// that a freed slot is noticed almost immediately.
+const CAPACITY_CACHE_TTL_MS = 10_000;
+let capacityCache: { full: boolean; at: number } | null = null;
+
+/**
+ * True when the host has no free session slot — i.e. a create would 429 with
+ * `concurrency_limit`. Mirrors the service's own accounting exactly: it counts
+ * sandboxes in `running` or `pending` against the per-token `maxSessions`
+ * (cmd/api/handlers.go). Note this only bounds CREATES; the host deliberately
+ * lets resumes exceed the cap, so an existing project always reopens.
+ *
+ * Fails CLOSED (returns true) when the host can't be reached or listed: if we
+ * can't confirm a slot exists, a new project shouldn't be committed to a
+ * backend that may be full or down. With overflow disabled this is never
+ * called, so an unreachable host cannot change existing behavior.
+ */
+export async function sandboxHostAtCapacity(): Promise<boolean> {
+  const now = Date.now();
+  if (capacityCache && now - capacityCache.at < CAPACITY_CACHE_TTL_MS) {
+    return capacityCache.full;
+  }
+
+  let full: boolean;
+  try {
+    const creds = getSandboxHostCredentials();
+    const page = await HostSandbox.list({ ...creds });
+    const active = (page.sandboxes ?? []).filter(
+      (s: { status?: string }) => s.status === "running" || s.status === "pending",
+    ).length;
+    full = active >= hostMaxSessions();
+    if (full) {
+      console.warn(
+        `[sandbox-provider] host at capacity (${active}/${hostMaxSessions()}) — new free projects overflow to Vercel`,
+      );
+    }
+  } catch (e) {
+    console.warn(
+      `[sandbox-provider] capacity probe failed; treating host as unavailable: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    full = true;
+  }
+
+  capacityCache = { full, at: now };
+  return full;
 }
 
 /**
@@ -183,6 +262,16 @@ export async function chooseProviderForNewProject(
         `[sandbox-host strict] user ${userId} resolved to tier '${tier}', not free`,
       );
     }
+    return "vercel";
+  }
+
+  // Capacity-aware placement: only safe here, at creation, because the project
+  // has no files yet — so choosing Vercel strands nothing. Once stamped, the
+  // choice is permanent.
+  if (sandboxHostOverflowEnabled() && (await sandboxHostAtCapacity())) {
+    console.log(
+      `[sandbox-provider] overflowing new free project for ${userId} to Vercel (host full/unreachable)`,
+    );
     return "vercel";
   }
 
