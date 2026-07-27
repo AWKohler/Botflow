@@ -42,17 +42,19 @@ interface OverviewData {
       canceledLast30d: number;
       linkedToClerk: number;
     };
-    revenue: {
+    revenue: { lifetimeNetUsd: number; last30dNetUsd: number; payingCustomers: number };
+    legacy: {
+      mrrUsd: number;
+      lifetimeNetUsd: number;
+      payingCustomers: number;
+      productNames: string[];
+    };
+    accountTotals: {
       lifetimeGrossUsd: number;
       lifetimeRefundedUsd: number;
       lifetimeNetUsd: number;
-      last30dNetUsd: number;
-      payingCustomers: number;
-      unlinkedNetUsd: number;
-      unlinkedPayers: number;
     };
     health: { failedChargesLast30d: number; currencies: string[] };
-    products: Array<{ name: string; monthlyUsd: number; active: boolean }>;
     attributedUsers: number;
     truncated: boolean;
   };
@@ -144,27 +146,29 @@ export default function PanelOverviewPage() {
           }`}
         >
           <StatGrid>
-            <StatTile label="MRR (actual)" value={fmtUsd(stripe.mrrUsd)} accent
-              sub={`${stripe.subscriptions.byStatus.find((s) => s.status === 'active')?.count ?? 0} active sub${
-                (stripe.subscriptions.byStatus.find((s) => s.status === 'active')?.count ?? 0) === 1 ? '' : 's'
+            <StatTile label="MRR (actual)" value={fmtUsd(stripe.mrrUsd, { cents: true })} accent
+              sub={`${stripe.subscriptions.linkedToClerk} platform subscription${
+                stripe.subscriptions.linkedToClerk === 1 ? '' : 's'
               }`} />
             <StatTile label="Lifetime revenue" value={fmtUsd(stripe.revenue.lifetimeNetUsd, { cents: true })}
-              sub={`net of ${fmtUsd(stripe.revenue.lifetimeRefundedUsd, { cents: true })} refunded`} />
+              sub="net of refunds" />
             <StatTile label="Revenue, last 30d" value={fmtUsd(stripe.revenue.last30dNetUsd, { cents: true })} />
             <StatTile label="Paying customers" value={String(stripe.revenue.payingCustomers)}
-              sub={`${stripe.attributedUsers} linked to a Clerk user`} />
+              sub={`${stripe.attributedUsers} mapped to a Clerk user`} />
             <StatTile label="Past due" value={String(stripe.subscriptions.pastDue)}
               warn={stripe.subscriptions.pastDue > 0} sub="failing payments" />
             <StatTile label="Canceled, 30d" value={String(stripe.subscriptions.canceledLast30d)}
               warn={stripe.subscriptions.canceledLast30d > 0} sub="churn" />
           </StatGrid>
-          {stripe.revenue.unlinkedNetUsd > 0 && (
+          {(stripe.legacy.lifetimeNetUsd > 0 || stripe.legacy.mrrUsd > 0) && (
             <p className="text-xs text-muted mt-3">
-              {fmtUsd(stripe.revenue.unlinkedNetUsd)} of lifetime revenue comes from{' '}
-              {stripe.revenue.unlinkedPayers} customer
-              {stripe.revenue.unlinkedPayers === 1 ? '' : 's'} with no Clerk id in metadata
-              (legacy products: {stripe.products.map((p) => p.name).join(', ') || 'n/a'}) — that
-              revenue can&apos;t be attributed to a user in the table.
+              Excluded from the figures above: {fmtUsd(stripe.legacy.mrrUsd, { cents: true })}/mo and{' '}
+              {fmtUsd(stripe.legacy.lifetimeNetUsd, { cents: true })} lifetime from{' '}
+              {stripe.legacy.payingCustomers} customer
+              {stripe.legacy.payingCustomers === 1 ? '' : 's'} on unrelated older products
+              {stripe.legacy.productNames.length > 0 && ` (${stripe.legacy.productNames.join(', ')})`}{' '}
+              that share this Stripe account. Whole-account lifetime net is{' '}
+              {fmtUsd(stripe.accountTotals.lifetimeNetUsd, { cents: true })}.
             </p>
           )}
         </Section>

@@ -36,7 +36,18 @@ interface ProvidersData {
   upstash: {
     configured: boolean;
     error?: string;
-    databases?: Array<{ name: string; region: string; state: string; type: string }>;
+    databases?: Array<{
+      name: string;
+      region: string;
+      state: string;
+      type: string;
+      monthlyBillingUsd: number | null;
+      monthlyRequests: number | null;
+      currentStorageBytes: number | null;
+      dailyCommands: number | null;
+      budgetUsd: number | null;
+    }>;
+    totalMonthlyBillingUsd?: number;
   };
   stripe: {
     configured: boolean;
@@ -46,7 +57,9 @@ interface ProvidersData {
     lifetimeNetUsd: number;
     last30dNetUsd: number;
     payingCustomers: number;
-    products: Array<{ name: string; monthlyUsd: number; active: boolean }>;
+    legacyMrrUsd: number;
+    legacyLifetimeNetUsd: number;
+    accountLifetimeNetUsd: number;
   };
   meteredThisMonth: Array<{
     provider: string;
@@ -184,16 +197,14 @@ export default function PanelProvidersPage() {
                   {stripe.account?.name ?? stripe.account?.id} · {stripe.payingCustomers} paying
                   customers · {fmtUsd(stripe.last30dNetUsd, { cents: true })} last 30d
                 </div>
-                <div className="space-y-1">
-                  {stripe.products.map((p) => (
-                    <div key={p.name} className="flex justify-between text-xs">
-                      <span className="text-muted truncate mr-2">{p.name}</span>
-                      <span className="tabular-nums text-fg">
-                        {fmtUsd(p.monthlyUsd, { cents: true })}/mo
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                {(stripe.legacyLifetimeNetUsd > 0 || stripe.legacyMrrUsd > 0) && (
+                  <p className="text-xs text-muted">
+                    Excludes unrelated legacy products on the same account (
+                    {fmtUsd(stripe.legacyMrrUsd, { cents: true })}/mo,{' '}
+                    {fmtUsd(stripe.legacyLifetimeNetUsd, { cents: true })} lifetime). Whole
+                    account: {fmtUsd(stripe.accountLifetimeNetUsd, { cents: true })}.
+                  </p>
+                )}
               </>
             )}
           </ProviderCard>
@@ -328,19 +339,38 @@ export default function PanelProvidersPage() {
             )}
             {upstash.error && <p className="text-sm text-muted break-words">{upstash.error}</p>}
             {upstash.databases && (
-              <div className="space-y-1">
-                {upstash.databases.map((d) => (
-                  <div key={d.name} className="flex items-center justify-between text-xs">
-                    <span className="text-fg truncate mr-2">{d.name}</span>
-                    <span className="text-muted">
-                      {d.region} · {d.type} · {d.state}
-                    </span>
+              <>
+                {upstash.totalMonthlyBillingUsd !== undefined && (
+                  <div className="text-2xl font-semibold tracking-tight text-fg mb-2">
+                    {fmtUsd(upstash.totalMonthlyBillingUsd, { cents: true })}
+                    <span className="text-xs font-normal text-muted ml-2">month to date</span>
                   </div>
-                ))}
-                {upstash.databases.length === 0 && (
-                  <p className="text-sm text-muted">No databases visible to this key.</p>
                 )}
-              </div>
+                <div className="space-y-1.5">
+                  {upstash.databases.map((d) => (
+                    <div key={d.name} className="text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-fg truncate mr-2">{d.name}</span>
+                        <span className="tabular-nums text-fg">
+                          {d.monthlyBillingUsd != null
+                            ? fmtUsd(d.monthlyBillingUsd, { cents: true })
+                            : '—'}
+                        </span>
+                      </div>
+                      <div className="text-muted">
+                        {d.region} · {d.type} · {d.state}
+                        {d.monthlyRequests != null && ` · ${fmtNum(d.monthlyRequests)} req/mo`}
+                        {d.currentStorageBytes != null &&
+                          ` · ${fmtBytes(d.currentStorageBytes)} stored`}
+                        {d.budgetUsd != null && ` · $${d.budgetUsd} budget`}
+                      </div>
+                    </div>
+                  ))}
+                  {upstash.databases.length === 0 && (
+                    <p className="text-sm text-muted">No databases visible to this key.</p>
+                  )}
+                </div>
+              </>
             )}
           </ProviderCard>
 

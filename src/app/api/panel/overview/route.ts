@@ -52,8 +52,10 @@ async function computeOverview() {
   ).length;
 
   // ── Margin ────────────────────────────────────────────────────────────────
-  // Prefer Stripe's real MRR when the account has any live subscription;
-  // otherwise fall back to the plan-price estimate so margin is never blank.
+  // Prefer Stripe's real MRR for THIS platform (legacy products on the same
+  // account are excluded upstream — counting them would flatter the margin
+  // with revenue this product never earned). Falls back to the plan-price
+  // estimate when Stripe has no attributed subscription yet.
   const llmCostThisMonth = usage.thisMonth.costUsd;
   const mrrForMargin = stripe.configured && stripe.mrrUsd > 0 ? stripe.mrrUsd : mrrUsd;
   const grossMarginUsd = mrrForMargin - llmCostThisMonth;
@@ -133,21 +135,9 @@ async function computeOverview() {
       label: 'Failed charges',
       detail: `${stripe.health.failedChargesLast30d} charge(s) failed in the last 30 days.`,
     });
-  // The headline discrepancy: real subscription revenue exists but none of it
-  // is attributable to a Clerk user, so per-user revenue can't be trusted.
-  if (
-    stripe.configured &&
-    !stripe.error &&
-    stripe.mrrUsd > 0 &&
-    stripe.subscriptions.linkedToClerk === 0
-  )
-    alerts.push({
-      severity: 'warning',
-      label: 'Stripe subscriptions not linked to Clerk',
-      detail:
-        `$${stripe.mrrUsd.toFixed(2)}/mo of live subscription revenue comes from customers with no ` +
-        `Clerk user id in metadata (legacy products). Per-user revenue attribution is incomplete.`,
-    });
+  // NB: no alert for the legacy products sharing this Stripe account — they
+  // belong to an unrelated older venture and are expected. They're excluded
+  // from every headline figure and shown in their own block instead.
 
   return {
     revenue: {
@@ -169,8 +159,9 @@ async function computeOverview() {
       mrrUsd: stripe.mrrUsd,
       subscriptions: stripe.subscriptions,
       revenue: stripe.revenue,
+      legacy: stripe.legacy,
+      accountTotals: stripe.accountTotals,
       health: stripe.health,
-      products: stripe.products,
       attributedUsers: Object.keys(stripe.byClerkUserId).length,
       truncated: stripe.truncated,
     },

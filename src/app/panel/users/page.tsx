@@ -60,8 +60,6 @@ interface UsersData {
     configured: boolean;
     error: string | null;
     attributedUsers: number;
-    unattributedRevenueUsd: number;
-    unattributedPayers: number;
     lifetimeNetUsd: number;
   };
   generatedAt: string;
@@ -224,16 +222,8 @@ export default function PanelUsersPage() {
         Revenue/mo is a live Stripe subscription where one is linked to the user,
         otherwise the plan sticker price. Lifetime rev is real Stripe money, net of
         refunds. Margin = revenue − platform LLM cost this month; sandbox and Convex
-        costs aren&apos;t metered per-user yet, so margin is an upper bound.
-        {data.stripe.configured && data.stripe.unattributedRevenueUsd > 0 && (
-          <>
-            {' '}
-            {fmtUsd(data.stripe.unattributedRevenueUsd)} of lifetime Stripe revenue
-            (from {data.stripe.unattributedPayers} customer
-            {data.stripe.unattributedPayers === 1 ? '' : 's'} with no Clerk id) is not
-            attributed to any row.
-          </>
-        )}
+        costs aren&apos;t metered per-user yet, so margin is an upper bound. Revenue from
+        unrelated older products on the same Stripe account is excluded entirely.
         {data.stripe.error && <> Stripe unavailable: {data.stripe.error}</>}
       </p>
     </div>

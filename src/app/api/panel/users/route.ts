@@ -86,8 +86,6 @@ async function computeUsers() {
       // How much of Stripe's realized revenue we could attribute to a Clerk
       // user — the rest sits behind customers with no user_id metadata.
       attributedUsers: Object.keys(stripe.byClerkUserId).length,
-      unattributedRevenueUsd: stripe.revenue.unlinkedNetUsd,
-      unattributedPayers: stripe.revenue.unlinkedPayers,
       lifetimeNetUsd: stripe.revenue.lifetimeNetUsd,
     },
     generatedAt: new Date().toISOString(),

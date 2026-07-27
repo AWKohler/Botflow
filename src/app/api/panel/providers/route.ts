@@ -143,7 +143,19 @@ async function fetchNeon(): Promise<NeonResult> {
 interface UpstashResult {
   configured: boolean;
   error?: string;
-  databases?: Array<{ name: string; region: string; state: string; type: string }>;
+  databases?: Array<{
+    name: string;
+    region: string;
+    state: string;
+    type: string;
+    /** Month-to-date spend in USD, from the per-database stats endpoint. */
+    monthlyBillingUsd: number | null;
+    monthlyRequests: number | null;
+    currentStorageBytes: number | null;
+    dailyCommands: number | null;
+    budgetUsd: number | null;
+  }>;
+  totalMonthlyBillingUsd?: number;
 }
 
 async function fetchUpstash(): Promise<UpstashResult> {
@@ -170,19 +182,53 @@ async function fetchUpstash(): Promise<UpstashResult> {
       };
     }
     const json = (await res.json()) as Array<{
+      database_id?: string;
       database_name?: string;
       region?: string;
       state?: string;
       database_type?: string;
+      budget?: number;
     }>;
+    const list = Array.isArray(json) ? json : [];
+
+    // Per-database stats carry the month-to-date bill — the only real cost
+    // number any of our infra providers exposes programmatically.
+    const databases = await Promise.all(
+      list.map(async (d) => {
+        let stats: {
+          total_monthly_billing?: number;
+          total_monthly_requests?: number;
+          current_storage?: number;
+          daily_net_commands?: number;
+        } = {};
+        if (d.database_id) {
+          const s = await fetch(
+            `https://api.upstash.com/v2/redis/stats/${d.database_id}`,
+            { headers },
+          ).catch(() => null);
+          if (s?.ok) stats = await s.json().catch(() => ({}));
+        }
+        return {
+          name: d.database_name ?? 'unnamed',
+          region: d.region ?? '—',
+          state: d.state ?? '—',
+          type: d.database_type ?? '—',
+          monthlyBillingUsd: stats.total_monthly_billing ?? null,
+          monthlyRequests: stats.total_monthly_requests ?? null,
+          currentStorageBytes: stats.current_storage ?? null,
+          dailyCommands: stats.daily_net_commands ?? null,
+          budgetUsd: d.budget ?? null,
+        };
+      }),
+    );
+
     return {
       configured: true,
-      databases: (Array.isArray(json) ? json : []).map((d) => ({
-        name: d.database_name ?? 'unnamed',
-        region: d.region ?? '—',
-        state: d.state ?? '—',
-        type: d.database_type ?? '—',
-      })),
+      databases,
+      totalMonthlyBillingUsd: databases.reduce(
+        (a, d) => a + (d.monthlyBillingUsd ?? 0),
+        0,
+      ),
     };
   } catch (e) {
     return {
@@ -249,7 +295,9 @@ async function computeProviders() {
       lifetimeNetUsd: stripe.revenue.lifetimeNetUsd,
       last30dNetUsd: stripe.revenue.last30dNetUsd,
       payingCustomers: stripe.revenue.payingCustomers,
-      products: stripe.products,
+      legacyMrrUsd: stripe.legacy.mrrUsd,
+      legacyLifetimeNetUsd: stripe.legacy.lifetimeNetUsd,
+      accountLifetimeNetUsd: stripe.accountTotals.lifetimeNetUsd,
     },
     // Our own settlement records (what the platform actually metered), for
     // cross-checking provider dashboards.

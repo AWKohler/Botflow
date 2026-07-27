@@ -12,8 +12,14 @@
  *
  * Customer → Clerk user mapping is `customer.metadata.user_id`, with a
  * `userId` camelCase fallback (both conventions exist on the account).
- * Revenue from customers carrying neither is reported as `unlinked` rather
- * than dropped, so per-user totals never silently under-count the platform.
+ *
+ * THAT LINKAGE IS ALSO THE PRODUCT BOUNDARY. The account still carries
+ * products from an older, unrelated venture ("Botflow Standard/Pro/
+ * Enterprise"); their customers predate Clerk and carry no user id. So every
+ * headline figure here — MRR, lifetime revenue, paying customers — counts
+ * ONLY Clerk-attributed money, and the rest is reported separately under
+ * `legacy` instead of being folded in. Counting the old products would
+ * overstate this platform's revenue and, worse, flatter its margin.
  */
 
 const API = 'https://api.stripe.com/v1';
@@ -33,25 +39,36 @@ export interface StripeRevenue {
   configured: boolean;
   error?: string;
   account?: { id: string; name: string | null };
-  /** Normalized monthly recurring revenue from live subscriptions. */
+  /** Monthly recurring revenue from THIS platform's subscriptions only
+   *  (customer carries a Clerk user id). Excludes the legacy products. */
   mrrUsd: number;
   subscriptions: {
     total: number;
     byStatus: Array<{ status: string; count: number }>;
     pastDue: number;
     canceledLast30d: number;
-    /** Live subs whose customer carries a Clerk id — i.e. attributable. */
+    /** Live subs whose customer carries a Clerk id — i.e. this platform's. */
     linkedToClerk: number;
   };
+  /** This platform's money — Clerk-attributed customers only. */
   revenue: {
-    lifetimeGrossUsd: number;
-    lifetimeRefundedUsd: number;
     lifetimeNetUsd: number;
     last30dNetUsd: number;
     payingCustomers: number;
-    /** Net revenue from customers with no Clerk id (legacy/unattributable). */
-    unlinkedNetUsd: number;
-    unlinkedPayers: number;
+  };
+  /** Unrelated older products living on the same Stripe account. Reported so
+   *  the account reconciles, never added to the figures above. */
+  legacy: {
+    mrrUsd: number;
+    lifetimeNetUsd: number;
+    payingCustomers: number;
+    productNames: string[];
+  };
+  /** Whole-account totals, for reconciling against the Stripe dashboard. */
+  accountTotals: {
+    lifetimeGrossUsd: number;
+    lifetimeRefundedUsd: number;
+    lifetimeNetUsd: number;
   };
   health: {
     failedChargesLast30d: number;
@@ -193,15 +210,9 @@ export async function getStripeRevenue(): Promise<StripeRevenue> {
     configured: false,
     mrrUsd: 0,
     subscriptions: { total: 0, byStatus: [], pastDue: 0, canceledLast30d: 0, linkedToClerk: 0 },
-    revenue: {
-      lifetimeGrossUsd: 0,
-      lifetimeRefundedUsd: 0,
-      lifetimeNetUsd: 0,
-      last30dNetUsd: 0,
-      payingCustomers: 0,
-      unlinkedNetUsd: 0,
-      unlinkedPayers: 0,
-    },
+    revenue: { lifetimeNetUsd: 0, last30dNetUsd: 0, payingCustomers: 0 },
+    legacy: { mrrUsd: 0, lifetimeNetUsd: 0, payingCustomers: 0, productNames: [] },
+    accountTotals: { lifetimeGrossUsd: 0, lifetimeRefundedUsd: 0, lifetimeNetUsd: 0 },
     health: { failedChargesLast30d: 0, currencies: [] },
     byClerkUserId: {},
     truncated: false,
@@ -268,9 +279,11 @@ export async function getStripeRevenue(): Promise<StripeRevenue> {
   ) / 1000;
 
   let mrrCents = 0;
+  let legacyMrrCents = 0;
   let pastDue = 0;
   let canceledLast30d = 0;
   let linkedToClerk = 0;
+  const legacyProducts = new Set<string>();
   const statusCounts = new Map<string, number>();
 
   for (const s of subsRes.items) {
@@ -292,27 +305,32 @@ export async function getStripeRevenue(): Promise<StripeRevenue> {
       const named = price?.id ? productOfPrice.get(price.id) : undefined;
       if (named) productName = named;
     }
-    mrrCents += subMonthlyCents;
-
     const clerkId = clerkOfCustomer.get(s.customer);
     if (clerkId) {
+      // This platform's revenue.
+      mrrCents += subMonthlyCents;
       linkedToClerk++;
       ensure(clerkId).subscription = {
         status: s.status,
         product: productName,
         monthlyUsd: subMonthlyCents / CENTS,
       };
+    } else {
+      // Older, unrelated product on the same account — kept out of MRR.
+      legacyMrrCents += subMonthlyCents;
+      legacyProducts.add(productName);
     }
   }
 
   // ── charges → realized revenue ─────────────────────────────────────────────
   let grossCents = 0;
   let refundedCents = 0;
+  let attributedNetCents = 0;
   let last30dNetCents = 0;
   let failedLast30d = 0;
-  let unlinkedNetCents = 0;
+  let legacyNetCents = 0;
   const payingCustomers = new Set<string>();
-  const unlinkedPayers = new Set<string>();
+  const legacyPayers = new Set<string>();
   const currencies = new Set<string>();
 
   for (const ch of chargesRes.items) {
@@ -324,18 +342,21 @@ export async function getStripeRevenue(): Promise<StripeRevenue> {
     currencies.add(ch.currency);
 
     const net = ch.amount - (ch.amount_refunded ?? 0);
+    // Account-level totals cover every charge, related or not.
     grossCents += ch.amount;
     refundedCents += ch.amount_refunded ?? 0;
-    if (ch.created >= thirtyDaysAgo) last30dNetCents += net;
 
     if (!ch.customer) continue;
-    payingCustomers.add(ch.customer);
     const clerkId = clerkOfCustomer.get(ch.customer);
     if (!clerkId) {
-      unlinkedNetCents += net;
-      unlinkedPayers.add(ch.customer);
+      legacyNetCents += net;
+      legacyPayers.add(ch.customer);
       continue;
     }
+    // From here down: this platform's revenue only.
+    payingCustomers.add(ch.customer);
+    attributedNetCents += net;
+    if (ch.created >= thirtyDaysAgo) last30dNetCents += net;
     const entry = ensure(clerkId);
     entry.lifetimeNetUsd += net / CENTS;
     if (ch.created >= monthStart) entry.monthNetUsd += net / CENTS;
@@ -357,13 +378,20 @@ export async function getStripeRevenue(): Promise<StripeRevenue> {
       linkedToClerk,
     },
     revenue: {
+      lifetimeNetUsd: attributedNetCents / CENTS,
+      last30dNetUsd: last30dNetCents / CENTS,
+      payingCustomers: payingCustomers.size,
+    },
+    legacy: {
+      mrrUsd: legacyMrrCents / CENTS,
+      lifetimeNetUsd: legacyNetCents / CENTS,
+      payingCustomers: legacyPayers.size,
+      productNames: [...legacyProducts],
+    },
+    accountTotals: {
       lifetimeGrossUsd: grossCents / CENTS,
       lifetimeRefundedUsd: refundedCents / CENTS,
       lifetimeNetUsd: (grossCents - refundedCents) / CENTS,
-      last30dNetUsd: last30dNetCents / CENTS,
-      payingCustomers: payingCustomers.size,
-      unlinkedNetUsd: unlinkedNetCents / CENTS,
-      unlinkedPayers: unlinkedPayers.size,
     },
     health: { failedChargesLast30d: failedLast30d, currencies: [...currencies] },
     byClerkUserId,
