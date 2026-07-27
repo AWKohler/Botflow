@@ -26,6 +26,10 @@
     {
       "path": "/api/cron/retry-revenuecat-deliveries",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/convex-usage",
+      "schedule": "*/30 * * * *"
     }
   ]
 }

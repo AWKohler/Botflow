@@ -213,3 +213,47 @@ export async function deleteConvexBackend(projectId: string): Promise<void> {
   const client = getConvexPlatformClient();
   await client.deleteProject(Number(projectId));
 }
+
+/**
+ * Pause / resume a deployment via its admin API. While paused, all function
+ * execution (queries, mutations, actions, crons, scheduled jobs) is rejected;
+ * data is untouched and the state is fully reversible.
+ *
+ * Probe-verified 2026-07-23: POST {deployUrl}/api/change_deployment_state
+ * with Authorization: Convex <deployKey>; accepted states are
+ * disabled | paused | running | suspended. A deploy key works when scoped with
+ * deployment:pause / deployment:unpause (unscoped keys also carry both).
+ */
+export type ConvexDeploymentState = 'paused' | 'running';
+
+export async function changeConvexDeploymentState(
+  deployUrl: string,
+  deployKey: string,
+  newState: ConvexDeploymentState,
+): Promise<void> {
+  const response = await fetch(`${deployUrl}/api/change_deployment_state`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Convex ${deployKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ newState }),
+    // A hung pause request would stall an entire poller batch inside the
+    // cron's maxDuration budget — bound it.
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) {
+    await response.text().catch(() => '');
+    throw new Error(
+      `Failed to set Convex deployment state to '${newState}' (status ${response.status}).`,
+    );
+  }
+}
+
+export function pauseConvexDeployment(deployUrl: string, deployKey: string): Promise<void> {
+  return changeConvexDeploymentState(deployUrl, deployKey, 'paused');
+}
+
+export function unpauseConvexDeployment(deployUrl: string, deployKey: string): Promise<void> {
+  return changeConvexDeploymentState(deployUrl, deployKey, 'running');
+}
