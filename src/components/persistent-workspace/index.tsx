@@ -20,6 +20,11 @@ import { IPhoneDeviceRunner } from "./iphone-device-runner";
 import { PublishToAppStore } from "./publish-to-app-store";
 import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
 import { OAuthProviderModal } from "@/components/workspace/oauth-provider-modal";
+import {
+  ConvexPausedModal,
+  ConvexStatusBanner,
+  type ConvexNoticeStatus,
+} from "@/components/workspace/convex-status-notices";
 import { useWorkspacePoll, rateLimitDelayMs } from "@/components/sandboxed-web-workspace/use-workspace-poll";
 import { RevenueCatTab } from "./revenuecat-tab";
 import { REVENUECAT_ENABLED } from "@/lib/feature-flags";
@@ -49,6 +54,9 @@ type ProjectRow = {
   backendType: string;
   convexDeployUrl: string | null;
   userConvexUrl: string | null;
+  /** Convex usage guardrails (docs/features/convex-usage-guardrails.md). */
+  convexStatus?: string;
+  viewerRole?: string;
   revenuecatStatus?: string;
   swiftScreenshotIphoneUrl?: string | null;
   swiftScreenshotIpadUrl?: string | null;
@@ -118,6 +126,14 @@ export function PersistentWorkspace({
   const hasBackend = project != null && project.backendType !== "none";
   const backendProvisioned =
     project != null && Boolean(project.convexDeployUrl || project.userConvexUrl);
+  // Convex usage guardrails — status/role come off the full project row this
+  // workspace already fetches (refreshProject), refreshed by the 45s poll
+  // below. Managed (platform) backends only; BYOC is never paused by us.
+  const managedBackend = project?.backendType === "platform";
+  const convexStatus = (project?.convexStatus ?? "active") as ConvexNoticeStatus;
+  const viewerIsOwner = project?.viewerRole !== "editor";
+  const [showConvexPausedModal, setShowConvexPausedModal] = useState(false);
+  const convexPausedModalShownRef = useRef(false);
   // RevenueCat (iOS in-app purchases) — requires a Convex backend.
   const revenuecatStatus =
     (project?.revenuecatStatus as "none" | "connecting" | "connected" | undefined) ?? "none";
@@ -137,10 +153,18 @@ export function PersistentWorkspace({
     }
   }, [projectId]);
 
+  // Latest-wins: the 45s guardrail poll below overlaps other refresh callers,
+  // and an older response resolving last must not regress newer row state
+  // (convexStatus/viewerRole/backendType drive the paused UI).
+  const refreshGenRef = useRef(0);
   const refreshProject = useCallback(async () => {
+    const gen = ++refreshGenRef.current;
     try {
       const res = await fetch(`/api/projects/${projectId}`);
-      if (res.ok) setProject((await res.json()) as ProjectRow);
+      if (res.ok) {
+        const row = (await res.json()) as ProjectRow;
+        if (gen === refreshGenRef.current) setProject(row);
+      }
     } catch (e) {
       console.warn("Failed to load project", e);
     }
@@ -172,6 +196,24 @@ export function PersistentWorkspace({
       setPendingOAuthRequest(data.pending);
     }
   }, 2500, hasBackend && sandboxStatus === "ready");
+
+  // Convex guardrail status poll — refreshes the whole project row (cheap,
+  // and this workspace derives status/role from it) so a cron-side
+  // warn/pause surfaces without a manual refresh. 45s: shares the
+  // interactive 'read' rate-limit budget; a transition surfacing within a
+  // minute is plenty.
+  useWorkspacePoll(async () => {
+    await refreshProject();
+  }, 45_000, managedBackend && sandboxStatus === "ready");
+
+  // Paused modal: once per workspace-open while a MANAGED backend is paused.
+  // Refresh/reopen re-arms it — deliberate persistence.
+  useEffect(() => {
+    if (managedBackend && convexStatus === "paused" && !convexPausedModalShownRef.current) {
+      convexPausedModalShownRef.current = true;
+      setShowConvexPausedModal(true);
+    }
+  }, [managedBackend, convexStatus]);
 
   // ── Agent simulator requests ────────────────────────────────────────────
   // The agent's startSimulator/stopSimulator tools publish a short-lived
@@ -435,6 +477,15 @@ export function PersistentWorkspace({
           onClose={() => setPendingOAuthRequest(null)}
         />
       )}
+      {/* Convex paused modal — once per workspace-open while paused. Render
+          re-gated on managed+paused so a mid-session BYOC transfer or unpause
+          closes it rather than stranding stale managed-hosting copy. */}
+      {showConvexPausedModal && managedBackend && convexStatus === "paused" && (
+        <ConvexPausedModal
+          isOwner={viewerIsOwner}
+          onClose={() => setShowConvexPausedModal(false)}
+        />
+      )}
       {/* Agent sidebar. `relative z-30` so the model-selector / backend popovers
           that overflow the w-96 column paint above the adjacent main panel
           instead of being covered by it. */}
@@ -449,6 +500,10 @@ export function PersistentWorkspace({
 
       {/* Main column */}
       <div className="flex-1 flex flex-col">
+        {/* Convex usage guardrail banner (paused: sticky red; warned: dismissible amber) */}
+        {managedBackend && (
+          <ConvexStatusBanner status={convexStatus} isOwner={viewerIsOwner} />
+        )}
         {bootError && (
           <div className="px-4 py-2 bg-red-900/80 border-b border-red-700 text-white text-xs flex items-center gap-3">
             <span className="font-semibold">Sandbox failed to start</span>
@@ -734,7 +789,11 @@ export function PersistentWorkspace({
             >
               <div className="w-full h-full rounded-xl border border-border overflow-hidden bg-elevated/60">
                 {backendProvisioned ? (
-                  <ConvexDashboard projectId={projectId} />
+                  <ConvexDashboard
+                    projectId={projectId}
+                    convexStatus={managedBackend ? convexStatus : undefined}
+                    isOwner={viewerIsOwner}
+                  />
                 ) : (
                   <div className="flex flex-col items-center justify-center w-full h-full text-sm text-muted gap-3 px-6 text-center">
                     <Database size={22} />

@@ -18,7 +18,8 @@ export default async function DatabasePage({
     return redirectToSignIn({ returnBackUrl: `/workspace/${id}/database` });
   }
 
-  const project = (await requireProjectAccess(id, userId))?.project;
+  const access = await requireProjectAccess(id, userId);
+  const project = access?.project;
 
   if (!project) {
     return (
@@ -72,7 +73,11 @@ export default async function DatabasePage({
 
   return (
     <div className="w-screen h-screen">
-      <ConvexDashboard projectId={id} />
+      <ConvexDashboard
+        projectId={id}
+        convexStatus={project.backendType === 'platform' ? project.convexStatus : undefined}
+        isOwner={access?.role !== 'editor'}
+      />
     </div>
   );
 }

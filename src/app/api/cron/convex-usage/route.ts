@@ -57,6 +57,8 @@ import {
 } from "@/lib/convex-usage/policy";
 import { fetchNewFunctionCalls } from "@/lib/convex-usage/poll";
 import { sendUsageAlert } from "@/lib/convex-usage/alert";
+import { sendConvexPausedEmail, sendConvexWarnedEmail } from "@/lib/convex-usage/user-emails";
+import { getEmailForClerkUser } from "@/lib/email";
 import { pauseConvexDeployment, unpauseConvexDeployment } from "@/lib/convex-platform";
 
 export const runtime = "nodejs";
@@ -423,6 +425,28 @@ export async function GET(req: Request) {
     let action: ResultAction = decision;
     let detail: string | undefined;
 
+    // Owner-facing email (Phase 2) — strictly best-effort AFTER a transition
+    // persists: never gates status writes (that contract belongs to the
+    // operator alert), never aborts the sweep. Dedup rides the same status
+    // transition that triggered it.
+    async function emailOwner(kind: "warned" | "paused"): Promise<void> {
+      try {
+        const contact = await getEmailForClerkUser(project.userId);
+        if (!contact?.email) return;
+        const opts = {
+          to: contact.email,
+          name: contact.name,
+          projectName: project.name,
+          projectId: project.id,
+        };
+        const result =
+          kind === "warned" ? await sendConvexWarnedEmail(opts) : await sendConvexPausedEmail(opts);
+        if (!result.ok) console.error(`[convex-usage] owner ${kind} email failed: ${result.error}`);
+      } catch (err) {
+        console.error(`[convex-usage] owner ${kind} email failed:`, err);
+      }
+    }
+
     if (dryRun) {
       // Report the decision; touch nothing. The drift branch is reported too
       // (below) so dry runs can verify every enforcement path.
@@ -437,7 +461,11 @@ export async function GET(req: Request) {
       // so a failed send must leave status 'active' and retry next tick.
       const sent = await sendUsageAlert({ kind: "warn", ...alertBase });
       if (sent) {
-        if (!(await casStatus("warned", status))) detail = "status raced; transition skipped";
+        if (await casStatus("warned", status)) {
+          await emailOwner("warned");
+        } else {
+          detail = "status raced; transition skipped";
+        }
       } else {
         detail = "warn alert failed; will retry next tick";
       }
@@ -456,6 +484,7 @@ export async function GET(req: Request) {
             })
           ) {
             await sendUsageAlert({ kind: "pause", ...alertBase });
+            await emailOwner("paused");
             action = "pause";
           } else {
             // CAS lost → compensation decides the truth. Only report/alert
@@ -465,6 +494,11 @@ export async function GET(req: Request) {
             const comp = await compensatePauseRace();
             detail = comp.detail;
             if (comp.endedPaused) {
+              // Operator alert only — NO owner email here: this invocation
+              // did not persist the paused status, so either the CAS winner
+              // already emailed the owner, or there was no real transition
+              // (unpause-failed drift / migration race). Owner emails ride
+              // exclusively on our own successful CAS.
               await sendUsageAlert({ kind: "pause", ...alertBase, detail });
               action = "pause";
             } else if (comp.repauseFailed) {
@@ -484,7 +518,11 @@ export async function GET(req: Request) {
           // never be silent. Status stays un-paused; policy re-emits
           // pause_repeat next tick, so this retries until it sticks.
           detail = "pause API call failed";
-          if (status === "active") await casStatus("warned", status);
+          // This is still an active→warned transition — the owner gets the
+          // same heads-up email as the normal warn path.
+          if (status === "active" && (await casStatus("warned", status))) {
+            await emailOwner("warned");
+          }
           await sendUsageAlert({ kind: "pause_failed", ...alertBase, detail });
           action = "pause_failed";
         }
@@ -501,7 +539,12 @@ export async function GET(req: Request) {
         // if the send failed so the next tick retries. (Known residual: a
         // crossing from 'warned' whose send fails both in-tick retries has no
         // persisted retry state — next crossing re-arms at UTC midnight.)
-        if (status === "active" && sent) await casStatus("warned", status);
+        // An active→warned persist here is a real transition: the owner gets
+        // the warned email even though this project skipped straight past the
+        // warn bar (in alert-only mode this may be their ONLY notification).
+        if (status === "active" && sent && (await casStatus("warned", status))) {
+          await emailOwner("warned");
+        }
         action = "would_pause";
       }
     } else if (decision === "clear") {
