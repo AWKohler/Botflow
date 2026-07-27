@@ -58,6 +58,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import type { PreviewInfo } from "@/lib/preview-store";
+import { buildPreviewUrl } from "@/lib/preview-url";
 import { cn } from "@/lib/utils";
 import {
   normalizeBackendType,
@@ -337,8 +338,16 @@ export function SandboxedWebWorkspace({
         method: "POST",
       });
       if (!sessionRes.ok) {
-        const body = await sessionRes.text();
-        throw new Error(body || `Failed to start sandbox (status ${sessionRes.status})`);
+        // Route returns { error } JSON; parse it so the toast shows a clean
+        // sentence (e.g. the at-capacity message) rather than raw JSON.
+        let msg = `Failed to start sandbox (status ${sessionRes.status})`;
+        try {
+          const body = (await sessionRes.json()) as { error?: string };
+          if (body?.error) msg = body.error;
+        } catch { /* non-JSON body — keep the status fallback */ }
+        const err = new Error(msg) as Error & { atCapacity?: boolean };
+        err.atCapacity = sessionRes.status === 503;
+        throw err;
       }
 
       const seedRes = await fetch(`/api/projects/${projectId}/sandbox/seed`, {
@@ -364,9 +373,10 @@ export function SandboxedWebWorkspace({
       setSandboxStatus("ready");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to start sandbox";
+      const atCapacity = Boolean((err as { atCapacity?: boolean })?.atCapacity);
       setBootError(msg);
       setSandboxStatus("error");
-      toast({ title: "Sandbox error", description: msg });
+      toast({ title: atCapacity ? "At capacity" : "Sandbox error", description: msg });
     }
   }, [projectId, refreshFiles, toast]);
 
@@ -1383,7 +1393,7 @@ export function SandboxedWebWorkspace({
                     const path = previewPath.startsWith("/")
                       ? previewPath
                       : "/" + previewPath;
-                    window.open(baseUrl + path, "_blank", "noopener,noreferrer");
+                    window.open(buildPreviewUrl(baseUrl, path), "_blank", "noopener,noreferrer");
                   }}
                   className="text-muted hover:text-fg"
                   title="Open preview in new tab"

@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
+import { getProjectSandboxProvider } from "@/lib/sandbox-provider";
+import { looksLikeEgressBlock, EGRESS_BLOCK_MESSAGE } from "@/lib/egress-hint";
 import { swiftProjectForbidden } from "@/lib/swift-access";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
@@ -62,11 +64,29 @@ export async function POST(
           detached: true,
         });
 
+        // Keep a bounded tail of output to fingerprint an egress block after
+        // the command exits (see below). Cap so a chatty command can't grow
+        // this without bound.
+        let outputTail = "";
+        const TAIL_CAP = 8_000;
         for await (const log of command.logs()) {
           send(log.stream, log.data);
+          if (outputTail.length < TAIL_CAP) {
+            outputTail = (outputTail + log.data).slice(-TAIL_CAP);
+          }
         }
 
         const finished = await command.wait();
+        // A failed command whose output looks like a name-resolution/reset
+        // block on a free-tier (sandbox-host) project is the egress allowlist,
+        // not a bug. Tell the user in their terminal.
+        if (
+          finished.exitCode !== 0 &&
+          looksLikeEgressBlock(outputTail) &&
+          (await getProjectSandboxProvider(project.id)) === "sandbox-host"
+        ) {
+          send("stderr", `\n\x1b[33m${EGRESS_BLOCK_MESSAGE}\x1b[0m\n`);
+        }
         send("exit", String(finished.exitCode));
       } catch (error) {
         send("error", error instanceof Error ? error.message : "Command failed");

@@ -13,6 +13,8 @@
  * `vercel-sandbox.ts` helpers.
  */
 import { getOrCreatePersistentSandbox, sandboxBash } from "@/lib/vercel-sandbox";
+import { getProjectSandboxProvider } from "@/lib/sandbox-provider";
+import { signPreviewUrl } from "@/lib/preview-token";
 import { materializeFrontendEnv } from "@/lib/sandbox-env";
 import { getRedis } from "@/lib/redis";
 import { sanitizeOutput } from "@/lib/output-sanitizer";
@@ -103,6 +105,14 @@ export async function verifyDevServerReachable(
 ): Promise<DevServerState | null> {
   if (!state || !state.running || !state.previewUrl) return state;
 
+  // Plain-http preview URLs are tailnet-only sandbox-host routes (the
+  // Cloudflare-tunneled ones are https, as are all Vercel *.vercel.run
+  // URLs) — from production this fetch can never succeed, so probing would
+  // only stall the polling route by the 3s timeout. Dead dev servers on
+  // those projects are still caught by the in-VM reconciler in
+  // isSandboxDevServerRunning.
+  if (!state.previewUrl.startsWith("https://")) return state;
+
   try {
     const redis = getRedis();
     // NX+EX: only one caller wins the probe slot per interval window.
@@ -182,6 +192,7 @@ export async function startSandboxDevServer(
 
   try {
     const sandbox = await getOrCreatePersistentSandbox(projectId);
+    const provider = await getProjectSandboxProvider(projectId);
 
     let previewUrl: string;
     try {
@@ -191,6 +202,12 @@ export async function startSandboxDevServer(
         ok: false,
         message: `Port ${port} was not declared at sandbox creation. Allowed: 3000, 5173, 4173, 8000.`,
       };
+    }
+    // sandbox-host previews served via the Cloudflare tunnel require a signed
+    // token; append it before the URL is probed, published, or iframed.
+    // No-op when PREVIEW_SIGNING_SECRET is unset.
+    if (provider === "sandbox-host") {
+      previewUrl = signPreviewUrl(previewUrl);
     }
 
     // Kill any prior vite/dev server.
@@ -264,22 +281,67 @@ export async function startSandboxDevServer(
       env: { HOST: "0.0.0.0" },
     });
 
-    // Poll the *public* Vercel-forwarded URL — only return success when the
-    // iframe will actually work. Capture upstream headers on success so the
-    // workspace UI can surface them for diagnosing iframe-blocking directives.
+    // Poll for readiness. For https URLs (Vercel's forwarded domain, or a
+    // sandbox-host preview behind the Cloudflare tunnel) hit the *public*
+    // URL — only return success when the iframe will actually work — and
+    // capture upstream headers so the workspace UI can diagnose
+    // iframe-blocking directives. Plain-http sandbox-host routes are
+    // tailnet-only (unreachable from production servers), so probe vite from
+    // inside the VM instead.
+    const probeOnce = async (): Promise<{
+      status: number;
+      headers?: Record<string, string>;
+      body?: string;
+    }> => {
+      if (!previewUrl.startsWith("https://")) {
+        const res = await sandbox.runCommand({
+          cmd: "sh",
+          args: [
+            "-c",
+            `curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:${port}/`,
+          ],
+          cwd: "/vercel/sandbox",
+        });
+        const status = parseInt((await res.stdout()).trim(), 10);
+        // curl prints 000 while the port isn't accepting connections yet.
+        return { status: Number.isFinite(status) && status >= 100 ? status : 599 };
+      }
+      const probe = await fetch(previewUrl, {
+        method: "GET",
+        redirect: "manual",
+        signal: AbortSignal.timeout(3_000),
+      });
+      const headers: Record<string, string> = {};
+      probe.headers.forEach((v, k) => { headers[k] = v; });
+      // Capture a snippet of error bodies so the loop can tell the preview
+      // router's own 403 apart from the user's app returning 403.
+      const body =
+        probe.status >= 400 ? (await probe.text().catch(() => "")).slice(0, 256) : undefined;
+      return { status: probe.status, headers, body };
+    };
+
     const deadline = Date.now() + 45_000;
     let lastStatus = 0;
     while (Date.now() < deadline) {
       try {
-        const probe = await fetch(previewUrl, {
-          method: "GET",
-          redirect: "manual",
-          signal: AbortSignal.timeout(3_000),
-        });
-        lastStatus = probe.status;
-        if (probe.status < 500) {
-          const responseHeaders: Record<string, string> = {};
-          probe.headers.forEach((v, k) => { responseHeaders[k] = v; });
+        const { status, headers, body } = await probeOnce();
+        lastStatus = status;
+        // The sandbox-host preview router's own 403 means our token was
+        // missing or didn't verify — retrying can't fix that, and treating it
+        // as "up" would publish a preview the user can't render. Fail loudly
+        // with the actual misconfiguration.
+        if (status === 403 && body?.includes("preview access denied")) {
+          return {
+            ok: false,
+            message:
+              "The preview router rejected this deployment's token. " +
+              (previewUrl.includes("_bft=")
+                ? "PREVIEW_SIGNING_SECRET does not match the sandbox-host previewSigningSecret."
+                : "The host requires signed preview tokens but PREVIEW_SIGNING_SECRET is not set in this environment."),
+            previewUrl,
+          };
+        }
+        if (status < 500) {
           // Publish to Redis so the workspace's poll picks up the running
           // state without needing client-side coordination. This is what
           // makes the agent's startDevServer call materialize the preview
@@ -295,7 +357,7 @@ export async function startSandboxDevServer(
             message: `Dev server started on ${previewUrl} (port ${port}).`,
             previewUrl,
             port,
-            responseHeaders,
+            responseHeaders: headers,
           };
         }
       } catch {
