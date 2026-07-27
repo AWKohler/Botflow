@@ -72,6 +72,8 @@ const RULES: Array<[RegExp, Tier]> = [
   [/^\/api\/projects/, { read: 'read', mutate: 'write' }],
   [/^\/api\/usage\//, 'read'],
   [/^\/api\/user/, 'read'],
+  // Admin panel aggregates — read-only, operator-allowlisted in the handler.
+  [/^\/api\/panel\//, 'read'],
 ];
 
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
