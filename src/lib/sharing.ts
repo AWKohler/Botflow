@@ -71,16 +71,23 @@ export async function claimPendingInvites(userId: string, verifiedEmails: string
     );
   const claimable = pending.filter((m) => !inviteExpired(m));
   if (claimable.length === 0) return 0;
-  await db
+  // Require rows to still be pending at write time: an owner may revoke
+  // between the SELECT above and here, and a revoked invite must not be
+  // resurrected by a claim (Codex review 2026-07-06).
+  const claimed = await db
     .update(projectMembers)
     .set({ userId, status: 'active', acceptedAt: new Date() })
     .where(
-      inArray(
-        projectMembers.id,
-        claimable.map((m) => m.id),
+      and(
+        inArray(
+          projectMembers.id,
+          claimable.map((m) => m.id),
+        ),
+        eq(projectMembers.status, 'pending'),
       ),
-    );
-  return claimable.length;
+    )
+    .returning({ id: projectMembers.id });
+  return claimed.length;
 }
 
 // ─── Invite email ────────────────────────────────────────────────────────────

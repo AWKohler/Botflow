@@ -29,3 +29,21 @@ export async function swiftRuntimeForbidden(
   if (platform !== "swift") return false;
   return !(await canUseSwift(userId));
 }
+
+/**
+ * Swift runtime entitlement for a PROJECT follows its OWNER, not the acting
+ * user (sharing decision 2026-07-06): a free editor may work on a Swift
+ * project shared by a paying owner — the owner's plan funds the runtime.
+ * The one per-ACTOR gate is the iOS simulator (see the swift-preview routes):
+ * simulator streaming requires the acting user to be Pro/Max themselves;
+ * device builds stay open to free editors.
+ *
+ * For unshared projects owner == actor, so this is behavior-identical to the
+ * old acting-user check everywhere sharing isn't in play.
+ */
+export async function swiftProjectForbidden(project: {
+  platform: string;
+  userId: string;
+}): Promise<boolean> {
+  return swiftRuntimeForbidden(project.platform, project.userId);
+}

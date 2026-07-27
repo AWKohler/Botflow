@@ -11,7 +11,7 @@ import { auth } from "@clerk/nextjs/server";
 
 import { SYSTEM_PROMPT_MOBILE, SYSTEM_PROMPT_MULTIPLATFORM, buildSwiftSystemPrompt, buildSandboxedWebSystemPrompt, buildWebSystemPrompt } from "@/lib/agent/prompts";
 import { isSandboxPlatform } from "@/lib/project-platform";
-import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { swiftProjectForbidden } from "@/lib/swift-access";
 import { getPersistentTools } from "@/lib/agent/persistent-tools";
 import { getGitTools, getSandboxedWebTools } from "@/lib/agent/sandboxed-web-tools";
 import { MODEL_CONFIGS, resolveModelId, isModelDisabled, modelDisabledReason, isOpenAIModel, isAnthropicModel, getProviderKeyName, type ModelId } from "@/lib/agent/models";
@@ -524,6 +524,10 @@ export async function POST(req: Request) {
     // Determine selected model for project and ensure ownership
     let selectedModel: ModelId = "gpt-5.6-luna";
     // Default to true so non-project agent requests still get the full toolset.
+    // Whose plan funds tier access + credits on the platform-metered path.
+    // Defaults to the actor; becomes the OWNER for editors on projects with
+    // shareOwnerCredits (sharing decision 2026-07-06).
+    let creditsUserId = userId;
     let hasBackend = true;
     let convexUrl: string | undefined;
     let githubLink: {
@@ -541,6 +545,9 @@ export async function POST(req: Request) {
         });
       }
       const proj = access.project;
+      if (access.role === "editor" && proj.shareOwnerCredits) {
+        creditsUserId = proj.userId;
+      }
       // Swift's runtime is beta-only. Gate on the STORED platform so a non-beta
       // owner of a legacy swift project can't drive the native agent's sandbox
       // tools against the swift sandbox.
@@ -553,7 +560,7 @@ export async function POST(req: Request) {
           headers: { "Content-Type": "application/json" },
         });
       }
-      if (await swiftRuntimeForbidden(proj.platform, userId)) {
+      if (await swiftProjectForbidden(proj)) {
         return new Response(
           JSON.stringify({ error: "Swift projects are currently in private beta." }),
           { status: 403, headers: { "Content-Type": "application/json" } },
@@ -562,7 +569,11 @@ export async function POST(req: Request) {
       selectedModel = resolveModelId(proj.model);
       hasBackend = proj.backendType !== "none";
       convexUrl = proj.userConvexUrl || proj.convexDeployUrl || undefined;
-      if (proj.githubRepoOwner && proj.githubRepoName) {
+      // Sharing: the agent's Git tools (commit/push/PR) mirror the HTTP git
+      // routes' gate — editors get them only when the owner enabled pushing
+      // (Codex review 2026-07-06). Owners always qualify.
+      const canUseGit = access.role === "owner" || proj.editorsCanPush;
+      if (canUseGit && proj.githubRepoOwner && proj.githubRepoName) {
         const autonomyValue = proj.gitAutonomy;
         const autonomy: "autonomous" | "manual" | "ask-each-time" | null =
           autonomyValue === "autonomous"
@@ -710,7 +721,9 @@ export async function POST(req: Request) {
       creditReconciled = true;
       const delta = actualCredits - platformReserved;
       if (delta !== 0) {
-        await adjustPlatformCredits(userId, delta).catch((err) => {
+        // Sharing: reconcile against the OWNER's pool when the project shares
+        // credits (creditsUserId == owner), else the actor's.
+        await adjustPlatformCredits(creditsUserId, delta).catch((err) => {
           console.error("[agent] platform_credit_reconcile_failed", err);
         });
       }
@@ -727,7 +740,7 @@ export async function POST(req: Request) {
     // headroom, and the monthly budget is the hard ceiling. All checks are
     // Redis-only — Neon is never touched on this hot path.
     if (isServerKeyModel(selectedModel) && !isUsingPersonalCredentials) {
-      const tier = await getUserTier(userId);
+      const tier = await getUserTier(creditsUserId);
       const requiredTier = MODEL_TIER_REQUIREMENT[selectedModel] ?? 'free';
 
       // Check if user's tier supports this model on server keys
@@ -750,13 +763,15 @@ export async function POST(req: Request) {
         cachedReadTokens: 0,
         cacheWriteTokens: 0,
       });
-      const reserved = await reservePlatformCredits(userId, platformReserved, weeklyLimit, monthlyLimit);
+      // Sharing: reserve/read against the OWNER's pool when creditsUserId is
+      // the owner (shareOwnerCredits on), else the actor's own.
+      const reserved = await reservePlatformCredits(creditsUserId, platformReserved, weeklyLimit, monthlyLimit);
       if (!reserved.ok) {
         platformReserved = 0; // reservation was rolled back inside the helper
         if (reserved.reason === 'monthly_exceeded') {
           return limitReachedResponse({
             limitType: 'monthly_credits',
-            current: await getMonthlyCreditsKV(userId),
+            current: await getMonthlyCreditsKV(creditsUserId),
             limit: monthlyLimit,
             tier,
             model: selectedModel,
@@ -764,7 +779,7 @@ export async function POST(req: Request) {
         }
         return limitReachedResponse({
           limitType: 'weekly_credits',
-          current: await getWeeklyCredits(userId),
+          current: await getWeeklyCredits(creditsUserId),
           limit: weeklyLimit,
           tier,
           model: selectedModel,
@@ -901,7 +916,7 @@ export async function POST(req: Request) {
             cacheWriteTokens: cachedWrite,
           });
           // Record usage to Neon (monthly aggregate + audit trail).
-          await recordTokenUsage(userId, selectedModel, tokensIn, tokensOut, actualCredits, cachedRead, cachedWrite).catch(() => {});
+          await recordTokenUsage(creditsUserId, selectedModel, tokensIn, tokensOut, actualCredits, cachedRead, cachedWrite).catch(() => {});
         }
         // Reconcile the atomic platform reservation (weekly + monthly KV
         // counters) down to the real cost, or release it entirely if no usage

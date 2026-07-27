@@ -4,7 +4,7 @@ import { requireProjectAccess } from "@/lib/project-access";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
 import { getProjectSandboxProvider } from "@/lib/sandbox-provider";
 import { looksLikeEgressBlock, EGRESS_BLOCK_MESSAGE } from "@/lib/egress-hint";
-import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { swiftProjectForbidden } from "@/lib/swift-access";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -32,7 +32,7 @@ export async function POST(
   }
   const { project } = access;
   // Swift's runtime is beta-only; deny non-beta owners of legacy swift projects.
-  if (await swiftRuntimeForbidden(project.platform, userId)) {
+  if (await swiftProjectForbidden(project)) {
     return new Response(
       JSON.stringify({ error: "Swift projects are currently in private beta." }),
       { status: 403 },

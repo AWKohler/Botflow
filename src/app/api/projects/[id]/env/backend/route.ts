@@ -17,8 +17,13 @@ export const dynamic = 'force-dynamic';
  */
 
 async function loadOwnedProject(projectId: string, userId: string) {
+  // Backend (Convex deployment) env vars are secret VALUES. Editors read/write
+  // them only when the owner enabled "editors manage backend" in the share
+  // sheet (default off — sharing decision 2026-07-06).
   const access = await requireProjectAccess(projectId, userId);
-  return access?.project ?? null;
+  if (!access) return null;
+  if (access.role !== "owner" && !access.project.editorsManageBackend) return null;
+  return access.project;
 }
 
 /** GET - list the deployment's env vars (reserved keys flagged read-only). */

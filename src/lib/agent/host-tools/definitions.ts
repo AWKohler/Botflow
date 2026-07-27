@@ -84,11 +84,17 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       "Opens a modal in the user's workspace where they register an app with the provider and paste their credentials (Apple uploads a .p8). " +
       "ONLY call this when the user EXPLICITLY asks for social sign-in; otherwise default to password sign-in via setup_auth. " +
       "PREREQUISITE: setup_auth must have run first. " +
-      "It BLOCKS until the user finishes — provider console setup takes real time, so expect to wait up to 20 minutes; that is normal, not an error. " +
-      "On success it returns the exact convex/auth.ts import + providers-array line and the sign-in button to add — then run convex_deploy. " +
-      "Outcomes: 'dismissed' means the user explicitly closed the modal — do NOT retry, and do not treat it as failure to configure later. " +
-      "A 'still pending' result means the user simply hasn't finished YET — the modal stays open, you'll get a system note when they submit; " +
-      "NEVER report a still-pending modal as dismissed or declined. Until success is returned, do NOT edit convex/auth.ts or add/expose the provider sign-in button.",
+      "IDEMPOTENT: once the provider's credentials are saved it returns success IMMEDIATELY (no modal) with the exact registration snippet — " +
+      "safe to call any time you need the wiring instructions. Pass reconfigure:true ONLY when the user explicitly wants to REPLACE saved credentials (reopens the modal). " +
+      "WAITING: console setup takes the user minutes — this tool waits only briefly, then returns 'still pending' while the modal STAYS OPEN. " +
+      "That is normal, not an error: continue other work or end your turn; a system note arrives when they save, then call this tool again for the snippet. " +
+      "NEVER re-call in a tight loop, and NEVER report a still-pending modal as dismissed or declined. " +
+      "'dismissed' means the user explicitly closed the modal — do NOT retry. " +
+      "On success: register the provider in convex/auth.ts EXACTLY as the returned snippet shows (Apple REQUIRES the custom profile() mapping in it — " +
+      "omitting it breaks account creation), run convex_deploy, then follow the snippet's remaining platform steps " +
+      "(web: wire the sign-in button via startOAuthSignIn; Swift: NO client code — the hosted sign-in page updates automatically). " +
+      "Until success is returned, do NOT edit convex/auth.ts or add/expose the provider sign-in UI. " +
+      "VERIFY before declaring done: after deploying, ask the user for one test sign-in and check get_convex_logs for auth errors.",
     inputSchema: {
       type: "object",
       properties: {
@@ -98,6 +104,11 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
           // BOTFLOW_OAUTH_PROVIDER_IDS at startup.
           enum: [OAUTH_PROVIDERS_TOKEN],
           description: "Provider id (required, no default): " + OAUTH_PROVIDERS_TOKEN + ".",
+        },
+        reconfigure: {
+          type: "boolean",
+          description:
+            "Reopen the credentials modal even though this provider is already configured — ONLY when the user explicitly asks to replace the saved credentials.",
         },
       },
       required: ["provider"],
@@ -156,9 +167,10 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       "Set up Stripe payments for this project. Call when the user asks to add checkout, subscriptions, billing, a paywall, or any payment flow. " +
       "Stripe Standard Connect — the user links their own Stripe account once and reuses it across every Botflow project. " +
       "If they've already linked it: returns status='already-connected' immediately. " +
-      "Otherwise: opens a modal in the workspace and BLOCKS (up to 20 minutes) while the user clicks Connect with Stripe and authorizes. " +
+      "Otherwise: opens a modal in the workspace and waits briefly while the user clicks Connect with Stripe and authorizes. " +
       "Returns status='connected' on success; 'dismissed' means the user explicitly cancelled (do NOT retry — continue and tell the user they can connect later); " +
       "'still-pending' means the user hasn't finished YET — the modal stays open, so NEVER describe it as dismissed or declined; " +
+      "continue other work or end your turn, a system note arrives when they connect, then call this again (returns already-connected with next steps); " +
       "'tier-blocked' (Free; relay message); 'backend-blocked' (no Convex backend).",
     inputSchema: EMPTY_INPUT,
   },
@@ -314,9 +326,9 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       "Ask the user to enter the value of an environment variable. Opens a modal in the user's workspace showing the variable NAME you chose; the user types only the VALUE. The value is stored server-side and NEVER shown to you — assume it is set and write code that reads it. " +
       "Targets: 'client' = frontend Vite .env (only VITE_-prefixed vars reach browser code); 'server' = the Convex deployment env (process.env in Convex functions; requires a backend). " +
       "Use for third-party API keys, webhook secrets, etc. Set isSecret=true for sensitive values. Include a short message explaining what the value is and where to find it — it's rendered in the modal. " +
-      "BLOCKS until the user saves or dismisses (up to 15 minutes — finding an API key can take a while; waiting is normal). " +
-      "'dismissed' means the user explicitly closed the modal: do NOT retry automatically; continue without it. " +
-      "'still pending' means they haven't finished YET — the modal stays open and you'll get a system note when they save; never call that dismissed.",
+      "Waits briefly for the user to save; finding an API key can take a while, so a 'still pending' result is normal — " +
+      "the modal STAYS OPEN, you'll get a system note when they save, and until then continue work that doesn't need the value (never call that dismissed). " +
+      "'dismissed' means the user explicitly closed the modal: do NOT retry automatically; continue without it.",
     inputSchema: {
       type: "object",
       properties: {

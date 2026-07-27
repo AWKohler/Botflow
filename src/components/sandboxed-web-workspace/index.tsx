@@ -113,6 +113,10 @@ export function SandboxedWebWorkspace({
   // ── UI state ─────────────────────────────────────────────────────────
   const [showSidebar, setShowSidebar] = useState(true);
   const [sidebarTab, setSidebarTab] = useState<"files" | "search" | "env" | "git">("files");
+  // Sharing: editors only see the Git tab when the owner enabled the
+  // share-sheet push switch. Server routes enforce regardless; this applies
+  // client-side on the next load/refresh (sharing decision 2026-07-06).
+  const [gitTabAllowed, setGitTabAllowed] = useState(true);
 
   // GitHub link state (lives on `projects`; mirrored locally for the panel)
   const [githubRepoOwner, setGithubRepoOwner] = useState<string | null>(null);
@@ -158,6 +162,8 @@ export function SandboxedWebWorkspace({
     mode: "test" | "live";
     authorizeUrl: string;
   } | null>(null);
+  /** Last Stripe connect request id we sent a late-completion note for. */
+  const stripeCompletionNotifiedRef = useRef<string | null>(null);
   /** Pending env-var entry request surfaced by the agent's requestEnvVar tool. */
   const [pendingEnvVarRequest, setPendingEnvVarRequest] = useState<{
     id: string;
@@ -213,6 +219,9 @@ export function SandboxedWebWorkspace({
           setBackendType(normalizeBackendType(proj.backendType));
         }
         if (proj?.authConfigured === true) setHasAuth(true);
+        if (proj?.viewerRole === "editor" && proj?.editorsCanPush !== true) {
+          setGitTabAllowed(false);
+        }
         if (typeof proj?.githubRepoOwner === "string") setGithubRepoOwner(proj.githubRepoOwner);
         if (typeof proj?.githubRepoName === "string") setGithubRepoName(proj.githubRepoName);
         if (typeof proj?.githubDefaultBranch === "string") setGithubDefaultBranch(proj.githubDefaultBranch);
@@ -417,6 +426,10 @@ export function SandboxedWebWorkspace({
     },
     [projectId, files, toast, imageBlobUrl],
   );
+
+  useEffect(() => {
+    if (!gitTabAllowed && sidebarTab === "git") setSidebarTab("files");
+  }, [gitTabAllowed, sidebarTab]);
 
   const handleContentChange = useCallback((next: string) => {
     setFileContent(next);
@@ -881,9 +894,36 @@ export function SandboxedWebWorkspace({
         mode: "test" | "live";
         authorizeUrl: string;
       } | null;
+      justCompleted?: { id: string } | null;
     };
     if (!signal.aborted && data.ok) {
       setPendingStripeRequest(data.pending);
+      // Stripe completion happens in a server-side OAuth callback (no modal
+      // POST like the OAuth/env-var flows), so this poll is where the
+      // workspace learns of it. The server only returns justCompleted when
+      // no agent poller is active, no in-band delivery happened, the note
+      // hasn't been acked, and this response won a short-TTL serve claim.
+      // Dispatch first, THEN ack (phase 2) — acking durably retires the
+      // note, so it must never happen before the dispatch did. If this tab
+      // dies pre-ack, the claim expires and the note re-serves; the local
+      // ref keeps this tab from re-dispatching while still re-sending a
+      // possibly-lost ack.
+      const completed = data.justCompleted;
+      if (completed) {
+        if (stripeCompletionNotifiedRef.current !== completed.id) {
+          stripeCompletionNotifiedRef.current = completed.id;
+          window.dispatchEvent(
+            new CustomEvent("agent-modal-completed", {
+              detail: { projectId, kind: "stripe-connect", subject: "Stripe" },
+            }),
+          );
+        }
+        fetch(`/api/projects/${projectId}/stripe/connect-request`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ackCompletedNote: completed.id }),
+        }).catch(() => {});
+      }
     }
   }, 2500, hasBackend && sandboxStatus === "ready");
 
@@ -1345,7 +1385,7 @@ export function SandboxedWebWorkspace({
                           { value: "files", text: "Files" },
                           { value: "search", text: "Search" },
                           { value: "env", text: "ENV" },
-                          { value: "git", text: "Git" },
+                          ...(gitTabAllowed ? [{ value: "git", text: "Git" }] : []),
                         ] as TabOption<"files" | "search" | "env" | "git">[]
                       }
                       selected={sidebarTab}

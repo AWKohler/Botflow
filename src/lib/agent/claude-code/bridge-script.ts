@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "28";
+export const BRIDGE_SCRIPT_VERSION = "32";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -112,21 +112,33 @@ process.on("SIGTERM", () => {
 // the host route dies at its maxDuration long before a human finishes an
 // OAuth console setup. Instead the host returns
 //   { ok: true, pending: true, wait: { requestId, pollDelayMs } }
-// and THIS loop — which runs in the sandbox, where there is no execution
-// ceiling — re-polls until the host returns a terminal result. From the
-// model's perspective the tool call simply blocks until the user acts (or
-// the host's wait ceiling passes and it returns an honest "still pending"
-// result). The host enforces the real ceiling; the client cap below is only
-// a runaway backstop.
+// and THIS loop re-polls briefly, then STOPS: pinning a live turn open for
+// the minutes a console setup takes is how turns die mid-modal. Past the
+// short grace below the model gets the host's pendingGuidance (modal stays
+// open, system note fires on submit, tools are idempotent on re-call).
 // ---------------------------------------------------------------------------
-const WAIT_CLIENT_CAP_MS = 30 * 60 * 1000;
+const WAIT_CLIENT_CAP_MS = 20 * 1000;
+// ask_question is the one waitable tool worth blocking on: without the answer
+// the model would have to guess. The host enforces its own ~5-min ceiling
+// (auto-dismiss → terminal timeout result); this cap is a runaway backstop.
+const ASK_QUESTION_CLIENT_CAP_MS = 8 * 60 * 1000;
 
-async function postHostTool(toolName, input) {
+function waitCapFor(toolName) {
+  return toolName === "ask_question" ? ASK_QUESTION_CLIENT_CAP_MS : WAIT_CLIENT_CAP_MS;
+}
+
+// Per-request hard deadline. The host route's maxDuration is 300s (a cold
+// convex_deploy legitimately runs minutes), so the default must exceed one
+// full invocation — this only guards against a request that HANGS.
+const DEFAULT_FETCH_TIMEOUT_MS = 330 * 1000;
+
+async function postHostTool(toolName, input, timeoutMs) {
   const base = process.env.BOTFLOW_API_BASE;
   const token = process.env.BOTFLOW_TOOL_TOKEN;
   if (!base || !token) {
     throw new Error("Host callback not configured (BOTFLOW_API_BASE / BOTFLOW_TOOL_TOKEN missing)");
   }
+  const deadlineMs = Number(timeoutMs) > 0 ? Number(timeoutMs) : DEFAULT_FETCH_TIMEOUT_MS;
   const headers = {
     "authorization": "Bearer " + token,
     "content-type": "application/json",
@@ -148,6 +160,9 @@ async function postHostTool(toolName, input) {
       method: "POST",
       headers,
       body: JSON.stringify({ tool: toolName, input: input ?? {} }),
+      // Fresh deadline per attempt — a hung request aborts instead of
+      // pinning the tool call open indefinitely.
+      signal: AbortSignal.timeout(deadlineMs),
     });
     if (response.status === 429 && attempt < MAX_429_RETRIES) {
       const retryAfter = Number(response.headers.get("retry-after"));
@@ -168,12 +183,50 @@ async function callHostTool(toolName, input) {
   const startedWaiting = Date.now();
   let transientFailures = 0;
   while (result && result.pending === true && result.wait && result.wait.requestId) {
-    if (Date.now() - startedWaiting > WAIT_CLIENT_CAP_MS) {
+    // Short grace only (~two 20s host windows ≈ 45s wall-clock, since the
+    // elapsed clock starts after the first window). A human filling an OAuth
+    // console or hunting an API key takes MINUTES — blocking a live turn that
+    // long is how turns die mid-modal. Past the grace, surface the host's
+    // pendingGuidance: the modal stays open, a system note fires on submit,
+    // and the waitable tools are idempotent (re-call returns success
+    // instantly once the user has finished).
+    if (Date.now() - startedWaiting > waitCapFor(toolName)) {
+      if (toolName === "ask_question") {
+        // Questions have no wait marker or system-note path — past the
+        // backstop just tell the model to proceed with a default.
+        return {
+          ok: true,
+          content:
+            "No answer arrived in time. Continue with a reasonable default; do not block on this question.",
+          answered: false,
+          timedOut: true,
+        };
+      }
+      // First tell the host we stopped so it clears the "agent is waiting"
+      // marker (otherwise a save within the marker's TTL would skip the
+      // workspace system-note and the completion would be lost). The host's
+      // reply doubles as a final status check: if the user's save slipped
+      // into the gap, it returns the terminal result with finalized:true —
+      // deliver THAT to the model instead of "still pending".
+      try {
+        const stopRes = await postHostTool(toolName, {
+          ...(input ?? {}),
+          waitRequestId: result.wait.requestId,
+          stopWaiting: true,
+        });
+        if (stopRes && stopRes.finalized === true) return stopRes;
+      } catch {
+        // Marker clearing is best-effort; the still-pending guidance below
+        // is still correct and the marker TTL expires on its own.
+      }
       return {
-        ok: false,
+        ok: true,
+        status: "still-pending",
         content:
-          "Stopped waiting for the user after 30 minutes. The request may STILL be pending in their workspace — " +
-          "do NOT tell the user they dismissed or declined it. Continue only with unrelated work; do not implement or expose UI that depends on the pending setup until the host tool returns success.",
+          (typeof result.pendingGuidance === "string" && result.pendingGuidance) ||
+          ("The user has not finished this yet — the request is still pending and the modal stays open in their workspace. " +
+            "Do NOT report it as dismissed or declined. Continue other work or end your turn; " +
+            "you'll get a system note when the user completes it, and calling the tool again later is safe."),
       };
     }
     const delay = Number(result.wait.pollDelayMs) > 0 ? Number(result.wait.pollDelayMs) : 2500;
@@ -342,15 +395,27 @@ function buildCustomTools(customTools, oauthProviderIds) {
         "Opens a modal in the user's workspace where they register an app with the provider and paste their credentials (Apple uploads a .p8). " +
         "ONLY call this when the user EXPLICITLY asks for social sign-in; otherwise default to password sign-in via setup_auth. " +
         "PREREQUISITE: setup_auth must have run first. " +
-        "It BLOCKS until the user finishes — provider console setup takes real time, so expect to wait up to 20 minutes; that is normal, not an error. " +
-        "On success it returns the exact convex/auth.ts import + providers-array line and the sign-in button to add — then run convex_deploy. " +
-        "Outcomes: 'dismissed' means the user explicitly closed the modal — do NOT retry, and do not treat it as failure to configure later. " +
-        "A 'still pending' result means the user simply hasn't finished YET — the modal stays open, you'll get a system note when they submit; " +
-        "NEVER report a still-pending modal as dismissed or declined. Until success is returned, do NOT edit convex/auth.ts or add/expose the provider sign-in button.",
+        "IDEMPOTENT: once the provider's credentials are saved it returns success IMMEDIATELY (no modal) with the exact registration snippet — " +
+        "safe to call any time you need the wiring instructions. Pass reconfigure:true ONLY when the user explicitly wants to REPLACE saved credentials (reopens the modal). " +
+        "WAITING: console setup takes the user minutes — this tool waits only briefly, then returns 'still pending' while the modal STAYS OPEN. " +
+        "That is normal, not an error: continue other work or end your turn; a system note arrives when they save, then call this tool again for the snippet. " +
+        "NEVER re-call in a tight loop, and NEVER report a still-pending modal as dismissed or declined. " +
+        "'dismissed' means the user explicitly closed the modal — do NOT retry. " +
+        "On success: register the provider in convex/auth.ts EXACTLY as the returned snippet shows (Apple REQUIRES the custom profile() mapping in it — " +
+        "omitting it breaks account creation), run convex_deploy, then follow the snippet's remaining platform steps " +
+        "(web: wire the sign-in button via startOAuthSignIn; Swift: NO client code — the hosted sign-in page updates automatically). " +
+        "Until success is returned, do NOT edit convex/auth.ts or add/expose the provider sign-in UI. " +
+        "VERIFY before declaring done: after deploying, ask the user for one test sign-in and check get_convex_logs for auth errors.",
         {
           provider: z
             .enum(oauthIds)
             .describe("Provider id (required, no default): " + oauthList + "."),
+          reconfigure: z
+            .boolean()
+            .optional()
+            .describe(
+              "Reopen the credentials modal even though this provider is already configured — ONLY when the user explicitly asks to replace the saved credentials.",
+            ),
         },
         makeHostToolHandler("setup_oauth_provider"),
       ),
@@ -418,9 +483,10 @@ function buildCustomTools(customTools, oauthProviderIds) {
         "Set up Stripe payments for this project. Call when the user asks to add checkout, subscriptions, billing, a paywall, or any payment flow. " +
         "Stripe Standard Connect — the user links their own Stripe account once and reuses it across every Botflow project. " +
         "If they've already linked it: returns status='already-connected' immediately. " +
-        "Otherwise: opens a modal in the workspace and BLOCKS (up to 20 minutes) while the user clicks Connect with Stripe and authorizes. " +
+        "Otherwise: opens a modal in the workspace and waits briefly while the user clicks Connect with Stripe and authorizes. " +
         "Returns status='connected' on success; 'dismissed' means the user explicitly cancelled (do NOT retry — continue and tell the user they can connect later); " +
         "'still-pending' means the user hasn't finished YET — the modal stays open, so NEVER describe it as dismissed or declined; " +
+        "continue other work or end your turn, a system note arrives when they connect, then call this again (returns already-connected with next steps); " +
         "'tier-blocked' (Free; relay message); 'backend-blocked' (no Convex backend).",
         {},
         makeHostToolHandler("initialize_stripe_payments"),
@@ -633,9 +699,9 @@ function buildCustomTools(customTools, oauthProviderIds) {
         "Ask the user to enter the value of an environment variable. Opens a modal in the user's workspace showing the variable NAME you chose; the user types only the VALUE. The value is stored server-side and NEVER shown to you — assume it is set and write code that reads it. " +
         "Targets: 'client' = frontend Vite .env (only VITE_-prefixed vars reach browser code); 'server' = the Convex deployment env (process.env in Convex functions; requires a backend). " +
         "Use for third-party API keys, webhook secrets, etc. Set isSecret=true for sensitive values. Include a short message explaining what the value is and where to find it — it's rendered in the modal. " +
-        "BLOCKS until the user saves or dismisses (up to 15 minutes — finding an API key can take a while; waiting is normal). " +
-        "'dismissed' means the user explicitly closed the modal: do NOT retry automatically; continue without it. " +
-        "'still pending' means they haven't finished YET — the modal stays open and you'll get a system note when they save; never call that dismissed.",
+        "Waits briefly for the user to save; finding an API key can take a while, so a 'still pending' result is normal — " +
+        "the modal STAYS OPEN, you'll get a system note when they save, and until then continue work that doesn't need the value (never call that dismissed). " +
+        "'dismissed' means the user explicitly closed the modal: do NOT retry automatically; continue without it.",
         {
           target: z.enum(["client", "server"]),
           key: z.string(),

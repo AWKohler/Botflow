@@ -145,6 +145,36 @@ export async function POST(req: Request) {
   }
   const { project } = access;
 
+  // ── Role gate (sharing; Codex review 2026-07-06) ─────────────────────────
+  // Editors drive their own agent, but the agent's server-side tools must
+  // respect the same boundaries as the HTTP routes: integration-connect tools
+  // are owner-only, and repo-writing git tools require the owner's push
+  // switch. Read-only git (status/diff), convex, dev-server, sim, and
+  // build/env tools stay available to editors.
+  if (access.role !== "owner") {
+    const OWNER_ONLY_TOOLS = new Set(["initialize_stripe_payments", "setup_oauth_provider"]);
+    const PUSH_TOOLS = new Set([
+      "git_commit",
+      "git_push",
+      "git_pull",
+      "git_resolve_conflict",
+      "git_abort_merge",
+      "open_pull_request",
+    ]);
+    if (OWNER_ONLY_TOOLS.has(tool)) {
+      return NextResponse.json({
+        ok: false,
+        content: "Only the project owner can configure integrations for this project.",
+      });
+    }
+    if (PUSH_TOOLS.has(tool) && !project.editorsCanPush) {
+      return NextResponse.json({
+        ok: false,
+        content: "The project owner hasn't enabled Git push for editors.",
+      });
+    }
+  }
+
   // ── Dispatch ─────────────────────────────────────────────────────────────
   switch (tool) {
     case "convex_deploy": {
@@ -517,6 +547,51 @@ export async function POST(req: Request) {
       const stripeWaitRequestId =
         typeof body.input?.waitRequestId === "string" ? body.input.waitRequestId : null;
 
+      // Bridge stopped re-polling — clear the wait marker so a late connect
+      // correctly fires the workspace system-note, then do one final status
+      // check so a connect that slipped into the gap is delivered instead of
+      // swallowed (see setup_oauth_provider for the full rationale).
+      if (stripeWaitRequestId && body.input?.stopWaiting === true) {
+        await clearAgentWaiting("stripe-connect", stripeWaitRequestId);
+        const { stripeConnectRequests: stripeStopTable } = await import("@/db/schema");
+        const [stripeFinal] = await db
+          .select({ status: stripeStopTable.status })
+          .from(stripeStopTable)
+          .where(
+            and(
+              eq(stripeStopTable.id, stripeWaitRequestId),
+              eq(stripeStopTable.projectId, binding.projectId),
+            ),
+          )
+          .limit(1);
+        if (stripeFinal?.status === "completed") {
+          // In-band delivery — suppress the workspace's late-completion note.
+          const { markResultDelivered } = await import("@/lib/agent/modal-wait");
+          void markResultDelivered("stripe-connect", stripeWaitRequestId);
+          return NextResponse.json({
+            ok: true,
+            finalized: true,
+            status: "connected",
+            content:
+              "The user just finished connecting their Stripe account. " +
+              "Call initialize_stripe_payments again now — it returns already-connected with the scaffold and next steps.",
+          });
+        }
+        if (stripeFinal?.status === "dismissed") {
+          return NextResponse.json({
+            ok: false,
+            finalized: true,
+            status: "dismissed",
+            content:
+              "The user cancelled the Stripe connect flow. Do not retry automatically — continue and mention they can connect later.",
+          });
+        }
+        return NextResponse.json({
+          ok: true,
+          content: "Stopped waiting; the connect flow stays open and a system note fires on completion.",
+        });
+      }
+
       const [identity] = await db
         .select()
         .from(userStripeIdentity)
@@ -657,11 +732,20 @@ export async function POST(req: Request) {
           ok: true,
           pending: true,
           wait: { requestId, pollDelayMs: 3000 },
+          pendingGuidance:
+            "The user hasn't finished connecting their Stripe account yet — the connect flow is STILL OPEN; " +
+            "nothing was dismissed or declined (Stripe onboarding takes minutes). " +
+            "Stop waiting: continue unrelated work or end your turn. You'll receive a system note when they connect; " +
+            "then call initialize_stripe_payments again — it returns already-connected with next steps. " +
+            "Until then do NOT scaffold or claim Stripe is set up, and NEVER describe this as the user declining.",
           content: "Waiting for the user to connect their Stripe account…",
         });
       }
 
       if (result === "completed") {
+        // In-band delivery — suppress the workspace's late-completion note.
+        const { markResultDelivered } = await import("@/lib/agent/modal-wait");
+        void markResultDelivered("stripe-connect", requestId);
         const [linked] = await db
           .select()
           .from(userStripeIdentity)
@@ -1049,7 +1133,13 @@ export async function POST(req: Request) {
       // via a server-side URL call. Instead, we duplicate the minimal logic here.
       const { getDb: getDbLocal } = await import("@/db");
       const { oauthProviderRequests: oauthTable } = await import("@/db/schema");
-      const { eq: eqLocal, and: andLocal } = await import("drizzle-orm");
+      const { eq: eqLocal, and: andLocal, inArray: inArrayLocal } = await import("drizzle-orm");
+      // 'completing' = a submit is mid-apply (the env push can take ~20s).
+      // Everywhere we look for "the active request", both states count: the
+      // one-active-request unique index spans both, so an insert that only
+      // checked 'pending' would violate it, and a fast-path success during
+      // 'completing' would report stale credentials.
+      const ACTIVE_STATUSES = ["pending", "completing"];
 
       const dbLocal = getDbLocal();
 
@@ -1077,10 +1167,124 @@ export async function POST(req: Request) {
       // the bridge (sandbox side, no execution ceiling): each invocation here
       // does one SHORT polling window and either returns a terminal result or
       // { pending: true, wait: { requestId } } — which makes the bridge sleep
-      // and call again with waitRequestId. From the model's perspective the
-      // tool simply blocks until the user acts or the wait ceiling passes.
+      // and call again with waitRequestId. Bridges cap how long they re-poll
+      // (transports and turns must not pin open for minutes) and surface
+      // pendingGuidance when they stop; the late-submit system-note plus the
+      // idempotent fast path below complete the flow on the next call.
       const waitRequestId =
         typeof body.input?.waitRequestId === "string" ? body.input.waitRequestId : null;
+
+      // Bridge stopped re-polling (short client-side grace passed). Clear the
+      // wait marker NOW so a save seconds later correctly fires the workspace
+      // system-note instead of assuming an active poller (the marker's 60s
+      // TTL would otherwise swallow the completion). Then do one FINAL status
+      // check: if the user's save slipped in between the poll window closing
+      // and this call, no poller will ever read it and the modal saw the
+      // marker still alive (no system-note) — returning the terminal result
+      // here (finalized: true, which the bridge forwards to the model in
+      // place of "still pending") is the only delivery path left.
+      if (waitRequestId && body.input?.stopWaiting === true) {
+        await clearAgentWaiting("oauth-provider", waitRequestId);
+        const [finalRow] = await dbLocal
+          .select({ status: oauthTable.status })
+          .from(oauthTable)
+          .where(
+            andLocal(
+              eqLocal(oauthTable.id, waitRequestId),
+              eqLocal(oauthTable.projectId, project.id),
+            ),
+          )
+          .limit(1);
+        if (finalRow?.status === "completed") {
+          const def = getOAuthProvider(inputProvider)!;
+          const { buildOAuthProviderSuccessContext } = await import(
+            "@/lib/agent/oauth-provider-tool"
+          );
+          return NextResponse.json({
+            ok: true,
+            finalized: true,
+            content: buildOAuthProviderSuccessContext(
+              project.platform === "swift" ? "swift" : "web",
+              inputProvider,
+              def,
+              { deploy: "convex_deploy", setupAuth: "setup_auth", setupOAuth: "setup_oauth_provider", logs: "get_convex_logs" },
+            ),
+          });
+        }
+        if (finalRow?.status === "dismissed") {
+          const name = getOAuthProvider(inputProvider)?.displayName ?? inputProvider;
+          return NextResponse.json({
+            ok: false,
+            finalized: true,
+            content:
+              `The user explicitly closed the ${name} OAuth modal without saving credentials. ` +
+              "Do not retry automatically. Continue with other work and mention they can set it up later.",
+          });
+        }
+        return NextResponse.json({
+          ok: true,
+          content: "Stopped waiting; the modal stays open and a system note fires on submit.",
+        });
+      }
+
+      // IDEMPOTENT FAST PATH — credentials already saved for this provider.
+      // Return the registration context immediately instead of reopening the
+      // modal (a post-save re-call used to create a fresh pending request,
+      // yanking the modal back open in the user's workspace — and on rails
+      // whose transport had already timed out, the agent could NEVER observe
+      // success in-band). reconfigure:true opts out so the user can
+      // intentionally replace credentials.
+      if (!waitRequestId && body.input?.reconfigure !== true) {
+        const { projectOAuthProviders } = await import("@/db/schema");
+        const [enabledRow] = await dbLocal
+          .select({ id: projectOAuthProviders.id })
+          .from(projectOAuthProviders)
+          .where(
+            andLocal(
+              eqLocal(projectOAuthProviders.projectId, project.id),
+              eqLocal(projectOAuthProviders.provider, inputProvider),
+              eqLocal(projectOAuthProviders.status, "enabled"),
+            ),
+          )
+          .limit(1);
+        // Skip the fast path while a modal for this provider is pending or a
+        // submit is mid-apply (a reconfigure in progress) — returning stale
+        // success would strand the open modal or report old credentials as
+        // current. The normal flow below re-attaches to that request.
+        const [activeForProvider] = enabledRow
+          ? await dbLocal
+              .select({ id: oauthTable.id })
+              .from(oauthTable)
+              .where(
+                andLocal(
+                  eqLocal(oauthTable.projectId, project.id),
+                  inArrayLocal(oauthTable.status, ACTIVE_STATUSES),
+                  eqLocal(oauthTable.provider, inputProvider),
+                ),
+              )
+              .limit(1)
+          : [undefined];
+        if (enabledRow && !activeForProvider) {
+          const def = getOAuthProvider(inputProvider)!;
+          const { buildOAuthProviderSuccessContext } = await import(
+            "@/lib/agent/oauth-provider-tool"
+          );
+          return NextResponse.json({
+            ok: true,
+            alreadyConfigured: true,
+            content:
+              `${def.displayName} OAuth credentials are ALREADY saved on this project — no modal was opened. ` +
+              "If the provider isn't wired into the app yet, complete the steps below. " +
+              "To REPLACE the saved credentials, call again with reconfigure: true (only if the user explicitly asked).\n\n" +
+              buildOAuthProviderSuccessContext(
+                project.platform === "swift" ? "swift" : "web",
+                inputProvider,
+                def,
+                { deploy: "convex_deploy", setupAuth: "setup_auth", setupOAuth: "setup_oauth_provider", logs: "get_convex_logs" },
+              ),
+          });
+        }
+      }
 
       let requestId: string;
       if (waitRequestId) {
@@ -1091,16 +1295,17 @@ export async function POST(req: Request) {
           ? deployUrl.replace(".convex.cloud", ".convex.site")
           : null;
 
-        // Reuse a pending request for the SAME provider — the user may be
-        // mid-typing in that very modal, and a fresh agent call must not yank
-        // it away. Bump updatedAt so the wait ceiling restarts from now.
+        // Reuse an ACTIVE request for the SAME provider — 'pending' means the
+        // user may be mid-typing in that very modal, 'completing' means their
+        // submit is being applied right now; a fresh agent call must not yank
+        // either away. Bump updatedAt so the wait ceiling restarts from now.
         const [existing] = await dbLocal
           .select({ id: oauthTable.id })
           .from(oauthTable)
           .where(
             andLocal(
               eqLocal(oauthTable.projectId, project.id),
-              eqLocal(oauthTable.status, "pending"),
+              inArrayLocal(oauthTable.status, ACTIVE_STATUSES),
               eqLocal(oauthTable.provider, inputProvider),
             ),
           )
@@ -1114,7 +1319,14 @@ export async function POST(req: Request) {
             .where(eqLocal(oauthTable.id, existing.id));
         } else {
           // Cancel pending requests for OTHER providers (one modal at a time),
-          // then create the new one.
+          // then create the new one. A 'completing' row can NOT be dismissed —
+          // its submit is mid-apply — and the one-active-request unique index
+          // spans it, so racing an insert would 500. Tell the model to retry
+          // in a moment instead. The age guard (>5s) keeps a CONCURRENT
+          // call's just-inserted row alive: dismissing it would strand that
+          // caller mid-wait; our own insert then hits the unique index and
+          // the adoption path below resolves the conflict.
+          const { lt: ltLocal } = await import("drizzle-orm");
           await dbLocal
             .update(oauthTable)
             .set({ status: "dismissed", updatedAt: new Date() })
@@ -1122,19 +1334,77 @@ export async function POST(req: Request) {
               andLocal(
                 eqLocal(oauthTable.projectId, project.id),
                 eqLocal(oauthTable.status, "pending"),
+                ltLocal(oauthTable.updatedAt, new Date(Date.now() - 5000)),
               ),
             );
-          const [oauthRecord] = await dbLocal
-            .insert(oauthTable)
-            .values({
-              projectId: project.id,
-              userId: binding.userId,
-              provider: inputProvider,
-              status: "pending",
-              convexSiteUrl,
-            })
-            .returning();
-          requestId = oauthRecord.id;
+          const [completingOther] = await dbLocal
+            .select({ id: oauthTable.id, provider: oauthTable.provider })
+            .from(oauthTable)
+            .where(
+              andLocal(
+                eqLocal(oauthTable.projectId, project.id),
+                eqLocal(oauthTable.status, "completing"),
+              ),
+            )
+            .limit(1);
+          if (completingOther) {
+            return NextResponse.json({
+              ok: true,
+              status: "busy",
+              content:
+                `The ${completingOther.provider} OAuth credentials the user just submitted are being applied right now. ` +
+                "Wait ~15 seconds, then call setup_oauth_provider again.",
+            });
+          }
+          try {
+            const [oauthRecord] = await dbLocal
+              .insert(oauthTable)
+              .values({
+                projectId: project.id,
+                userId: binding.userId,
+                provider: inputProvider,
+                status: "pending",
+                convexSiteUrl,
+              })
+              .returning();
+            requestId = oauthRecord.id;
+          } catch (insertErr) {
+            const { isUniqueViolation } = await import("@/lib/agent/oauth-provider-tool");
+            if (!isUniqueViolation(insertErr)) throw insertErr;
+            // Lost a race with a concurrent call: the one-active-request
+            // unique index rejected our insert. Adopt the winner if it's for
+            // the same provider; otherwise ask for a short retry.
+            const [winner] = await dbLocal
+              .select({ id: oauthTable.id, provider: oauthTable.provider })
+              .from(oauthTable)
+              .where(
+                andLocal(
+                  eqLocal(oauthTable.projectId, project.id),
+                  inArrayLocal(oauthTable.status, ACTIVE_STATUSES),
+                ),
+              )
+              .limit(1);
+            if (winner?.provider === inputProvider) {
+              requestId = winner.id;
+            } else if (winner) {
+              return NextResponse.json({
+                ok: true,
+                status: "busy",
+                content:
+                  `Another OAuth setup (${winner.provider}) is active on this project right now. ` +
+                  "Wait ~15 seconds, then call setup_oauth_provider again.",
+              });
+            } else {
+              // The racing winner reached a terminal state between our insert
+              // and this lookup — the conflict is already gone. Retry, don't 500.
+              return NextResponse.json({
+                ok: true,
+                status: "busy",
+                content:
+                  "A concurrent OAuth setup call just resolved. Call setup_oauth_provider again now.",
+              });
+            }
+          }
         }
       }
 
@@ -1175,7 +1445,7 @@ export async function POST(req: Request) {
               project.platform === "swift" ? "swift" : "web",
               inputProvider,
               def,
-              { deploy: "convex_deploy", setupAuth: "setup_auth", setupOAuth: "setup_oauth_provider" },
+              { deploy: "convex_deploy", setupAuth: "setup_auth", setupOAuth: "setup_oauth_provider", logs: "get_convex_logs" },
             ),
           });
         }
@@ -1216,10 +1486,20 @@ export async function POST(req: Request) {
             " You may continue unrelated work, but do NOT edit convex/auth.ts, add or expose this provider's sign-in button, or claim the provider is configured until the credentials are saved successfully.",
         });
       }
+      const pendingName = getOAuthProvider(inputProvider)?.displayName ?? inputProvider;
       return NextResponse.json({
         ok: true,
         pending: true,
         wait: { requestId, pollDelayMs: 2500 },
+        // Surfaced to the model by bridges that stop re-polling (they must not
+        // pin a transport/turn open for the minutes a console setup takes).
+        pendingGuidance:
+          `The user hasn't finished entering the ${pendingName} OAuth credentials yet — the modal is STILL OPEN in their workspace; ` +
+          "nothing was dismissed or declined, and this is normal (provider console setup takes minutes). " +
+          "Stop waiting: continue unrelated work or end your turn. You'll receive a system note when they save; " +
+          "then call setup_oauth_provider again — once credentials are saved it returns the registration snippet instantly. " +
+          "Until then do NOT edit convex/auth.ts, add or expose this provider's sign-in UI, or claim the provider is configured, " +
+          "and NEVER describe this as the user dismissing or declining.",
         content: "Waiting for the user to finish the OAuth credentials modal…",
       });
     }
@@ -1274,6 +1554,38 @@ export async function POST(req: Request) {
       // inside one serverless invocation.
       const envWaitRequestId =
         typeof body.input?.waitRequestId === "string" ? body.input.waitRequestId : null;
+
+      // Bridge stopped re-polling — clear the wait marker so a late save
+      // correctly fires the workspace system-note, then do one final status
+      // check so a save that slipped into the gap is delivered instead of
+      // swallowed (see setup_oauth_provider for the full rationale).
+      if (envWaitRequestId && body.input?.stopWaiting === true) {
+        await clearAgentWaiting("env-var", envWaitRequestId);
+        const { envVarRequests: envStopTable } = await import("@/db/schema");
+        const [envFinal] = await getDb()
+          .select({ status: envStopTable.status })
+          .from(envStopTable)
+          .where(
+            and(
+              eq(envStopTable.id, envWaitRequestId),
+              eq(envStopTable.projectId, binding.projectId),
+            ),
+          )
+          .limit(1);
+        if (envFinal?.status === "completed" || envFinal?.status === "dismissed") {
+          const finalMsg = envVarOutcomeMessage(
+            envFinal.status,
+            key as string,
+            target as EnvVarTarget,
+          );
+          return NextResponse.json({ ok: finalMsg.ok, finalized: true, content: finalMsg.content });
+        }
+        return NextResponse.json({
+          ok: true,
+          content: "Stopped waiting; the modal stays open and a system note fires on save.",
+        });
+      }
+
       const requestId =
         envWaitRequestId ??
         (await createEnvVarRequest({
@@ -1308,6 +1620,12 @@ export async function POST(req: Request) {
           ok: true,
           pending: true,
           wait: { requestId, pollDelayMs: 2500 },
+          pendingGuidance:
+            `The user hasn't entered ${key as string} yet — the env-var modal is STILL OPEN in their workspace; ` +
+            "nothing was dismissed (finding an API key can take a while). " +
+            "Stop waiting: continue work that doesn't need this value or end your turn. " +
+            "You'll receive a system note when they save it; the value is stored server-side and never shown to you. " +
+            "Do NOT claim the variable is set, and NEVER describe this as the user dismissing or declining.",
           content: `Waiting for the user to enter ${key as string}…`,
         });
       }
@@ -1318,28 +1636,64 @@ export async function POST(req: Request) {
 
     case "ask_question": {
       // Mirror of the Botflow askQuestion execute: insert a chat_questions
-      // row keyed by a synthetic tool_call_id, poll for an answer, return.
-      const inputQuestions = body.input?.questions;
-      if (!Array.isArray(inputQuestions) || inputQuestions.length === 0) {
-        return NextResponse.json({
-          ok: false,
-          content: "askQuestion requires a non-empty questions array.",
+      // row keyed by a synthetic tool_call_id and poll for an answer — but as
+      // a WAITABLE-TOOL HANDSHAKE (see setup_oauth_provider): each invocation
+      // runs one short window and returns { pending, wait } so the sandbox
+      // bridge carries the wait. Unlike the modal tools, the bridges keep
+      // re-polling ask_question until a terminal result (an unanswered
+      // question means the model would have to guess), and the ceiling below
+      // preserves the original 5-minute auto-dismiss semantics.
+      const dbLocal = getDb();
+      const questionWaitId =
+        typeof body.input?.waitRequestId === "string" ? body.input.waitRequestId : null;
+
+      let toolCallId: string;
+      let askStartedAt: number;
+      if (questionWaitId) {
+        const [existingQ] = await dbLocal
+          .select({ createdAt: chatQuestions.createdAt })
+          .from(chatQuestions)
+          .where(
+            and(
+              eq(chatQuestions.toolCallId, questionWaitId),
+              eq(chatQuestions.projectId, binding.projectId),
+            ),
+          )
+          .limit(1);
+        if (!existingQ) {
+          return NextResponse.json({
+            ok: true,
+            content:
+              "The question no longer exists. Continue with a reasonable default.",
+            answered: false,
+            dismissed: true,
+          });
+        }
+        toolCallId = questionWaitId;
+        askStartedAt = existingQ.createdAt.getTime();
+      } else {
+        const inputQuestions = body.input?.questions;
+        if (!Array.isArray(inputQuestions) || inputQuestions.length === 0) {
+          return NextResponse.json({
+            ok: false,
+            content: "askQuestion requires a non-empty questions array.",
+          });
+        }
+        toolCallId = `claude-${randomUUID()}`;
+        askStartedAt = Date.now();
+        await dbLocal.insert(chatQuestions).values({
+          projectId: binding.projectId,
+          userId: binding.userId,
+          segmentId: project.currentSegmentId,
+          toolCallId,
+          questions: inputQuestions as unknown as object,
+          status: "pending",
         });
       }
 
-      const toolCallId = `claude-${randomUUID()}`;
-      const dbLocal = getDb();
-      await dbLocal.insert(chatQuestions).values({
-        projectId: binding.projectId,
-        userId: binding.userId,
-        segmentId: project.currentSegmentId,
-        toolCallId,
-        questions: inputQuestions as unknown as object,
-        status: "pending",
-      });
-
-      const deadline = Date.now() + 270 * 1000; // < maxDuration, leaves cleanup headroom
-      while (Date.now() < deadline) {
+      const ASK_CEILING_MS = 270 * 1000; // preserves the original 5-min semantics
+      const askWindowDeadline = Date.now() + 20_000;
+      for (;;) {
         await new Promise<void>((r) => setTimeout(r, 2000));
         const [row] = await dbLocal
           .select({ status: chatQuestions.status, answer: chatQuestions.answer })
@@ -1377,9 +1731,24 @@ export async function POST(req: Request) {
             dismissed: true,
           });
         }
+        if (Date.now() >= askWindowDeadline) {
+          // Window closed while still pending. Grant another window only if
+          // it fits INSIDE the ceiling (projecting the next ~20s window keeps
+          // the effective ceiling at ~250-270s instead of overshooting to
+          // ~285s); past that, fall through to auto-dismiss.
+          if (Date.now() - askStartedAt < ASK_CEILING_MS - 20_000) {
+            return NextResponse.json({
+              ok: true,
+              pending: true,
+              wait: { requestId: toolCallId, pollDelayMs: 2000 },
+              content: "Waiting for the user to answer…",
+            });
+          }
+          break;
+        }
       }
 
-      await dbLocal
+      const dismissed = await dbLocal
         .update(chatQuestions)
         .set({ status: "dismissed", updatedAt: new Date() })
         .where(
@@ -1390,10 +1759,43 @@ export async function POST(req: Request) {
             eq(chatQuestions.status, "pending"),
           ),
         )
-        .catch(() => undefined);
+        .returning({ id: chatQuestions.id })
+        .catch(() => [] as { id: string }[]);
+      if (dismissed.length === 0) {
+        // The guarded dismiss updated nothing — an answer (or a user dismiss)
+        // won the race after our final pending read. Re-read and return the
+        // real terminal state instead of discarding the user's answer.
+        const [finalQ] = await dbLocal
+          .select({ status: chatQuestions.status, answer: chatQuestions.answer })
+          .from(chatQuestions)
+          .where(
+            and(
+              eq(chatQuestions.toolCallId, toolCallId),
+              eq(chatQuestions.projectId, binding.projectId),
+            ),
+          )
+          .limit(1);
+        if (finalQ?.status === "answered") {
+          const ans = finalQ.answer as
+            | { selectedIds?: string[]; selectedLabels?: string[]; text?: string | null }
+            | null;
+          const labels = ans?.selectedLabels ?? [];
+          const summary = labels.length > 0
+            ? `User picked: ${labels.join(", ")}${ans?.text ? ` (with custom note: "${ans.text}")` : ""}`
+            : (ans?.text ?? "Answered");
+          return NextResponse.json({
+            ok: true,
+            content: summary,
+            answered: true,
+            selectedIds: ans?.selectedIds ?? [],
+            selectedLabels: labels,
+            customText: ans?.text ?? null,
+          });
+        }
+      }
       return NextResponse.json({
         ok: true,
-        content: "Question timed out (5 minutes) without an answer. Continue with a reasonable default.",
+        content: "Question timed out without an answer. Continue with a reasonable default.",
         answered: false,
         timedOut: true,
       });

@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { maybePromoteSandboxToVercel } from "@/lib/sandbox-promotion";
 import { getOrCreatePersistentSandbox, SandboxAtCapacityError, SandboxRateLimitError } from "@/lib/vercel-sandbox";
-import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { swiftProjectForbidden } from "@/lib/swift-access";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -40,7 +40,7 @@ async function getAuthorizedProject(projectId: string, userId: string) {
   const { project } = access;
   if (project.platform !== "swift" && project.platform !== "sandboxed-web") return null;
   // Swift's runtime is beta-only; deny non-beta owners of legacy swift projects.
-  if (await swiftRuntimeForbidden(project.platform, userId)) return null;
+  if (await swiftProjectForbidden(project)) return null;
   return project;
 }
 

@@ -6,7 +6,7 @@ import {
   stopSandboxDevServer,
 } from "@/lib/workspace-control";
 import { refreshAuthSiteUrl } from "@/lib/convex-auth-setup";
-import { swiftRuntimeForbidden } from "@/lib/swift-access";
+import { swiftProjectForbidden } from "@/lib/swift-access";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -19,7 +19,7 @@ async function authorizedProject(projectId: string, userId: string) {
   const { project } = access;
   if (project.platform !== "swift" && project.platform !== "sandboxed-web") return null;
   // Swift's runtime is beta-only; deny non-beta owners of legacy swift projects.
-  if (await swiftRuntimeForbidden(project.platform, userId)) return null;
+  if (await swiftProjectForbidden(project)) return null;
   return project;
 }
 

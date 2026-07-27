@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useUser } from "@clerk/nextjs";
-import { UserPlus, Mail, Crown, X, Loader2 } from "lucide-react";
+import { UserPlus, Mail, Crown, X, Check, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -49,6 +49,8 @@ interface Member {
 interface SharingState {
   role: "owner" | "editor";
   editorsCanPush: boolean;
+  editorsManageBackend: boolean;
+  shareOwnerCredits: boolean;
   shareOwnerOauth: boolean;
   members: Member[];
 }
@@ -251,18 +253,22 @@ function Toggle({
   return (
     <label className={cn("flex items-start gap-3 select-none", disabled ? "opacity-60" : "cursor-pointer")}>
       <button
+        type="button"
         role="switch"
         aria-checked={checked}
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cn(
-          "relative mt-0.5 w-8 h-[18px] rounded-full transition-colors shrink-0",
+          // appearance-none + border-0 + p-0 strip the UA button chrome that
+          // was shifting the knob; inline-flex/items-center centers the knob
+          // so its slide is purely the transform below.
+          "relative mt-0.5 inline-flex h-[18px] w-8 shrink-0 cursor-pointer items-center rounded-full border-0 p-0 appearance-none transition-colors",
           checked ? "bg-accent" : "bg-soft",
         )}
       >
         <span
           className={cn(
-            "absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow transition-transform",
+            "inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform",
             checked ? "translate-x-[16px]" : "translate-x-[2px]",
           )}
         />
@@ -294,8 +300,6 @@ function SharePopover({
   const [position, setPosition] = useState<AnchoredPosition | null>(null);
 
   const isOwner = state?.role === "owner";
-  // Visibility only — the server re-checks SHARING_ALLOW_OWNER_OAUTH.
-  const ownerOauthAvailable = process.env.NEXT_PUBLIC_SHARING_ALLOW_OWNER_OAUTH === "true";
 
   useEffect(() => {
     setPosition(positionFrom(anchorRef.current));
@@ -332,17 +336,45 @@ function SharePopover({
     }
   };
 
-  const revoke = async (m: Member) => {
-    const res = await fetch(`/api/projects/${projectId}/members/${m.id}`, { method: "DELETE" });
-    if (res.ok) {
+  // Two-step: clicking the row's X arms confirmation; confirming runs this.
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  const performRemove = async (m: Member) => {
+    // An editor removing their OWN row is leaving; anyone else is the owner
+    // revoking a member.
+    const selfLeave = !isOwner && m.userId === user?.id;
+    setRemovingId(m.id);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/members/${m.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        toast({
+          title: selfLeave ? "Couldn't leave" : "Couldn't remove",
+          description: "Something went wrong.",
+        });
+        return;
+      }
+      if (selfLeave) {
+        // Push the leaver out immediately — their access is already gone
+        // server-side, so keeping them in the workspace would only 404.
+        toast({ title: "You left the project", description: "You no longer have access." });
+        window.location.assign("/projects");
+        return;
+      }
       toast({ title: "Access removed", description: m.email });
+      setConfirmingId(null);
       void reload();
-    } else {
-      toast({ title: "Couldn't remove", description: "Something went wrong." });
+    } finally {
+      setRemovingId(null);
     }
   };
 
-  const patchSettings = async (patch: { editorsCanPush?: boolean; shareOwnerOauth?: boolean }) => {
+  const patchSettings = async (patch: {
+    editorsCanPush?: boolean;
+    editorsManageBackend?: boolean;
+    shareOwnerCredits?: boolean;
+    shareOwnerOauth?: boolean;
+  }) => {
     // Optimistic; revert on failure.
     setState((s) => (s ? { ...s, ...patch } : s));
     const res = await fetch(`/api/projects/${projectId}/sharing-settings`, {
@@ -435,13 +467,46 @@ function SharePopover({
                 {m.status === "pending" ? "Invited" : "Editor"}
               </span>
               {(isOwner || m.userId === user?.id) && (
-                <button
-                  onClick={() => void revoke(m)}
-                  className="text-muted hover:text-red-500 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                  title={m.userId === user?.id && !isOwner ? "Leave project" : "Remove access"}
-                >
-                  <X size={13} />
-                </button>
+                (() => {
+                  const selfLeave = !isOwner && m.userId === user?.id;
+                  if (confirmingId === m.id) {
+                    return (
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] text-muted">
+                          {selfLeave ? "Leave?" : "Remove?"}
+                        </span>
+                        <button
+                          onClick={() => setConfirmingId(null)}
+                          disabled={removingId === m.id}
+                          className="text-muted hover:text-fg p-0.5"
+                          title="Cancel"
+                          aria-label="Cancel"
+                        >
+                          <X size={13} />
+                        </button>
+                        <button
+                          onClick={() => void performRemove(m)}
+                          disabled={removingId === m.id}
+                          className="text-red-500 hover:text-red-600 p-0.5"
+                          title={selfLeave ? "Confirm leave" : "Confirm remove"}
+                          aria-label={selfLeave ? "Confirm leave" : "Confirm remove"}
+                        >
+                          {removingId === m.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                        </button>
+                      </span>
+                    );
+                  }
+                  return (
+                    <button
+                      onClick={() => setConfirmingId(m.id)}
+                      className="text-muted hover:text-red-500 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                      title={selfLeave ? "Leave project" : "Remove access"}
+                      aria-label={selfLeave ? "Leave project" : "Remove access"}
+                    >
+                      <X size={13} />
+                    </button>
+                  );
+                })()
               )}
             </div>
           ))}
@@ -458,12 +523,26 @@ function SharePopover({
               label="Editors can push to GitHub"
               hint="Commits and pushes go to your linked repository, attributed to the editor."
             />
-            {ownerOauthAvailable && (
+            <Toggle
+              checked={state.editorsManageBackend}
+              onChange={(v) => void patchSettings({ editorsManageBackend: v })}
+              label="Editors can manage the backend"
+              hint="Lets editors open the database dashboard and edit backend env vars (which include deployment secrets)."
+            />
+            <Toggle
+              checked={state.shareOwnerCredits}
+              onChange={(v) =>
+                void patchSettings({ shareOwnerCredits: v, ...(v ? {} : { shareOwnerOauth: false }) })
+              }
+              label="Collaborators use my credits"
+              hint="Their agent turns bill your plan's credits, and they get access to your tier's models."
+            />
+            {state.shareOwnerCredits && (
               <Toggle
                 checked={state.shareOwnerOauth}
                 onChange={(v) => void patchSettings({ shareOwnerOauth: v })}
-                label="Collaborators may use my Claude/Codex subscription"
-                hint="Off: collaborators connect their own accounts for OAuth models."
+                label="Share my Claude/Codex & API-key usage"
+                hint="Their turns can run through your connected accounts via Botflow's proxy — they never see the keys."
               />
             )}
           </div>

@@ -449,12 +449,31 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     sevenDay: number | null;
   } | null>(null);
 
+  // Sharing: when the owner shares credits, this project's model access
+  // follows the OWNER's tier — the server sends sharedTier on the project GET
+  // and re-derives it authoritatively per turn. Wins over the personal tier.
+  const sharedTierRef = useRef<'pro' | 'max' | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/projects/${encodeURIComponent(projectId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p: { sharedTier?: string } | null) => {
+        if (cancelled) return;
+        if (p?.sharedTier === 'pro' || p?.sharedTier === 'max') {
+          sharedTierRef.current = p.sharedTier;
+          setUserTier(p.sharedTier);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [projectId]);
+
   const fetchCredits = useCallback(() => {
     fetch('/api/usage/credits')
       .then(r => r.ok ? r.json() : null)
       .then((d: { pct?: number; tier?: string } | null) => {
         if (d?.pct !== undefined) setCreditPct(d.pct);
-        if (d?.tier === 'pro' || d?.tier === 'max') setUserTier(d.tier as 'pro' | 'max');
+        if (!sharedTierRef.current && (d?.tier === 'pro' || d?.tier === 'max')) setUserTier(d.tier as 'pro' | 'max');
       })
       .catch(() => {});
   }, []);
@@ -1263,7 +1282,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         case 'oauth-provider':
           note =
             `[system-note] The user just saved ${detail.subject} OAuth credentials in the workspace modal — it was still pending from earlier and was never dismissed. ` +
-            'Finish the wiring now: make sure convex/auth.ts registers the provider, run the Convex deploy, and confirm the sign-in button exists.';
+            'Finish the wiring now: call the setup_oauth_provider / setupOAuthProvider tool again — with credentials saved it returns INSTANTLY with the exact registration snippet (including any required profile() mapping). ' +
+            'Register the provider in convex/auth.ts exactly as that snippet shows (keep existing providers), run the Convex deploy, complete the snippet\'s remaining platform steps (web: the sign-in button; Swift: none — the hosted page updates automatically), then ask the user for one test sign-in and check the Convex logs for auth errors before reporting success.';
           break;
         case 'env-var':
           note =

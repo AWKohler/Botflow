@@ -81,9 +81,24 @@ async function jsonOrText(res: Response): Promise<string> {
   const ct = res.headers.get("content-type") ?? "";
   if (ct.includes("application/json")) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
-    return body?.error ?? JSON.stringify(body);
+    // Cap even JSON errors — they end up in user-facing toasts.
+    return (body?.error ?? JSON.stringify(body)).slice(0, 300);
   }
-  return await res.text().catch(() => "");
+  // Non-JSON body = the error came from infrastructure in front of the
+  // controller (Cloudflare / a proxy), not from the controller itself. Its
+  // HTML error pages are huge (break the toast UI) and leak infra details
+  // (hostnames, ray IDs, tunnel config) — never surface them. Map the status
+  // to a short human message instead.
+  const infra: Record<number, string> = {
+    502: "the simulator service is not responding",
+    503: "the simulator service is unavailable",
+    504: "the simulator service timed out",
+    521: "the simulator service is down",
+    522: "the connection to the simulator service timed out",
+    523: "the simulator service is unreachable",
+    530: "the simulator service is offline",
+  };
+  return `${infra[res.status] ?? "the simulator service returned an unexpected response"} — please try again in a moment`;
 }
 
 export async function createSession(
