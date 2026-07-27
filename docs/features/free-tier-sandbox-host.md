@@ -45,6 +45,8 @@ To update: `cd ~/Documents/sandbox-host/sdk && pnpm build && npm pack
 | `SANDBOX_HOST_TEAM_ID` / `SANDBOX_HOST_PROJECT_ID` | Tenant scoping; default `default`. |
 | `SANDBOX_HOST_ENABLED` | `"1"` routes **new** free-tier projects to sandbox-host. Off by default. |
 | `SANDBOX_HOST_STRICT` | `"1"` makes free-tier provider selection THROW instead of silently falling back to Vercel. Testing aid — leave off in production. |
+| `SANDBOX_HOST_OVERFLOW_TO_VERCEL` | `"1"` lets a **new** free-tier project go to Vercel when the host has no free slot (or is unreachable), instead of being stamped `sandbox-host` and hitting the "at capacity" wall on first open. **Off by default** (`0`) — overflow costs real Vercel spend and is sticky for the project's life. |
+| `SANDBOX_HOST_MAX_SESSIONS` | Soft capacity threshold for the overflow probe; keep in sync with the host's per-token `maxSessions` in `/etc/sandbox-host/api.json` (default 25). |
 | `PREVIEW_SIGNING_SECRET` | Shared with the host's `previewSigningSecret`; when set, sandbox-host preview URLs get a signed `?_bft` token. Unset = no-op (host running capability-URL-only). |
 
 Credentials are always passed per-call — never via the SDK's own
