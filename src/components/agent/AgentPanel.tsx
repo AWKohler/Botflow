@@ -1724,7 +1724,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     const hasImages = pendingImages.length > 0;
     if (!hasText && !hasImages) return;
 
-    const usingAnthropic = model === 'claude-sonnet-5' || model === 'claude-opus-4-8' || model === 'claude-fable-5';
+    const usingAnthropic = model === 'claude-sonnet-5' || model === 'claude-opus-5' || model === 'claude-fable-5';
     const hasAnthropicCreds = hasAnthropicKey || (ANTHROPIC_OAUTH_ENABLED && hasClaudeOAuth);
     const hasOpenAICreds = hasCodexOAuth || hasOpenAIKey;
     // Pro/Max users can use OpenAI and Anthropic models via platform server keys — only

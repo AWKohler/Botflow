@@ -107,8 +107,8 @@ describe("settlement credit parity with /api/agent", () => {
   });
 
   test("anthropic cache WRITES are billed (never free)", () => {
-    const withWrite = computeSettlementCredits(usageOf(10_000, 100, 0, 8_000), "claude-opus-4-8", "platform");
-    const withoutWrite = computeSettlementCredits(usageOf(2_000, 100, 0, 0), "claude-opus-4-8", "platform");
+    const withWrite = computeSettlementCredits(usageOf(10_000, 100, 0, 8_000), "claude-opus-5", "platform");
+    const withoutWrite = computeSettlementCredits(usageOf(2_000, 100, 0, 0), "claude-opus-5", "platform");
     assert.ok(withWrite > withoutWrite);
   });
 

@@ -91,13 +91,15 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     output:      15.00 / BASE_PRICE,  // 50.0
     cacheWrite:  3.75 / BASE_PRICE,   // 12.5 (5-min ephemeral cache write)
   },
-  'claude-opus-4-8': {
+  // Claude Opus 5 — drop-in successor to Opus 4.8 at identical pricing
+  // ($5 / $0.50 / $25 per MTok, 1.25× cache write).
+  'claude-opus-5': {
     input:       5.00 / BASE_PRICE,   // 16.67
     cachedInput: 0.50 / BASE_PRICE,   // 1.67 (cache hit/refresh)
     output:      25.00 / BASE_PRICE,  // 83.33
     cacheWrite:  6.25 / BASE_PRICE,   // 20.83 (5-min ephemeral cache write)
   },
-  // Claude Fable 5 ("Mythos") — exactly 2× Opus 4.8 on every axis. Zero-markup
+  // Claude Fable 5 ("Mythos") — exactly 2× Opus 5/4.8 on every axis. Zero-markup
   // pass-through, same as every other model: rate = $/MTok ÷ 0.30.
   'claude-fable-5': {
     input:      10.00 / BASE_PRICE,   // 33.33
@@ -178,7 +180,7 @@ export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = {
   'claude-sonnet-5': 5,
   'gpt-5.6-terra': 6,
   'fireworks-kimi-k3': 6,
-  'claude-opus-4-8': 10,
+  'claude-opus-5': 10,
   'gpt-5.6-sol': 12,
   'gpt-5.5': 12,
   'claude-fable-5': 20,

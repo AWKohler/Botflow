@@ -157,11 +157,12 @@ export async function GET(request: Request) {
     modelParam === 'claude-sonnet-4.6' ? 'claude-sonnet-5' : // migrate legacy
     modelParam === 'claude-sonnet-4.5' ? 'claude-sonnet-5' : // migrate legacy
     modelParam === 'claude-haiku-4.5' ? 'claude-sonnet-5' : // removed model
-    modelParam === 'claude-opus-4-8' ? 'claude-opus-4-8' :
-    modelParam === 'claude-opus-4-7' ? 'claude-opus-4-8' : // migrate legacy
-    modelParam === 'claude-opus-4.7' ? 'claude-opus-4-8' : // migrate legacy
-    modelParam === 'claude-opus-4.6' ? 'claude-opus-4-8' : // migrate legacy
-    modelParam === 'claude-opus-4.5' ? 'claude-opus-4-8' : // migrate legacy
+    modelParam === 'claude-opus-5' ? 'claude-opus-5' :
+    modelParam === 'claude-opus-4-8' ? 'claude-opus-5' : // migrate legacy → superseded by Opus 5
+    modelParam === 'claude-opus-4-7' ? 'claude-opus-5' : // migrate legacy
+    modelParam === 'claude-opus-4.7' ? 'claude-opus-5' : // migrate legacy
+    modelParam === 'claude-opus-4.6' ? 'claude-opus-5' : // migrate legacy
+    modelParam === 'claude-opus-4.5' ? 'claude-opus-5' : // migrate legacy
     modelParam === 'claude-fable-5' ? 'claude-fable-5' :
     modelParam === 'fireworks-minimax-m2p5' ? 'fireworks-minimax-m3' : // updated model
     modelParam === 'fireworks-minimax-m2p7' ? 'fireworks-minimax-m3' : // updated model
@@ -176,7 +177,7 @@ export async function GET(request: Request) {
     modelParam === 'gemini-3.1-pro-preview' ? 'gemini-3.1-pro-preview' :
     modelParam === 'grok-4.5' ? 'grok-4.5' :
     'gpt-5.6-luna' // default model
-  ) as 'gpt-5.6-sol' | 'gpt-5.6-terra' | 'gpt-5.6-luna' | 'gpt-5.5' | 'claude-sonnet-5' | 'claude-opus-4-8' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-kimi-k2p7' | 'fireworks-kimi-k3' | 'gemini-3.1-pro-preview' | 'grok-4.5';
+  ) as 'gpt-5.6-sol' | 'gpt-5.6-terra' | 'gpt-5.6-luna' | 'gpt-5.5' | 'claude-sonnet-5' | 'claude-opus-5' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-kimi-k2p7' | 'fireworks-kimi-k3' | 'gemini-3.1-pro-preview' | 'grok-4.5';
 
   if (!userId) {
     return redirectToSignIn({ returnBackUrl: request.url });

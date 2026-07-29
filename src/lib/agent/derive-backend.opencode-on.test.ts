@@ -181,7 +181,7 @@ describe("deriveAgentBackend — Anthropic tree (flag on)", () => {
   test("Anthropic BYOK is LOCKED to claude-code (preference retired)", async () => {
     const { deriveAgentBackend } = await load();
     const byok = deriveAgentBackend({
-      model: "claude-opus-4-8",
+      model: "claude-opus-5",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasAnthropicKey: true },
     });
@@ -190,7 +190,7 @@ describe("deriveAgentBackend — Anthropic tree (flag on)", () => {
 
     // The deprecated preference input is ignored entirely.
     const withStalePreference = deriveAgentBackend({
-      model: "claude-opus-4-8",
+      model: "claude-opus-5",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasAnthropicKey: true },
       preferredAnthropicBackend: "botflow",

@@ -50,7 +50,7 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
   'gpt-5.6-luna': 'free',       // free — default model, served on the platform key
   'gpt-5.5': 'pro',             // Pro+
   'claude-sonnet-5': 'pro',     // Pro+
-  'claude-opus-4-8': 'pro',     // Pro+
+  'claude-opus-5': 'pro',       // Pro+
   'claude-fable-5': 'max',      // Max-only
   'gemini-3.1-pro-preview': 'pro', // Pro+ for server key; free requires BYOK
   'grok-4.5': 'pro',            // Pro+ for server key; free requires BYOK (xAI)
@@ -69,7 +69,7 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
   'gpt-5.6-luna',
   'gpt-5.5',
   'claude-sonnet-5',
-  'claude-opus-4-8',
+  'claude-opus-5',
   'claude-fable-5',
   'gemini-3.1-pro-preview',
   'grok-4.5',
@@ -85,7 +85,7 @@ const MODEL_COST_LABEL: Record<ModelId, string> = {
   'claude-sonnet-5': 'x5',
   'gpt-5.6-terra': 'x6',
   'fireworks-kimi-k3': 'x6',
-  'claude-opus-4-8': 'x10',
+  'claude-opus-5': 'x10',
   'gpt-5.6-sol': 'x12',
   'gpt-5.5': 'x12',
   'claude-fable-5': 'x20',
@@ -110,7 +110,7 @@ const MODEL_ORDER: ModelId[] = [
   'claude-sonnet-5',         // x5
   'gpt-5.6-terra',           // x6
   'fireworks-kimi-k3',       // x6
-  'claude-opus-4-8',         // x10
+  'claude-opus-5',           // x10
   'gpt-5.6-sol',             // x12
   // 'gpt-5.5',              // x12 — hidden from the selector (kept in the
   //                         // registry/pricing so existing projects still run).

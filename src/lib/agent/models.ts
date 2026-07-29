@@ -8,7 +8,7 @@ export type ModelId =
   | "gpt-5.6-luna"
   | "gpt-5.5"
   | "claude-sonnet-5"
-  | "claude-opus-4-8"
+  | "claude-opus-5"
   | "claude-fable-5"
   | "gemini-3.1-pro-preview"
   | "grok-4.5"
@@ -105,13 +105,13 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     criticalThreshold: 0.9,
     supportsImages: true,
   },
-  "claude-opus-4-8": {
-    id: "claude-opus-4-8",
+  "claude-opus-5": {
+    id: "claude-opus-5",
     provider: "anthropic",
-    apiModelId: "claude-opus-4-8",
-    displayName: "Claude Opus 4.8",
+    apiModelId: "claude-opus-5",
+    displayName: "Claude Opus 5",
     maxContextTokens: 200_000,
-    personalCredContextTokens: 1_000_000, // 1M on Claude OAuth/BYOK (live-observed)
+    personalCredContextTokens: 1_000_000, // 1M on Claude OAuth/BYOK (same as Opus 4.8)
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
@@ -192,7 +192,7 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
 export function resolveModelId(stored: string | null | undefined): ModelId {
   // Dot-notation renames (same model, new ID format)
   if (stored === "claude-sonnet-4.5" || stored === "claude-sonnet-4.6" || stored === "claude-sonnet-4-6") return "claude-sonnet-5";
-  if (stored === "claude-opus-4.5" || stored === "claude-opus-4.6" || stored === "claude-opus-4.7" || stored === "claude-opus-4-7" || stored === "claude-opus-4-1") return "claude-opus-4-8";
+  if (stored === "claude-opus-4.5" || stored === "claude-opus-4.6" || stored === "claude-opus-4.7" || stored === "claude-opus-4-7" || stored === "claude-opus-4-1" || stored === "claude-opus-4-8") return "claude-opus-5";
   // OpenAI retired IDs → GPT-5.6 successors (Terra succeeds 5.4, Luna succeeds 5.3)
   if (stored === "gpt-5.4") return "gpt-5.6-terra";
   if (stored === "gpt-5.3-codex" || stored === "gpt-5.2" || stored === "gpt-4.1") return "gpt-5.6-luna";
