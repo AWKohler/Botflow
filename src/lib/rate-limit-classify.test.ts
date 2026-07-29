@@ -93,6 +93,20 @@ describe('existing tiers preserved', () => {
     assert.equal(classifyApiRequest('GET', `/api/projects/${PID}/swift-preview/state`), 'poll');
   });
 
+  test('a build must never rate-limit ITSELF via its own status polling', () => {
+    // The client POSTs .../swift-device/build then polls
+    // GET .../swift-device/build/<id> every 2s for up to 90 attempts. Those
+    // share a path prefix, so a method-agnostic prefix rule put ~30 polls/min
+    // into a 6/min build bucket and every build 429'd itself within seconds.
+    const BID = 'b1c2d3e4-0000-0000-0000-000000000000';
+    assert.equal(classifyApiRequest('GET', `/api/projects/${PID}/swift-device/build/${BID}`), 'poll');
+    assert.equal(classifyApiRequest('GET', `/api/projects/${PID}/swift-device/build/${BID}/ipa`), 'read');
+    // …while STARTING a build is still metered.
+    assert.equal(classifyApiRequest('POST', `/api/projects/${PID}/swift-device/build`), 'swiftDevice');
+    // Same shape for preview: polling must not spend build tokens.
+    assert.equal(classifyApiRequest('GET', `/api/projects/${PID}/swift-preview/build`), 'poll');
+  });
+
   test('expensive sandbox operations (any method)', () => {
     assert.equal(classifyApiRequest('POST', `/api/projects/${PID}/sandbox/exec`), 'expensive');
     assert.equal(classifyApiRequest('POST', `/api/projects/${PID}/sandbox/session`), 'expensive');
