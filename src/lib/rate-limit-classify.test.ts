@@ -82,9 +82,15 @@ describe('existing tiers preserved', () => {
     assert.equal(classifyApiRequest('POST', `/api/projects/${PID}/sandbox/publish`), 'deploy');
     assert.equal(classifyApiRequest('POST', `/api/projects/${PID}/convex/deploy`), 'deploy');
     assert.equal(classifyApiRequest('POST', '/api/convex/provision'), 'deploy');
-    assert.equal(classifyApiRequest('POST', `/api/projects/${PID}/swift-preview/build`), 'deploy');
-    // swift-preview/state must NOT be swallowed by the swift deploy rule
-    assert.notEqual(classifyApiRequest('GET', `/api/projects/${PID}/swift-preview/state`), 'deploy');
+  });
+
+  test('swift flows: separate buckets so a sim start never locks out an IPA build', () => {
+    assert.equal(classifyApiRequest('POST', `/api/projects/${PID}/swift-preview/build`), 'swiftPreview');
+    assert.equal(classifyApiRequest('POST', `/api/projects/${PID}/swift-preview/start`), 'swiftPreview');
+    assert.equal(classifyApiRequest('POST', `/api/projects/${PID}/swift-preview/rebuild`), 'swiftPreview');
+    assert.equal(classifyApiRequest('POST', `/api/projects/${PID}/swift-device/build`), 'swiftDevice');
+    // swift-preview/state must NOT be swallowed by the swift build rules
+    assert.equal(classifyApiRequest('GET', `/api/projects/${PID}/swift-preview/state`), 'poll');
   });
 
   test('expensive sandbox operations (any method)', () => {

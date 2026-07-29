@@ -40,7 +40,12 @@ const RULES: Array<[RegExp, Tier]> = [
   [/^\/api\/projects\/[^/]+\/sandbox\/publish/, 'deploy'],
   [/^\/api\/projects\/[^/]+\/convex\/deploy/, 'deploy'],
   [/^\/api\/convex\/provision/, 'deploy'],
-  [/^\/api\/projects\/[^/]+\/swift-(device|preview)\/(build|start|rebuild)/, 'deploy'],
+  // Swift flows: preview and device builds are used back-to-back (start a sim,
+  // then "run on iPhone"), so they must NOT share a bucket — and certainly not
+  // the 5-token 'deploy' one, where a single preview retry locked out the IPA
+  // build. Capacity for the actual heavy work is enforced host-side.
+  [/^\/api\/projects\/[^/]+\/swift-preview\/(build|start|rebuild)/, 'swiftPreview'],
+  [/^\/api\/projects\/[^/]+\/swift-device\/build/, 'swiftDevice'],
 
   // ── Workspace polling endpoints ─────────────────────────────────────────
   // GETs here are hit on 2–4s loops by every open, ready workspace; they get
@@ -72,8 +77,6 @@ const RULES: Array<[RegExp, Tier]> = [
   [/^\/api\/projects/, { read: 'read', mutate: 'write' }],
   [/^\/api\/usage\//, 'read'],
   [/^\/api\/user/, 'read'],
-  // Admin panel aggregates — read-only, operator-allowlisted in the handler.
-  [/^\/api\/panel\//, 'read'],
 ];
 
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
