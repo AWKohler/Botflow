@@ -26,6 +26,7 @@ import { redis } from './redis';
 
 export type RateLimitBucket =
   | 'read' | 'write' | 'upload' | 'expensive' | 'deploy'
+  | 'swiftPreview' | 'swiftDevice'
   | 'poll' | 'pollHeavy'
   | 'oauthStart' | 'oauthExchange' | 'oauthPoll'
   | 'agent' | 'claudeCode' | 'opencode' | 'toolCallback' | 'llmProxy'
@@ -72,7 +73,15 @@ export const RATE_LIMIT_BUCKETS: Record<RateLimitBucket, { tokens: number; windo
   // File-tree signature runs find|cksum INSIDE the sandbox (3s=20/min per
   // workspace) and file-content GETs cat from sandbox disk — heavier, tighter.
   pollHeavy:     { tokens: envInt('RL_POLL_HEAVY', 240),     window: '60 s' }, // sandbox-executing polls (files signature/content)
-  deploy:        { tokens: envInt('RL_DEPLOY', 5),           window: '60 s' }, // strictest: publish, convex/deploy, swift build
+  deploy:        { tokens: envInt('RL_DEPLOY', 5),           window: '60 s' }, // strictest: publish, convex/deploy
+  // Swift preview + device builds get their OWN buckets. When they shared
+  // 'deploy' (5/min), one sim start plus a retry ate the budget and the very
+  // next "run on iPhone" 429'd — the two flows are routinely used back-to-back,
+  // and a failed preview start makes users retry, so sharing a 5-token bucket
+  // rate-limited normal usage. The heavy work happens on the sim host anyway,
+  // which enforces its own capacity (slots + build queue).
+  swiftPreview:  { tokens: envInt('RL_SWIFT_PREVIEW', 10),   window: '60 s' }, // sim preview start/build/rebuild
+  swiftDevice:   { tokens: envInt('RL_SWIFT_DEVICE', 6),     window: '60 s' }, // device .ipa builds
   oauthStart:    { tokens: envInt('RL_OAUTH_START', 10),     window: '60 s' }, // oauth */start, stripe oauth start
   oauthExchange: { tokens: envInt('RL_OAUTH_EXCHANGE', 5),   window: '60 s' }, // oauth */callback + exchange (token/code grinding)
   oauthPoll:     { tokens: envInt('RL_OAUTH_POLL', 45),      window: '60 s' }, // codex/poll client loop (~1/2s = 30/min); headroom for jitter/retry/clock-drift
