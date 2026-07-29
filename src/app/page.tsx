@@ -2234,12 +2234,40 @@ export default function LandingV2() {
                   </span>
                 </p> */}
                 
-                <p className="text-center text-[var(--sand-text)] text-sm sm:text-lg leading-none mt-2 opacity-75">
-                Backend by{" "}
-                  <span className="inline-flex items-center align-middle -ml-3" style={{ height: "2.8em" }}>
-                    <Convex className="h-full w-auto opacity-75" />
-                  </span>
-                </p>
+                <div className="mt-2 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-5">
+                  <p className="text-center text-[var(--sand-text)] text-sm sm:text-lg leading-none opacity-75">
+                  Backend by{" "}
+                    <span className="inline-flex items-center align-middle -ml-3" style={{ height: "2.8em" }}>
+                      <Convex className="h-full w-auto opacity-75" />
+                    </span>
+                  </p>
+
+                  {process.env.NEXT_PUBLIC_PRODUCT_HUNT_ENABLED === 'true' && (
+                    <a
+                      href="https://www.producthunt.com/products/botflow?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-botflow"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        alt="Botflow - There is no moat... | Product Hunt"
+                        width={250}
+                        height={54}
+                        src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204895&theme=light&t=1785326664507"
+                        className="h-[54px] w-[250px] block dark:hidden"
+                      />
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        alt="Botflow - There is no moat... | Product Hunt"
+                        width={250}
+                        height={54}
+                        src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204895&theme=dark&t=1785326664507"
+                        className="h-[54px] w-[250px] hidden dark:block"
+                      />
+                    </a>
+                  )}
+                </div>
 
 
               </div>
