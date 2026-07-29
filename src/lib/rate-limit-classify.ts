@@ -44,8 +44,17 @@ const RULES: Array<[RegExp, Tier]> = [
   // then "run on iPhone"), so they must NOT share a bucket — and certainly not
   // the 5-token 'deploy' one, where a single preview retry locked out the IPA
   // build. Capacity for the actual heavy work is enforced host-side.
-  [/^\/api\/projects\/[^/]+\/swift-preview\/(build|start|rebuild)/, 'swiftPreview'],
-  [/^\/api\/projects\/[^/]+\/swift-device\/build/, 'swiftDevice'],
+  // ORDER MATTERS. A device build POSTs to .../swift-device/build and then
+  // polls GET .../swift-device/build/<buildId> every 2s for up to 90 attempts.
+  // Those are the same path PREFIX, so a prefix rule in the build bucket makes
+  // each build exhaust its own budget in seconds — ~30 polls/min against a
+  // 5–6/min bucket. That, not the preview↔device overlap, is why "run on
+  // iPhone" almost always 429'd. Status polls belong in the poll bucket and the
+  // IPA download is an ordinary read; only the STARTING POST is metered.
+  [/^\/api\/projects\/[^/]+\/swift-device\/build\/[^/]+\/ipa/, { read: 'read', mutate: 'write' }],
+  [/^\/api\/projects\/[^/]+\/swift-device\/build\/[^/]+/, { read: 'poll', mutate: 'write' }],
+  [/^\/api\/projects\/[^/]+\/swift-device\/build/, { read: 'poll', mutate: 'swiftDevice' }],
+  [/^\/api\/projects\/[^/]+\/swift-preview\/(build|start|rebuild)/, { read: 'poll', mutate: 'swiftPreview' }],
 
   // ── Workspace polling endpoints ─────────────────────────────────────────
   // GETs here are hit on 2–4s loops by every open, ready workspace; they get
