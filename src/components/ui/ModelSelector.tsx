@@ -44,6 +44,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
   'fireworks-minimax-m3': 'free',
   'fireworks-kimi-k2p7': 'free',
+  'fireworks-kimi-k3': 'pro',   // Pro+ for server key; free requires BYOK (Fireworks)
   'gpt-5.6-sol': 'pro',         // Pro+ for server key; free requires BYOK/OAuth
   'gpt-5.6-terra': 'pro',       // Pro+
   'gpt-5.6-luna': 'free',       // free — default model, served on the platform key
@@ -62,6 +63,7 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
 const SERVER_KEY_MODELS = new Set<ModelId>([
   'fireworks-minimax-m3',
   'fireworks-kimi-k2p7',
+  'fireworks-kimi-k3',
   'gpt-5.6-sol',
   'gpt-5.6-terra',
   'gpt-5.6-luna',
@@ -82,6 +84,7 @@ const MODEL_COST_LABEL: Record<ModelId, string> = {
   'gemini-3.1-pro-preview': 'x5',
   'claude-sonnet-5': 'x5',
   'gpt-5.6-terra': 'x6',
+  'fireworks-kimi-k3': 'x6',
   'claude-opus-4-8': 'x10',
   'gpt-5.6-sol': 'x12',
   'gpt-5.5': 'x12',
@@ -106,6 +109,7 @@ const MODEL_ORDER: ModelId[] = [
   'gemini-3.1-pro-preview',  // x5
   'claude-sonnet-5',         // x5
   'gpt-5.6-terra',           // x6
+  'fireworks-kimi-k3',       // x6
   'claude-opus-4-8',         // x10
   'gpt-5.6-sol',             // x12
   // 'gpt-5.5',              // x12 — hidden from the selector (kept in the

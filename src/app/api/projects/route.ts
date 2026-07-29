@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
         | 'claude-fable-5'
         | 'fireworks-minimax-m3'
         | 'fireworks-kimi-k2p7'
+        | 'fireworks-kimi-k3'
         | 'gemini-3.1-pro-preview'
         | 'grok-4.5';
     };
@@ -163,6 +164,8 @@ export async function POST(request: NextRequest) {
             ? 'fireworks-minimax-m3'
             : model === 'fireworks-kimi-k2p7'
             ? 'fireworks-kimi-k2p7'
+            : model === 'fireworks-kimi-k3'
+            ? 'fireworks-kimi-k3'
             : model === 'gemini-3.1-pro-preview'
             ? 'gemini-3.1-pro-preview'
             : model === 'grok-4.5'

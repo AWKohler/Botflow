@@ -39,6 +39,7 @@ const MODEL_DISPLAY: Record<string, string> = {
   'fireworks-glm-5p1': 'GLM-5.1', // historical usage records
   'fireworks-kimi-k2p7': 'Kimi K2.7',
   'fireworks-kimi-k2p6': 'Kimi K2.6', // historical usage records
+  'fireworks-kimi-k3': 'Kimi K3',
 
   'claude-sonnet-5': 'Claude Sonnet 5',
   'claude-sonnet-4.5': 'Claude Sonnet 4', // legacy usage records

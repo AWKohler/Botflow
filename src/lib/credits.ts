@@ -49,6 +49,11 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     cachedInput: 0.19 / BASE_PRICE,   // 0.63
     output:      4.00 / BASE_PRICE,   // 13.33
   },
+  'fireworks-kimi-k3': {
+    input:       3.00 / BASE_PRICE,   // 10.0
+    cachedInput: 0.30 / BASE_PRICE,   // 1.0
+    output:     15.00 / BASE_PRICE,   // 50.0
+  },
   'gpt-5.5': {
     input:       5.00 / BASE_PRICE,   // 16.67
     cachedInput: 0.50 / BASE_PRICE,   // 1.67
@@ -172,6 +177,7 @@ export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = {
   'gemini-3.1-pro-preview': 5,
   'claude-sonnet-5': 5,
   'gpt-5.6-terra': 6,
+  'fireworks-kimi-k3': 6,
   'claude-opus-4-8': 10,
   'gpt-5.6-sol': 12,
   'gpt-5.5': 12,

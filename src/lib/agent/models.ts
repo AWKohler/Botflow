@@ -13,7 +13,8 @@ export type ModelId =
   | "gemini-3.1-pro-preview"
   | "grok-4.5"
   | "fireworks-minimax-m3"
-  | "fireworks-kimi-k2p7";
+  | "fireworks-kimi-k2p7"
+  | "fireworks-kimi-k3";
 
 export type Provider = "openai" | "anthropic" | "google" | "xai" | "fireworks";
 
@@ -171,6 +172,16 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     apiModelId: "accounts/fireworks/models/kimi-k2p7-code",
     displayName: "Kimi K2.7",
     maxContextTokens: 262_144,
+    warnThreshold: 0.7,
+    criticalThreshold: 0.9,
+    supportsImages: true,
+  },
+  "fireworks-kimi-k3": {
+    id: "fireworks-kimi-k3",
+    provider: "fireworks",
+    apiModelId: "accounts/fireworks/models/kimi-k3",
+    displayName: "Kimi K3",
+    maxContextTokens: 1_000_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,

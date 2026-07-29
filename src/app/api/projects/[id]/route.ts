@@ -83,6 +83,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       model !== 'fireworks-glm-5p1' && // retired → resolves to fireworks-kimi-k2p7
       model !== 'fireworks-kimi-k2p7' &&
       model !== 'fireworks-kimi-k2p6' && // backwards compat → resolved to k2p7
+      model !== 'fireworks-kimi-k3' &&
       model !== 'gemini-3.1-pro-preview' &&
       model !== 'grok-4.5'
     ) {
