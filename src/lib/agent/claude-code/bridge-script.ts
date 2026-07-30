@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "32";
+export const BRIDGE_SCRIPT_VERSION = "33";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -348,6 +348,57 @@ function buildCustomTools(customTools, oauthProviderIds) {
         {},
         makeHostToolHandler("convex_deploy"),
         { annotations: { destructiveHint: true } },
+      ),
+    );
+  }
+
+  if (customTools.includes("list_muhkoo_tables")) {
+    tools.push(
+      tool(
+        "list_muhkoo_tables",
+        "List this project's MuhKoo database tables with their columns and types. " +
+        "Use it to discover the app's schema before reading data or writing frontend code against a table — the shapes here are authoritative, not what the client code assumes. " +
+        "Returns { ok, tables: [{ table, columns: [{ name, type }] }] }.",
+        {},
+        makeHostToolHandler("list_muhkoo_tables"),
+      ),
+    );
+  }
+
+  if (customTools.includes("read_muhkoo_table")) {
+    tools.push(
+      tool(
+        "read_muhkoo_table",
+        "Read rows from one MuhKoo database table. " +
+        "Use it to inspect real data, verify a write from the app actually landed, or check a row's shape before coding against it. " +
+        "Optionally filter with \`where\` — e.g. scope to one user with { column: 'owner', op: 'eq', value: '<commitment>' }. " +
+        "Returns { ok, rows, nextCursor }; pass nextCursor back as cursor to page further. Each row includes its \`_id\`.",
+        {
+          table: z.string().describe("Table name (from list_muhkoo_tables)."),
+          where: z
+            .array(
+              z.object({
+                column: z.string(),
+                op: z.enum([
+                  "eq",
+                  "neq",
+                  "gt",
+                  "gte",
+                  "lt",
+                  "lte",
+                  "in",
+                  "like",
+                  "likeStartsWith",
+                  "likeContains",
+                ]),
+                value: z.unknown(),
+              }),
+            )
+            .optional(),
+          limit: z.number().int().positive().optional(),
+          cursor: z.string().optional(),
+        },
+        makeHostToolHandler("read_muhkoo_table"),
       ),
     );
   }

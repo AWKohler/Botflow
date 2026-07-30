@@ -11,6 +11,7 @@ import { projects } from "@/db/schema";
 import {
   provisionMuhkooBackend,
   putMuhkooTable,
+  createMuhkooAccessToken,
   type MuhkooTableSpec,
 } from "@/lib/muhkoo-platform";
 
@@ -94,10 +95,56 @@ export async function ensureMuhkooProvisioned(
     console.warn("[muhkoo] default table provisioning failed (non-fatal):", e);
   }
 
+  // Mint the scoped read/write credential the agent's table tools use.
+  // Best-effort: the app is fully usable without it (only agent reads degrade).
+  await ensureMuhkooAccessToken(projectId).catch((e) =>
+    console.warn("[muhkoo] access-token minting failed (non-fatal):", e),
+  );
+
   return {
     provisioned: true,
     appId: app.appId,
     slug: app.slug,
     hostingUrl: app.hostingUrl,
   };
+}
+
+/**
+ * Ensure the project has a stored MuhKoo access token, minting one if absent.
+ *
+ * Separate from provisioning so it also HEALS projects created before access
+ * tokens existed (and any run where minting failed) — callers can invoke it
+ * lazily right before they need a data-plane read.
+ *
+ * Scoped to `db:read` + `db:write` and long-lived (1y) on purpose: it must
+ * outlive the ~1-day platform developer session so agent table reads keep
+ * working. Server-only — never injected into the sandbox.
+ */
+export async function ensureMuhkooAccessToken(
+  projectId: string,
+): Promise<string | null> {
+  const db = getDb();
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!project || project.backendType !== "muhkoo" || !project.muhkooAppId) {
+    return null;
+  }
+  if (project.muhkooAccessToken) return project.muhkooAccessToken;
+
+  const token = await createMuhkooAccessToken(project.muhkooAppId, {
+    scopes: ["db:read", "db:write"],
+    env: "test",
+    expiresInDays: 365,
+    label: `botflow-${project.id.slice(0, 8)}`,
+  });
+
+  await db
+    .update(projects)
+    .set({ muhkooAccessToken: token.plaintext, updatedAt: new Date() })
+    .where(eq(projects.id, projectId));
+
+  return token.plaintext;
 }

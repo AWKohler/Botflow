@@ -1656,6 +1656,7 @@ const WEB_PROMPT_MUHKOO: string[] = [
   "- Realtime: `client.space` (E2E-encrypted channels — see `src/features/ChannelChat.tsx`). Encrypted KV + blob storage: `client.kv` / `client.storage`.",
   "- `src/appConfig.ts` is the single knob the generic UI reads (table name + fields + channel). Reshape the app by editing it and the feature components.",
   "To create a database table, call the `muhkooProvisionTable` tool ({ table, columns: [{ name, type }] }; types: text | integer | real | boolean | timestamp | json) BEFORE reading/writing it — MuhKoo tables are provisioned server-side, not from client code. A default `items` table already exists. Scope per-user rows with `owner: client.auth.zk.commitment`.",
+  "Inspect the real database with `listMuhkooTables` (every table + its actual columns/types — check this before coding against a table, since schema and client code can drift) and `readMuhkooTable` ({ table, where?, limit?, cursor? }) to verify a write landed or debug an empty query, instead of guessing or adding throwaway UI.",
   "The publishable key and API base are injected as `VITE_MUHKOO_KEY` / `VITE_WORKER_URL` — never hard-code keys.",
 ];
 

@@ -456,6 +456,57 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       required: ["mode"],
     },
   },
+  list_muhkoo_tables: {
+    name: "list_muhkoo_tables",
+    description:
+      "List this project's MuhKoo database tables with their columns and types. " +
+      "Use it to discover the app's schema before reading data or writing frontend code against a table — the shapes here are authoritative, not what the client code assumes. " +
+      "Returns { ok, tables: [{ table, columns: [{ name, type }] }] }.",
+    inputSchema: EMPTY_INPUT,
+  },
+  read_muhkoo_table: {
+    name: "read_muhkoo_table",
+    description:
+      "Read rows from one MuhKoo database table. " +
+      "Use it to inspect real data, verify a write from the app actually landed, or check a row's shape before coding against it. " +
+      "Optionally filter with `where` (ops: eq, neq, gt, gte, lt, lte, in, like, likeStartsWith, likeContains) — e.g. scope to one user with { column: 'owner', op: 'eq', value: '<commitment>' }. " +
+      "Returns { ok, rows, nextCursor }; pass nextCursor back as cursor to page further. Each row includes its `_id`.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: { type: "string" },
+        where: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              column: { type: "string" },
+              op: {
+                type: "string",
+                enum: [
+                  "eq",
+                  "neq",
+                  "gt",
+                  "gte",
+                  "lt",
+                  "lte",
+                  "in",
+                  "like",
+                  "likeStartsWith",
+                  "likeContains",
+                ],
+              },
+              value: {},
+            },
+            required: ["column", "op", "value"],
+          },
+        },
+        limit: { type: "integer", minimum: 1 },
+        cursor: { type: "string" },
+      },
+      required: ["table"],
+    },
+  },
   provision_muhkoo_table: {
     name: "provision_muhkoo_table",
     description:
@@ -550,8 +601,13 @@ export function selectHostTools(input: SelectHostToolsInput): string[] {
     }
     if (usesMuhkoo) {
       // MuhKoo projects: server-side table provisioner (schemas can't be
-      // created from client code).
-      customTools.push("provision_muhkoo_table");
+      // created from client code) + read tools. Reads use the project's scoped
+      // access token, so they keep working when the platform session lapses.
+      customTools.push(
+        "provision_muhkoo_table",
+        "list_muhkoo_tables",
+        "read_muhkoo_table",
+      );
     }
     // Git tools — only when a repo is linked. Gating must match the project
     // state at turn-start; the host route also re-checks at execution time.

@@ -166,6 +166,14 @@ export const CLAUDE_CODE_TO_BOTFLOW: Record<string, ToolRewrite | null> = {
     to: "muhkooProvisionTable",
     mapInput: identityInput,
   },
+  list_muhkoo_tables: {
+    to: "listMuhkooTables",
+    mapInput: identityInput,
+  },
+  read_muhkoo_table: {
+    to: "readMuhkooTable",
+    mapInput: identityInput,
+  },
 
   // ── No Botflow counterpart — collapse to text summary on transit ─────
   Task: null,
@@ -267,6 +275,8 @@ export const BOTFLOW_TO_CLAUDE_CODE: Record<string, ToolRewrite | null> = {
   setupAuth:           { to: "setup_auth", mapInput: identityInput },
   setupOAuthProvider:  { to: "setup_oauth_provider", mapInput: identityInput },
   muhkooProvisionTable:{ to: "provision_muhkoo_table", mapInput: identityInput },
+  listMuhkooTables:    { to: "list_muhkoo_tables", mapInput: identityInput },
+  readMuhkooTable:     { to: "read_muhkoo_table", mapInput: identityInput },
   startSimulator:      { to: "start_simulator", mapInput: identityInput },
   stopSimulator:       { to: "stop_simulator", mapInput: identityInput },
   getSimulatorStatus:  { to: "get_simulator_status", mapInput: identityInput },
@@ -301,6 +311,8 @@ export const BOTFLOW_NATIVE_TOOLS = new Set<string>([
   "getRevenueCatProducts",
   "createRevenueCatProduct",
   "muhkooProvisionTable",
+  "listMuhkooTables",
+  "readMuhkooTable",
   "startSimulator",
   "stopSimulator",
   "getSimulatorStatus",

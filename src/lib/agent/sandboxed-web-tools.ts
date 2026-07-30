@@ -712,6 +712,84 @@ export function getSandboxedWebTools(params: {
       },
     });
 
+    const listMuhkooTables = tool({
+      description:
+        "List this project's MuhKoo database tables with their columns and types. " +
+        "Use it to discover the app's schema before reading data or writing frontend code against a table — the shapes here are authoritative, not what the client code assumes.",
+      inputSchema: z.object({}),
+      async execute() {
+        try {
+          const { ensureMuhkooProvisioned } = await import("@/lib/muhkoo-provision");
+          const { describeMuhkooTables } = await import("@/lib/muhkoo-platform");
+          const prov = await ensureMuhkooProvisioned(projectId);
+          if (!prov.appId) {
+            return { ok: false, error: "MuhKoo backend is not provisioned for this project yet." };
+          }
+          return await describeMuhkooTables(prov.appId);
+        } catch (e) {
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+    });
+
+    const readMuhkooTable = tool({
+      description:
+        "Read rows from one MuhKoo database table. " +
+        "Use it to inspect real data, verify a write from the app actually landed, or check a row's shape before coding against it. " +
+        "Optionally filter with `where` — e.g. scope to one user with { column: 'owner', op: 'eq', value: '<commitment>' }. " +
+        "Returns { ok, rows, nextCursor }; each row includes its `_id`.",
+      inputSchema: z.object({
+        table: z.string().describe("Table name (from listMuhkooTables)."),
+        where: z
+          .array(
+            z.object({
+              column: z.string(),
+              op: z.enum([
+                "eq",
+                "neq",
+                "gt",
+                "gte",
+                "lt",
+                "lte",
+                "in",
+                "like",
+                "likeStartsWith",
+                "likeContains",
+              ]),
+              value: z.unknown(),
+            }),
+          )
+          .optional(),
+        limit: z.number().int().positive().optional(),
+        cursor: z.string().optional(),
+      }),
+      async execute(input) {
+        const i = input as {
+          table: string;
+          where?: Array<{ column: string; op: string; value: unknown }>;
+          limit?: number;
+          cursor?: string;
+        };
+        try {
+          // Reads use the project's scoped access token (db:read), not the
+          // ~1-day platform developer session.
+          const { ensureMuhkooAccessToken } = await import("@/lib/muhkoo-provision");
+          const { queryMuhkooTable } = await import("@/lib/muhkoo-platform");
+          const accessToken = await ensureMuhkooAccessToken(projectId);
+          if (!accessToken) {
+            return { ok: false, error: "MuhKoo backend is not provisioned for this project yet." };
+          }
+          return await queryMuhkooTable(accessToken, i.table, {
+            ...(i.where ? { where: i.where } : {}),
+            ...(i.limit !== undefined ? { limit: i.limit } : {}),
+            ...(i.cursor !== undefined ? { cursor: i.cursor } : {}),
+          });
+        } catch (e) {
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+    });
+
     return {
       ...baseTools,
       write: guardedWrite,
@@ -719,7 +797,9 @@ export function getSandboxedWebTools(params: {
       ...workspaceTools,
       ...imageGenTools,
       ...gitTools,
-      ...(usesMuhkoo ? { muhkooProvisionTable } : {}),
+      ...(usesMuhkoo
+        ? { muhkooProvisionTable, listMuhkooTables, readMuhkooTable }
+        : {}),
     } as const;
   }
 

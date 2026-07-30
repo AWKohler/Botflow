@@ -54,6 +54,10 @@ export const projects = pgTable('projects', {
   muhkooPublishableKey: text('muhkoo_publishable_key'), // mk_*_pk_* — VITE_MUHKOO_KEY (browser-safe)
   muhkooSecretKey: text('muhkoo_secret_key'),           // mk_*_sk_* — hosting deploy key (server-only)
   muhkooHostingUrl: text('muhkoo_hosting_url'),         // https://<slug>.apps.muhkoo.dev
+  // mk_*_at_* — scoped, expiring machine credential (db:read/db:write) used for
+  // server-side data-plane reads. SERVER-ONLY; outlives the ~1-day platform
+  // developer session, so agent table reads keep working after it lapses.
+  muhkooAccessToken: text('muhkoo_access_token'),
   // Cloudflare Pages deployment
   cloudflareProjectName: text('cloudflare_project_name'),
   cloudflareDeploymentUrl: text('cloudflare_deployment_url'),

@@ -435,6 +435,79 @@ export async function POST(req: Request) {
       });
     }
 
+    case "list_muhkoo_tables": {
+      if (project.backendType !== "muhkoo") {
+        return NextResponse.json({
+          ok: false,
+          content: "This project does not use a MuhKoo backend.",
+        });
+      }
+      if (!project.muhkooAppId) {
+        return NextResponse.json({
+          ok: false,
+          content: "MuhKoo backend is not provisioned for this project yet.",
+        });
+      }
+      const { describeMuhkooTables } = await import("@/lib/muhkoo-platform");
+      const result = await describeMuhkooTables(project.muhkooAppId);
+      return NextResponse.json({
+        ok: result.ok,
+        content: result.ok ? JSON.stringify({ tables: result.tables }) : result.error,
+      });
+    }
+
+    case "read_muhkoo_table": {
+      if (project.backendType !== "muhkoo") {
+        return NextResponse.json({
+          ok: false,
+          content: "This project does not use a MuhKoo backend.",
+        });
+      }
+      const table = typeof body.input?.table === "string" ? body.input.table : undefined;
+      if (!table) {
+        return NextResponse.json({
+          ok: false,
+          content: "read_muhkoo_table requires `table`.",
+        });
+      }
+      // Reads go through the project's scoped access token (db:read), NOT the
+      // ~1-day platform developer session — mint it lazily if this project
+      // predates access tokens.
+      const { ensureMuhkooAccessToken } = await import("@/lib/muhkoo-provision");
+      const { queryMuhkooTable } = await import("@/lib/muhkoo-platform");
+      let accessToken: string | null;
+      try {
+        accessToken = await ensureMuhkooAccessToken(binding.projectId);
+      } catch (e) {
+        return NextResponse.json({
+          ok: false,
+          content: `Could not obtain a MuhKoo access token: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        });
+      }
+      if (!accessToken) {
+        return NextResponse.json({
+          ok: false,
+          content: "MuhKoo backend is not provisioned for this project yet.",
+        });
+      }
+      const i = body.input ?? {};
+      const result = await queryMuhkooTable(accessToken, table, {
+        ...(Array.isArray(i.where)
+          ? { where: i.where as Array<{ column: string; op: string; value: unknown }> }
+          : {}),
+        ...(typeof i.limit === "number" ? { limit: i.limit } : {}),
+        ...(typeof i.cursor === "string" ? { cursor: i.cursor } : {}),
+      });
+      return NextResponse.json({
+        ok: result.ok,
+        content: result.ok
+          ? JSON.stringify({ rows: result.rows, nextCursor: result.nextCursor })
+          : result.error,
+      });
+    }
+
     case "provision_muhkoo_table": {
       if (project.backendType !== "muhkoo") {
         return NextResponse.json({

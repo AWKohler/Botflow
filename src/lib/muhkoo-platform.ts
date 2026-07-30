@@ -228,7 +228,7 @@ export async function putMuhkooTable(
   }
 }
 
-/** List a provisioned app's tables. */
+/** List a provisioned app's tables (names only). */
 export async function listMuhkooTables(appId: string): Promise<string[]> {
   const r = await devCall<{ tables?: Array<{ table?: string; name?: string }> }>(
     "GET",
@@ -238,6 +238,158 @@ export async function listMuhkooTables(appId: string): Promise<string[]> {
   return (r.body?.tables ?? [])
     .map((t) => t.table ?? t.name)
     .filter((n): n is string => Boolean(n));
+}
+
+export interface MuhkooTableSchema {
+  table: string;
+  columns: Array<{ name: string; type: string; nullable?: boolean }>;
+  version?: number;
+}
+
+/**
+ * Describe a provisioned app's tables (name + columns + version).
+ *
+ * Management plane, so this uses the platform DEVELOPER token — an app access
+ * token is rejected here (401 "Missing bearer token"); schema is not part of
+ * the data plane. Callers should surface a clear error when the platform token
+ * has lapsed rather than reporting "no tables".
+ */
+export async function describeMuhkooTables(
+  appId: string,
+): Promise<{ ok: true; tables: MuhkooTableSchema[] } | { ok: false; error: string }> {
+  const r = await devCall<{ tables?: MuhkooTableSchema[] }>(
+    "GET",
+    `/api/apps/${appId}/db/tables`,
+  );
+  if (!r.ok) {
+    return {
+      ok: false,
+      error:
+        r.status === 401
+          ? "The platform MuhKoo session has expired — schema listing is temporarily unavailable."
+          : `Failed to list MuhKoo tables (status ${r.status}).`,
+    };
+  }
+  return { ok: true, tables: r.body?.tables ?? [] };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Access tokens (scoped machine credentials) + the data plane
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Scopes a MuhKoo access token can carry. */
+export type MuhkooScope =
+  | "db:read"
+  | "db:write"
+  | "kv:read"
+  | "kv:write"
+  | "storage:read"
+  | "storage:write"
+  | "messages:read"
+  | "messages:write"
+  | "functions:invoke"
+  | "ai:infer";
+
+export interface MuhkooAccessToken {
+  keyId: string;
+  plaintext: string;
+  scopes: MuhkooScope[];
+  expiresAt?: number;
+}
+
+/**
+ * Mint a scoped, expiring access token (`mk_<env>_at_…`) for an app.
+ *
+ * These are the non-ZK machine credentials: unlike the ~1-day developer
+ * session they last as long as `expiresInDays`, and unlike the app's SECRET
+ * key they are scoped and individually revocable. The plaintext is returned
+ * ONCE — store it or lose it. Works on the free tier (verified).
+ */
+export async function createMuhkooAccessToken(
+  appId: string,
+  opts: {
+    scopes: MuhkooScope[];
+    env?: "test" | "live";
+    expiresInDays?: number;
+    label?: string;
+  },
+): Promise<MuhkooAccessToken> {
+  const r = await devCall<MuhkooAccessToken>(
+    "POST",
+    `/api/apps/${appId}/access-tokens`,
+    {
+      scopes: opts.scopes,
+      env: opts.env ?? "test",
+      expiresInDays: opts.expiresInDays ?? 365,
+      ...(opts.label ? { label: opts.label } : {}),
+    },
+  );
+  if (!r.ok || !r.body?.plaintext) {
+    throw new Error(`MuhKoo access-token creation failed (status ${r.status}).`);
+  }
+  return r.body;
+}
+
+/** Revoke an access token by its key id. */
+export async function revokeMuhkooAccessToken(
+  appId: string,
+  keyId: string,
+): Promise<void> {
+  await devCall("DELETE", `/api/apps/${appId}/access-tokens/${encodeURIComponent(keyId)}`);
+}
+
+export interface MuhkooRowQuery {
+  where?: Array<{ column: string; op: string; value: unknown }>;
+  orderBy?: { column: string; dir?: "asc" | "desc" };
+  limit?: number;
+  cursor?: string;
+}
+
+/**
+ * Read rows from an app's table via the DATA plane.
+ *
+ * `POST /api/db/:table/query`, authenticated with `X-Muhkoo-Key`. An access
+ * token rides that same header and takes precedence over a publishable key, so
+ * we pass the project's stored access token — reads keep working after the
+ * platform developer session lapses.
+ */
+export async function queryMuhkooTable(
+  accessToken: string,
+  table: string,
+  query: MuhkooRowQuery = {},
+): Promise<
+  | { ok: true; rows: Array<Record<string, unknown>>; nextCursor: string | null }
+  | { ok: false; error: string }
+> {
+  const res = await fetch(
+    `${muhkooApiBase()}/api/db/${encodeURIComponent(table)}/query`,
+    {
+      method: "POST",
+      headers: {
+        "X-Muhkoo-Key": accessToken,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(query),
+    },
+  );
+  const text = await res.text();
+  if (!res.ok) {
+    console.log(`[MuhKoo data] POST /api/db/${table}/query -> ${res.status}`);
+    return {
+      ok: false,
+      error:
+        res.status === 404
+          ? `Table "${table}" does not exist. Provision it with provision_muhkoo_table first.`
+          : `MuhKoo query failed (status ${res.status}).`,
+    };
+  }
+  let parsed: { rows?: Array<Record<string, unknown>>; nextCursor?: string | null } = {};
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    return { ok: false, error: "MuhKoo returned a malformed query response." };
+  }
+  return { ok: true, rows: parsed.rows ?? [], nextCursor: parsed.nextCursor ?? null };
 }
 
 /** Delete a MuhKoo app and revoke its keys (called when a project is deleted). */
