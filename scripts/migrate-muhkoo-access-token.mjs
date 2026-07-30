@@ -3,7 +3,7 @@
 // Reads DATABASE_URL from .env.local (falls back to process.env), mirroring the
 // other scripts/migrate-*.mjs runners (raw SQL via @neondatabase/serverless).
 //
-// Applies drizzle/0006_muhkoo_access_token.sql: adds the nullable
+// Applies drizzle/0012_muhkoo_access_token.sql: adds the nullable
 // muhkoo_access_token column to the projects table. Idempotent — safe to re-run.
 import { neon } from '@neondatabase/serverless';
 import fs from 'node:fs';
@@ -28,7 +28,7 @@ async function run() {
   url = url.trim().replace(/^postgresql:\/\//, 'postgres://');
   const sql = neon(url);
 
-  const migrationPath = path.resolve(process.cwd(), 'drizzle/0006_muhkoo_access_token.sql');
+  const migrationPath = path.resolve(process.cwd(), 'drizzle/0012_muhkoo_access_token.sql');
   const ddlRaw = fs.readFileSync(migrationPath, 'utf8');
   const ddl = ddlRaw
     .split('\n')
@@ -39,7 +39,7 @@ async function run() {
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
-  console.log(`Running ${statements.length} statements from 0006_muhkoo_access_token.sql...`);
+  console.log(`Running ${statements.length} statements from 0012_muhkoo_access_token.sql...`);
   for (const stmt of statements) {
     const preview = stmt.replace(/\s+/g, ' ').slice(0, 80);
     console.log(`  → ${preview}${stmt.length > 80 ? '…' : ''}`);
