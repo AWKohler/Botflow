@@ -161,6 +161,12 @@ export const CLAUDE_CODE_TO_BOTFLOW: Record<string, ToolRewrite | null> = {
     mapInput: identityInput,
   },
 
+  // ── MuhKoo MCP tools ─────────────────────────────────────────────────
+  provision_muhkoo_table: {
+    to: "muhkooProvisionTable",
+    mapInput: identityInput,
+  },
+
   // ── No Botflow counterpart — collapse to text summary on transit ─────
   Task: null,
   TodoWrite: null,
@@ -260,6 +266,7 @@ export const BOTFLOW_TO_CLAUDE_CODE: Record<string, ToolRewrite | null> = {
   convexDeploy:        { to: "convex_deploy", mapInput: identityInput },
   setupAuth:           { to: "setup_auth", mapInput: identityInput },
   setupOAuthProvider:  { to: "setup_oauth_provider", mapInput: identityInput },
+  muhkooProvisionTable:{ to: "provision_muhkoo_table", mapInput: identityInput },
   startSimulator:      { to: "start_simulator", mapInput: identityInput },
   stopSimulator:       { to: "stop_simulator", mapInput: identityInput },
   getSimulatorStatus:  { to: "get_simulator_status", mapInput: identityInput },
@@ -293,6 +300,7 @@ export const BOTFLOW_NATIVE_TOOLS = new Set<string>([
   "initializeRevenueCatPayments",
   "getRevenueCatProducts",
   "createRevenueCatProduct",
+  "muhkooProvisionTable",
   "startSimulator",
   "stopSimulator",
   "getSimulatorStatus",

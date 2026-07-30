@@ -17,10 +17,12 @@ export interface BuildAppendPromptInput {
   hasBackend: boolean;
   /** Whether VITE_CONVEX_URL has been written to .env so the model knows. */
   hasConvexEnv?: boolean;
+  /** MuhKoo project — use the MuhKoo section instead of Convex/no-backend. */
+  usesMuhkoo?: boolean;
 }
 
 export function buildClaudeCodeAppendPrompt(input: BuildAppendPromptInput): string {
-  const { platform, hasBackend, hasConvexEnv } = input;
+  const { platform, hasBackend, hasConvexEnv, usesMuhkoo } = input;
 
   if (platform === "swift") {
     return [
@@ -116,7 +118,30 @@ export function buildClaudeCodeAppendPrompt(input: BuildAppendPromptInput): stri
     "**Pro/Max feature** — for Free users the tool returns a tier-blocked error; relay it and do NOT retry, falling back to CSS/gradients or existing assets.",
   ];
 
-  if (hasBackend) {
+  if (usesMuhkoo) {
+    sections.push(
+      "",
+      '## Backend: MuhKoo (edge Backend-as-a-Service) — NOT Convex, NOT "no backend"',
+      "This project's backend is **MuhKoo**, used directly from the frontend via the **`@muhkoo/connect`** SDK, which is already wired into the template. This is a REAL backend: if the user asks for \"a backend\", \"Convex\", auth, accounts, a database, or persistence, use MuhKoo. **Do NOT use localStorage/IndexedDB for app data, and never tell the user this is a \"No Backend\" project.**",
+      "",
+      "### Keep the MuhKoo wiring — do not strip it",
+      "NEVER uninstall or delete `@muhkoo/connect`, `snarkjs`, `circomlibjs`, `@noble/curves`, or the `vite-plugin-wasm` / `vite-plugin-top-level-await` / `vite-plugin-node-polyfills` plugins in `vite.config.ts` — MuhKoo's zero-knowledge auth runs in the browser and breaks without them. You may restyle the UI and even drop MUI, but keep `src/lib/client.ts`, `src/auth/`, and the MuhKoo dependencies + Vite plugins.",
+      "",
+      "### The SDK (`src/lib/client.ts` → `getClient()`)",
+      "- **Auth** (`client.auth.zk`): `register({ username, password })`, `login(username, password)`, `restore()`, `logout()`. Embedded zero-knowledge — the server only ever sees a `commitment` (the stable user id), never the password. `src/auth/AuthContext.tsx` already wraps this; build sign-in/up UI on top of it rather than adding another auth system.",
+      "- **Database** (`client.db.table<T>(name)`): `.query({ where, limit })`, `.insert(values)`, `.update(id, values)`, `.delete(id)`; rows carry an `_id`. `where` ops: eq, neq, gt, gte, lt, lte, in, like, likeStartsWith, likeContains.",
+      "- **Realtime** (`client.space`): E2E-encrypted channels (see `src/features/ChannelChat.tsx`). **Encrypted KV / files**: `client.kv`, `client.storage`.",
+      "",
+      "### Tables are provisioned server-side — use the `provision_muhkoo_table` MCP tool",
+      "You CANNOT create tables from client code. To define the app's schema, call **`provision_muhkoo_table`** (it resolves the app id + dev key server-side — the secrets never enter the sandbox). Pass `{ table, columns: [{ name, type }] }` where `type` is `text | integer | real | boolean | timestamp | json`. Additive only (dropping/retyping a column returns 409); a synthetic `_id` is added for you. A default table **`items`** already exists. Order: (1) `provision_muhkoo_table` to create/extend a table, (2) then read/write it with `client.db.table(name)`.",
+      "- The data plane is app-keyed, so rows are shared across users unless you scope them: store `owner: client.auth.zk.commitment` on insert and filter queries by it for per-user data.",
+      "",
+      "### Rules",
+      "- There is NO `/convex` folder, no `convex` package, and no `convexDeploy` here — never create them.",
+      "- `VITE_MUHKOO_KEY` (publishable key) and `VITE_WORKER_URL` (API base) are injected into `.env` for you — never hard-code keys.",
+      "- No separate deploy step for app code: the SDK talks to the managed MuhKoo backend directly. Just build and run the frontend.",
+    );
+  } else if (hasBackend) {
     sections.push(
       "",
       "## Convex backend",

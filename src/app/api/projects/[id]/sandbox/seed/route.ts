@@ -12,6 +12,7 @@ import {
 import { materializeFrontendEnv } from "@/lib/sandbox-env";
 import { swiftProjectForbidden } from "@/lib/swift-access";
 import { enforce, identifierFor } from "@/lib/rate-limit";
+import { ensureMuhkooProvisioned } from "@/lib/muhkoo-provision";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +47,8 @@ export async function POST(
   let template: SandboxTemplate;
   if (project.platform === "swift") {
     template = project.backendType === "none" ? "swift" : "swiftConvex";
+  } else if (project.backendType === "muhkoo") {
+    template = "viteMuhkoo";
   } else if (project.backendType === "none") {
     template = "vite";
   } else {
@@ -66,7 +69,27 @@ export async function POST(
     // Sandboxed-web projects: write .env so Vite picks up VITE_CONVEX_URL plus
     // any user-defined frontend vars on the first dev server start. DB is the
     // source of truth — materializeFrontendEnv regenerates the whole file.
-    if (seeded && project.platform === "sandboxed-web") {
+    // MuhKoo projects: ensure the backend app exists on EVERY seed call, not
+    // just when this route did the seeding — the sandbox get-or-create path can
+    // auto-reseed the template first (making `seeded` false here), and an
+    // earlier provisioning failure (e.g. expired platform token) must heal on
+    // the next workspace open. ensureMuhkooProvisioned is idempotent.
+    let muhkooWarning: string | undefined;
+    if (project.backendType === "muhkoo") {
+      try {
+        await ensureMuhkooProvisioned(project.id);
+      } catch (e) {
+        muhkooWarning = e instanceof Error ? e.message : String(e);
+        console.warn("[seed] MuhKoo provisioning failed:", muhkooWarning);
+      }
+    }
+
+    // For muhkoo, rewrite .env even when this call didn't seed, so a
+    // just-provisioned publishable key lands regardless of who seeded.
+    if (
+      project.platform === "sandboxed-web" &&
+      (seeded || project.backendType === "muhkoo")
+    ) {
       try {
         await materializeFrontendEnv(project.id);
       } catch (e) {
@@ -74,7 +97,11 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ seeded, template });
+    return NextResponse.json({
+      seeded,
+      template,
+      ...(muhkooWarning ? { muhkooWarning } : {}),
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to seed sandbox" },

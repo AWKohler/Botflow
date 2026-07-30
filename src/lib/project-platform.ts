@@ -113,30 +113,69 @@ export function isWebLikePlatform(platform: string): boolean {
  * Backend type for a project.
  *  - 'platform' : Botflow-managed Convex backend (default for paid users)
  *  - 'user'     : User-owned Convex (BYOC) provisioned via OAuth
+ *  - 'muhkoo'   : Botflow-managed MuhKoo backend (edge BaaS). Platform-owned
+ *                 ONLY — there is no bring-your-own MuhKoo. Uses a different
+ *                 SDK (@muhkoo/connect) + provisioning path, and has NO
+ *                 Database tab (MuhKoo has no embedded dashboard).
  *  - 'none'     : No backend at all — the project is a frontend-only app
- *                 (no /convex folder, no Database tab, no convexDeploy tool).
+ *                 (no backend folder, no Database tab, no deploy tool).
  */
-export type BackendType = "platform" | "user" | "none";
+export type BackendType = "platform" | "user" | "muhkoo" | "none";
 
 export function isBackendType(value: string): value is BackendType {
-  return value === "platform" || value === "user" || value === "none";
+  return (
+    value === "platform" ||
+    value === "user" ||
+    value === "muhkoo" ||
+    value === "none"
+  );
 }
 
 export function normalizeBackendType(
   value: string | null | undefined,
 ): BackendType {
-  // Only an explicit "platform" maps to a managed backend. Anything missing or
+  // Only explicit, recognized values map to a backend. Anything missing or
   // unrecognized falls back to "none" (no backend) so a project can never
-  // silently default into platform-managed Convex without an explicit choice.
-  if (value === "user" || value === "none" || value === "platform") return value;
+  // silently default into a managed backend without an explicit choice.
+  if (
+    value === "user" ||
+    value === "none" ||
+    value === "platform" ||
+    value === "muhkoo"
+  ) {
+    return value;
+  }
   return "none";
 }
 
 /**
- * Whether a project (with the given backendType) uses Convex at all.
- * Returns false ONLY for `'none'`. Both `'platform'` and `'user'` use Convex.
+ * Whether a project (with the given backendType) uses Convex specifically.
+ * True ONLY for the Convex-backed types ('platform' and 'user'). MuhKoo and
+ * 'none' return false — callers that mean "has ANY backend" must use
+ * {@link projectHasBackend} instead. (Convex-only surfaces such as the
+ * Database tab, convexDeploy, and the /convex folder key off this.)
  */
 export function projectUsesConvex(
+  backendType: string | null | undefined,
+): boolean {
+  return backendType === "platform" || backendType === "user";
+}
+
+/**
+ * Whether a project uses the MuhKoo backend (edge BaaS). Platform-owned only.
+ */
+export function projectUsesMuhkoo(
+  backendType: string | null | undefined,
+): boolean {
+  return backendType === "muhkoo";
+}
+
+/**
+ * Whether a project has ANY managed backend (Convex or MuhKoo). Only 'none'
+ * returns false. Use this for backend-agnostic gating; narrow to a specific
+ * backend with {@link projectUsesConvex} / {@link projectUsesMuhkoo}.
+ */
+export function projectHasBackend(
   backendType: string | null | undefined,
 ): boolean {
   return backendType !== "none";
@@ -146,6 +185,8 @@ export function getBackendTypeLabel(backendType: string): string {
   switch (backendType) {
     case "user":
       return "Bring Your Own Convex";
+    case "muhkoo":
+      return "MuhKoo (Beta)";
     case "none":
       return "No Backend";
     case "platform":

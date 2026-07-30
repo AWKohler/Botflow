@@ -46,6 +46,8 @@ const TEMPLATE_REPOS = {
   swiftConvex: "https://github.com/AWKohler/swift-convex-template.git",
   viteConvex: "https://github.com/AWKohler/vite_convex_template.git",
   vite: "https://github.com/AWKohler/vite_template.git",
+  // MuhKoo edge-BaaS starter (embedded ZK auth). Platform-owned, web-only.
+  viteMuhkoo: "https://github.com/AWKohler/vite_muhkoo_template.git",
 } as const;
 
 export type SandboxTemplate = keyof typeof TEMPLATE_REPOS;
@@ -222,7 +224,8 @@ export function pickSandboxTemplate(p: TemplatePickerInput): SandboxTemplate | n
     p.sandboxTemplate === "swift" ||
     p.sandboxTemplate === "swiftConvex" ||
     p.sandboxTemplate === "vite" ||
-    p.sandboxTemplate === "viteConvex"
+    p.sandboxTemplate === "viteConvex" ||
+    p.sandboxTemplate === "viteMuhkoo"
   ) {
     return p.sandboxTemplate;
   }
@@ -231,6 +234,8 @@ export function pickSandboxTemplate(p: TemplatePickerInput): SandboxTemplate | n
     return p.backendType === "none" ? "swift" : "swiftConvex";
   }
   if (p.platform === "sandboxed-web") {
+    // MuhKoo is web-only and platform-owned; Convex covers platform/user.
+    if (p.backendType === "muhkoo") return "viteMuhkoo";
     return p.backendType === "none" ? "vite" : "viteConvex";
   }
   return null;

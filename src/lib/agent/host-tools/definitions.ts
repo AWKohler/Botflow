@@ -456,11 +456,47 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       required: ["mode"],
     },
   },
+  provision_muhkoo_table: {
+    name: "provision_muhkoo_table",
+    description:
+      "Provision (create or extend) a MuhKoo database table so the frontend can read/write it via client.db.table(name). " +
+      "MuhKoo tables are created SERVER-SIDE — you cannot create them from client code, so call this BEFORE using a new table. " +
+      "Additive only: adding columns is fine, but dropping or retyping a column fails. Column types: text | integer | real | boolean | timestamp | json. A synthetic _id primary key is added automatically. A default 'items' table already exists.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: {
+          type: "string",
+          description: "Table name, e.g. 'bookings' (lowercase letters, numbers, underscores).",
+        },
+        columns: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              type: {
+                type: "string",
+                enum: ["text", "integer", "real", "boolean", "timestamp", "json"],
+              },
+            },
+            required: ["name", "type"],
+          },
+          description: "Columns to create or add.",
+        },
+      },
+      required: ["table", "columns"],
+    },
+  },
 };
 
 export interface SelectHostToolsInput {
   platform: string;
-  hasBackend: boolean;
+  /** Convex-backed project (backendType 'platform' | 'user') — gates the
+   *  Convex deploy/logs/table/auth tools. MuhKoo projects pass false here. */
+  usesConvex: boolean;
+  /** MuhKoo-backed project — gates provision_muhkoo_table. */
+  usesMuhkoo: boolean;
   hasGithub: boolean;
   stripeEnabled: boolean;
   revenuecatEnabled: boolean;
@@ -477,7 +513,7 @@ export interface SelectHostToolsInput {
  * enter the sandbox env.
  */
 export function selectHostTools(input: SelectHostToolsInput): string[] {
-  const { platform, hasBackend, hasGithub, stripeEnabled, revenuecatEnabled } = input;
+  const { platform, usesConvex, usesMuhkoo, hasGithub, stripeEnabled, revenuecatEnabled } = input;
   const customTools: string[] = [];
   if (platform === "sandboxed-web") {
     customTools.push(
@@ -494,7 +530,7 @@ export function selectHostTools(input: SelectHostToolsInput): string[] {
       // AI image generation (FAL/Krea) — backend-agnostic; bills platform credits.
       "generate_image",
     );
-    if (hasBackend) {
+    if (usesConvex) {
       customTools.push(
         "convex_deploy",
         "get_convex_logs",
@@ -511,6 +547,11 @@ export function selectHostTools(input: SelectHostToolsInput): string[] {
           "create_stripe_product",
         );
       }
+    }
+    if (usesMuhkoo) {
+      // MuhKoo projects: server-side table provisioner (schemas can't be
+      // created from client code).
+      customTools.push("provision_muhkoo_table");
     }
     // Git tools — only when a repo is linked. Gating must match the project
     // state at turn-start; the host route also re-checks at execution time.
@@ -537,7 +578,7 @@ export function selectHostTools(input: SelectHostToolsInput): string[] {
       "ask_question",
       "request_env_var",
     );
-    if (hasBackend) {
+    if (usesConvex) {
       // Swift + Convex backend: the deploy/logs/auth tools are platform-
       // agnostic server-side (the deploy pipeline zips /convex regardless of
       // frontend language; setup_auth and setup_oauth_provider are platform-

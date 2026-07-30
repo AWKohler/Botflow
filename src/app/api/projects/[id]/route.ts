@@ -137,6 +137,18 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    // Delete MuhKoo app if it exists (revokes its keys and frees the slug)
+    if (proj.muhkooAppId) {
+      try {
+        const { deleteMuhkooApp } = await import('@/lib/muhkoo-platform');
+        await deleteMuhkooApp(proj.muhkooAppId);
+        console.log(`MuhKoo app deleted for project ${resolvedParams.id}`);
+      } catch (error) {
+        // Log error but continue with project deletion
+        console.error('Failed to delete MuhKoo app:', error);
+      }
+    }
+
     // Delete Cloudflare Pages project if it exists
     if (proj.cloudflareProjectName) {
       try {

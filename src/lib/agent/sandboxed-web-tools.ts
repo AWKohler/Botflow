@@ -609,6 +609,8 @@ export function getSandboxedWebTools(params: {
   appBaseUrl: string;
   authHeaders?: Record<string, string>;
   convexUrl?: string;
+  /** MuhKoo project: expose the server-side table provisioner. */
+  usesMuhkoo?: boolean;
   /** GitHub link metadata; when set, the git_* tools are exposed to the agent. */
   github?: {
     owner: string;
@@ -618,7 +620,7 @@ export function getSandboxedWebTools(params: {
     autonomy: "autonomous" | "manual" | "ask-each-time" | null;
   };
 }) {
-  const { projectId, userId, hasBackend, appBaseUrl, authHeaders, github } = params;
+  const { projectId, userId, hasBackend, appBaseUrl, authHeaders, github, usesMuhkoo } = params;
   const baseTools = getPersistentTools(projectId, { actingUserId: userId });
   const workspaceTools = getWorkspaceControlTools(projectId);
   const imageGenTools = getImageGenTools(projectId, userId);
@@ -663,6 +665,53 @@ export function getSandboxedWebTools(params: {
       },
     });
 
+    // MuhKoo projects reach this branch (they have a backend, but not Convex —
+    // so no /convex, no convexDeploy). Expose a server-side table provisioner so
+    // the agent can define real schemas; the app id + dev key stay server-side.
+    const muhkooProvisionTable = tool({
+      description:
+        "Provision (create or extend) a MuhKoo database table so the frontend can read/write it via client.db.table(name). " +
+        "MuhKoo tables are created SERVER-SIDE — you cannot create them from client code, so call this BEFORE using a new table. " +
+        "Additive only: you can add columns to an existing table, but dropping/retyping a column fails. " +
+        "Column types: text | integer | real | boolean | timestamp | json. A synthetic _id primary key is added automatically. " +
+        "A default table 'items' already exists.",
+      inputSchema: z.object({
+        table: z
+          .string()
+          .describe("Table name, e.g. 'bookings' (lowercase letters, numbers, underscores)."),
+        columns: z
+          .array(
+            z.object({
+              name: z.string(),
+              type: z.enum(["text", "integer", "real", "boolean", "timestamp", "json"]),
+            }),
+          )
+          .describe("Columns to create or add."),
+      }),
+      async execute(input) {
+        const { table, columns } = input as {
+          table: string;
+          columns: Array<{ name: string; type: string }>;
+        };
+        try {
+          const { ensureMuhkooProvisioned } = await import("@/lib/muhkoo-provision");
+          const { putMuhkooTable } = await import("@/lib/muhkoo-platform");
+          const prov = await ensureMuhkooProvisioned(projectId);
+          if (!prov.appId) {
+            return { ok: false, error: "MuhKoo backend is not provisioned for this project yet." };
+          }
+          await putMuhkooTable(prov.appId, { table, columns });
+          return {
+            ok: true,
+            table,
+            message: `Table "${table}" is ready. Read/write it with client.db.table("${table}").`,
+          };
+        } catch (e) {
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+    });
+
     return {
       ...baseTools,
       write: guardedWrite,
@@ -670,6 +719,7 @@ export function getSandboxedWebTools(params: {
       ...workspaceTools,
       ...imageGenTools,
       ...gitTools,
+      ...(usesMuhkoo ? { muhkooProvisionTable } : {}),
     } as const;
   }
 

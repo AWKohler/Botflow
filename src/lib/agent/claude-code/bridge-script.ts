@@ -352,6 +352,31 @@ function buildCustomTools(customTools, oauthProviderIds) {
     );
   }
 
+  if (customTools.includes("provision_muhkoo_table")) {
+    tools.push(
+      tool(
+        "provision_muhkoo_table",
+        "Provision (create or extend) a MuhKoo database table so the frontend can read/write it via client.db.table(name). " +
+        "MuhKoo tables are created SERVER-SIDE — you cannot create them from client code, so call this BEFORE using a new table. " +
+        "Additive only: adding columns is fine, but dropping or retyping a column fails. Column types: text | integer | real | boolean | timestamp | json. A synthetic _id primary key is added automatically. A default 'items' table already exists.",
+        {
+          table: z
+            .string()
+            .describe("Table name, e.g. 'bookings' (lowercase letters, numbers, underscores)."),
+          columns: z
+            .array(
+              z.object({
+                name: z.string(),
+                type: z.enum(["text", "integer", "real", "boolean", "timestamp", "json"]),
+              }),
+            )
+            .describe("Columns to create or add."),
+        },
+        makeHostToolHandler("provision_muhkoo_table"),
+      ),
+    );
+  }
+
   if (customTools.includes("get_convex_logs")) {
     tools.push(
       tool(

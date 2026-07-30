@@ -44,7 +44,16 @@ export const projects = pgTable('projects', {
   // User-managed Convex backend (BYO Convex)
   userConvexUrl: text('user_convex_url'),
   userConvexDeployKey: text('user_convex_deploy_key'),
-  backendType: text('backend_type').notNull().default('none'), // 'platform' | 'user' | 'none'
+  backendType: text('backend_type').notNull().default('none'), // 'platform' | 'user' | 'muhkoo' | 'none'
+  // MuhKoo backend integration (platform-owned edge BaaS; no BYO variant).
+  // Provisioned via the MuhKoo management API (see src/lib/muhkoo-platform.ts).
+  // The publishable key is browser-safe (injected as VITE_MUHKOO_KEY); the
+  // secret key is the server-only hosting deploy key and is NEVER sent to the sandbox.
+  muhkooAppId: text('muhkoo_app_id'),                   // MuhKoo app id (POST /api/apps)
+  muhkooSlug: text('muhkoo_slug'),                      // app slug → <slug>.apps.muhkoo.dev
+  muhkooPublishableKey: text('muhkoo_publishable_key'), // mk_*_pk_* — VITE_MUHKOO_KEY (browser-safe)
+  muhkooSecretKey: text('muhkoo_secret_key'),           // mk_*_sk_* — hosting deploy key (server-only)
+  muhkooHostingUrl: text('muhkoo_hosting_url'),         // https://<slug>.apps.muhkoo.dev
   // Cloudflare Pages deployment
   cloudflareProjectName: text('cloudflare_project_name'),
   cloudflareDeploymentUrl: text('cloudflare_deployment_url'),

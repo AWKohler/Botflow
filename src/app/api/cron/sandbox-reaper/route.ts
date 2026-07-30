@@ -198,6 +198,15 @@ async function actHardDelete(project: Project): Promise<void> {
     );
   }
 
+  // MuhKoo is always platform-owned: tear down the app (revokes keys, frees
+  // the slug) so reaped projects don't accumulate on the platform account.
+  if (project.backendType === "muhkoo" && project.muhkooAppId) {
+    const { deleteMuhkooApp } = await import("@/lib/muhkoo-platform");
+    await deleteMuhkooApp(project.muhkooAppId).catch((e) =>
+      console.warn(`[reaper] muhkoo teardown failed for ${project.id}:`, e),
+    );
+  }
+
   // Soft-delete the row rather than hard-deleting — keeps audit trail and
   // FK-dependent rows (chat history, etc.) intact for any future appeal.
   await getDb()

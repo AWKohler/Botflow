@@ -10,7 +10,7 @@ import { sharedTurnBlockReason } from "@/lib/sharing";
 import { auth } from "@clerk/nextjs/server";
 
 import { SYSTEM_PROMPT_MOBILE, SYSTEM_PROMPT_MULTIPLATFORM, buildSwiftSystemPrompt, buildSandboxedWebSystemPrompt, buildWebSystemPrompt } from "@/lib/agent/prompts";
-import { isSandboxPlatform } from "@/lib/project-platform";
+import { isSandboxPlatform, projectUsesConvex, projectUsesMuhkoo } from "@/lib/project-platform";
 import { swiftProjectForbidden } from "@/lib/swift-access";
 import { getPersistentTools } from "@/lib/agent/persistent-tools";
 import { getGitTools, getSandboxedWebTools } from "@/lib/agent/sandboxed-web-tools";
@@ -530,6 +530,11 @@ export async function POST(req: Request) {
     // shareOwnerCredits (sharing decision 2026-07-06).
     let creditsUserId = userId;
     let hasBackend = true;
+    // Narrower than hasBackend: true only for Convex-backed projects (platform/
+    // user). MuhKoo has a backend but no Convex tools/folder, so it reads false —
+    // gate Convex-specific tools + guards on this, not on hasBackend.
+    let usesConvex = true;
+    let usesMuhkoo = false;
     let convexUrl: string | undefined;
     let githubLink: {
       owner: string;
@@ -569,6 +574,8 @@ export async function POST(req: Request) {
       }
       selectedModel = resolveModelId(proj.model);
       hasBackend = proj.backendType !== "none";
+      usesConvex = projectUsesConvex(proj.backendType);
+      usesMuhkoo = projectUsesMuhkoo(proj.backendType);
       convexUrl = proj.userConvexUrl || proj.convexDeployUrl || undefined;
       // Sharing: the agent's Git tools (commit/push/PR) mirror the HTTP git
       // routes' gate — editors get them only when the owner enabled pushing
@@ -615,7 +622,7 @@ export async function POST(req: Request) {
       platform === "swift"
         ? buildSwiftSystemPrompt({ hasBackend })
         : platform === "sandboxed-web"
-          ? buildSandboxedWebSystemPrompt({ hasBackend })
+          ? buildSandboxedWebSystemPrompt({ hasBackend: usesConvex, usesMuhkoo })
           : platform === "mobile"
             ? SYSTEM_PROMPT_MOBILE
             : platform === "multiplatform"
@@ -632,7 +639,8 @@ export async function POST(req: Request) {
       tools = getSandboxedWebTools({
         projectId,
         userId,
-        hasBackend,
+        hasBackend: usesConvex,
+        usesMuhkoo,
         convexUrl,
         appBaseUrl: new URL(req.url).origin,
         ...(cookie ? { authHeaders: { cookie } } : {}),

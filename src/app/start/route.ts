@@ -222,7 +222,10 @@ export async function GET(request: Request) {
     //     exists (so a disconnected user — token cleared, preference left 'user'
     //     — falls back to platform instead of being stuck on convex_not_connected)
     //   • else                → platform
-    if (backendTypeParam === 'user') {
+    if (backendTypeParam === 'muhkoo' && platform === 'sandboxed-web') {
+      // MuhKoo is platform-owned and web-only; honored only for sandboxed-web.
+      backendType = 'muhkoo';
+    } else if (backendTypeParam === 'user') {
       backendType = 'user';
     } else if (backendTypeParam === 'none') {
       backendType = supportsNoBackend ? 'none' : 'platform';
@@ -237,6 +240,13 @@ export async function GET(request: Request) {
       `[start] project creation: platform=${platform} backendTypeParam=${backendTypeParam} ` +
       `pref=${creds.convexBackendPreference ?? 'null'} → backendType=${backendType}`,
     );
+
+    // MuhKoo is in private beta — non-beta users cannot create MuhKoo projects.
+    if (backendType === 'muhkoo' && !(await isBetaUser(userId))) {
+      const errUrl = new URL('/', request.url);
+      errUrl.searchParams.set('error', 'muhkoo_beta');
+      return NextResponse.redirect(errUrl);
+    }
 
     // BYOC hard gate: if user selected BYOC, they MUST have a valid OAuth token.
     // Never fall through to platform provisioning — that would consume platform resources.
@@ -340,7 +350,14 @@ export async function GET(request: Request) {
         // (falls back to the template if the source had no bundle).
         ...(seedBundleUrl ? { seedBundleUrl } : {}),
         ...(seedSlug
-          ? { sandboxTemplate: backendType === 'none' ? 'vite' as const : 'viteConvex' as const }
+          ? {
+              sandboxTemplate:
+                backendType === 'muhkoo'
+                  ? ('viteMuhkoo' as const)
+                  : backendType === 'none'
+                    ? ('vite' as const)
+                    : ('viteConvex' as const),
+            }
           : {}),
       })
       .returning();
@@ -348,6 +365,10 @@ export async function GET(request: Request) {
     if (backendType === 'none') {
       // No backend selected — skip provisioning entirely. The project will use
       // the no-backend template (vite_template) and never have a /convex folder.
+    } else if (backendType === 'muhkoo') {
+      // MuhKoo is platform-owned and provisioned lazily on first sandbox seed
+      // (see the seed route). Nothing to provision here — and crucially, do NOT
+      // fall through to the Convex branch below.
     } else if (backendType === 'user') {
       // BYOC: provision in the user's own Convex account via their OAuth token.
       // If this fails, delete the project and redirect with an error — never fall through.

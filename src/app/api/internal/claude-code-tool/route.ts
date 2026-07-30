@@ -435,6 +435,48 @@ export async function POST(req: Request) {
       });
     }
 
+    case "provision_muhkoo_table": {
+      if (project.backendType !== "muhkoo") {
+        return NextResponse.json({
+          ok: false,
+          content: "This project does not use a MuhKoo backend.",
+        });
+      }
+      const table = typeof body.input?.table === "string" ? body.input.table : undefined;
+      const columns = Array.isArray(body.input?.columns) ? body.input.columns : undefined;
+      if (!table || !columns) {
+        return NextResponse.json({
+          ok: false,
+          content:
+            "provision_muhkoo_table requires `table` (string) and `columns` (array of { name, type }).",
+        });
+      }
+      try {
+        const { ensureMuhkooProvisioned } = await import("@/lib/muhkoo-provision");
+        const { putMuhkooTable } = await import("@/lib/muhkoo-platform");
+        const prov = await ensureMuhkooProvisioned(binding.projectId);
+        if (!prov.appId) {
+          return NextResponse.json({
+            ok: false,
+            content: "MuhKoo backend is not provisioned for this project yet.",
+          });
+        }
+        await putMuhkooTable(prov.appId, {
+          table,
+          columns: columns as Array<{ name: string; type: string }>,
+        });
+        return NextResponse.json({
+          ok: true,
+          content: `Table "${table}" is ready. Read/write it with client.db.table("${table}") in the frontend.`,
+        });
+      } catch (e) {
+        return NextResponse.json({
+          ok: false,
+          content: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
     case "read_convex_table": {
       const { readConvexTable } = await import("@/lib/convex-admin");
       const table = typeof body.input?.table === "string" ? body.input.table : undefined;
