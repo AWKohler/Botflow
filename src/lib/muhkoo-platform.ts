@@ -18,6 +18,8 @@
  *   - hosting     → Authorization: Bearer <app secret key mk_*_sk_*>
  */
 
+import { getMuhkooDevToken } from "@/lib/muhkoo-session";
+
 const DEFAULT_API_BASE = "https://api.muhkoo.dev";
 
 /** The MuhKoo management API base (prod by default; override for staging/local). */
@@ -25,16 +27,22 @@ export function muhkooApiBase(): string {
   return (process.env.MUHKOO_API_BASE || DEFAULT_API_BASE).replace(/\/+$/, "");
 }
 
-function muhkooDevToken(): string {
-  const token = process.env.MUHKOO_DEV_TOKEN;
-  if (!token) {
-    throw new Error(
-      "MUHKOO_DEV_TOKEN is not set. Mint one with `muhkoo login --web` and store " +
-        "it as a platform secret before provisioning MuhKoo backends.",
-    );
-  }
-  return token;
+/**
+ * True once a management call has seen a 401 in this process — i.e. the
+ * developer session is dead. Read by the fail-soft error paths so a user-facing
+ * message can say "temporarily unavailable" rather than leaking internals.
+ */
+let devSessionExpired = false;
+
+/** Has a management call seen a 401 (expired developer session) in this process? */
+export function isMuhkooDevSessionExpired(): boolean {
+  return devSessionExpired;
 }
+
+/** The user-facing message for a lapsed developer session. */
+export const MUHKOO_SESSION_EXPIRED_MESSAGE =
+  "MuhKoo is temporarily unavailable (the platform session needs refreshing). " +
+  "Try again in a few minutes.";
 
 /** The public hosting host suffix for an API base (apps.* / apps.staging.*). */
 function appsSuffixFor(base: string): string {
@@ -77,7 +85,7 @@ async function devCall<T = unknown>(
   const res = await fetch(muhkooApiBase() + path, {
     method,
     headers: {
-      Authorization: `Bearer ${muhkooDevToken()}`,
+      Authorization: `Bearer ${await getMuhkooDevToken()}`,
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -92,6 +100,19 @@ async function devCall<T = unknown>(
     parsed = text as unknown as T;
   }
   console.log(`[MuhKoo API] ${method} ${path} -> ${res.status}`);
+  // A 401 here means the platform developer session has lapsed, which takes out
+  // EVERY management operation at once (provisioning, tables, schema, token
+  // minting) for every user — not just this call. Log it distinctly so it is
+  // greppable/alertable instead of being buried in per-tool errors.
+  if (res.status === 401) {
+    devSessionExpired = true;
+    console.error(
+      "[muhkoo] DEV SESSION EXPIRED — management plane is down until refreshed. " +
+        "Run `pnpm muhkoo:auth`.",
+    );
+  } else if (res.ok) {
+    devSessionExpired = false;
+  }
   return { ok: res.ok, status: res.status, body: parsed };
 }
 
@@ -266,7 +287,7 @@ export async function describeMuhkooTables(
       ok: false,
       error:
         r.status === 401
-          ? "The platform MuhKoo session has expired — schema listing is temporarily unavailable."
+          ? "The platform MuhKoo session has expired — live schema listing is temporarily unavailable."
           : `Failed to list MuhKoo tables (status ${r.status}).`,
     };
   }
@@ -353,14 +374,15 @@ export interface MuhkooRowQuery {
  * we pass the project's stored access token — reads keep working after the
  * platform developer session lapses.
  */
+export type MuhkooQueryResult =
+  | { ok: true; rows: Array<Record<string, unknown>>; nextCursor: string | null }
+  | { ok: false; error: string; authFailed?: boolean };
+
 export async function queryMuhkooTable(
   accessToken: string,
   table: string,
   query: MuhkooRowQuery = {},
-): Promise<
-  | { ok: true; rows: Array<Record<string, unknown>>; nextCursor: string | null }
-  | { ok: false; error: string }
-> {
+): Promise<MuhkooQueryResult> {
   const res = await fetch(
     `${muhkooApiBase()}/api/db/${encodeURIComponent(table)}/query`,
     {
@@ -375,6 +397,17 @@ export async function queryMuhkooTable(
   const text = await res.text();
   if (!res.ok) {
     console.log(`[MuhKoo data] POST /api/db/${table}/query -> ${res.status}`);
+    // The data plane answers 401 `{"error":"API key required"}` for EVERY bad
+    // credential — expired, revoked, malformed, missing (verified by probe).
+    // They are indistinguishable, so the caller's response is the same for all
+    // of them: re-mint once and retry, exactly once.
+    if (res.status === 401) {
+      return {
+        ok: false,
+        authFailed: true,
+        error: "The MuhKoo access token was rejected (expired or revoked).",
+      };
+    }
     return {
       ok: false,
       error:

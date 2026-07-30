@@ -461,7 +461,8 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
     description:
       "List this project's MuhKoo database tables with their columns and types. " +
       "Use it to discover the app's schema before reading data or writing frontend code against a table — the shapes here are authoritative, not what the client code assumes. " +
-      "Returns { ok, tables: [{ table, columns: [{ name, type }] }] }.",
+      "Returns { ok, tables: [{ table, columns: [{ name, type }] }] }. " +
+      "A `stale: true` result is a last-known-good copy from `cachedAt` (the live schema API is briefly unavailable) — still usable, but say so rather than asserting it as current.",
     inputSchema: EMPTY_INPUT,
   },
   read_muhkoo_table: {

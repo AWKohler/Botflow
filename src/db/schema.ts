@@ -58,6 +58,12 @@ export const projects = pgTable('projects', {
   // server-side data-plane reads. SERVER-ONLY; outlives the ~1-day platform
   // developer session, so agent table reads keep working after it lapses.
   muhkooAccessToken: text('muhkoo_access_token'),
+  muhkooAccessTokenKeyId: text('muhkoo_access_token_key_id'),               // needed to revoke on renewal
+  muhkooAccessTokenExpiresAt: bigint('muhkoo_access_token_expires_at', { mode: 'number' }), // Unix ms
+  // Last-known-good table schema (see MuhkooSchemaCache). Keeps
+  // list_muhkoo_tables answering while the developer session is lapsed —
+  // schema is management-plane only, so access tokens cannot reach it.
+  muhkooSchemaCache: jsonb('muhkoo_schema_cache'),
   // Cloudflare Pages deployment
   cloudflareProjectName: text('cloudflare_project_name'),
   cloudflareDeploymentUrl: text('cloudflare_deployment_url'),
@@ -887,3 +893,22 @@ export const revenueCatWebhookDeliveries = pgTable('revenuecat_webhook_deliverie
 }));
 
 export type RevenueCatWebhookDelivery = typeof revenueCatWebhookDeliveries.$inferSelect;
+
+// Platform-wide secrets that must be rotatable without a redeploy.
+//
+// Today this holds only the MuhKoo developer session token (key
+// 'muhkoo_dev_token'), which the platform expires roughly daily and which is
+// required for every MuhKoo management-plane call — provisioning apps, creating
+// tables, listing schema, minting access tokens. Keeping it in an env var meant
+// each refresh needed a Vercel env edit plus a redeploy; keeping it here makes
+// `pnpm muhkoo:auth` a single command that refreshes local and prod at once.
+//
+// Values are envelope-encrypted via src/lib/secrets.ts — never plaintext.
+export const platformSecrets = pgTable('platform_secrets', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedBy: text('updated_by'),
+});
+
+export type PlatformSecret = typeof platformSecrets.$inferSelect;

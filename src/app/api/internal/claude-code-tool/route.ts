@@ -442,17 +442,18 @@ export async function POST(req: Request) {
           content: "This project does not use a MuhKoo backend.",
         });
       }
-      if (!project.muhkooAppId) {
-        return NextResponse.json({
-          ok: false,
-          content: "MuhKoo backend is not provisioned for this project yet.",
-        });
-      }
-      const { describeMuhkooTables } = await import("@/lib/muhkoo-platform");
-      const result = await describeMuhkooTables(project.muhkooAppId);
+      const { getMuhkooSchema } = await import("@/lib/muhkoo-provision");
+      const result = await getMuhkooSchema(binding.projectId);
       return NextResponse.json({
         ok: result.ok,
-        content: result.ok ? JSON.stringify({ tables: result.tables }) : result.error,
+        content: result.ok
+          ? JSON.stringify({
+              tables: result.tables,
+              ...(result.stale
+                ? { stale: true, cachedAt: new Date(result.cachedAt!).toISOString() }
+                : {}),
+            })
+          : result.error,
       });
     }
 
@@ -493,13 +494,23 @@ export async function POST(req: Request) {
         });
       }
       const i = body.input ?? {};
-      const result = await queryMuhkooTable(accessToken, table, {
+      const query = {
         ...(Array.isArray(i.where)
           ? { where: i.where as Array<{ column: string; op: string; value: unknown }> }
           : {}),
         ...(typeof i.limit === "number" ? { limit: i.limit } : {}),
         ...(typeof i.cursor === "string" ? { cursor: i.cursor } : {}),
-      });
+      };
+      let result = await queryMuhkooTable(accessToken, table, query);
+      // The data plane returns the same 401 for an expired, revoked, or simply
+      // wrong key, so there is nothing to branch on — force a fresh token and
+      // retry EXACTLY once. Any more and a genuinely broken credential loops.
+      if (!result.ok && result.authFailed) {
+        const renewed = await ensureMuhkooAccessToken(binding.projectId, {
+          force: true,
+        }).catch(() => null);
+        if (renewed) result = await queryMuhkooTable(renewed, table, query);
+      }
       return NextResponse.json({
         ok: result.ok,
         content: result.ok
@@ -525,7 +536,9 @@ export async function POST(req: Request) {
         });
       }
       try {
-        const { ensureMuhkooProvisioned } = await import("@/lib/muhkoo-provision");
+        const { ensureMuhkooProvisioned, recordMuhkooTableSchema } = await import(
+          "@/lib/muhkoo-provision"
+        );
         const { putMuhkooTable } = await import("@/lib/muhkoo-platform");
         const prov = await ensureMuhkooProvisioned(binding.projectId);
         if (!prov.appId) {
@@ -534,10 +547,12 @@ export async function POST(req: Request) {
             content: "MuhKoo backend is not provisioned for this project yet.",
           });
         }
-        await putMuhkooTable(prov.appId, {
+        const spec = {
           table,
           columns: columns as Array<{ name: string; type: string }>,
-        });
+        };
+        await putMuhkooTable(prov.appId, spec);
+        await recordMuhkooTableSchema(binding.projectId, spec);
         return NextResponse.json({
           ok: true,
           content: `Table "${table}" is ready. Read/write it with client.db.table("${table}") in the frontend.`,

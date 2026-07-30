@@ -70,6 +70,18 @@ export async function POST(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[muhkoo/provision] provisioning failed:", msg);
+    // A lapsed platform developer session takes out provisioning for everyone
+    // at once and is fixed by an operator running `pnpm muhkoo:auth` — say
+    // "try again shortly" rather than implying the user did something wrong.
+    const { isMuhkooDevSessionExpired, MUHKOO_SESSION_EXPIRED_MESSAGE } = await import(
+      "@/lib/muhkoo-platform"
+    );
+    if (isMuhkooDevSessionExpired()) {
+      return NextResponse.json(
+        { error: MUHKOO_SESSION_EXPIRED_MESSAGE, retryable: true },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(
       { error: "Failed to provision a MuhKoo backend. Please try again." },
       { status: 500 },

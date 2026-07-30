@@ -694,13 +694,16 @@ export function getSandboxedWebTools(params: {
           columns: Array<{ name: string; type: string }>;
         };
         try {
-          const { ensureMuhkooProvisioned } = await import("@/lib/muhkoo-provision");
+          const { ensureMuhkooProvisioned, recordMuhkooTableSchema } = await import(
+            "@/lib/muhkoo-provision"
+          );
           const { putMuhkooTable } = await import("@/lib/muhkoo-platform");
           const prov = await ensureMuhkooProvisioned(projectId);
           if (!prov.appId) {
             return { ok: false, error: "MuhKoo backend is not provisioned for this project yet." };
           }
           await putMuhkooTable(prov.appId, { table, columns });
+          await recordMuhkooTableSchema(projectId, { table, columns });
           return {
             ok: true,
             table,
@@ -715,17 +718,13 @@ export function getSandboxedWebTools(params: {
     const listMuhkooTables = tool({
       description:
         "List this project's MuhKoo database tables with their columns and types. " +
-        "Use it to discover the app's schema before reading data or writing frontend code against a table — the shapes here are authoritative, not what the client code assumes.",
+        "Use it to discover the app's schema before reading data or writing frontend code against a table — the shapes here are authoritative, not what the client code assumes. " +
+        "If the result carries `stale: true`, it is a last-known-good copy from `cachedAt` (the live schema API is briefly unavailable) — usable, but say so rather than asserting it as current.",
       inputSchema: z.object({}),
       async execute() {
         try {
-          const { ensureMuhkooProvisioned } = await import("@/lib/muhkoo-provision");
-          const { describeMuhkooTables } = await import("@/lib/muhkoo-platform");
-          const prov = await ensureMuhkooProvisioned(projectId);
-          if (!prov.appId) {
-            return { ok: false, error: "MuhKoo backend is not provisioned for this project yet." };
-          }
-          return await describeMuhkooTables(prov.appId);
+          const { getMuhkooSchema } = await import("@/lib/muhkoo-provision");
+          return await getMuhkooSchema(projectId);
         } catch (e) {
           return { ok: false, error: e instanceof Error ? e.message : String(e) };
         }
@@ -772,18 +771,29 @@ export function getSandboxedWebTools(params: {
         };
         try {
           // Reads use the project's scoped access token (db:read), not the
-          // ~1-day platform developer session.
+          // roughly-daily platform developer session.
           const { ensureMuhkooAccessToken } = await import("@/lib/muhkoo-provision");
           const { queryMuhkooTable } = await import("@/lib/muhkoo-platform");
           const accessToken = await ensureMuhkooAccessToken(projectId);
           if (!accessToken) {
             return { ok: false, error: "MuhKoo backend is not provisioned for this project yet." };
           }
-          return await queryMuhkooTable(accessToken, i.table, {
+          const query = {
             ...(i.where ? { where: i.where } : {}),
             ...(i.limit !== undefined ? { limit: i.limit } : {}),
             ...(i.cursor !== undefined ? { cursor: i.cursor } : {}),
-          });
+          };
+          const result = await queryMuhkooTable(accessToken, i.table, query);
+          // Expired, revoked, and malformed keys all come back as the same 401,
+          // so there is nothing to branch on — force a fresh token and retry
+          // EXACTLY once, or a permanently bad credential would loop.
+          if (!result.ok && result.authFailed) {
+            const renewed = await ensureMuhkooAccessToken(projectId, {
+              force: true,
+            }).catch(() => null);
+            if (renewed) return await queryMuhkooTable(renewed, i.table, query);
+          }
+          return result;
         } catch (e) {
           return { ok: false, error: e instanceof Error ? e.message : String(e) };
         }

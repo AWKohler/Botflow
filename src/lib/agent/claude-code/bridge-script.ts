@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "33";
+export const BRIDGE_SCRIPT_VERSION = "34";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -358,7 +358,8 @@ function buildCustomTools(customTools, oauthProviderIds) {
         "list_muhkoo_tables",
         "List this project's MuhKoo database tables with their columns and types. " +
         "Use it to discover the app's schema before reading data or writing frontend code against a table — the shapes here are authoritative, not what the client code assumes. " +
-        "Returns { ok, tables: [{ table, columns: [{ name, type }] }] }.",
+        "Returns { ok, tables: [{ table, columns: [{ name, type }] }] }. " +
+        "A \`stale: true\` result is a last-known-good copy from \`cachedAt\` (the live schema API is briefly unavailable) — still usable, but say so rather than asserting it as current.",
         {},
         makeHostToolHandler("list_muhkoo_tables"),
       ),
