@@ -378,29 +378,55 @@ export type MuhkooQueryResult =
   | { ok: true; rows: Array<Record<string, unknown>>; nextCursor: string | null }
   | { ok: false; error: string; authFailed?: boolean };
 
-export async function queryMuhkooTable(
+/** A failed data-plane call, with `authFailed` set when the key was rejected. */
+export interface MuhkooDataFailure {
+  ok: false;
+  error: string;
+  authFailed?: boolean;
+}
+
+/**
+ * One data-plane call, with the shared failure handling.
+ *
+ * The 401 case is the reason this is factored out: the data plane answers
+ * `401 {"error":"API key required"}` for EVERY bad credential — expired,
+ * revoked, malformed, missing (verified by probe). They are indistinguishable,
+ * so every caller responds identically: re-mint once, retry once.
+ */
+async function dataCall<T>(
   accessToken: string,
+  method: string,
+  path: string,
   table: string,
-  query: MuhkooRowQuery = {},
-): Promise<MuhkooQueryResult> {
-  const res = await fetch(
-    `${muhkooApiBase()}/api/db/${encodeURIComponent(table)}/query`,
-    {
-      method: "POST",
+  body?: unknown,
+): Promise<{ ok: true; body: T } | MuhkooDataFailure> {
+  let res: Response;
+  try {
+    res = await fetch(`${muhkooApiBase()}${path}`, {
+      method,
       headers: {
         "X-Muhkoo-Key": accessToken,
-        "Content-Type": "application/json",
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       },
-      body: JSON.stringify(query),
-    },
-  );
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      error: `Could not reach MuhKoo: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+
   const text = await res.text();
+  let parsed: unknown = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = null;
+  }
+
   if (!res.ok) {
-    console.log(`[MuhKoo data] POST /api/db/${table}/query -> ${res.status}`);
-    // The data plane answers 401 `{"error":"API key required"}` for EVERY bad
-    // credential — expired, revoked, malformed, missing (verified by probe).
-    // They are indistinguishable, so the caller's response is the same for all
-    // of them: re-mint once and retry, exactly once.
+    console.log(`[MuhKoo data] ${method} ${path} -> ${res.status}`);
     if (res.status === 401) {
       return {
         ok: false,
@@ -408,21 +434,127 @@ export async function queryMuhkooTable(
         error: "The MuhKoo access token was rejected (expired or revoked).",
       };
     }
+    // The API's own message is more useful than anything we can synthesise —
+    // an unknown column comes back as `unknown column "foo"`, which tells the
+    // agent exactly what to fix. Fall back to our own text when it is absent.
+    const apiError =
+      parsed && typeof parsed === "object" && typeof (parsed as { error?: unknown }).error === "string"
+        ? (parsed as { error: string }).error
+        : null;
+    if (res.status === 404 && !apiError) {
+      return {
+        ok: false,
+        error: `Table "${table}" does not exist. Provision it with provision_muhkoo_table first.`,
+      };
+    }
     return {
       ok: false,
-      error:
-        res.status === 404
-          ? `Table "${table}" does not exist. Provision it with provision_muhkoo_table first.`
-          : `MuhKoo query failed (status ${res.status}).`,
+      error: apiError ?? `MuhKoo request failed (status ${res.status}).`,
     };
   }
-  let parsed: { rows?: Array<Record<string, unknown>>; nextCursor?: string | null } = {};
-  try {
-    parsed = text ? JSON.parse(text) : {};
-  } catch {
-    return { ok: false, error: "MuhKoo returned a malformed query response." };
-  }
-  return { ok: true, rows: parsed.rows ?? [], nextCursor: parsed.nextCursor ?? null };
+
+  return { ok: true, body: (parsed ?? {}) as T };
+}
+
+export async function queryMuhkooTable(
+  accessToken: string,
+  table: string,
+  query: MuhkooRowQuery = {},
+): Promise<MuhkooQueryResult> {
+  const r = await dataCall<{ rows?: Array<Record<string, unknown>>; nextCursor?: string | null }>(
+    accessToken,
+    "POST",
+    `/api/db/${encodeURIComponent(table)}/query`,
+    table,
+    query,
+  );
+  if (!r.ok) return r;
+  return { ok: true, rows: r.body.rows ?? [], nextCursor: r.body.nextCursor ?? null };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Data-plane writes
+//
+// The row API is per-row and primary-key addressed (verified by probe):
+//   insert  POST   /api/db/:table        { values }  -> 201 { row, id }
+//   update  PATCH  /api/db/:table/:id    { values }  -> 200 { row }  (404 if gone)
+//   delete  DELETE /api/db/:table/:id                -> 200 { deleted: 0 | 1 }
+//
+// Note there is NO bulk where-based update or delete: a mutation can only ever
+// touch one row it names by id, so an unbounded "delete everything matching"
+// is not expressible against this API at all.
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Most rows one insert tool call may carry.
+ *
+ * The API takes one row per request, so a batch is N sequential round trips —
+ * this bounds how long a single tool call can run, and keeps a partial failure
+ * comprehensible. Seeding more than this is a second call.
+ */
+export const MUHKOO_MAX_INSERT_ROWS = 50;
+
+export type MuhkooInsertResult =
+  | { ok: true; row: Record<string, unknown>; id: unknown }
+  | MuhkooDataFailure;
+
+/** Insert one row. `values` must use existing columns — unknown ones 400. */
+export async function insertMuhkooRow(
+  accessToken: string,
+  table: string,
+  values: Record<string, unknown>,
+): Promise<MuhkooInsertResult> {
+  const r = await dataCall<{ row?: Record<string, unknown>; id?: unknown }>(
+    accessToken,
+    "POST",
+    `/api/db/${encodeURIComponent(table)}`,
+    table,
+    { values },
+  );
+  if (!r.ok) return r;
+  return { ok: true, row: r.body.row ?? {}, id: r.body.id };
+}
+
+export type MuhkooUpdateResult =
+  | { ok: true; row: Record<string, unknown> }
+  | MuhkooDataFailure;
+
+/** Update one row by primary key. Missing rows come back as a 404 error. */
+export async function updateMuhkooRow(
+  accessToken: string,
+  table: string,
+  id: string | number,
+  values: Record<string, unknown>,
+): Promise<MuhkooUpdateResult> {
+  const r = await dataCall<{ row?: Record<string, unknown> }>(
+    accessToken,
+    "PATCH",
+    `/api/db/${encodeURIComponent(table)}/${encodeURIComponent(String(id))}`,
+    table,
+    { values },
+  );
+  if (!r.ok) return r;
+  return { ok: true, row: r.body.row ?? {} };
+}
+
+export type MuhkooDeleteResult =
+  | { ok: true; deleted: number }
+  | MuhkooDataFailure;
+
+/** Delete one row by primary key. Idempotent: a missing row returns deleted 0. */
+export async function deleteMuhkooRow(
+  accessToken: string,
+  table: string,
+  id: string | number,
+): Promise<MuhkooDeleteResult> {
+  const r = await dataCall<{ deleted?: number }>(
+    accessToken,
+    "DELETE",
+    `/api/db/${encodeURIComponent(table)}/${encodeURIComponent(String(id))}`,
+    table,
+  );
+  if (!r.ok) return r;
+  return { ok: true, deleted: r.body.deleted ?? 0 };
 }
 
 /** Delete a MuhKoo app and revoke its keys (called when a project is deleted). */

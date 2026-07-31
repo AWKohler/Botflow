@@ -472,27 +472,10 @@ export async function POST(req: Request) {
         });
       }
       // Reads go through the project's scoped access token (db:read), NOT the
-      // ~1-day platform developer session — mint it lazily if this project
-      // predates access tokens.
-      const { ensureMuhkooAccessToken } = await import("@/lib/muhkoo-provision");
+      // roughly-daily platform developer session. withMuhkooAccessToken owns
+      // fetching it and renewing once if the data plane rejects it.
+      const { withMuhkooAccessToken } = await import("@/lib/muhkoo-provision");
       const { queryMuhkooTable } = await import("@/lib/muhkoo-platform");
-      let accessToken: string | null;
-      try {
-        accessToken = await ensureMuhkooAccessToken(binding.projectId);
-      } catch (e) {
-        return NextResponse.json({
-          ok: false,
-          content: `Could not obtain a MuhKoo access token: ${
-            e instanceof Error ? e.message : String(e)
-          }`,
-        });
-      }
-      if (!accessToken) {
-        return NextResponse.json({
-          ok: false,
-          content: "MuhKoo backend is not provisioned for this project yet.",
-        });
-      }
       const i = body.input ?? {};
       const query = {
         ...(Array.isArray(i.where)
@@ -501,20 +484,130 @@ export async function POST(req: Request) {
         ...(typeof i.limit === "number" ? { limit: i.limit } : {}),
         ...(typeof i.cursor === "string" ? { cursor: i.cursor } : {}),
       };
-      let result = await queryMuhkooTable(accessToken, table, query);
-      // The data plane returns the same 401 for an expired, revoked, or simply
-      // wrong key, so there is nothing to branch on — force a fresh token and
-      // retry EXACTLY once. Any more and a genuinely broken credential loops.
-      if (!result.ok && result.authFailed) {
-        const renewed = await ensureMuhkooAccessToken(binding.projectId, {
-          force: true,
-        }).catch(() => null);
-        if (renewed) result = await queryMuhkooTable(renewed, table, query);
-      }
+      const result = await withMuhkooAccessToken(binding.projectId, (tok) =>
+        queryMuhkooTable(tok, table, query),
+      );
       return NextResponse.json({
         ok: result.ok,
         content: result.ok
           ? JSON.stringify({ rows: result.rows, nextCursor: result.nextCursor })
+          : result.error,
+      });
+    }
+
+    case "insert_muhkoo_rows": {
+      if (project.backendType !== "muhkoo") {
+        return NextResponse.json({
+          ok: false,
+          content: "This project does not use a MuhKoo backend.",
+        });
+      }
+      const i = body.input ?? {};
+      const table = typeof i.table === "string" ? i.table : undefined;
+      const rows = Array.isArray(i.rows) ? i.rows : undefined;
+      if (!table || !rows) {
+        return NextResponse.json({
+          ok: false,
+          content: "insert_muhkoo_rows requires `table` (string) and `rows` (array of objects).",
+        });
+      }
+      if (rows.length === 0) {
+        return NextResponse.json({ ok: false, content: "`rows` is empty — nothing to insert." });
+      }
+      const { withMuhkooAccessToken } = await import("@/lib/muhkoo-provision");
+      const { insertMuhkooRow, MUHKOO_MAX_INSERT_ROWS } = await import(
+        "@/lib/muhkoo-platform"
+      );
+      if (rows.length > MUHKOO_MAX_INSERT_ROWS) {
+        return NextResponse.json({
+          ok: false,
+          content: `Too many rows (${rows.length}). The API inserts one row per request, so this tool caps a call at ${MUHKOO_MAX_INSERT_ROWS}; send the rest in another call.`,
+        });
+      }
+      const result = await withMuhkooAccessToken(binding.projectId, async (tok) => {
+        const ids: unknown[] = [];
+        for (const [index, row] of rows.entries()) {
+          const r = await insertMuhkooRow(tok, table, row as Record<string, unknown>);
+          // Stop at the first failure and report how far we got — the rows
+          // already written stay written, and the agent needs to know that
+          // rather than assume the whole call was atomic. It is not.
+          if (!r.ok) {
+            return {
+              ok: false as const,
+              authFailed: r.authFailed,
+              error: `${r.error} (inserted ${ids.length} of ${rows.length}; failed on row index ${index})`,
+            };
+          }
+          ids.push(r.id);
+        }
+        return { ok: true as const, inserted: ids.length, ids };
+      });
+      return NextResponse.json({
+        ok: result.ok,
+        content: result.ok
+          ? JSON.stringify({ inserted: result.inserted, ids: result.ids })
+          : result.error,
+      });
+    }
+
+    case "update_muhkoo_row": {
+      if (project.backendType !== "muhkoo") {
+        return NextResponse.json({
+          ok: false,
+          content: "This project does not use a MuhKoo backend.",
+        });
+      }
+      const i = body.input ?? {};
+      const table = typeof i.table === "string" ? i.table : undefined;
+      const id = typeof i.id === "string" || typeof i.id === "number" ? i.id : undefined;
+      const values =
+        i.values && typeof i.values === "object" && !Array.isArray(i.values)
+          ? (i.values as Record<string, unknown>)
+          : undefined;
+      if (!table || id === undefined || !values) {
+        return NextResponse.json({
+          ok: false,
+          content: "update_muhkoo_row requires `table`, `id` (the row's _id), and `values`.",
+        });
+      }
+      const { withMuhkooAccessToken } = await import("@/lib/muhkoo-provision");
+      const { updateMuhkooRow } = await import("@/lib/muhkoo-platform");
+      const result = await withMuhkooAccessToken(binding.projectId, (tok) =>
+        updateMuhkooRow(tok, table, id, values),
+      );
+      return NextResponse.json({
+        ok: result.ok,
+        content: result.ok ? JSON.stringify({ row: result.row }) : result.error,
+      });
+    }
+
+    case "delete_muhkoo_row": {
+      if (project.backendType !== "muhkoo") {
+        return NextResponse.json({
+          ok: false,
+          content: "This project does not use a MuhKoo backend.",
+        });
+      }
+      const i = body.input ?? {};
+      const table = typeof i.table === "string" ? i.table : undefined;
+      const id = typeof i.id === "string" || typeof i.id === "number" ? i.id : undefined;
+      if (!table || id === undefined) {
+        return NextResponse.json({
+          ok: false,
+          content: "delete_muhkoo_row requires `table` and `id` (the row's _id).",
+        });
+      }
+      const { withMuhkooAccessToken } = await import("@/lib/muhkoo-provision");
+      const { deleteMuhkooRow } = await import("@/lib/muhkoo-platform");
+      const result = await withMuhkooAccessToken(binding.projectId, (tok) =>
+        deleteMuhkooRow(tok, table, id),
+      );
+      return NextResponse.json({
+        ok: result.ok,
+        content: result.ok
+          ? result.deleted > 0
+            ? `Deleted row ${id} from "${table}".`
+            : `No row with _id ${id} in "${table}" — nothing deleted.`
           : result.error,
       });
     }

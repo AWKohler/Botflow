@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "34";
+export const BRIDGE_SCRIPT_VERSION = "35";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -400,6 +400,59 @@ function buildCustomTools(customTools, oauthProviderIds) {
           cursor: z.string().optional(),
         },
         makeHostToolHandler("read_muhkoo_table"),
+      ),
+    );
+  }
+
+  if (customTools.includes("insert_muhkoo_rows")) {
+    tools.push(
+      tool(
+        "insert_muhkoo_rows",
+        "Insert rows into a MuhKoo database table. " +
+        "Use it to seed realistic starter/demo data, or to add a record the app itself cannot yet create. " +
+        "Column names must already exist (check list_muhkoo_tables first) — an unknown column is rejected with the offending name. " +
+        "Not atomic: rows are written one at a time, so a mid-batch failure leaves the earlier rows written and reports how many landed.",
+        {
+          table: z.string().describe("Table name (from list_muhkoo_tables)."),
+          rows: z
+            .array(z.record(z.string(), z.unknown()))
+            .describe("Rows to insert, each an object of column → value. Do not set _id; it is assigned."),
+        },
+        makeHostToolHandler("insert_muhkoo_rows"),
+      ),
+    );
+  }
+
+  if (customTools.includes("update_muhkoo_row")) {
+    tools.push(
+      tool(
+        "update_muhkoo_row",
+        "Update one row in a MuhKoo database table, addressed by its \`_id\`. " +
+        "Use it to correct a bad value without touching the rest of the row — only the columns you pass are changed. " +
+        "Find the _id with read_muhkoo_table first.",
+        {
+          table: z.string().describe("Table name."),
+          id: z.union([z.string(), z.number()]).describe("The row's _id."),
+          values: z
+            .record(z.string(), z.unknown())
+            .describe("Columns to change, as column → new value."),
+        },
+        makeHostToolHandler("update_muhkoo_row"),
+      ),
+    );
+  }
+
+  if (customTools.includes("delete_muhkoo_row")) {
+    tools.push(
+      tool(
+        "delete_muhkoo_row",
+        "Delete one row from a MuhKoo database table, addressed by its \`_id\`. " +
+        "Deletes exactly one row per call and cannot be undone — this is real application data, so confirm the _id with read_muhkoo_table first and do not use it to clear a table the user did not ask you to clear.",
+        {
+          table: z.string().describe("Table name."),
+          id: z.union([z.string(), z.number()]).describe("The _id of the row to delete."),
+        },
+        makeHostToolHandler("delete_muhkoo_row"),
       ),
     );
   }

@@ -310,3 +310,64 @@ export async function getMuhkooSchema(
   }
   return { ok: false, error: live.error };
 }
+
+/**
+ * Run a data-plane operation with the project's access token, renewing once if
+ * the token is rejected.
+ *
+ * Every data-plane call needs the same three steps — fetch the token, run, and
+ * on a rejected key force a fresh token and try again — so they live here once
+ * rather than at each tool site. The retry is capped at exactly one: the data
+ * plane returns the same 401 for an expired key, a revoked key and a malformed
+ * one, so a permanently bad credential is indistinguishable from a stale one
+ * and would otherwise loop forever.
+ */
+export async function withMuhkooAccessToken<
+  T extends { ok: boolean; authFailed?: boolean },
+>(
+  projectId: string,
+  run: (accessToken: string) => Promise<T>,
+): Promise<T | { ok: false; error: string }> {
+  return runWithTokenRetry(
+    (force) => ensureMuhkooAccessToken(projectId, force ? { force: true } : {}),
+    run,
+  );
+}
+
+/**
+ * The token-retry policy itself, with the database dependency injected.
+ *
+ * Split out from `withMuhkooAccessToken` so the "exactly once" guarantee can be
+ * tested without a database or a live MuhKoo app — that bound is the whole
+ * point of this function, since the data plane cannot distinguish a stale
+ * credential from a permanently broken one.
+ */
+export async function runWithTokenRetry<
+  T extends { ok: boolean; authFailed?: boolean },
+>(
+  getToken: (force: boolean) => Promise<string | null>,
+  run: (accessToken: string) => Promise<T>,
+): Promise<T | { ok: false; error: string }> {
+  let accessToken: string | null;
+  try {
+    accessToken = await getToken(false);
+  } catch (e) {
+    return {
+      ok: false,
+      error: `Could not obtain a MuhKoo access token: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    };
+  }
+  if (!accessToken) {
+    return { ok: false, error: "MuhKoo backend is not provisioned for this project yet." };
+  }
+
+  const first = await run(accessToken);
+  if (first.ok || !first.authFailed) return first;
+
+  const renewed = await getToken(true).catch(() => null);
+  if (!renewed) return first;
+  // Whatever this returns is final — no third attempt.
+  return await run(renewed);
+}

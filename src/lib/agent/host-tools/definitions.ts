@@ -508,6 +508,57 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       required: ["table"],
     },
   },
+  insert_muhkoo_rows: {
+    name: "insert_muhkoo_rows",
+    description:
+      "Insert rows into a MuhKoo database table. " +
+      "Use it to seed realistic starter/demo data, or to add a record the app itself cannot yet create. " +
+      "Column names must already exist (check list_muhkoo_tables first) — an unknown column is rejected with the offending name. " +
+      "Not atomic: rows are written one at a time, so a mid-batch failure leaves the earlier rows written and reports how many landed. " +
+      "Returns { ok, inserted, ids }.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: { type: "string" },
+        rows: {
+          type: "array",
+          items: { type: "object" },
+          description: "Rows to insert, each an object of column → value. Do not set _id; it is assigned.",
+        },
+      },
+      required: ["table", "rows"],
+    },
+  },
+  update_muhkoo_row: {
+    name: "update_muhkoo_row",
+    description:
+      "Update one row in a MuhKoo database table, addressed by its `_id`. " +
+      "Use it to correct a bad value without touching the rest of the row — only the columns you pass are changed. " +
+      "Find the _id with read_muhkoo_table first. Returns { ok, row } with the updated row.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: { type: "string" },
+        id: { type: ["string", "number"], description: "The row's _id." },
+        values: { type: "object", description: "Columns to change, as column → new value." },
+      },
+      required: ["table", "id", "values"],
+    },
+  },
+  delete_muhkoo_row: {
+    name: "delete_muhkoo_row",
+    description:
+      "Delete one row from a MuhKoo database table, addressed by its `_id`. " +
+      "Deletes exactly one row per call and cannot be undone — this is real application data, so confirm the _id with read_muhkoo_table first and do not use it to clear a table the user did not ask you to clear.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: { type: "string" },
+        id: { type: ["string", "number"], description: "The _id of the row to delete." },
+      },
+      required: ["table", "id"],
+    },
+  },
   provision_muhkoo_table: {
     name: "provision_muhkoo_table",
     description:
@@ -602,12 +653,16 @@ export function selectHostTools(input: SelectHostToolsInput): string[] {
     }
     if (usesMuhkoo) {
       // MuhKoo projects: server-side table provisioner (schemas can't be
-      // created from client code) + read tools. Reads use the project's scoped
-      // access token, so they keep working when the platform session lapses.
+      // created from client code) plus read and write tools. All row access
+      // uses the project's scoped access token, so it keeps working when the
+      // platform developer session lapses.
       customTools.push(
         "provision_muhkoo_table",
         "list_muhkoo_tables",
         "read_muhkoo_table",
+        "insert_muhkoo_rows",
+        "update_muhkoo_row",
+        "delete_muhkoo_row",
       );
     }
     // Git tools — only when a repo is linked. Gating must match the project
