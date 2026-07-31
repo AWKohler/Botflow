@@ -2241,66 +2241,6 @@ export default function LandingV2() {
                   </span>
                 </p>
 
-                {/* Launch badges — each independently switchable without a deploy-time
-                    code change. Both providers serve a real dark variant, so they get
-                    the same light/dark image swap as the header wordmark. */}
-                {(process.env.NEXT_PUBLIC_PRODUCT_HUNT_ENABLED === 'true'
-                  || process.env.NEXT_PUBLIC_POST_YOUR_STARTUP_ENABLED === 'true') && (
-                  <div className="flex flex-col min-[560px]:flex-row items-center justify-center gap-3 sm:gap-4">
-                    {process.env.NEXT_PUBLIC_PRODUCT_HUNT_ENABLED === 'true' && (
-                      <a
-                        href="https://www.producthunt.com/products/botflow?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-botflow"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          alt="Botflow - There is no moat... | Product Hunt"
-                          width={250}
-                          height={54}
-                          src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204895&theme=light&t=1785326664507"
-                          className="h-[54px] w-[250px] block dark:hidden"
-                        />
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          alt="Botflow - There is no moat... | Product Hunt"
-                          width={250}
-                          height={54}
-                          src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204895&theme=dark&t=1785326664507"
-                          className="h-[54px] w-[250px] hidden dark:block"
-                        />
-                      </a>
-                    )}
-
-                    {process.env.NEXT_PUBLIC_POST_YOUR_STARTUP_ENABLED === 'true' && (
-                      <a
-                        href="https://postyourstartup.co/startup/botflow?ref=badge"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          alt="Featured on PostYourStartup"
-                          width={212}
-                          height={55}
-                          src="https://postyourstartup.co/api/badge/botflow?theme=light"
-                          className="h-[55px] w-[212px] block dark:hidden"
-                        />
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          alt="Featured on PostYourStartup"
-                          width={212}
-                          height={55}
-                          src="https://postyourstartup.co/api/badge/botflow?theme=dark"
-                          className="h-[55px] w-[212px] hidden dark:block"
-                        />
-                      </a>
-                    )}
-                  </div>
-                )}
-
 
               </div>
             </Reveal>
