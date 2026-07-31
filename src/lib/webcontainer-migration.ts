@@ -144,7 +144,12 @@ export async function migrateWebContainerProjectToSandbox(
   const { project } = access;
   if (project.platform !== "web") return { migrated: false, reason: "not-web" };
 
-  const template: SandboxTemplate = project.backendType === "none" ? "vite" : "viteConvex";
+  const template: SandboxTemplate =
+    project.backendType === "muhkoo"
+      ? "viteMuhkoo"
+      : project.backendType === "none"
+        ? "vite"
+        : "viteConvex";
 
   // 1. Ensure the sandbox VM exists. Platform is still "web", so getOrCreate's
   //    auto-reseed (which keys off pickSandboxTemplate) is a no-op and won't

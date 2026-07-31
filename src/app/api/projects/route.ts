@@ -125,13 +125,22 @@ export async function POST(request: NextRequest) {
       );
     }
     const resolvedBackendType = normalizeBackendType(backendType);
+    // MuhKoo is in private beta — gate it at creation, mirroring Swift above.
+    if (resolvedBackendType === 'muhkoo' && !(await isBetaUser(userId))) {
+      return NextResponse.json(
+        { error: 'MuhKoo backends are currently in private beta.' },
+        { status: 403 },
+      );
+    }
     // Stamp the sandbox template up-front so the reaper / auto-reseed paths
     // know how to repopulate /vercel/sandbox after a true 404.
-    const sandboxTemplate: 'swift' | 'swiftConvex' | 'vite' | 'viteConvex' | null =
+    const sandboxTemplate: 'swift' | 'swiftConvex' | 'vite' | 'viteConvex' | 'viteMuhkoo' | null =
       resolvedPlatform === 'swift'
         ? (resolvedBackendType === 'none' ? 'swift' : 'swiftConvex')
         : resolvedPlatform === 'sandboxed-web'
-          ? (resolvedBackendType === 'none' ? 'vite' : 'viteConvex')
+          ? (resolvedBackendType === 'muhkoo'
+              ? 'viteMuhkoo'
+              : resolvedBackendType === 'none' ? 'vite' : 'viteConvex')
           : null;
     // Free-tier owners get the self-hosted sandbox backend (when the rollout
     // switch is on); paid tiers stay on Vercel Sandbox. Sticky for the life

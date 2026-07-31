@@ -17,10 +17,12 @@ export interface BuildAppendPromptInput {
   hasBackend: boolean;
   /** Whether VITE_CONVEX_URL has been written to .env so the model knows. */
   hasConvexEnv?: boolean;
+  /** MuhKoo project — use the MuhKoo section instead of Convex/no-backend. */
+  usesMuhkoo?: boolean;
 }
 
 export function buildClaudeCodeAppendPrompt(input: BuildAppendPromptInput): string {
-  const { platform, hasBackend, hasConvexEnv } = input;
+  const { platform, hasBackend, hasConvexEnv, usesMuhkoo } = input;
 
   if (platform === "swift") {
     return [
@@ -116,7 +118,36 @@ export function buildClaudeCodeAppendPrompt(input: BuildAppendPromptInput): stri
     "**Pro/Max feature** — for Free users the tool returns a tier-blocked error; relay it and do NOT retry, falling back to CSS/gradients or existing assets.",
   ];
 
-  if (hasBackend) {
+  if (usesMuhkoo) {
+    sections.push(
+      "",
+      '## Backend: MuhKoo (edge Backend-as-a-Service) — NOT Convex, NOT "no backend"',
+      "This project's backend is **MuhKoo**, used directly from the frontend via the **`@muhkoo/connect`** SDK, which is already wired into the template. This is a REAL backend: if the user asks for \"a backend\", \"Convex\", auth, accounts, a database, or persistence, use MuhKoo. **Do NOT use localStorage/IndexedDB for app data, and never tell the user this is a \"No Backend\" project.**",
+      "",
+      "### Keep the MuhKoo wiring — do not strip it",
+      "NEVER uninstall or delete `@muhkoo/connect`, `snarkjs`, `circomlibjs`, `@noble/curves`, or the `vite-plugin-wasm` / `vite-plugin-top-level-await` / `vite-plugin-node-polyfills` plugins in `vite.config.ts` — MuhKoo's zero-knowledge auth runs in the browser and breaks without them. You may restyle the UI and even drop MUI, but keep `src/lib/client.ts`, `src/auth/`, and the MuhKoo dependencies + Vite plugins.",
+      "",
+      "### The SDK (`src/lib/client.ts` → `getClient()`)",
+      "- **Auth** (`client.auth.zk`): `register({ username, password })`, `login(username, password)`, `restore()`, `logout()`. Embedded zero-knowledge — the server only ever sees a `commitment` (the stable user id), never the password. `src/auth/AuthContext.tsx` already wraps this; build sign-in/up UI on top of it rather than adding another auth system.",
+      "- **Database** (`client.db.table<T>(name)`): `.query({ where, limit })`, `.insert(values)`, `.update(id, values)`, `.delete(id)`; rows carry an `_id`. `where` ops: eq, neq, gt, gte, lt, lte, in, like, likeStartsWith, likeContains.",
+      "- **Realtime** (`client.space`): E2E-encrypted channels (see `src/features/ChannelChat.tsx`). **Encrypted KV / files**: `client.kv`, `client.storage`.",
+      "",
+      "### Tables are provisioned server-side — use the `provision_muhkoo_table` MCP tool",
+      "You CANNOT create tables from client code. To define the app's schema, call **`provision_muhkoo_table`** (it resolves the app id + dev key server-side — the secrets never enter the sandbox). Pass `{ table, columns: [{ name, type }] }` where `type` is `text | integer | real | boolean | timestamp | json`. Additive only (dropping/retyping a column returns 409); a synthetic `_id` is added for you. A default table **`items`** already exists. Order: (1) `provision_muhkoo_table` to create/extend a table, (2) then read/write it with `client.db.table(name)`.",
+      "- The data plane is app-keyed, so rows are shared across users unless you scope them: store `owner: client.auth.zk.commitment` on insert and filter queries by it for per-user data.",
+      "",
+      "### Writing data — `insert_muhkoo_rows` / `update_muhkoo_row` / `delete_muhkoo_row`",
+      "**`insert_muhkoo_rows`** ({ table, rows }) seeds real rows — use it to fill a new app with believable starter data instead of leaving the user staring at an empty list, and to add records the UI can't create yet. Columns must already exist; an unknown one is rejected by name. It is NOT atomic (one row per request), so on a mid-batch failure the earlier rows stay written and the error says how many landed. **`update_muhkoo_row`** ({ table, id, values }) fixes one row's values, **`delete_muhkoo_row`** ({ table, id }) removes one row — both address rows by `_id`, which you get from `read_muhkoo_table`. These write to the app's REAL data: seed freely into an empty app, but do not rewrite or clear rows the user didn't ask you to touch.",
+      "",
+      "### Inspecting the database — `list_muhkoo_tables` / `read_muhkoo_table`",
+      "**`list_muhkoo_tables`** returns every table with its real columns and types — check it before writing code against a table rather than trusting what the client code assumes (schema and client can drift). **`read_muhkoo_table`** reads rows: `{ table, where?, limit?, cursor? }`, same `where` ops as the SDK. Use it to verify a write from the app actually landed, inspect real row shapes, or debug why a query returns nothing — instead of guessing or adding throwaway UI. Both run server-side on a scoped credential; nothing enters the sandbox.",
+      "",
+      "### Rules",
+      "- There is NO `/convex` folder, no `convex` package, and no `convexDeploy` here — never create them.",
+      "- `VITE_MUHKOO_KEY` (publishable key) and `VITE_WORKER_URL` (API base) are injected into `.env` for you — never hard-code keys.",
+      "- No separate deploy step for app code: the SDK talks to the managed MuhKoo backend directly. Just build and run the frontend.",
+    );
+  } else if (hasBackend) {
     sections.push(
       "",
       "## Convex backend",

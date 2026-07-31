@@ -1639,10 +1639,40 @@ const SANDBOXED_WEB_PROMPT_OUTRO_NO_BACKEND: string[] = SANDBOXED_WEB_PROMPT_OUT
   !line.includes("For Convex projects:"),
 );
 
-export function buildSandboxedWebSystemPrompt({ hasBackend }: { hasBackend: boolean }): string {
-  const parts = hasBackend
-    ? [...SANDBOXED_WEB_PROMPT_INTRO, ...WEB_PROMPT_CONVEX, ...WEB_PROMPT_STRIPE, ...SANDBOXED_WEB_PROMPT_OUTRO]
-    : [...SANDBOXED_WEB_PROMPT_INTRO, ...SANDBOXED_WEB_PROMPT_NO_BACKEND_NOTE, ...SANDBOXED_WEB_PROMPT_OUTRO_NO_BACKEND];
+// MuhKoo (edge BaaS) guidance — used instead of the Convex block for MuhKoo
+// projects. MuhKoo has a backend, but it is NOT Convex: there is no /convex
+// folder, no convexDeploy, and the SDK (@muhkoo/connect) is used directly from
+// the frontend. Tables are provisioned server-side (the agent has no deploy tool).
+const WEB_PROMPT_MUHKOO: string[] = [
+  "",
+  '## Backend: MuhKoo (edge Backend-as-a-Service) — a REAL backend, not "no backend"',
+  "This project uses MuhKoo, NOT Convex. If the user asks for \"a backend\", \"Convex\", auth, accounts, a database, or persistence, use MuhKoo — do NOT fall back to localStorage/IndexedDB, and never tell the user this is a \"No Backend\" project.",
+  "Keep the wiring: NEVER remove `@muhkoo/connect`, `snarkjs`, `circomlibjs`, `@noble/curves`, or the wasm / top-level-await / node-polyfills Vite plugins (MuhKoo's ZK auth needs them). You may restyle the UI or drop MUI, but keep `src/lib/client.ts`, `src/auth/`, and the MuhKoo deps + plugins.",
+  "There is no `/convex` folder, no `convexDeploy`, and no `convex` package here — never create them.",
+  "The MuhKoo SDK (`@muhkoo/connect`) is already wired up in the template:",
+  "- `src/lib/client.ts` exposes `getClient()` — a single `Client` with namespaces `client.auth`, `client.db`, `client.kv`, `client.storage`, `client.message`, `client.space`.",
+  "- Auth is embedded zero-knowledge (`src/auth/AuthContext.tsx` wraps `client.auth.zk`: register / login / restore / logout). The server never sees the password — only a `commitment` (the stable user id). Build on this; do not add another auth system.",
+  "- Database: `client.db.table<T>(name)` with `.query({ where, limit })`, `.insert(values)`, `.update(id, values)`, `.delete(id)`. A default table named `items` (columns: `title`, `done`, `created_at`) is already provisioned and used by `src/features/RecordsBoard.tsx`.",
+  "- Realtime: `client.space` (E2E-encrypted channels — see `src/features/ChannelChat.tsx`). Encrypted KV + blob storage: `client.kv` / `client.storage`.",
+  "- `src/appConfig.ts` is the single knob the generic UI reads (table name + fields + channel). Reshape the app by editing it and the feature components.",
+  "To create a database table, call the `muhkooProvisionTable` tool ({ table, columns: [{ name, type }] }; types: text | integer | real | boolean | timestamp | json) BEFORE reading/writing it — MuhKoo tables are provisioned server-side, not from client code. A default `items` table already exists. Scope per-user rows with `owner: client.auth.zk.commitment`.",
+  "Inspect the real database with `listMuhkooTables` (every table + its actual columns/types — check this before coding against a table, since schema and client code can drift) and `readMuhkooTable` ({ table, where?, limit?, cursor? }) to verify a write landed or debug an empty query, instead of guessing or adding throwaway UI.",
+  "Write data with `insertMuhkooRows` ({ table, rows }) — seed believable starter data so a new app isn't an empty list — plus `updateMuhkooRow` / `deleteMuhkooRow` ({ table, id, values? }) to fix or remove one row by its `_id` (get it from `readMuhkooTable`). Columns must already exist; inserts are one row per request, so a mid-batch failure leaves earlier rows written. This is the app's real data: seed freely, but don't rewrite or clear rows the user didn't ask you to touch.",
+  "The publishable key and API base are injected as `VITE_MUHKOO_KEY` / `VITE_WORKER_URL` — never hard-code keys.",
+];
+
+export function buildSandboxedWebSystemPrompt({
+  hasBackend,
+  usesMuhkoo = false,
+}: {
+  hasBackend: boolean;
+  usesMuhkoo?: boolean;
+}): string {
+  const parts = usesMuhkoo
+    ? [...SANDBOXED_WEB_PROMPT_INTRO, ...WEB_PROMPT_MUHKOO, ...SANDBOXED_WEB_PROMPT_OUTRO_NO_BACKEND]
+    : hasBackend
+      ? [...SANDBOXED_WEB_PROMPT_INTRO, ...WEB_PROMPT_CONVEX, ...WEB_PROMPT_STRIPE, ...SANDBOXED_WEB_PROMPT_OUTRO]
+      : [...SANDBOXED_WEB_PROMPT_INTRO, ...SANDBOXED_WEB_PROMPT_NO_BACKEND_NOTE, ...SANDBOXED_WEB_PROMPT_OUTRO_NO_BACKEND];
   return parts.join("\n") + END_TURN_INSTRUCTION;
 }
 

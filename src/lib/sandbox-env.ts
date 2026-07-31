@@ -42,6 +42,23 @@ export function platformConvexEnvVar(
 }
 
 /**
+ * The platform-managed frontend vars that wire a Vite app to its MuhKoo backend.
+ * MuhKoo's SDK is app-keyed, so the browser needs the (browser-safe) publishable
+ * key plus the API base. The SECRET key is never injected here. Returns an empty
+ * map unless the project uses MuhKoo and has been provisioned.
+ */
+export function platformMuhkooEnvVars(
+  project: typeof projects.$inferSelect,
+): Record<string, string> {
+  if (project.backendType !== "muhkoo") return {};
+  if (!project.muhkooPublishableKey) return {}; // not provisioned yet
+  return {
+    VITE_MUHKOO_KEY: project.muhkooPublishableKey,
+    VITE_WORKER_URL: process.env.MUHKOO_API_BASE || "https://api.muhkoo.dev",
+  };
+}
+
+/**
  * Build the full frontend env map (DB rows + the injected platform var).
  * The platform var always wins over any user row with the same key.
  */
@@ -64,6 +81,10 @@ export async function buildFrontendEnvMap(
 
   const platformVar = platformConvexEnvVar(project);
   if (platformVar) env[platformVar.key] = platformVar.value;
+
+  // MuhKoo projects get their publishable key + API base injected instead of a
+  // Convex URL (the secret key stays server-side).
+  Object.assign(env, platformMuhkooEnvVars(project));
 
   return env;
 }

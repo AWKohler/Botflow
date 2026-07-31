@@ -1360,7 +1360,7 @@ export default function LandingV2() {
     isSwiftPlatformEnabled() &&
     (isBetaUser || userTier === 'pro' || userTier === 'max');
   const [hasConvexOAuth, setHasConvexOAuth] = useState<boolean | null>(null);
-  const [convexBackendType, setConvexBackendType] = useState<'platform' | 'user' | 'none'>('platform');
+  const [convexBackendType, setConvexBackendType] = useState<'platform' | 'user' | 'none' | 'muhkoo'>('platform');
   const [showConvexSelector, setShowConvexSelector] = useState(false);
   const [convexConnecting, setConvexConnecting] = useState(false);
   const convexSelectorRef = useRef<HTMLDivElement>(null);
@@ -1503,6 +1503,7 @@ export default function LandingV2() {
     const cloudForAll = process.env.NEXT_PUBLIC_ALLOW_CLOUD_CONVEX_FOR_ALL === 'true';
     // No-backend projects don't need Convex at all — skip the OAuth gate entirely.
     const needsConvexStep = convexBackendType !== 'none'
+      && convexBackendType !== 'muhkoo'
       && ((!cloudForAll && userTier === 'free') || convexBackendType === 'user')
       && !hasConvexOAuth;
     setProjectStep(needsConvexStep ? 'convex' : 'name');
@@ -1527,6 +1528,8 @@ export default function LandingV2() {
     }
     if (convexBackendType === 'none' || params.get('backendType') === 'none') {
       params.set('backendType', 'none');
+    } else if (convexBackendType === 'muhkoo' || params.get('backendType') === 'muhkoo') {
+      params.set('backendType', 'muhkoo');
     } else if (convexBackendType === 'user' || params.get('backendType') === 'user') {
       params.set('backendType', 'user');
     } else if (convexBackendType === 'platform') {
@@ -1773,6 +1776,7 @@ export default function LandingV2() {
       setShowAuthDialog(false);
       const cloudForAll = process.env.NEXT_PUBLIC_ALLOW_CLOUD_CONVEX_FOR_ALL === 'true';
       const needsConvex = convexBackendType !== 'none'
+        && convexBackendType !== 'muhkoo'
         && ((!cloudForAll && userTier === 'free') || convexBackendType === 'user')
         && !hasConvexOAuth;
       setProjectStep(needsConvex ? 'convex' : 'name');
@@ -2083,6 +2087,8 @@ export default function LandingV2() {
                               ) : convexBackendType === 'user' ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src="/convex-white.svg" className="h-3.5 w-3.5" alt="" />
+                              ) : convexBackendType === 'muhkoo' ? (
+                                <KeyRound className="h-3.5 w-3.5" />
                               ) : (
                                 <Slash className="h-3.5 w-3.5" />
                               )}
@@ -2091,6 +2097,8 @@ export default function LandingV2() {
                                   ? 'Managed'
                                   : convexBackendType === 'user'
                                   ? 'Your Convex'
+                                  : convexBackendType === 'muhkoo'
+                                  ? 'MuhKoo'
                                   : 'No Backend'}
                               </span>
                               <ChevronDown className="h-3 w-3 opacity-60" />
@@ -2171,6 +2179,30 @@ export default function LandingV2() {
                                   </div>
                                   {convexBackendType === 'none' && <Check className="h-4 w-4 text-[var(--sand-text)] ml-auto mt-0.5 shrink-0" />}
                                 </button>
+                                {isBetaUser && platform === 'sandboxed-web' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => { setConvexBackendType('muhkoo'); setShowConvexSelector(false); }}
+                                    className={cn(
+                                      'flex w-full items-start gap-2.5 px-3 py-2.5 text-sm transition text-left border-t border-[var(--sand-border)]',
+                                      convexBackendType === 'muhkoo' ? 'bg-[var(--sand-elevated)]' : 'hover:bg-[var(--sand-elevated)]',
+                                    )}
+                                  >
+                                    <KeyRound className="h-4 w-4 mt-0.5 shrink-0 text-[var(--sand-text)]" />
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-1.5 font-medium text-[var(--sand-text)]">
+                                        <span>MuhKoo</span>
+                                        <span className="inline-flex items-center rounded-full bg-[var(--sand-accent)]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--sand-text)]">
+                                          Beta
+                                        </span>
+                                      </div>
+                                      <div className="text-xs text-[var(--sand-text-muted)] mt-0.5">
+                                        Edge backend with zero-knowledge auth
+                                      </div>
+                                    </div>
+                                    {convexBackendType === 'muhkoo' && <Check className="h-4 w-4 text-[var(--sand-text)] ml-auto mt-0.5 shrink-0" />}
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>

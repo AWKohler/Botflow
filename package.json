@@ -9,6 +9,8 @@
     "lint": "eslint",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "sandbox:verify": "tsx src/scripts/verify-vercel-sandbox.ts",
+    "muhkoo:auth": "tsx src/scripts/muhkoo-auth.ts",
+    "muhkoo:status": "tsx src/scripts/muhkoo-status.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push"

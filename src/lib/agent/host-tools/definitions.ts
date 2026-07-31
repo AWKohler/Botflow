@@ -456,11 +456,150 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       required: ["mode"],
     },
   },
+  list_muhkoo_tables: {
+    name: "list_muhkoo_tables",
+    description:
+      "List this project's MuhKoo database tables with their columns and types. " +
+      "Use it to discover the app's schema before reading data or writing frontend code against a table — the shapes here are authoritative, not what the client code assumes. " +
+      "Returns { ok, tables: [{ table, columns: [{ name, type }] }] }. " +
+      "A `stale: true` result is a last-known-good copy from `cachedAt` (the live schema API is briefly unavailable) — still usable, but say so rather than asserting it as current.",
+    inputSchema: EMPTY_INPUT,
+  },
+  read_muhkoo_table: {
+    name: "read_muhkoo_table",
+    description:
+      "Read rows from one MuhKoo database table. " +
+      "Use it to inspect real data, verify a write from the app actually landed, or check a row's shape before coding against it. " +
+      "Optionally filter with `where` (ops: eq, neq, gt, gte, lt, lte, in, like, likeStartsWith, likeContains) — e.g. scope to one user with { column: 'owner', op: 'eq', value: '<commitment>' }. " +
+      "Returns { ok, rows, nextCursor }; pass nextCursor back as cursor to page further. Each row includes its `_id`.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: { type: "string" },
+        where: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              column: { type: "string" },
+              op: {
+                type: "string",
+                enum: [
+                  "eq",
+                  "neq",
+                  "gt",
+                  "gte",
+                  "lt",
+                  "lte",
+                  "in",
+                  "like",
+                  "likeStartsWith",
+                  "likeContains",
+                ],
+              },
+              value: {},
+            },
+            required: ["column", "op", "value"],
+          },
+        },
+        limit: { type: "integer", minimum: 1 },
+        cursor: { type: "string" },
+      },
+      required: ["table"],
+    },
+  },
+  insert_muhkoo_rows: {
+    name: "insert_muhkoo_rows",
+    description:
+      "Insert rows into a MuhKoo database table. " +
+      "Use it to seed realistic starter/demo data, or to add a record the app itself cannot yet create. " +
+      "Column names must already exist (check list_muhkoo_tables first) — an unknown column is rejected with the offending name. " +
+      "Not atomic: rows are written one at a time, so a mid-batch failure leaves the earlier rows written and reports how many landed. " +
+      "Returns { ok, inserted, ids }.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: { type: "string" },
+        rows: {
+          type: "array",
+          items: { type: "object" },
+          description: "Rows to insert, each an object of column → value. Do not set _id; it is assigned.",
+        },
+      },
+      required: ["table", "rows"],
+    },
+  },
+  update_muhkoo_row: {
+    name: "update_muhkoo_row",
+    description:
+      "Update one row in a MuhKoo database table, addressed by its `_id`. " +
+      "Use it to correct a bad value without touching the rest of the row — only the columns you pass are changed. " +
+      "Find the _id with read_muhkoo_table first. Returns { ok, row } with the updated row.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: { type: "string" },
+        id: { type: ["string", "number"], description: "The row's _id." },
+        values: { type: "object", description: "Columns to change, as column → new value." },
+      },
+      required: ["table", "id", "values"],
+    },
+  },
+  delete_muhkoo_row: {
+    name: "delete_muhkoo_row",
+    description:
+      "Delete one row from a MuhKoo database table, addressed by its `_id`. " +
+      "Deletes exactly one row per call and cannot be undone — this is real application data, so confirm the _id with read_muhkoo_table first and do not use it to clear a table the user did not ask you to clear.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: { type: "string" },
+        id: { type: ["string", "number"], description: "The _id of the row to delete." },
+      },
+      required: ["table", "id"],
+    },
+  },
+  provision_muhkoo_table: {
+    name: "provision_muhkoo_table",
+    description:
+      "Provision (create or extend) a MuhKoo database table so the frontend can read/write it via client.db.table(name). " +
+      "MuhKoo tables are created SERVER-SIDE — you cannot create them from client code, so call this BEFORE using a new table. " +
+      "Additive only: adding columns is fine, but dropping or retyping a column fails. Column types: text | integer | real | boolean | timestamp | json. A synthetic _id primary key is added automatically. A default 'items' table already exists.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: {
+          type: "string",
+          description: "Table name, e.g. 'bookings' (lowercase letters, numbers, underscores).",
+        },
+        columns: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              type: {
+                type: "string",
+                enum: ["text", "integer", "real", "boolean", "timestamp", "json"],
+              },
+            },
+            required: ["name", "type"],
+          },
+          description: "Columns to create or add.",
+        },
+      },
+      required: ["table", "columns"],
+    },
+  },
 };
 
 export interface SelectHostToolsInput {
   platform: string;
-  hasBackend: boolean;
+  /** Convex-backed project (backendType 'platform' | 'user') — gates the
+   *  Convex deploy/logs/table/auth tools. MuhKoo projects pass false here. */
+  usesConvex: boolean;
+  /** MuhKoo-backed project — gates provision_muhkoo_table. */
+  usesMuhkoo: boolean;
   hasGithub: boolean;
   stripeEnabled: boolean;
   revenuecatEnabled: boolean;
@@ -477,7 +616,7 @@ export interface SelectHostToolsInput {
  * enter the sandbox env.
  */
 export function selectHostTools(input: SelectHostToolsInput): string[] {
-  const { platform, hasBackend, hasGithub, stripeEnabled, revenuecatEnabled } = input;
+  const { platform, usesConvex, usesMuhkoo, hasGithub, stripeEnabled, revenuecatEnabled } = input;
   const customTools: string[] = [];
   if (platform === "sandboxed-web") {
     customTools.push(
@@ -494,7 +633,7 @@ export function selectHostTools(input: SelectHostToolsInput): string[] {
       // AI image generation (FAL/Krea) — backend-agnostic; bills platform credits.
       "generate_image",
     );
-    if (hasBackend) {
+    if (usesConvex) {
       customTools.push(
         "convex_deploy",
         "get_convex_logs",
@@ -511,6 +650,20 @@ export function selectHostTools(input: SelectHostToolsInput): string[] {
           "create_stripe_product",
         );
       }
+    }
+    if (usesMuhkoo) {
+      // MuhKoo projects: server-side table provisioner (schemas can't be
+      // created from client code) plus read and write tools. All row access
+      // uses the project's scoped access token, so it keeps working when the
+      // platform developer session lapses.
+      customTools.push(
+        "provision_muhkoo_table",
+        "list_muhkoo_tables",
+        "read_muhkoo_table",
+        "insert_muhkoo_rows",
+        "update_muhkoo_row",
+        "delete_muhkoo_row",
+      );
     }
     // Git tools — only when a repo is linked. Gating must match the project
     // state at turn-start; the host route also re-checks at execution time.
@@ -537,7 +690,7 @@ export function selectHostTools(input: SelectHostToolsInput): string[] {
       "ask_question",
       "request_env_var",
     );
-    if (hasBackend) {
+    if (usesConvex) {
       // Swift + Convex backend: the deploy/logs/auth tools are platform-
       // agnostic server-side (the deploy pipeline zips /convex regardless of
       // frontend language; setup_auth and setup_oauth_provider are platform-

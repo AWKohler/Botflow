@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "32";
+export const BRIDGE_SCRIPT_VERSION = "35";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -348,6 +348,136 @@ function buildCustomTools(customTools, oauthProviderIds) {
         {},
         makeHostToolHandler("convex_deploy"),
         { annotations: { destructiveHint: true } },
+      ),
+    );
+  }
+
+  if (customTools.includes("list_muhkoo_tables")) {
+    tools.push(
+      tool(
+        "list_muhkoo_tables",
+        "List this project's MuhKoo database tables with their columns and types. " +
+        "Use it to discover the app's schema before reading data or writing frontend code against a table — the shapes here are authoritative, not what the client code assumes. " +
+        "Returns { ok, tables: [{ table, columns: [{ name, type }] }] }. " +
+        "A \`stale: true\` result is a last-known-good copy from \`cachedAt\` (the live schema API is briefly unavailable) — still usable, but say so rather than asserting it as current.",
+        {},
+        makeHostToolHandler("list_muhkoo_tables"),
+      ),
+    );
+  }
+
+  if (customTools.includes("read_muhkoo_table")) {
+    tools.push(
+      tool(
+        "read_muhkoo_table",
+        "Read rows from one MuhKoo database table. " +
+        "Use it to inspect real data, verify a write from the app actually landed, or check a row's shape before coding against it. " +
+        "Optionally filter with \`where\` — e.g. scope to one user with { column: 'owner', op: 'eq', value: '<commitment>' }. " +
+        "Returns { ok, rows, nextCursor }; pass nextCursor back as cursor to page further. Each row includes its \`_id\`.",
+        {
+          table: z.string().describe("Table name (from list_muhkoo_tables)."),
+          where: z
+            .array(
+              z.object({
+                column: z.string(),
+                op: z.enum([
+                  "eq",
+                  "neq",
+                  "gt",
+                  "gte",
+                  "lt",
+                  "lte",
+                  "in",
+                  "like",
+                  "likeStartsWith",
+                  "likeContains",
+                ]),
+                value: z.unknown(),
+              }),
+            )
+            .optional(),
+          limit: z.number().int().positive().optional(),
+          cursor: z.string().optional(),
+        },
+        makeHostToolHandler("read_muhkoo_table"),
+      ),
+    );
+  }
+
+  if (customTools.includes("insert_muhkoo_rows")) {
+    tools.push(
+      tool(
+        "insert_muhkoo_rows",
+        "Insert rows into a MuhKoo database table. " +
+        "Use it to seed realistic starter/demo data, or to add a record the app itself cannot yet create. " +
+        "Column names must already exist (check list_muhkoo_tables first) — an unknown column is rejected with the offending name. " +
+        "Not atomic: rows are written one at a time, so a mid-batch failure leaves the earlier rows written and reports how many landed.",
+        {
+          table: z.string().describe("Table name (from list_muhkoo_tables)."),
+          rows: z
+            .array(z.record(z.string(), z.unknown()))
+            .describe("Rows to insert, each an object of column → value. Do not set _id; it is assigned."),
+        },
+        makeHostToolHandler("insert_muhkoo_rows"),
+      ),
+    );
+  }
+
+  if (customTools.includes("update_muhkoo_row")) {
+    tools.push(
+      tool(
+        "update_muhkoo_row",
+        "Update one row in a MuhKoo database table, addressed by its \`_id\`. " +
+        "Use it to correct a bad value without touching the rest of the row — only the columns you pass are changed. " +
+        "Find the _id with read_muhkoo_table first.",
+        {
+          table: z.string().describe("Table name."),
+          id: z.union([z.string(), z.number()]).describe("The row's _id."),
+          values: z
+            .record(z.string(), z.unknown())
+            .describe("Columns to change, as column → new value."),
+        },
+        makeHostToolHandler("update_muhkoo_row"),
+      ),
+    );
+  }
+
+  if (customTools.includes("delete_muhkoo_row")) {
+    tools.push(
+      tool(
+        "delete_muhkoo_row",
+        "Delete one row from a MuhKoo database table, addressed by its \`_id\`. " +
+        "Deletes exactly one row per call and cannot be undone — this is real application data, so confirm the _id with read_muhkoo_table first and do not use it to clear a table the user did not ask you to clear.",
+        {
+          table: z.string().describe("Table name."),
+          id: z.union([z.string(), z.number()]).describe("The _id of the row to delete."),
+        },
+        makeHostToolHandler("delete_muhkoo_row"),
+      ),
+    );
+  }
+
+  if (customTools.includes("provision_muhkoo_table")) {
+    tools.push(
+      tool(
+        "provision_muhkoo_table",
+        "Provision (create or extend) a MuhKoo database table so the frontend can read/write it via client.db.table(name). " +
+        "MuhKoo tables are created SERVER-SIDE — you cannot create them from client code, so call this BEFORE using a new table. " +
+        "Additive only: adding columns is fine, but dropping or retyping a column fails. Column types: text | integer | real | boolean | timestamp | json. A synthetic _id primary key is added automatically. A default 'items' table already exists.",
+        {
+          table: z
+            .string()
+            .describe("Table name, e.g. 'bookings' (lowercase letters, numbers, underscores)."),
+          columns: z
+            .array(
+              z.object({
+                name: z.string(),
+                type: z.enum(["text", "integer", "real", "boolean", "timestamp", "json"]),
+              }),
+            )
+            .describe("Columns to create or add."),
+        },
+        makeHostToolHandler("provision_muhkoo_table"),
       ),
     );
   }

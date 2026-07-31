@@ -161,6 +161,32 @@ export const CLAUDE_CODE_TO_BOTFLOW: Record<string, ToolRewrite | null> = {
     mapInput: identityInput,
   },
 
+  // ── MuhKoo MCP tools ─────────────────────────────────────────────────
+  provision_muhkoo_table: {
+    to: "muhkooProvisionTable",
+    mapInput: identityInput,
+  },
+  list_muhkoo_tables: {
+    to: "listMuhkooTables",
+    mapInput: identityInput,
+  },
+  read_muhkoo_table: {
+    to: "readMuhkooTable",
+    mapInput: identityInput,
+  },
+  insert_muhkoo_rows: {
+    to: "insertMuhkooRows",
+    mapInput: identityInput,
+  },
+  update_muhkoo_row: {
+    to: "updateMuhkooRow",
+    mapInput: identityInput,
+  },
+  delete_muhkoo_row: {
+    to: "deleteMuhkooRow",
+    mapInput: identityInput,
+  },
+
   // ── No Botflow counterpart — collapse to text summary on transit ─────
   Task: null,
   TodoWrite: null,
@@ -260,6 +286,12 @@ export const BOTFLOW_TO_CLAUDE_CODE: Record<string, ToolRewrite | null> = {
   convexDeploy:        { to: "convex_deploy", mapInput: identityInput },
   setupAuth:           { to: "setup_auth", mapInput: identityInput },
   setupOAuthProvider:  { to: "setup_oauth_provider", mapInput: identityInput },
+  muhkooProvisionTable:{ to: "provision_muhkoo_table", mapInput: identityInput },
+  listMuhkooTables:    { to: "list_muhkoo_tables", mapInput: identityInput },
+  readMuhkooTable:     { to: "read_muhkoo_table", mapInput: identityInput },
+  insertMuhkooRows:    { to: "insert_muhkoo_rows", mapInput: identityInput },
+  updateMuhkooRow:     { to: "update_muhkoo_row", mapInput: identityInput },
+  deleteMuhkooRow:     { to: "delete_muhkoo_row", mapInput: identityInput },
   startSimulator:      { to: "start_simulator", mapInput: identityInput },
   stopSimulator:       { to: "stop_simulator", mapInput: identityInput },
   getSimulatorStatus:  { to: "get_simulator_status", mapInput: identityInput },
@@ -293,6 +325,12 @@ export const BOTFLOW_NATIVE_TOOLS = new Set<string>([
   "initializeRevenueCatPayments",
   "getRevenueCatProducts",
   "createRevenueCatProduct",
+  "muhkooProvisionTable",
+  "listMuhkooTables",
+  "readMuhkooTable",
+  "insertMuhkooRows",
+  "updateMuhkooRow",
+  "deleteMuhkooRow",
   "startSimulator",
   "stopSimulator",
   "getSimulatorStatus",

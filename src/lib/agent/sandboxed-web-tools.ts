@@ -609,6 +609,8 @@ export function getSandboxedWebTools(params: {
   appBaseUrl: string;
   authHeaders?: Record<string, string>;
   convexUrl?: string;
+  /** MuhKoo project: expose the server-side table provisioner. */
+  usesMuhkoo?: boolean;
   /** GitHub link metadata; when set, the git_* tools are exposed to the agent. */
   github?: {
     owner: string;
@@ -618,7 +620,7 @@ export function getSandboxedWebTools(params: {
     autonomy: "autonomous" | "manual" | "ask-each-time" | null;
   };
 }) {
-  const { projectId, userId, hasBackend, appBaseUrl, authHeaders, github } = params;
+  const { projectId, userId, hasBackend, appBaseUrl, authHeaders, github, usesMuhkoo } = params;
   const baseTools = getPersistentTools(projectId, { actingUserId: userId });
   const workspaceTools = getWorkspaceControlTools(projectId);
   const imageGenTools = getImageGenTools(projectId, userId);
@@ -663,6 +665,229 @@ export function getSandboxedWebTools(params: {
       },
     });
 
+    // MuhKoo projects reach this branch (they have a backend, but not Convex —
+    // so no /convex, no convexDeploy). Expose a server-side table provisioner so
+    // the agent can define real schemas; the app id + dev key stay server-side.
+    const muhkooProvisionTable = tool({
+      description:
+        "Provision (create or extend) a MuhKoo database table so the frontend can read/write it via client.db.table(name). " +
+        "MuhKoo tables are created SERVER-SIDE — you cannot create them from client code, so call this BEFORE using a new table. " +
+        "Additive only: you can add columns to an existing table, but dropping/retyping a column fails. " +
+        "Column types: text | integer | real | boolean | timestamp | json. A synthetic _id primary key is added automatically. " +
+        "A default table 'items' already exists.",
+      inputSchema: z.object({
+        table: z
+          .string()
+          .describe("Table name, e.g. 'bookings' (lowercase letters, numbers, underscores)."),
+        columns: z
+          .array(
+            z.object({
+              name: z.string(),
+              type: z.enum(["text", "integer", "real", "boolean", "timestamp", "json"]),
+            }),
+          )
+          .describe("Columns to create or add."),
+      }),
+      async execute(input) {
+        const { table, columns } = input as {
+          table: string;
+          columns: Array<{ name: string; type: string }>;
+        };
+        try {
+          const { ensureMuhkooProvisioned, recordMuhkooTableSchema } = await import(
+            "@/lib/muhkoo-provision"
+          );
+          const { putMuhkooTable } = await import("@/lib/muhkoo-platform");
+          const prov = await ensureMuhkooProvisioned(projectId);
+          if (!prov.appId) {
+            return { ok: false, error: "MuhKoo backend is not provisioned for this project yet." };
+          }
+          await putMuhkooTable(prov.appId, { table, columns });
+          await recordMuhkooTableSchema(projectId, { table, columns });
+          return {
+            ok: true,
+            table,
+            message: `Table "${table}" is ready. Read/write it with client.db.table("${table}").`,
+          };
+        } catch (e) {
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+    });
+
+    const listMuhkooTables = tool({
+      description:
+        "List this project's MuhKoo database tables with their columns and types. " +
+        "Use it to discover the app's schema before reading data or writing frontend code against a table — the shapes here are authoritative, not what the client code assumes. " +
+        "If the result carries `stale: true`, it is a last-known-good copy from `cachedAt` (the live schema API is briefly unavailable) — usable, but say so rather than asserting it as current.",
+      inputSchema: z.object({}),
+      async execute() {
+        try {
+          const { getMuhkooSchema } = await import("@/lib/muhkoo-provision");
+          return await getMuhkooSchema(projectId);
+        } catch (e) {
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+    });
+
+    const readMuhkooTable = tool({
+      description:
+        "Read rows from one MuhKoo database table. " +
+        "Use it to inspect real data, verify a write from the app actually landed, or check a row's shape before coding against it. " +
+        "Optionally filter with `where` — e.g. scope to one user with { column: 'owner', op: 'eq', value: '<commitment>' }. " +
+        "Returns { ok, rows, nextCursor }; each row includes its `_id`.",
+      inputSchema: z.object({
+        table: z.string().describe("Table name (from listMuhkooTables)."),
+        where: z
+          .array(
+            z.object({
+              column: z.string(),
+              op: z.enum([
+                "eq",
+                "neq",
+                "gt",
+                "gte",
+                "lt",
+                "lte",
+                "in",
+                "like",
+                "likeStartsWith",
+                "likeContains",
+              ]),
+              value: z.unknown(),
+            }),
+          )
+          .optional(),
+        limit: z.number().int().positive().optional(),
+        cursor: z.string().optional(),
+      }),
+      async execute(input) {
+        const i = input as {
+          table: string;
+          where?: Array<{ column: string; op: string; value: unknown }>;
+          limit?: number;
+          cursor?: string;
+        };
+        try {
+          // Reads use the project's scoped access token (db:read), not the
+          // roughly-daily platform developer session. withMuhkooAccessToken
+          // owns fetching it and renewing once if the data plane rejects it.
+          const { withMuhkooAccessToken } = await import("@/lib/muhkoo-provision");
+          const { queryMuhkooTable } = await import("@/lib/muhkoo-platform");
+          const query = {
+            ...(i.where ? { where: i.where } : {}),
+            ...(i.limit !== undefined ? { limit: i.limit } : {}),
+            ...(i.cursor !== undefined ? { cursor: i.cursor } : {}),
+          };
+          return await withMuhkooAccessToken(projectId, (tok) =>
+            queryMuhkooTable(tok, i.table, query),
+          );
+        } catch (e) {
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+    });
+
+    const insertMuhkooRows = tool({
+      description:
+        "Insert rows into a MuhKoo database table. " +
+        "Use it to seed realistic starter/demo data, or to add a record the app itself cannot yet create. " +
+        "Column names must already exist (check listMuhkooTables first) — an unknown column is rejected. " +
+        "Not atomic: rows are written one at a time, so a mid-batch failure leaves the earlier rows written and reports how many landed.",
+      inputSchema: z.object({
+        table: z.string().describe("Table name (from listMuhkooTables)."),
+        rows: z
+          .array(z.record(z.string(), z.unknown()))
+          .describe("Rows to insert, each an object of column → value. Do not set _id; it is assigned."),
+      }),
+      async execute(input) {
+        const i = input as { table: string; rows: Array<Record<string, unknown>> };
+        try {
+          const { withMuhkooAccessToken } = await import("@/lib/muhkoo-provision");
+          const { insertMuhkooRow, MUHKOO_MAX_INSERT_ROWS } = await import(
+            "@/lib/muhkoo-platform"
+          );
+          if (!i.rows?.length) return { ok: false, error: "`rows` is empty — nothing to insert." };
+          if (i.rows.length > MUHKOO_MAX_INSERT_ROWS) {
+            return {
+              ok: false,
+              error: `Too many rows (${i.rows.length}); this tool caps a call at ${MUHKOO_MAX_INSERT_ROWS}. Send the rest in another call.`,
+            };
+          }
+          return await withMuhkooAccessToken(projectId, async (tok) => {
+            const ids: unknown[] = [];
+            for (const [index, row] of i.rows.entries()) {
+              const r = await insertMuhkooRow(tok, i.table, row);
+              if (!r.ok) {
+                return {
+                  ok: false as const,
+                  authFailed: r.authFailed,
+                  error: `${r.error} (inserted ${ids.length} of ${i.rows.length}; failed on row index ${index})`,
+                };
+              }
+              ids.push(r.id);
+            }
+            return { ok: true as const, inserted: ids.length, ids };
+          });
+        } catch (e) {
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+    });
+
+    const updateMuhkooRow = tool({
+      description:
+        "Update one row in a MuhKoo database table, addressed by its `_id`. " +
+        "Use it to correct a bad value without touching the rest of the row — only the columns you pass are changed. " +
+        "Find the _id with readMuhkooTable first.",
+      inputSchema: z.object({
+        table: z.string().describe("Table name."),
+        id: z.union([z.string(), z.number()]).describe("The row's _id."),
+        values: z
+          .record(z.string(), z.unknown())
+          .describe("Columns to change, as column → new value."),
+      }),
+      async execute(input) {
+        const i = input as {
+          table: string;
+          id: string | number;
+          values: Record<string, unknown>;
+        };
+        try {
+          const { withMuhkooAccessToken } = await import("@/lib/muhkoo-provision");
+          const { updateMuhkooRow: doUpdate } = await import("@/lib/muhkoo-platform");
+          return await withMuhkooAccessToken(projectId, (tok) =>
+            doUpdate(tok, i.table, i.id, i.values),
+          );
+        } catch (e) {
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+    });
+
+    const deleteMuhkooRow = tool({
+      description:
+        "Delete one row from a MuhKoo database table, addressed by its `_id`. " +
+        "Deletes exactly one row per call and cannot be undone — this is real application data, so confirm the _id with readMuhkooTable first and do not use it to clear a table the user did not ask you to clear.",
+      inputSchema: z.object({
+        table: z.string().describe("Table name."),
+        id: z.union([z.string(), z.number()]).describe("The _id of the row to delete."),
+      }),
+      async execute(input) {
+        const i = input as { table: string; id: string | number };
+        try {
+          const { withMuhkooAccessToken } = await import("@/lib/muhkoo-provision");
+          const { deleteMuhkooRow: doDelete } = await import("@/lib/muhkoo-platform");
+          return await withMuhkooAccessToken(projectId, (tok) =>
+            doDelete(tok, i.table, i.id),
+          );
+        } catch (e) {
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+    });
+
     return {
       ...baseTools,
       write: guardedWrite,
@@ -670,6 +895,16 @@ export function getSandboxedWebTools(params: {
       ...workspaceTools,
       ...imageGenTools,
       ...gitTools,
+      ...(usesMuhkoo
+        ? {
+            muhkooProvisionTable,
+            listMuhkooTables,
+            readMuhkooTable,
+            insertMuhkooRows,
+            updateMuhkooRow,
+            deleteMuhkooRow,
+          }
+        : {}),
     } as const;
   }
 

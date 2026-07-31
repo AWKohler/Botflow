@@ -340,13 +340,18 @@ export async function POST(req: Request) {
   });
   await writeOpenCodeScripts(projectId);
 
-  const hasBackend = project.backendType !== "none";
+  // Convex-specific tools/prompt gate on this — MuhKoo has a backend but no
+  // Convex deploy/logs/table tools (mirrors projectUsesConvex).
+  const usesConvex =
+    project.backendType === "platform" || project.backendType === "user";
+  const usesMuhkoo = project.backendType === "muhkoo";
   await writeOpenCodeAppendPrompt(
     projectId,
     buildOpenCodeAppendPrompt({
       platform: platform as "sandboxed-web" | "swift",
-      hasBackend,
-      hasConvexEnv: hasBackend && Boolean(project.userConvexUrl || project.convexDeployUrl),
+      hasBackend: usesConvex,
+      usesMuhkoo,
+      hasConvexEnv: usesConvex && Boolean(project.userConvexUrl || project.convexDeployUrl),
     }),
   );
 
@@ -354,7 +359,8 @@ export async function POST(req: Request) {
   const sessionId = await getOpenCodeSessionId(projectId);
   const customTools = selectHostTools({
     platform,
-    hasBackend,
+    usesConvex,
+    usesMuhkoo,
     hasGithub: Boolean(project.githubRepoOwner && project.githubRepoName),
     stripeEnabled: STRIPE_CONNECT_ENABLED,
     revenuecatEnabled: REVENUECAT_ENABLED,
