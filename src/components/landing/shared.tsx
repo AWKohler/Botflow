@@ -378,73 +378,6 @@ const FOOTER_ALTERNATIVES_LINKS = [
   { href: '/alternatives/base44', label: 'Base44 alternatives' },
 ];
 
-// Launch badges for the footer brand column. Each is gated on its own env flag
-// so either can be pulled once its launch window closes without a code change.
-// The column is only ~250px wide, so the badges stack and are scaled to a
-// common 44px height — side by side they'd be too small to read. Both
-// providers serve a real dark variant, so they get the same light/dark image
-// swap as the header wordmark.
-function LaunchBadges() {
-  const showProductHunt = process.env.NEXT_PUBLIC_PRODUCT_HUNT_ENABLED === 'true';
-  const showPostYourStartup = process.env.NEXT_PUBLIC_POST_YOUR_STARTUP_ENABLED === 'true';
-
-  if (!showProductHunt && !showPostYourStartup) return null;
-
-  return (
-    <div className="mt-6 flex flex-col items-start gap-3">
-      {showProductHunt && (
-        <a
-          href="https://www.producthunt.com/products/botflow?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-botflow"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            alt="Botflow - There is no moat... | Product Hunt"
-            width={204}
-            height={44}
-            src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204895&theme=light&t=1785326664507"
-            className="h-11 w-[204px] block dark:hidden"
-          />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            alt="Botflow - There is no moat... | Product Hunt"
-            width={204}
-            height={44}
-            src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204895&theme=dark&t=1785326664507"
-            className="h-11 w-[204px] hidden dark:block"
-          />
-        </a>
-      )}
-
-      {showPostYourStartup && (
-        <a
-          href="https://postyourstartup.co/startup/botflow?ref=badge"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            alt="Featured on PostYourStartup"
-            width={170}
-            height={44}
-            src="https://postyourstartup.co/api/badge/botflow?theme=light"
-            className="h-11 w-[170px] block dark:hidden"
-          />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            alt="Featured on PostYourStartup"
-            width={170}
-            height={44}
-            src="https://postyourstartup.co/api/badge/botflow?theme=dark"
-            className="h-11 w-[170px] hidden dark:block"
-          />
-        </a>
-      )}
-    </div>
-  );
-}
-
 function FooterColumn({
   title,
   links,
@@ -523,8 +456,6 @@ export function LandingFooter() {
             >
               awkohler@botflow.io
             </a>
-
-            <LaunchBadges />
           </div>
 
           <FooterColumn title="Product" links={productLinks} />
