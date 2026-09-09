@@ -269,7 +269,15 @@ export function SandboxPublishPanel({
   };
 
   const fixWithAgent = () => {
-    const prompt = `Build failed:\n\n${errorOutput}\n\nPlease fix the errors, then run \`pnpm run build\` to confirm everything builds successfully.`;
+    // This prompt is injected via setInput, which bypasses the textarea's
+    // maxLength, and a failing build's log is unbounded. Keep the tail (where
+    // the failure is reported) under the agent route's per-turn cap so
+    // "Fix with Agent" can't hand the user a 400 instead of a fix.
+    const MAX_LOG_CHARS = 40_000;
+    const log = errorOutput.length > MAX_LOG_CHARS
+      ? `…[earlier output truncated]\n${errorOutput.slice(-MAX_LOG_CHARS)}`
+      : errorOutput;
+    const prompt = `Build failed:\n\n${log}\n\nPlease fix the errors, then run \`pnpm run build\` to confirm everything builds successfully.`;
     window.dispatchEvent(new CustomEvent("sandbox-build-error-delegate", {
       detail: { projectId, prompt },
     }));

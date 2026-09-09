@@ -18,6 +18,7 @@ import { MODEL_CONFIGS, resolveModelId, isModelDisabled, modelDisabledReason, is
 import { agentLog, generateRequestId, setRequestId } from "@/lib/agent/logger";
 import { classifyError, formatErrorResponse } from "@/lib/agent/errors";
 import { USE_TOGETHER_KIMI } from "@/lib/feature-flags";
+import { oversizedTurnError } from "@/lib/agent/turn-input";
 
 /** Together AI's OpenAI-compatible Kimi K2.7-Code model identifier. */
 const TOGETHER_KIMI_MODEL = "moonshotai/Kimi-K2.7-Code";
@@ -521,6 +522,13 @@ export async function POST(req: Request) {
       platform,
     }: { messages: unknown; projectId?: string; platform?: ProjectPlatform } =
       await req.json();
+
+    // Bound THIS turn's user text before any project/credit/provider work. The
+    // textarea's maxLength is browser-side only, so it's no guarantee here.
+    // Scoped to the trailing user message — history is compaction's problem,
+    // and validating it would reject conversations that are already long.
+    const oversized = oversizedTurnError(messages);
+    if (oversized) return oversized;
 
     // Determine selected model for project and ensure ownership
     let selectedModel: ModelId = "gpt-5.6-luna";

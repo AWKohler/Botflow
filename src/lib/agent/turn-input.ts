@@ -41,7 +41,8 @@ export function extractCurrentUserText(messages: UIMessage[]): string {
   if (!last || last.role !== "user") return "";
   const texts: string[] = [];
   for (const p of last.parts ?? []) {
-    if (p.type === "text" && typeof p.text === "string") texts.push(p.text);
+    // `p?.` — parts arrive straight off the wire and may hold null entries.
+    if (p?.type === "text" && typeof p.text === "string") texts.push(p.text);
   }
   return texts.join("\n");
 }
@@ -89,7 +90,7 @@ export function extractCurrentUserImageParts(
   if (!last || last.role !== "user") return [];
   const out: Array<{ url: string; mediaType: string }> = [];
   for (const p of last.parts ?? []) {
-    if (p.type !== "file") continue;
+    if (p?.type !== "file") continue; // null-safe: see extractCurrentUserText
     const fp = p as { type: "file"; url?: unknown; mediaType?: unknown };
     if (typeof fp.url !== "string") continue;
     const mediaType = typeof fp.mediaType === "string" ? fp.mediaType : "";
@@ -175,4 +176,47 @@ export function buildPriorConversationPreamble(messages: UIMessage[]): string | 
   }
   if (lines.length === 0) return null;
   return lines.join("\n\n");
+}
+
+/* --------------------------- turn size limits --------------------------- */
+
+/**
+ * Server-side ceiling on ONE user turn's text.
+ *
+ * The chat textarea's `maxLength={50000}` is browser-only — a direct POST, or
+ * the delegate flows that pre-fill the input through `setInput`
+ * (github-conflict-delegate, sandbox-build-error-delegate), bypass it
+ * entirely. This is set at 2x the UI cap so those pre-filled prompts still
+ * fit comfortably, while a multi-megabyte turn is rejected before it can
+ * reserve credits or reach a provider.
+ *
+ * Deliberately scoped to the CURRENT turn, never to accumulated history:
+ * long histories are compaction's job, and re-checking them here would wedge
+ * conversations that are already past the limit.
+ */
+export const MAX_USER_TURN_CHARS = 100_000;
+
+/**
+ * Reject an over-long current user turn. Returns null when the request is
+ * acceptable — including when the trailing message isn't a user message
+ * (tool round-trips, assistant continuations), since those carry no new user
+ * input to measure.
+ *
+ * Counts text parts only: file parts hold uploaded-image URLs, which are
+ * bounded separately by MAX_PROMPT_IMAGES and MAX_IMAGE_BYTES.
+ */
+export function oversizedTurnError(messages: unknown): Response | null {
+  if (!Array.isArray(messages)) {
+    return jsonError(400, "Invalid request: `messages` must be an array.");
+  }
+  const last = messages[messages.length - 1] as UIMessage | undefined;
+  if (!last || last.role !== "user" || !Array.isArray(last.parts)) return null;
+  const chars = extractCurrentUserText(messages as UIMessage[]).length;
+  if (chars <= MAX_USER_TURN_CHARS) return null;
+  return jsonError(
+    400,
+    `Your message is ${chars.toLocaleString()} characters — the limit is ` +
+      `${MAX_USER_TURN_CHARS.toLocaleString()} per message. ` +
+      `Shorten it, or split it across several turns.`,
+  );
 }
