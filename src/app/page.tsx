@@ -1390,7 +1390,7 @@ export default function LandingV2() {
   const PENDING_NAME_KEY = 'huggable_pending_project_name';
   const serverKeyModels = useMemo(() => new Set([
     'fireworks-minimax-m3', 'fireworks-kimi-k2p7', 'fireworks-kimi-k3',
-    'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'claude-sonnet-5', 'claude-sonnet-4.6', 'claude-opus-4.7', 'claude-opus-4-8', 'claude-opus-5',
+    'gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'claude-sonnet-5', 'claude-sonnet-4.6', 'claude-opus-4.7', 'claude-opus-4-8', 'claude-opus-5',
   ]), []);
   const landingSignInModalAppearance = {
     elements: {

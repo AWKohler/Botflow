@@ -45,6 +45,7 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
   'fireworks-minimax-m3': 'free',
   'fireworks-kimi-k2p7': 'free',
   'fireworks-kimi-k3': 'pro',   // Pro+ for server key; free requires BYOK (Fireworks)
+  'gpt-6-astra': 'max',         // Max-only on server key; free/pro require BYOK/OAuth
   'gpt-5.6-sol': 'pro',         // Pro+ for server key; free requires BYOK/OAuth
   'gpt-5.6-terra': 'pro',       // Pro+
   'gpt-5.6-luna': 'free',       // free — default model, served on the platform key
@@ -61,6 +62,7 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
  * Selecting these skips the "missing API key" BYOK check.
  */
 const SERVER_KEY_MODELS = new Set<ModelId>([
+  'gpt-6-astra',
   'fireworks-minimax-m3',
   'fireworks-kimi-k2p7',
   'fireworks-kimi-k3',
@@ -89,6 +91,7 @@ const MODEL_COST_LABEL: Record<ModelId, string> = {
   'gpt-5.6-sol': 'x12',
   'gpt-5.5': 'x12',
   'claude-fable-5': 'x20',
+  'gpt-6-astra': 'x20',
 };
 
 const TIER_RANK: Record<string, number> = { free: 0, pro: 1, max: 2 };
@@ -114,7 +117,8 @@ const MODEL_ORDER: ModelId[] = [
   'gpt-5.6-sol',             // x12
   // 'gpt-5.5',              // x12 — hidden from the selector (kept in the
   //                         // registry/pricing so existing projects still run).
-  'claude-fable-5',          // x20 — most expensive (Max-only)
+  'claude-fable-5',          // x20 — Max-only
+  'gpt-6-astra',             // x20 — same rates as Fable 5 on every axis (Max-only)
 ];
 
 export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', className, useTogetherKimi = false, leading, openDirection = 'down' }: ModelSelectorProps) {

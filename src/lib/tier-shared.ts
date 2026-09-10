@@ -14,6 +14,7 @@ export const MODEL_TIER_REQUIREMENT: Record<string, Tier> = {
   'fireworks-minimax-m3': 'free',
   'fireworks-kimi-k2p7': 'free',
   'fireworks-kimi-k3': 'pro',        // Pro+ for server key ($3/$15 — Terra-class pricing); free requires BYOK (Fireworks)
+  'gpt-6-astra': 'max',              // Max-only on server key ($10/$50 — Fable-class pricing); free/pro require BYOK/OAuth
   'gpt-5.6-sol': 'pro',              // Pro+ for server key; free requires BYOK/OAuth
   'gpt-5.6-terra': 'pro',            // Pro+ for server key
   'gpt-5.6-luna': 'free',            // free — platform-served within the free credit allowance (default model)

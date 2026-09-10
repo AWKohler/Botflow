@@ -56,6 +56,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     };
     if (
       model &&
+      model !== 'gpt-6-astra' &&
       model !== 'gpt-5.6-sol' &&
       model !== 'gpt-5.6-terra' &&
       model !== 'gpt-5.6-luna' &&

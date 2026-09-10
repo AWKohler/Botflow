@@ -144,6 +144,7 @@ export async function GET(request: Request) {
   const backendTypeParam = url.searchParams.get('backendType');
   const modelParam = url.searchParams.get('model');
   const model = (
+    modelParam === 'gpt-6-astra' ? 'gpt-6-astra' :
     modelParam === 'gpt-5.6-sol' ? 'gpt-5.6-sol' :
     modelParam === 'gpt-5.6-terra' ? 'gpt-5.6-terra' :
     modelParam === 'gpt-5.6-luna' ? 'gpt-5.6-luna' :
@@ -177,7 +178,7 @@ export async function GET(request: Request) {
     modelParam === 'gemini-3.1-pro-preview' ? 'gemini-3.1-pro-preview' :
     modelParam === 'grok-4.5' ? 'grok-4.5' :
     'gpt-5.6-luna' // default model
-  ) as 'gpt-5.6-sol' | 'gpt-5.6-terra' | 'gpt-5.6-luna' | 'gpt-5.5' | 'claude-sonnet-5' | 'claude-opus-5' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-kimi-k2p7' | 'fireworks-kimi-k3' | 'gemini-3.1-pro-preview' | 'grok-4.5';
+  ) as 'gpt-6-astra' | 'gpt-5.6-sol' | 'gpt-5.6-terra' | 'gpt-5.6-luna' | 'gpt-5.5' | 'claude-sonnet-5' | 'claude-opus-5' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-kimi-k2p7' | 'fireworks-kimi-k3' | 'gemini-3.1-pro-preview' | 'grok-4.5';
 
   if (!userId) {
     return redirectToSignIn({ returnBackUrl: request.url });

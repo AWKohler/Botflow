@@ -53,6 +53,7 @@ const MODEL_DISPLAY: Record<string, string> = {
   'claude-opus-4-8': 'Claude Opus 4.8', // historical usage records
   'claude-opus-5': 'Claude Opus 5',
   'claude-fable-5': 'Claude Fable 5',
+  'gpt-6-astra': 'GPT-6 Astra',
   'gpt-5.6-sol': 'GPT-5.6 Sol',
   'gpt-5.6-terra': 'GPT-5.6 Terra',
   'gpt-5.6-luna': 'GPT-5.6 Luna',

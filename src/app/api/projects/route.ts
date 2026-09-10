@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
       platform?: ProjectPlatform;
       backendType?: BackendType;
       model?:
+        | 'gpt-6-astra'
         | 'gpt-5.6-sol'
         | 'gpt-5.6-terra'
         | 'gpt-5.6-luna'
@@ -156,7 +157,9 @@ export async function POST(request: NextRequest) {
         sandboxTemplate,
         sandboxProvider,
         model:
-          model === 'gpt-5.6-sol'
+          model === 'gpt-6-astra'
+            ? 'gpt-6-astra'
+          : model === 'gpt-5.6-sol'
             ? 'gpt-5.6-sol'
           : model === 'gpt-5.6-terra'
             ? 'gpt-5.6-terra'

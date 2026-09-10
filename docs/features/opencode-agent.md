@@ -12,14 +12,25 @@ remains only as the 412-fallback during the bake.
 
 Pinned versions (env-overridable; installed locally in the sandbox under
 `~/.botflow/opencode/`, no sudo):
-- `opencode-ai` `1.17.18` (`BOTFLOW_OPENCODE_VERSION`) — bumped from `1.17.13`
-  (for Grok 4.5). The `1.17.14–1.17.18` changelog shows no breaking changes to
-  the config schema, `auth.json`, SSE event shapes, or builtin tool names (the
-  surfaces below are coupled to). Verified locally that `1.17.18` accepts the
-  bridge config and resolves an explicitly-declared custom provider+model
-  (`xai/grok-4.5`) over the openai-compatible path, dialing the proxy baseURL
-  with bearer auth + `stream_options.include_usage`. Full in-sandbox turn is the
-  last-mile check. The spike findings below remain from the `1.17.13` audit.
+- `opencode-ai` `1.18.30` (`BOTFLOW_OPENCODE_VERSION`) — bumped from `1.17.18`
+  (for GPT-6 Astra; the earlier bump `1.17.13 → 1.17.18` was for Grok 4.5).
+  Astra shipped 2026-09-04 and only reaches the bundled models.dev catalog from
+  `1.18.28` on — `gpt-6-astra` appears 63× in the `1.18.30` linux-x64 binary and
+  0× in `1.17.18`. That catalog entry matters even though the bridge declares
+  the model explicitly: the declaration is an empty override object, so the
+  capability flags (`reasoning`, `attachment`, `tool_call`) come from the
+  catalog, and `reasoning` is what routes a model down `/v1/responses` instead
+  of `/v1/chat/completions`.
+
+  The `1.18.0` major is a Desktop-app v2 migration; the `1.18.0–1.18.30` release
+  notes show no breaking changes to the config schema, `auth.json`, SSE event
+  shapes, or builtin tool names (the surfaces below are coupled to). Spot-
+  checked against the `1.18.30` binary: the config keys we set (`autoupdate`,
+  `small_model`, `permission.doom_loop`, `permission.external_directory`), the
+  SSE event names we parse (`message.updated`, `message.part.updated`,
+  `session.status`), the `step-start` part type and the `opencode server
+  listening on` readiness line are all still present. A full in-sandbox turn is
+  the last-mile check. The spike findings below remain from the `1.17.13` audit.
 - `@modelcontextprotocol/sdk` `1.29.0` (`BOTFLOW_MCP_SDK_VERSION`) — used by
   the MCP tool script only. The bridge deliberately carries NO
   `@opencode-ai/sdk` dependency: it speaks plain fetch + SSE against four

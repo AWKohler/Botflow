@@ -69,14 +69,26 @@ export async function resolveOpenCodePaths(projectId: string): Promise<OpenCodeS
 // release without a deploy; the install marker is keyed on these strings so a
 // bump forces a reinstall on the next turn.
 //
-// Pin bumped 1.17.13 → 1.17.18 (2026, for Grok 4.5). The 1.17.14–1.17.18
-// changelog documents NO breaking changes to the config/opencode.json schema,
+// Pin bumped 1.17.18 → 1.18.30 (2026-09, for GPT-6 Astra). Astra shipped
+// 2026-09-04 and its models.dev entry only reaches the bundled catalog from
+// 1.18.28 on: grepping the linux-x64 binaries, `gpt-6-astra` appears 63× in
+// 1.18.30 and 0× in 1.17.18. The catalog entry matters even though the bridge
+// declares the model explicitly — the declaration is an empty override object,
+// so capability flags (reasoning, attachment, tool_call) come from the
+// catalog, and `reasoning` is what routes the model down /v1/responses rather
+// than /v1/chat/completions.
+//
+// The 1.18.0 major is a Desktop-app v2 migration; the 1.18.0–1.18.30 release
+// notes document NO breaking changes to the config/opencode.json schema,
 // auth.json format, SSE event shapes, or builtin tool names — the surfaces the
-// integration spike (docs/features/opencode-agent.md) is coupled to. Verified
-// locally: 1.17.18 accepts our exact bridge config and resolves an explicitly-
-// declared custom provider+model (xai/grok-4.5) via the openai-compatible path.
+// integration spike (docs/features/opencode-agent.md) is coupled to. Spot-
+// checked directly against the 1.18.30 binary: the config keys we set
+// (autoupdate, small_model, permission.doom_loop, permission.external_
+// directory), the SSE event names we parse (message.updated,
+// message.part.updated, session.status), the "step-start" part type, and the
+// "opencode server listening on" readiness line are all still present.
 // A full in-sandbox turn is still the last-mile check before/after deploy.
-const OPENCODE_VERSION = process.env.BOTFLOW_OPENCODE_VERSION || "1.17.18";
+const OPENCODE_VERSION = process.env.BOTFLOW_OPENCODE_VERSION || "1.18.30";
 const MCP_SDK_VERSION = process.env.BOTFLOW_MCP_SDK_VERSION || "1.29.0";
 
 function installMarkerToken(): string {

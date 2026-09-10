@@ -3,6 +3,7 @@
  */
 
 export type ModelId =
+  | "gpt-6-astra"
   | "gpt-5.6-sol"
   | "gpt-5.6-terra"
   | "gpt-5.6-luna"
@@ -51,6 +52,19 @@ export interface ModelConfig {
 }
 
 export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
+  "gpt-6-astra": {
+    id: "gpt-6-astra",
+    provider: "openai",
+    apiModelId: "gpt-6-astra",
+    displayName: "GPT-6 Astra",
+    // 1,050,000 total context. OpenAI caps the INPUT half at 922K (output at
+    // 128K); we carry the total here like every other entry — the context
+    // meter measures the whole window, not the input sub-cap.
+    maxContextTokens: 1_050_000,
+    warnThreshold: 0.7,
+    criticalThreshold: 0.9,
+    supportsImages: true,
+  },
   "gpt-5.6-sol": {
     id: "gpt-5.6-sol",
     provider: "openai",

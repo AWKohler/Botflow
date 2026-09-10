@@ -474,6 +474,7 @@ async function injectOpenAICacheRetention(input: RequestInfo | URL, init?: Reque
 
 /** Server key models: models the app pays for on behalf of paid users */
 const SERVER_KEY_MODELS = new Set<ModelId>([
+  'gpt-6-astra',             // max-only
   'fireworks-minimax-m3', // free tier
   'fireworks-kimi-k2p7',     // free tier
   'fireworks-kimi-k3',       // pro+

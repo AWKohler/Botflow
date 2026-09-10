@@ -59,6 +59,15 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     cachedInput: 0.50 / BASE_PRICE,   // 1.67
     output:      30.00 / BASE_PRICE,  // 100.0
   },
+  // GPT-6 Astra — flagship. Standard rates below apply at or under 272K input
+  // tokens; past that the whole request reprices (ASTRA_LONG_CONTEXT_PRICING).
+  // Numerically identical to Claude Fable 5 on all four axes.
+  'gpt-6-astra': {
+    input:      10.00 / BASE_PRICE,   //  33.33
+    cachedInput: 1.00 / BASE_PRICE,   //   3.33
+    output:     50.00 / BASE_PRICE,   // 166.67
+    cacheWrite: 12.50 / BASE_PRICE,   //  41.67 (1.25× input)
+  },
   // GPT-5.6 family. Flat pricing (no context-length tier). Unlike earlier
   // OpenAI models, 5.6 bills cache WRITES at 1.25× uncached input — modeled via
   // cacheWrite below. (Only charged when the meter reports cacheWriteTokens; see
@@ -148,6 +157,20 @@ const GROK_LONG_CONTEXT_PRICING: ModelPricing = {
 
 const GROK_LONG_CONTEXT_THRESHOLD = 200_000;
 
+// GPT-6 Astra above its 272K input threshold. Input, cache read and cache
+// write all double; output is 1.5×. OpenAI applies these to the ENTIRE
+// request, not just the tokens past the threshold — same whole-table swap the
+// Gemini/Grok tiers use. Verified against the models.dev catalog entry
+// (cost.tiers[0], tier.type "context", size 272000).
+const ASTRA_LONG_CONTEXT_PRICING: ModelPricing = {
+  input:      20.00 / BASE_PRICE,   //  66.67 (2×)
+  cachedInput: 2.00 / BASE_PRICE,   //   6.67 (2×)
+  output:     75.00 / BASE_PRICE,   // 250.0  (1.5×)
+  cacheWrite: 25.00 / BASE_PRICE,   //  83.33 (2×)
+};
+
+const ASTRA_LONG_CONTEXT_THRESHOLD = 272_000;
+
 // Claude Sonnet 5 introductory pricing — $2 input / $10 output per MTok, a
 // temporary discount from the standard $3 / $15 rates in MODEL_PRICING above.
 // Anthropic applies it through 2026-08-31; standard pricing resumes 2026-09-01.
@@ -184,6 +207,7 @@ export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = {
   'gpt-5.6-sol': 12,
   'gpt-5.5': 12,
   'claude-fable-5': 20,
+  'gpt-6-astra': 20,
 };
 
 export interface CreditCalculationInput {
@@ -207,14 +231,27 @@ export function calculateCredits(params: CreditCalculationInput): number {
     pricing = MODEL_PRICING['fireworks-minimax-m3'];
   }
 
+  // Prompt size the long-context tiers are measured against. The three input
+  // slices are disjoint (uncached + cache reads + cache writes), so they sum
+  // to the real prompt. Gemini and Grok never report cache writes — the google
+  // dialect doesn't parse them and xAI's cache is read-only — so that term is
+  // a no-op for those two; it matters for Astra, which does bill writes and
+  // would otherwise under-trigger its tier on long cached prompts.
+  const totalInputTokens = inputTokens + cachedReadTokens + cacheWriteTokens;
+
   // Gemini 3.1 Pro: use higher pricing tier if total input context exceeds 200K
-  if (model === 'gemini-3.1-pro-preview' && (inputTokens + cachedReadTokens) > GEMINI_LONG_CONTEXT_THRESHOLD) {
+  if (model === 'gemini-3.1-pro-preview' && totalInputTokens > GEMINI_LONG_CONTEXT_THRESHOLD) {
     pricing = GEMINI_LONG_CONTEXT_PRICING;
   }
 
   // Grok 4.5: every rate doubles above 200K total context (xAI long-context tier).
-  if (model === 'grok-4.5' && (inputTokens + cachedReadTokens) > GROK_LONG_CONTEXT_THRESHOLD) {
+  if (model === 'grok-4.5' && totalInputTokens > GROK_LONG_CONTEXT_THRESHOLD) {
     pricing = GROK_LONG_CONTEXT_PRICING;
+  }
+
+  // GPT-6 Astra: the whole request reprices above 272K input tokens.
+  if (model === 'gpt-6-astra' && totalInputTokens > ASTRA_LONG_CONTEXT_THRESHOLD) {
+    pricing = ASTRA_LONG_CONTEXT_PRICING;
   }
 
   // Claude Sonnet 5: introductory pricing applies through 2026-08-31 (UTC);
