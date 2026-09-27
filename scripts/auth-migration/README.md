@@ -12,7 +12,7 @@ Clerk-managed browser sessions are not imported. Users will need to sign in agai
 
 The source database has seven project-owner IDs absent from the current Clerk directory. Projects remain intact; deleted identities are not recreated automatically.
 
-Validation: 198 repository tests, 12 authentication integration checks, and 11 Stripe test-mode billing checks passed. The production Next.js build and focused ESLint check passed. The auth rehearsal sends no real email. Billing fixtures use Stripe test mode and are cleaned up. No production subscriptions, user passwords, or OAuth callbacks were changed by these rehearsals.
+Validation: 198 repository tests, 16 authentication integration checks, and 11 Stripe test-mode billing checks passed. The production Next.js build and focused ESLint check passed. The auth rehearsal sends no real email. Billing fixtures use Stripe test mode and are cleaned up. No production subscriptions or user passwords were changed by these rehearsals. The existing GitHub OAuth app now also accepts the exact protected-preview callback; its Clerk callback remains in place. A real GitHub login resolved to the original owner ID with the user count unchanged at 107.
 
 ## Configuration
 
@@ -61,7 +61,7 @@ Configure signed events at `/api/webhooks/billing`: `customer.subscription.creat
 
 - Add and verify provider callbacks ending `/api/auth/callback/google` and `/api/auth/callback/github`; retain Clerk callbacks during transition. Complete real Google/GitHub login and account-linking checks in preview.
 - Verify real verification/recovery email delivery and owner sign-in, admin metadata controls, impersonation return, account changes, and Stripe checkout in the protected preview.
-- Confirm feature parity for any Clerk settings not exercised by the current Botflow UI. Self-service permanent account deletion and managing additional email aliases are not implemented; existing aliases are preserved in the imported profile.
+- Confirm feature parity for any Clerk settings not exercised by the current Botflow UI. Self-service deletion uses an emailed confirmation token, cancels direct Stripe subscriptions, revokes sessions, and removes profile and integration secrets. Project records remain inaccessible under the deleted owner ID, matching the pre-existing retained-project behavior. Managing additional email aliases is not implemented; all 107 source users currently have exactly one email, and the exported email lists are retained.
 - Provision live direct-billing catalog and signed webhook; run fresh export/import/reconciliation; validate all counts and the grandfathered contract.
 - Coordinate production environment values, database migration, deployment and renewal cutover. Main auto-deploys, so do not merge ahead of those steps.
 - Retain a recoverable Clerk snapshot and the encryption keys. Only retire Clerk billing/services after authentication, secrets, entitlements, and renewals have been verified in production.

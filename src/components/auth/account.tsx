@@ -62,6 +62,16 @@ export function AccountPanel({
     }[];
   }>({ invoices: [], paymentMethods: [] });
   const [username, setUsername] = useState("");
+  const [deleteToken, setDeleteToken] = useState("");
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  useEffect(() => {
+    const token = new URLSearchParams(location.search).get("delete_token");
+    if (token) {
+      setDeleteToken(token);
+      setTab("security");
+      history.replaceState(null, "", "/account?tab=security");
+    }
+  }, []);
   const [paymentSecret, setPaymentSecret] = useState("");
   function refreshBilling() {
     fetch("/api/billing/manage")
@@ -379,6 +389,40 @@ export function AccountPanel({
             )}
             {tab === "security" && (
               <>
+                {deleteToken && (
+                  <div className="rounded-lg border border-red-500/40 p-4">
+                    <h3 className="font-medium">Confirm account deletion</h3>
+                    <p className="mt-2 text-sm">
+                      Your login, profile, and stored integration secrets will
+                      be permanently removed. Your subscriptions will be
+                      canceled and your projects will no longer be accessible
+                      through this account.
+                    </p>
+                    <label className="mt-3 block text-sm">
+                      Type DELETE to confirm
+                      <input
+                        value={deleteConfirmation}
+                        onChange={(e) => setDeleteConfirmation(e.target.value)}
+                        className={fieldClass}
+                      />
+                    </label>
+                    <button
+                      disabled={busy || deleteConfirmation !== "DELETE"}
+                      className="mt-3 rounded-md bg-red-600 px-4 py-2 text-sm text-white disabled:opacity-50"
+                      onClick={() =>
+                        act(async () => {
+                          const result = await authClient.deleteUser({
+                            token: deleteToken,
+                          });
+                          if (!result.error) location.assign("/");
+                          return result;
+                        })
+                      }
+                    >
+                      Permanently delete account
+                    </button>
+                  </div>
+                )}
                 <form
                   className="space-y-3"
                   onSubmit={(e) => {
@@ -489,6 +533,26 @@ export function AccountPanel({
                     Sign out all other devices
                   </button>
                 </div>
+                <section className="border-t border-[var(--sand-border)] pt-6">
+                  <h3 className="font-medium">Delete account</h3>
+                  <p className="mt-2 text-sm text-[var(--sand-text-muted)]">
+                    Permanently remove your account and stored integration
+                    secrets. You will confirm by email before anything is
+                    deleted.
+                  </p>
+                  <button
+                    disabled={busy}
+                    className="mt-3 text-sm text-red-500 underline"
+                    onClick={() =>
+                      act(
+                        () => authClient.deleteUser({ callbackURL: "/" }),
+                        "Check your email to confirm account deletion.",
+                      )
+                    }
+                  >
+                    Delete account
+                  </button>
+                </section>
               </>
             )}
             {tab === "billing" && (

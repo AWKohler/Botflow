@@ -168,6 +168,14 @@ async function main() {
       true,
     );
     assert.equal(nested.status, 403);
+    const impersonatedDelete = await request(
+      "/delete-user",
+      {},
+      impersonatedCookie,
+      base,
+      true,
+    );
+    assert.equal(impersonatedDelete.status, 403);
     const restored = await request(
       "/admin/stop-impersonating",
       {},
@@ -183,6 +191,45 @@ async function main() {
     assert.ok(
       audit.rows.some((a) => a.action === "admin.impersonate-user.requested"),
     );
+    const deletionRequest = await request("/delete-user", {}, cookies(legacy));
+    assert.equal(deletionRequest.status, 200);
+    const deletionToken = mailbox
+      .at(-1)!
+      .text.match(/delete_token=([a-zA-Z0-9]+)/)?.[1];
+    assert.ok(deletionToken);
+    assert.equal(
+      (await db.query("SELECT id FROM identity_user WHERE id=$1", [legacyId]))
+        .rowCount,
+      1,
+    );
+    const invalidDeletion = await request(
+      "/delete-user",
+      { token: "invalid-token" },
+      cookies(legacy),
+    );
+    assert.notEqual(invalidDeletion.status, 200);
+    const deleted = await request(
+      "/delete-user",
+      { token: deletionToken },
+      cookies(legacy),
+    );
+    assert.equal(deleted.status, 200, await deleted.clone().text());
+    assert.equal(
+      (await db.query("SELECT id FROM identity_user WHERE id=$1", [legacyId]))
+        .rowCount,
+      0,
+    );
+    await request("/delete-user", {}, ownerCookie);
+    const ownerDeleteToken = mailbox
+      .at(-1)!
+      .text.match(/delete_token=([a-zA-Z0-9]+)/)?.[1];
+    assert.ok(ownerDeleteToken);
+    const ownerDelete = await request(
+      "/delete-user",
+      { token: ownerDeleteToken },
+      ownerCookie,
+    );
+    assert.equal(ownerDelete.status, 403);
     const signOut = await request("/sign-out", {}, userCookie);
     assert.equal(signOut.status, 200);
     assert.equal(
@@ -204,13 +251,20 @@ async function main() {
           auditedImpersonation: "passed",
           nestedImpersonationDenied: "passed",
           returnToAdmin: "passed",
+          emailConfirmedDeletion: "passed",
+          invalidDeletionTokenDenied: "passed",
+          ownerDeletionDenied: "passed",
+          impersonatedDeletionDenied: "passed",
         },
         null,
         2,
       ),
     );
   } finally {
-    await db.query("DELETE FROM identity_audit WHERE actor_id=$1", [ownerId]);
+    await db.query(
+      "DELETE FROM identity_audit WHERE actor_id=ANY($1::text[])",
+      [[ownerId, legacyId, signupId].filter(Boolean)],
+    );
     await db.query("DELETE FROM identity_user WHERE id=ANY($1::text[])", [
       [ownerId, legacyId, signupId].filter(Boolean),
     ]);

@@ -1,3 +1,4 @@
+import { prepareAccountDeletion } from "./delete-account";
 import { identityBaseURL } from "./base-url";
 import { betterAuth } from "better-auth";
 import { admin, emailOTP, username } from "better-auth/plugins";
@@ -64,7 +65,17 @@ export function createIdentityAuth(
     user: {
       modelName: "identity_user",
       changeEmail: { enabled: true },
-      deleteUser: { enabled: false },
+      deleteUser: {
+        enabled: true,
+        deleteTokenExpiresIn: 600,
+        sendDeleteAccountVerification: async ({ user, token }) =>
+          deliver(
+            user.email,
+            "Confirm deletion of your Botflow account",
+            `Confirm account deletion: ${identityBaseURL()}/account?delete_token=${encodeURIComponent(token)} . This link expires in 10 minutes. Your login, profile, and stored integration secrets will be removed, your subscriptions will be canceled, and your projects will no longer be accessible through this account. Ignore this email if you did not request deletion.`,
+          ),
+        beforeDelete: prepareAccountDeletion,
+      },
     },
     session: {
       modelName: "identity_session",

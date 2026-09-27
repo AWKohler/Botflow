@@ -18,7 +18,7 @@ const adminActions = new Set([
 async function handler(request: Request) {
   const path = new URL(request.url).pathname;
   if (
-    /\/(change-password|change-email|unlink-account|link-social|delete-user|request-email-change)$/.test(
+    /\/(change-password|change-email|unlink-account|link-social|delete-user|request-email-change)(?:\/callback)?$/.test(
       path,
     )
   ) {

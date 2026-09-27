@@ -29,6 +29,17 @@ export async function POST(request: Request) {
     await connection.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
       `billing:${userId}`,
     ]);
+    const identity = await connection.query(
+      "SELECT banned FROM identity_user WHERE id=$1",
+      [userId],
+    );
+    if (!identity.rows[0] || identity.rows[0].banned) {
+      await connection.query("ROLLBACK");
+      return NextResponse.json(
+        { error: "Account unavailable" },
+        { status: 403 },
+      );
+    }
     const { rows } = await connection.query(
       "SELECT * FROM botflow_subscription WHERE user_id=$1 FOR UPDATE",
       [userId],
