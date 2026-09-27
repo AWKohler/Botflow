@@ -23,6 +23,11 @@ import {
   SectionLabel,
   serif,
 } from '@/components/landing/shared';
+import { isManagedConvexEnabled } from '@/lib/project-platform';
+
+// Managed-Convex kill switch (NEXT_PUBLIC_DISABLE_MANAGED_CONVEX) — when off,
+// every plan is Bring Your Own Convex and the copy below says so.
+const MANAGED_CONVEX = isManagedConvexEnabled();
 
 // ============================================================================
 // Plan highlight pills shown above the pricing table
@@ -86,7 +91,9 @@ const comparisonGroups: {
     rows: [
       {
         feature: 'Convex backend per project',
-        values: { free: 'Bring your own', pro: 'Platform-managed', max: 'Platform-managed' },
+        values: MANAGED_CONVEX
+          ? { free: 'Bring your own', pro: 'Platform-managed', max: 'Platform-managed' }
+          : { free: 'Bring your own', pro: 'Bring your own', max: 'Bring your own' },
       },
       {
         feature: 'Real-time database & functions',
@@ -140,7 +147,9 @@ const faqs = [
   },
   {
     q: 'Is Convex really included?',
-    a: 'Yes. On Pro and Max, every project gets a platform-managed Convex backend with real-time sync, typed functions, and the full Convex dashboard inside the IDE. On Free, you connect your own Convex account and we wire it up automatically.',
+    a: MANAGED_CONVEX
+      ? 'Yes. On Pro and Max, every project gets a platform-managed Convex backend with real-time sync, typed functions, and the full Convex dashboard inside the IDE. On Free, you connect your own Convex account and we wire it up automatically.'
+      : 'Convex is built in on every plan: connect your own (free) Convex account once, and Botflow provisions a backend for each project and wires it up automatically — real-time sync, typed functions, and the full Convex dashboard inside the IDE. Usage stays on your Convex account.',
   },
   {
     q: 'Can I cancel anytime?',

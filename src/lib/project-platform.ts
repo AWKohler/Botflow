@@ -10,6 +10,18 @@ export function isSandboxedWebPlatformEnabled(): boolean {
   return true;
 }
 
+/**
+ * Global kill switch for Botflow-managed ("platform") Convex. When
+ * NEXT_PUBLIC_DISABLE_MANAGED_CONVEX=true, no NEW platform Convex backend is
+ * provisioned for anyone — it overrides tier, beta access, and
+ * ALLOW_CLOUD_CONVEX_FOR_ALL — so new projects must use Bring Your Own Convex
+ * or No Backend. Existing platform projects keep working. Unset (or anything
+ * other than "true") restores managed Convex exactly as before.
+ */
+export function isManagedConvexEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_DISABLE_MANAGED_CONVEX !== "true";
+}
+
 export function isMobilePlatformsEnabled(): boolean {
   return process.env.NEXT_PUBLIC_ALLOW_MOBILE_EXP === "true";
 }

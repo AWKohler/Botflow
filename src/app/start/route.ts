@@ -7,7 +7,7 @@ import { provisionConvexBackend } from '@/lib/convex-platform';
 import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
 import { countUserConvexProjects } from '@/lib/usage';
 import { getUserCredentials, setUserCredentials, type UserCredentials } from '@/lib/user-credentials';
-import { normalizeProjectPlatform, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
+import { isManagedConvexEnabled, normalizeProjectPlatform, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
 import { resolveModelId } from '@/lib/agent/models';
 import { credFlagsFromUserCredentials, resolveBackends, type AgentBackend } from '@/lib/agent/backend-resolution';
 import { chooseProviderForNewProject } from '@/lib/sandbox-provider';
@@ -260,6 +260,8 @@ export async function GET(request: Request) {
     // Decide whether this project may provision a NEW platform-managed Convex
     // backend, and enforce the per-tier managed-Convex cap at creation time
     // (the other half of the cap; the deploy route enforces the rest):
+    //   - managed Convex globally disabled (NEXT_PUBLIC_DISABLE_MANAGED_CONVEX):
+    //     never, for anyone — overrides everything below
     //   - beta testers: exempt (always allowed)
     //   - free: never (unless the global override flag is set)
     //   - pro/max: allowed only while under maxConvexProjects
@@ -269,6 +271,7 @@ export async function GET(request: Request) {
     // template (mobile/multiplatform ship Convex baked in), which instead bounce
     // with an upsell. We re-check server-side in case the client lied.
     if (backendType === 'platform') {
+      const managedConvexEnabled = isManagedConvexEnabled();
       const cloudConvexForAll = process.env.ALLOW_CLOUD_CONVEX_FOR_ALL === 'true';
       const [limits, beta] = await Promise.all([
         getUserTierAndLimits(userId),
@@ -276,7 +279,9 @@ export async function GET(request: Request) {
       ]);
 
       let allowed: boolean;
-      if (beta) {
+      if (!managedConvexEnabled) {
+        allowed = false;
+      } else if (beta) {
         allowed = true;
       } else if (limits.tier === 'free') {
         allowed = cloudConvexForAll;
@@ -293,14 +298,19 @@ export async function GET(request: Request) {
         // (the bug: over-cap users selected "Managed" and got no backend, no
         // error). We only fall back to 'none' when the user never asked for a
         // backend AND the platform has a no-backend template.
+        // While managed Convex is globally disabled, a leftover sticky
+        // 'platform' preference isn't treated as explicit — those users just
+        // get a no-backend project instead of an error on every create.
         const explicitlyRequestedPlatform =
           backendTypeParam === 'platform' ||
-          creds.convexBackendPreference === 'platform';
+          (managedConvexEnabled && creds.convexBackendPreference === 'platform');
         if (!supportsNoBackend || seedSlug || explicitlyRequestedPlatform) {
           const errUrl = new URL('/', request.url);
           errUrl.searchParams.set(
             'error',
-            limits.tier === 'free' ? 'convex_requires_pro' : 'convex_limit_reached',
+            !managedConvexEnabled
+              ? 'managed_convex_disabled'
+              : limits.tier === 'free' ? 'convex_requires_pro' : 'convex_limit_reached',
           );
           return NextResponse.redirect(errUrl);
         }
@@ -404,7 +414,7 @@ export async function GET(request: Request) {
       // Platform-managed: provision under our account
       const limits = await getUserTierAndLimits(userId);
       const cloudConvexForAll = process.env.ALLOW_CLOUD_CONVEX_FOR_ALL === 'true';
-      if (cloudConvexForAll || limits.tier !== 'free') {
+      if (isManagedConvexEnabled() && (cloudConvexForAll || limits.tier !== 'free')) {
         try {
           const convexProjectName = `ide-${project.id.slice(0, 8)}`;
           const convex = await provisionConvexBackend(convexProjectName);

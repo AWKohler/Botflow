@@ -8,6 +8,7 @@ import { provisionConvexBackend, getConvexPlatformClient } from '@/lib/convex-pl
 import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
 import { countUserConvexProjects } from '@/lib/usage';
 import { limitReachedResponse } from '@/lib/plan-response';
+import { isManagedConvexEnabled } from '@/lib/project-platform';
 import { enforce, identifierFor } from '@/lib/rate-limit';
 
 const FLY_WORKER_URL = process.env.FLY_WORKER_URL;
@@ -77,6 +78,18 @@ export async function POST(
       // Auto-provision platform Convex backend if missing (handles projects created before
       // Convex integration or where provisioning silently failed at creation time).
       if (!project.convexDeployKey && !project.userConvexDeployKey) {
+        // Managed Convex globally disabled: never create a NEW platform backend.
+        // (Re-minting a deploy key for an existing deployment below is fine —
+        // existing platform projects keep working.)
+        if (!project.convexDeploymentId && !isManagedConvexEnabled()) {
+          return NextResponse.json(
+            {
+              error:
+                'Botflow-managed Convex is not available for new backends. Connect your own Convex account (Bring Your Own Convex) to deploy this project.',
+            },
+            { status: 403 },
+          );
+        }
         // Enforce per-user managed-Convex limit before provisioning a new one
         // (beta testers are exempt).
         if (!project.convexProjectId) {
