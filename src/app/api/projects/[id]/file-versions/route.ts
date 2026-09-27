@@ -9,7 +9,7 @@
  * so a restore is never destructive.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projectFileVersions } from "@/db/schema";

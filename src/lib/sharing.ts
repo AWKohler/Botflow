@@ -4,7 +4,7 @@
  * Everything here is inert unless SHARING_ENABLED (feature-flags.ts).
  */
 import { and, eq, inArray } from 'drizzle-orm';
-import { clerkClient } from '@clerk/nextjs/server';
+import { identityClient } from '@/lib/auth/server';
 import { getDb } from '@/db';
 import { projectMembers, type ProjectMember } from '@/db/schema';
 import { SHARING_ENABLED } from '@/lib/feature-flags';
@@ -29,7 +29,7 @@ export function inviteExpired(m: Pick<ProjectMember, 'status' | 'invitedAt'>): b
 export async function findClerkUserByVerifiedEmail(
   email: string,
 ): Promise<{ userId: string } | null> {
-  const client = await clerkClient();
+  const client = await identityClient();
   const { data } = await client.users.getUserList({ emailAddress: [email] });
   for (const u of data) {
     const verified = u.emailAddresses.some(
@@ -44,7 +44,7 @@ export async function findClerkUserByVerifiedEmail(
 
 /** All of a Clerk user's VERIFIED email addresses, normalized. */
 export async function verifiedEmailsForUser(userId: string): Promise<string[]> {
-  const client = await clerkClient();
+  const client = await identityClient();
   const u = await client.users.getUser(userId);
   return u.emailAddresses
     .filter((e) => e.verification?.status === 'verified')

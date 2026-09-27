@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { UserButton } from '@clerk/nextjs';
+import { UserButton } from '@/components/auth';
 import { cn } from '@/lib/utils';
 import { Activity, Boxes, Gauge, Users } from 'lucide-react';
 
 const TABS = [
+  { href: '/panel/accounts', label: 'Accounts', icon: Users },
   { href: '/panel', label: 'Overview', icon: Gauge },
   { href: '/panel/users', label: 'Users', icon: Users },
   { href: '/panel/infra', label: 'Infrastructure', icon: Boxes },

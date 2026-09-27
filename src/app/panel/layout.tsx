@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '@/lib/auth/server';
 import { isPanelAdmin } from '@/lib/panel/auth';
 import { PanelNav } from '@/components/panel/nav';
 
@@ -14,8 +14,8 @@ export default async function PanelLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { userId } = await auth();
-  if (!userId || !isPanelAdmin(userId)) redirect('/projects');
+  const { userId, actor } = await auth();
+  if (!userId || actor || !isPanelAdmin(userId)) redirect('/projects');
 
   return (
     <div className="min-h-screen bg-bg">

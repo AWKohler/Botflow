@@ -15,7 +15,7 @@
  * only becomes the thumbnail when no iPhone screengrab exists.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { UTApi } from "uploadthing/server";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";

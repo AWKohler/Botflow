@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/db';
 import { projects, projectStars } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { auth, clerkClient } from '@clerk/nextjs/server';
+import { auth, identityClient } from '@/lib/auth/server';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -20,7 +20,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ slu
     // Resolve author
     let author: { name: string; imageUrl: string | null } = { name: 'Anonymous', imageUrl: null };
     try {
-      const client = await clerkClient();
+      const client = await identityClient();
       const u = await client.users.getUser(proj.userId);
       const name =
         u.firstName || u.lastName

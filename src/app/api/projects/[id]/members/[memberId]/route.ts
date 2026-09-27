@@ -7,7 +7,7 @@
  * (turn identity was bound at spawn — plan §4).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projectMembers } from "@/db/schema";

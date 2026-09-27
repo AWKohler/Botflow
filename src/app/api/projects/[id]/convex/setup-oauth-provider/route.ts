@@ -10,7 +10,7 @@
  * there's never more than one active modal.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { eq, and } from "drizzle-orm";
 import { getDb } from "@/db";
 import { oauthProviderRequests } from "@/db/schema";

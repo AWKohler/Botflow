@@ -3,7 +3,7 @@
 // import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 // import Link from 'next/link';
 // import { useRouter } from 'next/navigation';
-// import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
+// import { SignedIn, SignedOut, UserButton } from '@/components/auth';
 // import {
 //   ArrowUp,
 //   ArrowRight,
@@ -990,7 +990,7 @@ import { Input } from "@/components/ui/input";
 import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { SignedIn, SignedOut, SignInButton, useUser } from '@clerk/nextjs';
+import { SignedIn, SignedOut, SignInButton, useUser } from '@/components/auth';
 import {
   ArrowUp,
   ArrowRight,

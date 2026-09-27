@@ -14,7 +14,7 @@
  * the existing PR.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { getCurrentBranch } from "@/lib/sandbox-git";

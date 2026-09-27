@@ -11,7 +11,7 @@
  *                        for this project so the workspace can show the modal.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { eq, and, desc } from "drizzle-orm";
 import { getDb } from "@/db";
 import { oauthProviderRequests } from "@/db/schema";

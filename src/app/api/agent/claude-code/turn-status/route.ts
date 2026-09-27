@@ -9,7 +9,7 @@
  * second agent against a turn that never actually stopped.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { getTurnRecord } from "@/lib/agent/claude-code/turn-registry";
 import { enforce, identifierFor } from "@/lib/rate-limit";

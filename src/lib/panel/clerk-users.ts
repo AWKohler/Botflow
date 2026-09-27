@@ -1,13 +1,8 @@
-/**
- * Clerk user directory for the admin panel.
- *
- * Pages through the Backend API to build an id → profile map with tier
- * resolution identical to src/lib/tier.ts (plan from publicMetadata, beta
- * floor lifts free → pro). Capped at MAX_USERS as a runaway guard; the routes
- * surface `truncated` so the UI can say so instead of silently under-counting.
- */
+/** Neon identity directory and billing entitlements for the admin panel. */
 
-import { clerkClient } from '@clerk/nextjs/server';
+import { identityClient } from '@/lib/auth/server';
+import { getIdentityDb } from '@/lib/auth/database';
+import { subscriptionTier, type SubscriptionRecord } from '@/lib/billing/entitlements';
 import type { Tier } from '@/lib/tier-shared';
 
 export interface PanelUser {
@@ -39,8 +34,10 @@ function resolveTier(plan: string | undefined, isBeta: boolean): Tier {
 }
 
 export async function getPanelUserDirectory(): Promise<PanelUserDirectory> {
-  const client = await clerkClient();
+  const client = await identityClient();
   const users: PanelUser[] = [];
+  const billing = await getIdentityDb().query<SubscriptionRecord>('SELECT * FROM botflow_subscription');
+  const paid = new Map(billing.rows.map(row => [row.user_id, subscriptionTier(row)]));
   let offset = 0;
   let totalCount = 0;
 
@@ -60,7 +57,7 @@ export async function getPanelUserDirectory(): Promise<PanelUserDirectory> {
         email: u.primaryEmailAddress?.emailAddress ?? u.emailAddresses[0]?.emailAddress ?? null,
         name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || null,
         imageUrl: u.imageUrl ?? null,
-        tier: resolveTier(plan, isBeta),
+        tier: resolveTier(paid.get(u.id) === 'max' || plan === 'max' ? 'max' : paid.get(u.id) === 'pro' ? 'pro' : plan, isBeta),
         plan: plan ?? null,
         isBeta,
         createdAt: new Date(u.createdAt).toISOString(),

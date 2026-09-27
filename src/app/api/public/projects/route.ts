@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/db';
 import { projects, projectStars } from '@/db/schema';
 import { eq, and, desc, sql, isNotNull, inArray } from 'drizzle-orm';
-import { auth } from '@clerk/nextjs/server';
-import { clerkClient } from '@clerk/nextjs/server';
+import { auth } from '@/lib/auth/server';
+import { identityClient } from '@/lib/auth/server';
 import { type ProjectPlatform } from '@/lib/project-platform';
 
 export async function GET(req: NextRequest) {
@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
     const userMap: Record<string, { name: string; imageUrl: string | null }> = {};
     if (uniqueUserIds.length > 0) {
       try {
-        const client = await clerkClient();
+        const client = await identityClient();
         const userList = await client.users.getUserList({ userId: uniqueUserIds, limit: uniqueUserIds.length });
         for (const u of userList.data) {
           const name =

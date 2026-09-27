@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '@/lib/auth/server';
 import crypto from 'crypto';
 import { enforce, identifierFor } from '@/lib/rate-limit';
 

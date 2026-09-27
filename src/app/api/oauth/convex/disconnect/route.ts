@@ -12,7 +12,7 @@
  * credential revocation.
  */
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '@/lib/auth/server';
 import { clearUserCredentials } from '@/lib/user-credentials';
 
 export const dynamic = 'force-dynamic';

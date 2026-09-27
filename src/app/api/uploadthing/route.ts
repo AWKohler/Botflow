@@ -1,5 +1,5 @@
 import { createRouteHandler } from 'uploadthing/next';
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '@/lib/auth/server';
 import type { NextRequest } from 'next/server';
 import { ourFileRouter } from './core';
 import { enforce, identifierFor } from '@/lib/rate-limit';

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '@/lib/auth/server';
 import { eq } from 'drizzle-orm';
 import { ConvexDashboard } from '@/components/convex/ConvexDashboard';
 import { getDb } from '@/db';

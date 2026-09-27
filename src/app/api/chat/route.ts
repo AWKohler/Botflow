@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { getDb } from '@/db';
 import { chatMessages, chatSessions, projects } from '@/db/schema';
 import { requireProjectAccess } from '@/lib/project-access';
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '@/lib/auth/server';
 
 // Chat endpoints are IO-bound and may stream/persist large payloads; extend limits
 export const maxDuration = 300;

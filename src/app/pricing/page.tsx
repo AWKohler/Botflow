@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { PricingTable } from '@clerk/nextjs';
+import { PricingTable } from '@/components/auth';
 import {
   Bot,
   Check,

@@ -14,7 +14,7 @@
  * in-sandbox routes share the turn-input helpers, host-tool selection, and
  * tool-token minting so their contracts can't drift.
  */
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,
