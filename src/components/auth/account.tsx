@@ -589,7 +589,11 @@ export function AccountPanel({
                     <div className="flex gap-4 text-sm">
                       <button
                         disabled={busy}
-                        onClick={billing}
+                        onClick={
+                          subscription?.amount
+                            ? billing
+                            : () => location.assign("/pricing")
+                        }
                         className="underline"
                       >
                         Change plan

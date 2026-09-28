@@ -1,3 +1,4 @@
+import { ensureFreeBillingCustomer } from "@/lib/billing/customer";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth/server";
@@ -72,13 +73,20 @@ export async function POST(request: Request) {
       { error: "Invalid billing action" },
       { status: 400 },
     );
-  const row = await getSubscription(userId);
-  if (!row?.stripe_customer_id || row.source !== "stripe")
-    return NextResponse.json(
-      { error: "Your billing migration must finish before making changes." },
-      { status: 409 },
-    );
   try {
+    let row = await getSubscription(userId);
+    if (
+      parsed.data.action === "setup-payment" &&
+      (!row || row.plan === "free")
+    ) {
+      await ensureFreeBillingCustomer(userId);
+      row = await getSubscription(userId);
+    }
+    if (!row?.stripe_customer_id || row.source !== "stripe")
+      return NextResponse.json(
+        { error: "Your billing migration must finish before making changes." },
+        { status: 409 },
+      );
     const stripe = billingStripe();
     const action = parsed.data;
     if (action.action === "setup-payment") {

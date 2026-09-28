@@ -91,7 +91,7 @@ export async function POST(request: Request) {
       );
       customerId = customer.id;
       await connection.query(
-        `INSERT INTO botflow_subscription (user_id,source,stripe_customer_id,plan,status) VALUES ($1,'stripe',$2,'free','active') ON CONFLICT (user_id) DO UPDATE SET stripe_customer_id=$2`,
+        `INSERT INTO botflow_subscription (user_id,source,stripe_customer_id,plan,status) VALUES ($1,'stripe',$2,'free','active') ON CONFLICT (user_id) DO UPDATE SET stripe_customer_id=$2,source='stripe'`,
         [userId, customerId],
       );
     }

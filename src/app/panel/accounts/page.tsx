@@ -36,6 +36,7 @@ export default function AccountsPage() {
   const [users, setUsers] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState<Row | null>(null);
+  const selectedId = selected?.id;
   const [details, setDetails] = useState<Details | null>(null);
   const [metadata, setMetadata] = useState("");
   const [privatePatch, setPrivatePatch] = useState("{}");
@@ -61,9 +62,9 @@ export default function AccountsPage() {
     setRevealed({});
     setMessage("");
     setPrivatePatch("{}");
-    if (!selected) return;
+    if (!selectedId) return;
     const c = new AbortController();
-    fetch(`/api/panel/identity/${selected.id}`, { signal: c.signal })
+    fetch(`/api/panel/identity/${selectedId}`, { signal: c.signal })
       .then((r) => r.json())
       .then((data) => {
         setDetails(data);
@@ -71,7 +72,7 @@ export default function AccountsPage() {
       })
       .catch(() => {});
     return () => c.abort();
-  }, [selected]);
+  }, [selectedId]);
   async function action(
     fn: () => Promise<{ error?: { message?: string } | null }>,
     success = "Saved",
@@ -80,6 +81,22 @@ export default function AccountsPage() {
     setMessage("");
     try {
       const result = await fn();
+      if (!result.error && selectedId) {
+        const [detailResponse, listResponse] = await Promise.all([
+          fetch(`/api/panel/identity/${selectedId}`),
+          fetch(
+            `/api/panel/identity?q=${encodeURIComponent(query)}&offset=${offset}`,
+          ),
+        ]);
+        if (detailResponse.ok) setDetails(await detailResponse.json());
+        if (listResponse.ok) {
+          const list = await listResponse.json();
+          setUsers(list.users);
+          setTotal(list.total);
+          const updated = list.users.find((row: Row) => row.id === selectedId);
+          if (updated) setSelected(updated);
+        }
+      }
       setMessage(result.error?.message ?? success);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Action failed");
@@ -99,6 +116,7 @@ export default function AccountsPage() {
         }),
       });
       const data = await r.json();
+      if (r.ok) setPrivatePatch("{}");
       return r.ok ? {} : { error: { message: data.error } };
     });
   }
