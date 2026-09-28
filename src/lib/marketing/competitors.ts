@@ -13,6 +13,10 @@
 
 export const LAST_UPDATED = 'July 2026';
 
+// Managed-Convex kill switch (NEXT_PUBLIC_DISABLE_MANAGED_CONVEX): with it off,
+// Convex lives in the user's own (free) account, so never claim "managed".
+const MANAGED_CONVEX = process.env.NEXT_PUBLIC_DISABLE_MANAGED_CONVEX !== 'true';
+
 export type CompetitorSlug = 'lovable' | 'rork' | 'vibecode' | 'bloom' | 'base44';
 
 export interface CompareRow {
@@ -118,7 +122,7 @@ export const ALT_PROFILES: Record<string, AltProfile> = {
     isBotflow: true,
     facts: {
       platforms: 'Web + native iOS',
-      backend: 'Convex, included',
+      backend: MANAGED_CONVEX ? 'Convex, included' : 'Convex (your free account)',
       code: 'Full export + GitHub',
       native: 'Managed (early access)',
     },
@@ -240,7 +244,7 @@ export const ALT_PROFILES: Record<string, AltProfile> = {
     compareSlug: 'bloom',
     facts: {
       platforms: 'iOS + Android (RN)',
-      backend: 'Convex, included',
+      backend: MANAGED_CONVEX ? 'Convex, included' : 'Convex (your free account)',
       code: 'Full export + GitHub',
       native: 'DIY (EAS CLI)',
     },
@@ -1180,7 +1184,7 @@ export const COMPETITORS: Record<CompetitorSlug, Competitor> = {
         label: 'Ownership & portability',
         rows: [
           { feature: 'Code export', us: 'Full project + GitHub', them: 'Frontend only' },
-          { feature: 'Backend portability', us: 'Convex — managed or bring your own', them: 'Proprietary — cannot leave Base44' },
+          { feature: 'Backend portability', us: MANAGED_CONVEX ? 'Convex — managed or bring your own' : 'Convex — in your own account', them: 'Proprietary — cannot leave Base44' },
           { feature: 'Migration path out', us: 'Standard React + Convex project', them: 'Rebuild on new infrastructure' },
         ],
       },
@@ -1318,7 +1322,7 @@ export const COMPETITORS: Record<CompetitorSlug, Competitor> = {
         },
         {
           q: 'Which alternatives avoid backend lock-in?',
-          a: 'Botflow (standard Convex backend — managed or your own account — plus full code on GitHub), Bolt.new (you assemble your own integrations), and Replit (standard code you can take anywhere). Lovable exports real code too, though its managed cloud keeps the backend on Lovable’s Supabase wrapper.',
+          a: `Botflow (standard Convex backend — ${MANAGED_CONVEX ? 'managed or your own account' : 'in your own account'} — plus full code on GitHub), Bolt.new (you assemble your own integrations), and Replit (standard code you can take anywhere). Lovable exports real code too, though its managed cloud keeps the backend on Lovable’s Supabase wrapper.`,
         },
       ],
     },

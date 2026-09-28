@@ -1030,6 +1030,7 @@ import { OpenAI } from '@/components/icons/openai';
 import { Swift } from '@/components/icons/swift';
 import { Instrument_Serif } from 'next/font/google';
 import {
+  isManagedConvexEnabled,
   isSwiftPlatformEnabled,
   normalizeProjectPlatform,
   type ProjectPlatform,
@@ -1360,7 +1361,9 @@ export default function LandingV2() {
     isSwiftPlatformEnabled() &&
     (isBetaUser || userTier === 'pro' || userTier === 'max');
   const [hasConvexOAuth, setHasConvexOAuth] = useState<boolean | null>(null);
-  const [convexBackendType, setConvexBackendType] = useState<'platform' | 'user' | 'none' | 'muhkoo'>('platform');
+  const [convexBackendType, setConvexBackendType] = useState<'platform' | 'user' | 'none' | 'muhkoo'>(
+    () => (isManagedConvexEnabled() ? 'platform' : 'none'),
+  );
   const [showConvexSelector, setShowConvexSelector] = useState(false);
   const [convexConnecting, setConvexConnecting] = useState(false);
   const convexSelectorRef = useRef<HTMLDivElement>(null);
@@ -1419,6 +1422,9 @@ export default function LandingV2() {
   const managedBackendLocked =
     userTier === 'free' &&
     process.env.NEXT_PUBLIC_ALLOW_CLOUD_CONVEX_FOR_ALL !== 'true';
+  // Global kill switch (NEXT_PUBLIC_DISABLE_MANAGED_CONVEX): when off, the
+  // managed option is hidden entirely and only BYOC / No Backend remain.
+  const managedConvexEnabled = isManagedConvexEnabled();
 
   const handlePromptChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -1504,7 +1510,7 @@ export default function LandingV2() {
     // No-backend projects don't need Convex at all — skip the OAuth gate entirely.
     const needsConvexStep = convexBackendType !== 'none'
       && convexBackendType !== 'muhkoo'
-      && ((!cloudForAll && userTier === 'free') || convexBackendType === 'user')
+      && ((!cloudForAll && userTier === 'free') || convexBackendType === 'user' || !isManagedConvexEnabled())
       && !hasConvexOAuth;
     setProjectStep(needsConvexStep ? 'convex' : 'name');
   };
@@ -1587,8 +1593,8 @@ export default function LandingV2() {
     // The selector UI also gates this, but a stale render could slip through.
     if (
       pref === 'platform' &&
-      userTier === 'free' &&
-      process.env.NEXT_PUBLIC_ALLOW_CLOUD_CONVEX_FOR_ALL !== 'true'
+      (!isManagedConvexEnabled() ||
+        (userTier === 'free' && process.env.NEXT_PUBLIC_ALLOW_CLOUD_CONVEX_FOR_ALL !== 'true'))
     ) {
       return;
     }
@@ -1619,7 +1625,8 @@ export default function LandingV2() {
         }
       }
       const cloudForAll = process.env.NEXT_PUBLIC_ALLOW_CLOUD_CONVEX_FOR_ALL === 'true';
-      const platformLocked = resolvedTier === 'free' && !cloudForAll;
+      const platformLocked =
+        !isManagedConvexEnabled() || (resolvedTier === 'free' && !cloudForAll);
       if (settingsRes.ok) {
         const data = await settingsRes.json();
         setHasOpenAIKey(Boolean(data?.hasOpenAIKey));
@@ -1687,6 +1694,7 @@ export default function LandingV2() {
         convex_provision_failed: { title: 'Convex provisioning failed', description: 'Failed to create a Convex backend in your account. Please try again or check your Convex dashboard.' },
         convex_quota: { title: 'Convex project limit reached', description: 'Your Convex account has reached its project quota. Delete unused projects at dashboard.convex.dev or upgrade your Convex plan.' },
         convex_limit_reached: { title: 'Managed Convex limit reached', description: "You've reached your plan's managed Convex project limit. Delete an existing project to free a slot, then try again." },
+        managed_convex_disabled: { title: 'Managed Convex unavailable', description: 'New projects use Bring Your Own Convex or No Backend. Connect your free Convex account to add a backend.' },
         convex_requires_pro: { title: 'Managed Convex requires Pro or Max', description: 'Upgrade to Pro or Max to create projects with a Botflow-managed Convex backend, or choose "No Backend".' },
         swift_requires_pro: { title: 'Swift requires Pro or Max', description: 'Upgrade to Pro or Max to create native Swift projects.' },
       };
@@ -1777,7 +1785,7 @@ export default function LandingV2() {
       const cloudForAll = process.env.NEXT_PUBLIC_ALLOW_CLOUD_CONVEX_FOR_ALL === 'true';
       const needsConvex = convexBackendType !== 'none'
         && convexBackendType !== 'muhkoo'
-        && ((!cloudForAll && userTier === 'free') || convexBackendType === 'user')
+        && ((!cloudForAll && userTier === 'free') || convexBackendType === 'user' || !isManagedConvexEnabled())
         && !hasConvexOAuth;
       setProjectStep(needsConvex ? 'convex' : 'name');
     }
@@ -2105,6 +2113,7 @@ export default function LandingV2() {
                             </button>
                             {showConvexSelector && (
                               <div className="absolute bottom-full mb-2 left-0 w-60 rounded-xl border border-[var(--sand-border)] bg-[var(--sand-surface)] shadow-lg overflow-hidden z-20">
+                                {managedConvexEnabled && (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -2148,11 +2157,13 @@ export default function LandingV2() {
                                     <Check className="h-4 w-4 text-[var(--sand-text)] ml-auto mt-0.5 shrink-0" />
                                   )}
                                 </button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => { void saveBackendPreference('user'); setShowConvexSelector(false); }}
                                   className={cn(
-                                    'flex w-full items-start gap-2.5 px-3 py-2.5 text-sm transition text-left border-t border-[var(--sand-border)]',
+                                    'flex w-full items-start gap-2.5 px-3 py-2.5 text-sm transition text-left',
+                                    managedConvexEnabled && 'border-t border-[var(--sand-border)]',
                                     convexBackendType === 'user' ? 'bg-[var(--sand-elevated)]' : 'hover:bg-[var(--sand-elevated)]',
                                   )}
                                 >
@@ -2810,13 +2821,14 @@ export default function LandingV2() {
           {projectStep === 'convex' && (() => {
             const cloudForAll = process.env.NEXT_PUBLIC_ALLOW_CLOUD_CONVEX_FOR_ALL === 'true';
             const isPaid = userTier === 'pro' || userTier === 'max' || cloudForAll;
+            const offerManaged = isManagedConvexEnabled();
             const managedQuotaHit = isPaid && projectQuotaLeft !== null && projectQuotaLeft <= 0;
             return (
               <>
                 <div className="px-6 pt-6 pb-3">
                   <h2 className="text-xl font-semibold text-foreground">Connect your backend</h2>
                   <p className="mt-1.5 text-sm text-muted">
-                    {isPaid
+                    {isPaid && offerManaged
                       ? 'Choose how to host the Convex backend for this project.'
                       : 'Botflow uses Convex for your backend. Connect your free Convex account to continue.'}
                   </p>
@@ -2869,7 +2881,7 @@ export default function LandingV2() {
                       </button>
                     )}
                   </div>
-                  {isPaid ? (
+                  {!offerManaged ? null : isPaid ? (
                     <button
                       type="button"
                       disabled={managedQuotaHit}

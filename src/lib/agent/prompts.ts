@@ -3,6 +3,13 @@
  */
 import { REVENUECAT_ENABLED } from "@/lib/feature-flags";
 import { NETWORK_EGRESS_NOTE } from "@/lib/egress-hint";
+import { isManagedConvexEnabled } from "@/lib/project-platform";
+
+// Backend options to suggest for a new project — omits Botflow Managed while
+// the managed-Convex kill switch (NEXT_PUBLIC_DISABLE_MANAGED_CONVEX) is on.
+const NEW_BACKEND_OPTIONS = isManagedConvexEnabled()
+  ? "**Botflow Managed** or **Bring Your Own Convex**"
+  : "**Bring Your Own Convex**";
 
 const END_TURN_INSTRUCTION = [
   "",
@@ -438,7 +445,7 @@ const WEB_PROMPT_NO_BACKEND_NOTE: string[] = [
   "",
   "This project is a **frontend-only** Vite + React app — there is no `/convex` folder, no Convex client, and no `convexDeploy` tool available.",
   "- Do **not** attempt to create a `/convex` directory, install `convex`/`@convex-dev/*` packages, or import from `convex/react`.",
-  "- If the user asks for backend behaviour (database, auth, server functions), politely explain that this project was created without a backend and suggest creating a new project with **Botflow Managed** or **Bring Your Own Convex** if persistence is required.",
+  "- If the user asks for backend behaviour (database, auth, server functions), politely explain that this project was created without a backend and suggest creating a new project with " + NEW_BACKEND_OPTIONS + " if persistence is required.",
   "- For ephemeral state, use React state, `localStorage`, or `sessionStorage`.",
 ];
 
@@ -1625,7 +1632,7 @@ const SANDBOXED_WEB_PROMPT_NO_BACKEND_NOTE: string[] = [
   "### When the user asks for a database / auth / server functions",
   "Politely explain that this project was created with the **No Backend** option, so it has no database or server-side functions. Offer two paths:",
   "1. They can build features that work with **frontend-only persistence**: React state, `localStorage`, `sessionStorage`, IndexedDB.",
-  "2. If they truly need a backend, they should create a new project with **Botflow Managed** or **Bring Your Own Convex** selected at creation time — backend type cannot be added to an existing project.",
+  "2. If they truly need a backend, they should create a new project with " + NEW_BACKEND_OPTIONS + " selected at creation time — backend type cannot be added to an existing project.",
   "",
   "### What you CAN build",
   "- Pure-frontend React/Vite features: components, routing (react-router), styling (Tailwind/shadcn), animations, forms (uncontrolled or with `localStorage`).",

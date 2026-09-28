@@ -5,9 +5,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, X, Sparkles, KeyRound, Lock, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isManagedConvexEnabled } from "@/lib/project-platform";
 
 const CLOUD_CONVEX_FOR_ALL =
   process.env.NEXT_PUBLIC_ALLOW_CLOUD_CONVEX_FOR_ALL === "true";
+// Global kill switch (NEXT_PUBLIC_DISABLE_MANAGED_CONVEX): hide the managed
+// option entirely so forks can only use Bring Your Own Convex.
+const MANAGED_CONVEX_ENABLED = isManagedConvexEnabled();
 
 const CONVEX_FORK_PROMPT =
   "I just created this project from a template. Run convexDeploy to deploy the backend (schema + functions) to the new Convex instance, then give me a one-line summary of what this app does.";
@@ -34,7 +38,9 @@ export function TemplateForkModal({
   const [submitting, setSubmitting] = useState(false);
   const [tier, setTier] = useState<"free" | "pro" | "max">("free");
   const [hasConvexOAuth, setHasConvexOAuth] = useState(false);
-  const [backend, setBackend] = useState<"platform" | "user">("platform");
+  const [backend, setBackend] = useState<"platform" | "user">(
+    MANAGED_CONVEX_ENABLED ? "platform" : "user",
+  );
 
   const managedLocked = tier === "free" && !CLOUD_CONVEX_FOR_ALL;
 
@@ -54,7 +60,7 @@ export function TemplateForkModal({
         setTier(t);
         setHasConvexOAuth(Boolean(settings.hasConvexOAuth));
         // Free users default to BYOC (platform-managed is Pro-only).
-        setBackend(t === "free" && !CLOUD_CONVEX_FOR_ALL ? "user" : "platform");
+        setBackend(!MANAGED_CONVEX_ENABLED || (t === "free" && !CLOUD_CONVEX_FOR_ALL) ? "user" : "platform");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -131,6 +137,7 @@ export function TemplateForkModal({
               ) : (
                 <div className="space-y-2">
                   {/* Botflow Managed (platform) */}
+                  {MANAGED_CONVEX_ENABLED && (
                   <button
                     type="button"
                     onClick={() => { if (!managedLocked) setBackend("platform"); }}
@@ -164,6 +171,7 @@ export function TemplateForkModal({
                       </a>
                     )}
                   </button>
+                  )}
 
                   {/* Bring Your Own Convex (user) */}
                   <button

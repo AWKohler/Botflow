@@ -29,6 +29,12 @@ import {
   StaggerButton,
   serif,
 } from '@/components/landing/shared';
+import { isManagedConvexEnabled } from '@/lib/project-platform';
+
+// Managed-Convex kill switch (NEXT_PUBLIC_DISABLE_MANAGED_CONVEX) — when off,
+// Bring Your Own Convex is the only option, so the copy stops promising a
+// platform-hosted deployment.
+const MANAGED_CONVEX = isManagedConvexEnabled();
 
 // ============================================================================
 // Pillars — three benefit cards
@@ -359,7 +365,9 @@ export default function ConvexPage() {
 
             <Reveal delay={180}>
               <p className="mt-6 text-lg sm:text-xl text-[var(--sand-text-muted)] max-w-2xl mx-auto leading-relaxed">
-                Every Botflow project ships with Convex — a typed database, serverless functions, real-time sync, and a built-in admin dashboard. No accounts to create. No glue code to write.
+                {MANAGED_CONVEX
+                  ? 'Every Botflow project ships with Convex — a typed database, serverless functions, real-time sync, and a built-in admin dashboard. No accounts to create. No glue code to write.'
+                  : 'Every Botflow project ships with Convex — a typed database, serverless functions, real-time sync, and a built-in admin dashboard. Connect your free Convex account once. No glue code to write.'}
               </p>
             </Reveal>
 
@@ -678,18 +686,20 @@ export default function ConvexPage() {
         <div className="mx-auto max-w-7xl px-6 sm:px-6 py-24 sm:py-32">
           <Reveal>
             <div className="max-w-3xl mx-auto text-center">
-              <SectionLabel>Power-user option</SectionLabel>
+              <SectionLabel>{MANAGED_CONVEX ? 'Power-user option' : 'Your Convex account'}</SectionLabel>
               <h2
                 className={cn(
                   serif.className,
                   'text-4xl sm:text-5xl md:text-6xl tracking-tight leading-[1.05]',
                 )}
               >
-                Already a Convex user?{' '}
-                <em className={serif.className}>Bring your own.</em>
+                {MANAGED_CONVEX ? 'Already a Convex user?' : 'Your backend,'}{' '}
+                <em className={serif.className}>{MANAGED_CONVEX ? 'Bring your own.' : 'your account.'}</em>
               </h2>
               <p className="mt-6 text-lg text-[var(--sand-text-muted)] leading-relaxed">
-                Connect your Convex account via OAuth and Botflow will deploy to your team&apos;s deployment instead of the platform&apos;s. You keep full billing control, observability, and team access. Botflow just drives.
+                {MANAGED_CONVEX
+                  ? <>Connect your Convex account via OAuth and Botflow will deploy to your team&apos;s deployment instead of the platform&apos;s. You keep full billing control, observability, and team access. Botflow just drives.</>
+                  : <>Connect your Convex account via OAuth and Botflow provisions and deploys each project&apos;s backend in your team. You keep full billing control, observability, and team access. Botflow just drives.</>}
               </p>
 
               <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">

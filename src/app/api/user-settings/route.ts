@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/server';
 import { getUserCredentials, setUserCredentials } from '@/lib/user-credentials';
 import { USE_TOGETHER_KIMI } from '@/lib/feature-flags';
+import { isManagedConvexEnabled } from '@/lib/project-platform';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest) {
     if (googleApiKey !== undefined) updates.googleApiKey = googleApiKey || null;
     if (xaiApiKey !== undefined) updates.xaiApiKey = xaiApiKey || null;
     if (
-      convexBackendPreference === 'platform' ||
+      (convexBackendPreference === 'platform' && isManagedConvexEnabled()) ||
       convexBackendPreference === 'user' ||
       convexBackendPreference === 'none'
     ) {

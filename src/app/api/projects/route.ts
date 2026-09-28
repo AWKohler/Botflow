@@ -9,7 +9,7 @@ import { auth } from '@/lib/auth/server';
 import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
 import { countUserProjects } from '@/lib/usage';
 import { limitReachedResponse } from '@/lib/plan-response';
-import { normalizeProjectPlatform, normalizeBackendType, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
+import { isManagedConvexEnabled, normalizeProjectPlatform, normalizeBackendType, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
 import { isModelDisabled, modelDisabledReason } from '@/lib/agent/models';
 import { chooseProviderForNewProject } from '@/lib/sandbox-provider';
 import { canUseSwift } from '@/lib/swift-access';
@@ -126,6 +126,14 @@ export async function POST(request: NextRequest) {
       );
     }
     const resolvedBackendType = normalizeBackendType(backendType);
+    // A 'platform' project would get a managed Convex backend lazily on its
+    // first convexDeploy — refuse it up front while managed Convex is off.
+    if (resolvedBackendType === 'platform' && !isManagedConvexEnabled()) {
+      return NextResponse.json(
+        { error: 'Botflow-managed Convex is not available. Use Bring Your Own Convex or No Backend.' },
+        { status: 403 },
+      );
+    }
     // MuhKoo is in private beta — gate it at creation, mirroring Swift above.
     if (resolvedBackendType === 'muhkoo' && !(await isBetaUser(userId))) {
       return NextResponse.json(
