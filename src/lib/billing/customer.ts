@@ -1,5 +1,4 @@
 import { getIdentityDb } from "@/lib/auth/database";
-import { getIdentityUser } from "@/lib/auth/directory";
 import { billingStripe } from "./stripe";
 
 /** Create a free account's payment customer without starting a subscription. */
@@ -24,11 +23,15 @@ export async function ensureFreeBillingCustomer(userId: string) {
       throw new Error("Existing subscription must be managed separately");
     let customerId = rows[0]?.stripe_customer_id as string | undefined;
     if (!customerId) {
-      const user = await getIdentityUser(userId);
+      const {
+        rows: [user],
+      } = await db.query("SELECT name,email FROM identity_user WHERE id=$1", [
+        userId,
+      ]);
       const customer = await billingStripe().customers.create(
         {
-          email: user.primaryEmailAddress.emailAddress,
-          name: user.fullName,
+          email: user.email,
+          name: user.name,
           metadata: { botflow_user_id: userId },
         },
         { idempotencyKey: `botflow-customer-v1:${userId}` },

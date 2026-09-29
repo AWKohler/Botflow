@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-config({ path: ".env.local", quiet: true });
+config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
 import { readFile, writeFile } from "node:fs/promises";
 import { decryptPrivateData } from "../../src/lib/auth/crypto";
 import type { Snapshot } from "./snapshot";

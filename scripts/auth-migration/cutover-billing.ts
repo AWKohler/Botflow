@@ -1,6 +1,6 @@
 /** Dry-run by default. Preserve the reconciled customer, card, price, and renewal. */
 import { config } from "dotenv";
-config({ path: ".env.local", quiet: true });
+config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
 import { readFile, writeFile } from "node:fs/promises";
 import { getIdentityDb } from "../../src/lib/auth/database";
 import { billingStripe } from "../../src/lib/billing/stripe";

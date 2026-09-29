@@ -1,6 +1,6 @@
 /** Idempotently provision the four public prices plus the grandfathered Pro price. */
 import { config } from "dotenv";
-config({ path: ".env.local", quiet: true });
+config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
 import { readFile, writeFile } from "node:fs/promises";
 import { parse } from "dotenv";
 import { billingStripe } from "../../src/lib/billing/stripe";
@@ -10,7 +10,8 @@ async function main() {
   if (live && !process.argv.includes("--live-reviewed"))
     throw new Error("Live provisioning requires --live-reviewed");
   const stripe = billingStripe();
-  const env = parse(await readFile(".env.local"));
+  const envPath = process.env.AUTH_MIGRATION_ENV_FILE || ".env.local";
+  const env = parse(await readFile(envPath));
   for (const plan of ["pro", "max"] as const) {
     const productId = `botflow_identity_${plan}_v1`;
     let product;
@@ -85,43 +86,31 @@ async function main() {
   const found = configurations.data.find(
     (c) => c.metadata?.botflow_identity_billing === "v1",
   );
-  const portal =
-    found ??
-    (await stripe.billingPortal.configurations.create({
-      business_profile: { headline: "Manage your Botflow subscription" },
-      metadata: { botflow_identity_billing: "v1" },
-      features: {
-        customer_update: {
-          enabled: true,
-          allowed_updates: ["email", "address", "tax_id"],
-        },
-        invoice_history: { enabled: true },
-        payment_method_update: { enabled: true },
-        subscription_cancel: {
-          enabled: true,
-          mode: "at_period_end",
-          proration_behavior: "none",
-        },
-        subscription_update: {
-          enabled: true,
-          default_allowed_updates: ["price"],
-          proration_behavior: "always_invoice",
-          products: [
-            {
-              product: "botflow_identity_pro_v1",
-              prices: [env.BILLING_PRICE_PRO_MONTH, env.BILLING_PRICE_PRO_YEAR],
-            },
-            {
-              product: "botflow_identity_max_v1",
-              prices: [env.BILLING_PRICE_MAX_MONTH, env.BILLING_PRICE_MAX_YEAR],
-            },
-          ],
-        },
+  const portalSettings = {
+    business_profile: { headline: "Manage your Botflow subscription" },
+    metadata: { botflow_identity_billing: "v1" },
+    features: {
+      customer_update: {
+        enabled: true,
+        allowed_updates: ["email", "address", "tax_id"] as ("email" | "address" | "tax_id")[],
       },
-    }));
+      invoice_history: { enabled: true },
+      payment_method_update: { enabled: true },
+      subscription_cancel: {
+        enabled: true,
+        mode: "at_period_end" as const,
+        proration_behavior: "none" as const,
+      },
+      // Native plan changes preserve upgrade/downgrade timing and signed quotes.
+      subscription_update: { enabled: false },
+    },
+  };
+  const portal = found
+    ? await stripe.billingPortal.configurations.update(found.id, portalSettings)
+    : await stripe.billingPortal.configurations.create(portalSettings);
   env.BILLING_PORTAL_CONFIGURATION_ID = portal.id;
   await writeFile(
-    ".env.local",
+    envPath,
     Object.entries(env)
       .map(([key, value]) => key + "=" + JSON.stringify(value))
       .join("\n") + "\n",

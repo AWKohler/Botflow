@@ -1,6 +1,6 @@
 /** Read-only Clerk export. Secrets are written only inside an AES-GCM envelope. */
 import { config } from "dotenv";
-config({ path: ".env.local", quiet: true });
+config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { parse } from "csv-parse/sync";
 import { encryptPrivateData } from "../../src/lib/auth/crypto";

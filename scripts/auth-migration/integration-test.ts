@@ -1,6 +1,6 @@
 /** Runs only against the isolated migration branch. No real emails are sent. */
 import { config } from "dotenv";
-config({ path: ".env.local", quiet: true });
+config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { hash } from "bcryptjs";

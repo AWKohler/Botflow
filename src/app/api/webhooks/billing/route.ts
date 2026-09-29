@@ -48,6 +48,7 @@ export async function POST(request: Request) {
   }
   if (!subscriptionId) return NextResponse.json({ received: true });
   const connection = await getIdentityDb().connect();
+  let released = false;
   try {
     await connection.query("BEGIN");
     await connection.query(
@@ -116,14 +117,16 @@ export async function POST(request: Request) {
       ],
     );
     await connection.query("COMMIT");
+    connection.release();
+    released = true;
     await handlePlanChange(owner.user_id, await getUserTier(owner.user_id));
-    await connection.query(
+    await getIdentityDb().query(
       "UPDATE botflow_billing_event SET status='processed', processed_at=now() WHERE event_id=$1",
       [event.id],
     );
     return NextResponse.json({ received: true });
   } catch (error) {
-    await connection.query("ROLLBACK");
+    if (!released) await connection.query("ROLLBACK");
     console.error("[billing-webhook] Event processing failed", {
       eventId: event.id,
       error: error instanceof Error ? error.name : "error",
@@ -133,6 +136,6 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   } finally {
-    connection.release();
+    if (!released) connection.release();
   }
 }

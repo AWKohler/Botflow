@@ -12,7 +12,7 @@ Clerk-managed browser sessions are not imported. Users will need to sign in agai
 
 The source database has seven project-owner IDs absent from the current Clerk directory. Projects remain intact; deleted identities are not recreated automatically.
 
-Validation: 198 repository tests, 16 authentication integration checks, and 11 Stripe test-mode billing checks passed. The production Next.js build and focused ESLint check passed. The auth rehearsal sends no real email. Billing fixtures use Stripe test mode and are cleaned up. No production subscriptions or user passwords were changed by these rehearsals. The existing GitHub OAuth app now also accepts the exact protected-preview callback; its Clerk callback remains in place. A real GitHub login resolved to the original owner ID with the user count unchanged at 107.
+Validation: 198 repository tests, 16 authentication integration checks, and 16 Stripe test-mode billing checks passed. The production Next.js build and focused ESLint check passed. The auth rehearsal sends no real email. Billing fixtures use Stripe test mode and are cleaned up. No production subscriptions or user passwords were changed by these rehearsals. The existing GitHub OAuth app now also accepts the exact protected-preview callback; its Clerk callback remains in place. A real GitHub login resolved to the original owner ID with the user count unchanged at 107.
 
 ## Configuration
 
@@ -32,7 +32,7 @@ Vercel overrides must target only `preview` and `gitBranch=codex/clerk-replaceme
 
 ## Export, import, and verification
 
-Run from the repository root with a mode-600 `.env.local`. Migration artifacts belong in ignored `.migration/`, never in Git or a PR.
+Run from the repository root with a mode-600 `.env.local`, or select a separate mode-600 configuration using `AUTH_MIGRATION_ENV_FILE`. Live provisioning writes catalog IDs only into the selected configuration file. Migration artifacts belong in ignored `.migration/`, never in Git or a PR.
 
 1. Set `CLERK_MIGRATION_SECRET_KEY`, `CLERK_MIGRATION_INSTANCE_ID`, and `AUTH_MIGRATION_TARGET=staging`.
 2. Export users from Clerk's instance settings to obtain the password hashes. Save as `.migration/clerk-passwords.csv` with mode 600.
@@ -56,6 +56,12 @@ The sequence is: validate live Clerk contract and target row; create/recover a S
 A failure after Clerk cancellation may leave renewal disabled; a failure after Stripe activation may leave a stale database row. Read `.migration/billing-cutover-checkpoint.json`, inspect both systems, and resume the same migration idempotently before the renewal date. Never create a second subscription manually to work around a failed run. Keep the current Stripe subscription if rolling application code back; do not re-enable Clerk renewal without reconciling it first.
 
 Configure signed events at `/api/webhooks/billing`: `customer.subscription.created`, `.updated`, `.deleted`, `invoice.paid`, `invoice.payment_failed`, and `checkout.session.completed`. The handler retrieves canonical Stripe state, checks mode and price mappings, serializes database updates, and records processed events. Preview webhook delivery must also satisfy Vercel deployment protection.
+
+## Preview browser checks (2026-09-28)
+
+The protected preview passed real GitHub login to the original owner, synthetic bcrypt password login, directory search, metadata editing, encrypted-key reveal with audit, impersonation and return, test-card checkout, signed Stripe webhook delivery, Pro entitlement activation, invoice display, and cancellation/resumption. The preview webhook uses a dedicated automation credential while deployment protection remains enabled. Its secret and endpoint identifier are recorded only in ignored `.migration/preview-webhook.json`.
+
+Plan changes stay inside the Botflow account UI. Server-signed five-minute quotes bind the user, current subscription, target price, amount, and proration time. Upgrades use Stripe pending updates so access changes only after successful payment; downgrades and annual-to-monthly changes use schedules at renewal. The user can cancel a scheduled change. The Stripe portal remains an optional fallback for invoices, cards, and cancellation. Portal price changes are disabled; all plan changes use the native timing and quote checks.
 
 ## Remaining production gates
 

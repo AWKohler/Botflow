@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth/server";
 import { getIdentityDb } from "@/lib/auth/database";
-import { getIdentityUser } from "@/lib/auth/directory";
 import { requireSameOrigin } from "@/lib/auth/policy";
 import { billingStripe } from "@/lib/billing/stripe";
 import { priceId } from "@/lib/billing/plans";
@@ -80,11 +79,16 @@ export async function POST(request: Request) {
     const stripe = billingStripe();
     let customerId = existing?.stripe_customer_id as string | undefined;
     if (!customerId) {
-      const user = await getIdentityUser(userId);
+      const {
+        rows: [user],
+      } = await connection.query(
+        "SELECT name,email FROM identity_user WHERE id=$1",
+        [userId],
+      );
       const customer = await stripe.customers.create(
         {
-          email: user.primaryEmailAddress.emailAddress,
-          name: [user.firstName, user.lastName].filter(Boolean).join(" "),
+          email: user.email,
+          name: user.name,
           metadata: { botflow_user_id: userId },
         },
         { idempotencyKey: `botflow-customer-v1:${userId}` },

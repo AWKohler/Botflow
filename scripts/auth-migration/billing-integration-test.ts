@@ -1,6 +1,10 @@
+import {
+  quotePlanChange,
+  applyPlanChange,
+} from "../../src/lib/billing/change-plan";
 /** Exercises real Stripe TEST objects and the signed webhook against isolated Neon. */
 import { config } from "dotenv";
-config({ path: ".env.local", quiet: true });
+config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { billingStripe } from "../../src/lib/billing/stripe";
@@ -119,17 +123,33 @@ async function main() {
       ).rows[0].cancel_at_period_end,
       false,
     );
-    await stripe.subscriptions.update(sub.id, {
-      items: [
-        {
-          id: sub.items.data[0].id,
-          price: process.env.BILLING_PRICE_MAX_MONTH!,
-        },
-      ],
-      proration_behavior: "none",
-    });
+    const upgrade = await quotePlanChange(userId, "max", "month");
+    assert.equal(upgrade.scheduled, false);
+    const upgraded = await applyPlanChange(userId, upgrade.token);
+    assert.equal(upgraded.scheduled, false);
     await deliver(sub.id);
     assert.equal(await getPaidTier(userId), "max");
+    const downgrade = await quotePlanChange(userId, "pro", "month");
+    assert.equal(downgrade.scheduled, true);
+    assert.equal(downgrade.amountDue, 0);
+    await applyPlanChange(userId, downgrade.token);
+    const scheduled = await stripe.subscriptions.retrieve(sub.id);
+    assert.ok(scheduled.schedule);
+    assert.equal(
+      scheduled.items.data[0].price.id,
+      process.env.BILLING_PRICE_MAX_MONTH,
+    );
+    await deliver(sub.id);
+    assert.equal(await getPaidTier(userId), "max");
+    await assert.rejects(() =>
+      applyPlanChange("different-user", downgrade.token),
+    );
+    await assert.rejects(() =>
+      applyPlanChange(userId, downgrade.token + "tampered"),
+    );
+    const annual = await quotePlanChange(userId,'max','year');assert.equal(annual.scheduled,false);await applyPlanChange(userId,annual.token);
+    const annualSubscription=await stripe.subscriptions.retrieve(sub.id);assert.equal(annualSubscription.items.data[0].price.recurring?.interval,'year');assert.equal(annualSubscription.schedule,null);
+    const monthly = await quotePlanChange(userId,'max','month');assert.equal(monthly.scheduled,true);await applyPlanChange(userId,monthly.token);
     await stripe.subscriptions.cancel(sub.id);
     await deliver(sub.id);
     assert.equal(await getPaidTier(userId), "free");
@@ -164,6 +184,10 @@ async function main() {
           duplicateEventIdempotent: true,
           renewalResumed: true,
           maxUpgrade: true,
+          downgradeWaitsForRenewal: true,
+          annualUpgrade:true,monthlySwitchWaitsForRenewal:true,
+          quoteBoundToUser: true,
+          tamperedQuoteRejected: true,
           immediateCancellationRevokesAccess: true,
           resubscribe: true,
           staleSubscriptionEventIgnored: true,

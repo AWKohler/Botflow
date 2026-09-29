@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-config({ path: ".env.local", quiet: true });
+config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
 import { readFile } from "node:fs/promises";
 import { randomUUID, createHash } from "node:crypto";
 import { getIdentityDb } from "../../src/lib/auth/database";

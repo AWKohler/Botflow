@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { authClient } from "@/lib/auth/client";
+import { ChangePlanModal } from "./change-plan";
 import { PaymentMethodForm } from "./payment-method";
 import { fieldClass, primaryClass } from "@/components/auth/sign-in";
 interface Session {
@@ -44,6 +45,12 @@ export function AccountPanel({
     migrationPending: boolean;
   } | null>(null);
   const [billingDetails, setBillingDetails] = useState<{
+    upcomingPlan?: {
+      plan: string;
+      interval: string;
+      amount: number;
+      effectiveAt: number;
+    } | null;
     invoices: {
       id: string;
       number: string;
@@ -72,6 +79,7 @@ export function AccountPanel({
       history.replaceState(null, "", "/account?tab=security");
     }
   }, []);
+  const [changingPlan, setChangingPlan] = useState(false);
   const [paymentSecret, setPaymentSecret] = useState("");
   function refreshBilling() {
     fetch("/api/billing/manage")
@@ -84,16 +92,17 @@ export function AccountPanel({
   useEffect(() => {
     if (session && tab === "billing") refreshBilling();
   }, [session, tab]);
-  async function billingAction(action: string) {
+  async function billingAction(action: string, paymentMethodId?: string) {
     await act(async () => {
       const response = await fetch("/api/billing/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, paymentMethodId }),
       });
       const data = await response.json();
       if (!response.ok) return { error: { message: data.error } };
       if (data.clientSecret) setPaymentSecret(data.clientSecret);
+      else refreshBilling();
       if (typeof data.cancelAtPeriodEnd === "boolean")
         setSubscription((prev) =>
           prev ? { ...prev, cancelAtPeriodEnd: data.cancelAtPeriodEnd } : null,
@@ -135,15 +144,6 @@ export function AccountPanel({
       setBusy(false);
     }
   }
-  async function billing() {
-    await act(async () => {
-      const r = await fetch("/api/billing/portal", { method: "POST" });
-      const data = await r.json();
-      if (!r.ok) return { error: { message: data.error } };
-      location.assign(data.url);
-      return {};
-    });
-  }
   if (isPending)
     return <main className="p-12 text-center">Loading your account…</main>;
   if (!session)
@@ -159,6 +159,21 @@ export function AccountPanel({
       className={`${embedded ? "" : "min-h-screen p-6"} bg-[var(--color-surface)] text-[var(--sand-text)]`}
     >
       <div className="mx-auto max-w-4xl">
+        {changingPlan && (
+          <ChangePlanModal
+            currentPlan={subscription?.plan ?? "free"}
+            currentInterval={subscription?.interval ?? "month"}
+            onClose={() => setChangingPlan(false)}
+            onSaved={() => {
+              setMessage("Your plan change has been saved.");
+              setChangingPlan(false);
+              refreshBilling();
+              fetch("/api/billing/status")
+                .then((r) => r.json())
+                .then((r) => setSubscription(r.subscription));
+            }}
+          />
+        )}
         {!embedded && (
           <Link
             href="/projects"
@@ -579,6 +594,27 @@ export function AccountPanel({
                     </p>
                   )}
                 </div>
+                {billingDetails.upcomingPlan && (
+                  <p className="rounded-lg border border-[var(--sand-border)] p-4 text-sm">
+                    Scheduled:{" "}
+                    <span className="capitalize">
+                      {billingDetails.upcomingPlan.plan}
+                    </span>{" "}
+                    at ${billingDetails.upcomingPlan.amount / 100}/
+                    {billingDetails.upcomingPlan.interval}, starting{" "}
+                    {new Date(
+                      billingDetails.upcomingPlan.effectiveAt * 1000,
+                    ).toLocaleDateString()}
+                    .{" "}
+                    <button
+                      className="underline"
+                      disabled={busy}
+                      onClick={() => billingAction("cancel-plan-change")}
+                    >
+                      Keep current plan
+                    </button>
+                  </p>
+                )}
                 {subscription?.migrationPending ? (
                   <p className="text-sm">
                     Your existing subscription is being migrated. Your current
@@ -591,7 +627,7 @@ export function AccountPanel({
                         disabled={busy}
                         onClick={
                           subscription?.amount
-                            ? billing
+                            ? () => setChangingPlan(true)
                             : () => location.assign("/pricing")
                         }
                         className="underline"
@@ -619,10 +655,35 @@ export function AccountPanel({
                     <section className="border-t border-[var(--sand-border)] pt-5">
                       <h3 className="font-medium">Payment methods</h3>
                       {billingDetails.paymentMethods.map((card) => (
-                        <p key={card.id} className="mt-3 text-sm capitalize">
-                          {card.brand} •••• {card.last4} · {card.expiryMonth}/
-                          {card.expiryYear} {card.isDefault ? "· Default" : ""}
-                        </p>
+                        <div key={card.id} className="mt-3 text-sm">
+                          <p className="capitalize">
+                            {card.brand} •••• {card.last4} · {card.expiryMonth}/
+                            {card.expiryYear}{" "}
+                            {card.isDefault ? "· Default" : ""}
+                          </p>
+                          <div className="mt-2 flex gap-4 text-xs">
+                            {!card.isDefault && (
+                              <button
+                                disabled={busy}
+                                className="underline"
+                                onClick={() =>
+                                  billingAction("set-default-payment", card.id)
+                                }
+                              >
+                                Make default
+                              </button>
+                            )}
+                            <button
+                              disabled={busy}
+                              className="underline"
+                              onClick={() =>
+                                billingAction("remove-payment", card.id)
+                              }
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
                       ))}
                       {paymentSecret ? (
                         <div className="mt-4">
