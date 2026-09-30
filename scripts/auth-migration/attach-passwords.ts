@@ -18,7 +18,7 @@ async function main() {
     { columns: true, bom: true, skip_empty_lines: true },
   ) as Record<string, string>[];
   const ids = new Set(snapshot.users.map((u) => u.id));
-  if (rows.some((r) => !ids.has(r.id)) || rows.length !== ids.size)
+  if (rows.some((r) => !ids.has(r.id)) || rows.length !== ids.size || new Set(rows.map((r) => r.id)).size !== ids.size)
     throw new Error("CSV does not match the snapshot user set");
   snapshot.passwords = Object.fromEntries(
     rows

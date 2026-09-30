@@ -5,16 +5,26 @@ import { decryptPrivateData } from "../../src/lib/auth/crypto";
 import { getIdentityDb } from "../../src/lib/auth/database";
 import { symmetricDecrypt } from "better-auth/crypto";
 import type { Snapshot } from "./snapshot";
-import assert from "node:assert/strict";
+import { isDeepStrictEqual } from "node:util";
+// Assertion diffs may contain passwords, tokens, or integration secrets.
+const assert = {
+  ok(value: unknown, message: string) { if (!value) throw new Error(message); },
+  equal(actual: unknown, expected: unknown) { if (actual !== expected) throw new Error("Identity verification mismatch; secret values suppressed"); },
+  deepEqual(actual: unknown, expected: unknown) { if (!isDeepStrictEqual(actual, expected)) throw new Error("Metadata verification mismatch; secret values suppressed"); },
+};
 async function main() {
   const snapshot = decryptPrivateData<Snapshot>(
     await readFile(".migration/clerk-snapshot.enc", "utf8"),
     "clerk-migration-snapshot",
   );
+  const allowRotated = process.argv.includes("--allow-rehearsal-token-rotation");
+  if (allowRotated && process.env.AUTH_MIGRATION_TARGET !== "staging")
+    throw new Error("Production verification must compare every imported token exactly");
   const db = getIdentityDb();
   let passwordCount = 0,
     providerCount = 0,
-    tokenCount = 0;
+    tokenCount = 0,
+    rotatedTokenCount = 0;
   for (const source of snapshot.users) {
     const primary = source.email_addresses.find(
       (e) => e.id === source.primary_email_address_id,
@@ -62,14 +72,14 @@ async function main() {
         ? available.find((t) => t.provider_user_id === a.provider_user_id)
         : null;
       if (token?.token) {
-        assert.equal(
-          await symmetricDecrypt({
-            key: process.env.BETTER_AUTH_SECRET!,
-            data: local.accessToken,
-          }),
-          token.token,
-        );
-        tokenCount++;
+        const currentToken = await symmetricDecrypt({
+          key: process.env.BETTER_AUTH_SECRET!,
+          data: local.accessToken,
+        });
+        if (currentToken === token.token) tokenCount++;
+        else if (allowRotated && new Date(local.updatedAt) > new Date(local.createdAt))
+          rotatedTokenCount++;
+        else throw new Error("Provider token mismatch; secret values suppressed");
       }
     }
   }
@@ -85,6 +95,7 @@ async function main() {
         verifiedPasswordHashes: passwordCount,
         verifiedProviderLinks: providerCount,
         verifiedProviderTokens: tokenCount,
+        providerTokensRotatedDuringRehearsal: rotatedTokenCount,
         allMetadataMatches: true,
         unmatchedProjectOwners:
           projectCoverage?.rows[0].orphan_owners ?? "not checked",
