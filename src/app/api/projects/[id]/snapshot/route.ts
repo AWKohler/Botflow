@@ -16,7 +16,7 @@
  * client file routes) keeps upload + eviction + DB update in one place.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { UTApi } from "uploadthing/server";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";

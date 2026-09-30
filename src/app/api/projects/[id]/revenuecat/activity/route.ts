@@ -11,7 +11,7 @@
  * make a simulated purchase in the streamed simulator, watch it arrive.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '@/lib/auth/server';
 import { desc, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { revenueCatWebhookDeliveries } from '@/db/schema';

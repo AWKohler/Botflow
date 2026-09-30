@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '@/lib/auth/server';
 import { getUserCredentials, setUserCredentials } from '@/lib/user-credentials';
 import { USE_TOGETHER_KIMI } from '@/lib/feature-flags';
 import { isManagedConvexEnabled } from '@/lib/project-platform';

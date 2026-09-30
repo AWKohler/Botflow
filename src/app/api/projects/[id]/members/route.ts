@@ -6,7 +6,7 @@
  * See docs/features/project-sharing-plan.md §4.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth, identityClient } from "@/lib/auth/server";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projectMembers } from "@/db/schema";
@@ -47,7 +47,7 @@ export async function GET(
   const memberIds = live.map((m) => m.userId).filter((v): v is string => Boolean(v));
   const identity = new Map<string, { name: string; imageUrl?: string }>();
   if (memberIds.length > 0) {
-    const client = await clerkClient();
+    const client = await identityClient();
     const { data } = await client.users.getUserList({ userId: memberIds, limit: 100 });
     for (const u of data) {
       identity.set(u.id, {

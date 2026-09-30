@@ -10,7 +10,7 @@
  *            getSimulatorStatus tool reflects reality.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { canUseSwift, swiftProjectForbidden } from "@/lib/swift-access";
 import {

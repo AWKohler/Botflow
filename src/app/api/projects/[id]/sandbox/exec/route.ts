@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
 import { getProjectSandboxProvider } from "@/lib/sandbox-provider";

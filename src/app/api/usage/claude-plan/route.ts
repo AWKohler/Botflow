@@ -12,7 +12,7 @@
  * Each as { utilization, resets_at }. Utilization is normalized here to 0–100.
  */
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { getFreshAnthropicAccessToken } from "@/lib/anthropic-oauth";
 import { enforce, identifierFor } from "@/lib/rate-limit";

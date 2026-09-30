@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { SignIn } from "@clerk/nextjs";
+import { SignIn } from "@/components/auth";
 
 export default async function Page({
   searchParams,

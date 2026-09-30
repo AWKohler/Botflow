@@ -6,7 +6,7 @@
  * Returns 400 if the project doesn't have a GitHub repo linked.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { fetchOrigin, getCurrentBranch, getStatus, hasGitDir } from "@/lib/sandbox-git";
 import { getUserCredentials } from "@/lib/user-credentials";

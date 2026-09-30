@@ -3,7 +3,7 @@
 import { Input } from "@/components/ui/input";
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { SignedIn, SignedOut, SignInButton } from '@clerk/nextjs';
+import { SignedIn, SignedOut, SignInButton } from '@/components/auth';
 import { useToast } from '@/components/ui/toast';
 
 export default function SettingsPage() {

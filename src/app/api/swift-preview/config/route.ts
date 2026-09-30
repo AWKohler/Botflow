@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { NextResponse } from "next/server";
 import { simulatorProvider } from "@/lib/simulator-provider";
 

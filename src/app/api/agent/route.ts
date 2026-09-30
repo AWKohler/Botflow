@@ -7,7 +7,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { z } from "zod";
 import { requireProjectAccess } from "@/lib/project-access";
 import { sharedTurnBlockReason } from "@/lib/sharing";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 
 import { SYSTEM_PROMPT_MOBILE, SYSTEM_PROMPT_MULTIPLATFORM, buildSwiftSystemPrompt, buildSandboxedWebSystemPrompt, buildWebSystemPrompt } from "@/lib/agent/prompts";
 import { isSandboxPlatform, projectUsesConvex, projectUsesMuhkoo } from "@/lib/project-platform";

@@ -3,7 +3,7 @@
  * Resets HEAD to pre-merge state and clears conflict markers.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { abortMerge, hasGitDir } from "@/lib/sandbox-git";
 

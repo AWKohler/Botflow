@@ -9,7 +9,7 @@ import { EnvPanel } from "@/components/workspace/env-panel";
 import { AgentPanel } from "@/components/agent/AgentPanel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabOption } from "@/components/ui/tabs";
-import { UserButton } from "@clerk/nextjs";
+import { UserButton } from "@/components/auth";
 import { ShareControls } from "@/components/sharing/share-controls";
 import { cn } from "@/lib/utils";
 import { FileSearch } from "./file-search";

@@ -12,7 +12,7 @@
  * recovery path won't try to reattach to it.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
 import { buildKillBridgeScript } from "@/lib/agent/claude-code/bridge-control";
 import { requireProjectAccess } from "@/lib/project-access";

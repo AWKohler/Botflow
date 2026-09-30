@@ -10,7 +10,7 @@
  * The Neon fallback means existing users keep working before running the migration script.
  */
 
-import { clerkClient } from '@clerk/nextjs/server';
+import { identityClient } from '@/lib/auth/server';
 import { redis } from './redis';
 import { getDb } from '@/db';
 import { userSettings } from '@/db/schema';
@@ -66,7 +66,7 @@ export interface UserCredentials {
 const CACHE_TTL = 300; // 5 minutes
 
 function cacheKey(userId: string) {
-  return `creds:${userId}`;
+  return `identity:creds:${userId}`;
 }
 
 /** Read credentials — Redis → Clerk privateMetadata → Neon fallback */
@@ -76,7 +76,7 @@ export async function getUserCredentials(userId: string): Promise<UserCredential
   if (cached) return cached;
 
   // 2. Read from Clerk privateMetadata
-  const client = await clerkClient();
+  const client = await identityClient();
   const user = await client.users.getUser(userId);
   const meta = (user.privateMetadata ?? {}) as Partial<UserCredentials>;
 
@@ -169,13 +169,8 @@ export async function setUserCredentials(
   userId: string,
   updates: Partial<UserCredentials>
 ): Promise<void> {
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
-  const current = (user.privateMetadata ?? {}) as Partial<UserCredentials>;
-
-  await client.users.updateUserMetadata(userId, {
-    privateMetadata: { ...current, ...updates },
-  });
+  const client = await identityClient();
+  await client.users.updateUserMetadata(userId, { privateMetadata: updates });
 
   // Invalidate Redis cache so next read picks up fresh data
   await redis.del(cacheKey(userId));
@@ -186,15 +181,9 @@ export async function clearUserCredentials(
   userId: string,
   fields: (keyof UserCredentials)[]
 ): Promise<void> {
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
-  const current = { ...(user.privateMetadata ?? {}) } as Record<string, unknown>;
-
-  for (const field of fields) {
-    current[field] = null;
-  }
-
-  await client.users.updateUserMetadata(userId, { privateMetadata: current });
+  const updates = Object.fromEntries(fields.map(field => [field, null]));
+  const client = await identityClient();
+  await client.users.updateUserMetadata(userId, { privateMetadata: updates });
   await redis.del(cacheKey(userId));
 }
 

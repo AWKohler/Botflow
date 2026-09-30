@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { downloadDeviceBuildIpa } from "@/lib/sim-platform";
 import { swiftProjectForbidden } from "@/lib/swift-access";

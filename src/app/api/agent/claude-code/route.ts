@@ -12,7 +12,7 @@
  * we return 412 Precondition Failed with a `fallback: true` body so the client
  * can transparently retry against /api/agent.
  */
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,

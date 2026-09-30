@@ -5,7 +5,7 @@ import { desc, eq, isNull, and, inArray } from 'drizzle-orm';
 import { SHARING_ENABLED } from '@/lib/feature-flags';
 import { sanitizeProjectForRole } from '@/lib/project-access';
 import { claimPendingInvites, verifiedEmailsForUser } from '@/lib/sharing';
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '@/lib/auth/server';
 import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
 import { countUserProjects } from '@/lib/usage';
 import { limitReachedResponse } from '@/lib/plan-response';
