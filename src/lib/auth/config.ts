@@ -1,6 +1,7 @@
 import { prepareAccountDeletion } from "./delete-account";
 import { identityBaseURL } from "./base-url";
 import { betterAuth } from "better-auth";
+import { google } from "better-auth/social-providers";
 import { admin, emailOTP, username } from "better-auth/plugins";
 import { getIdentityDb } from "./database";
 import { password } from "./password";
@@ -110,6 +111,15 @@ export function createIdentityAuth(
             google: {
               clientId: process.env.AUTH_GOOGLE_CLIENT_ID,
               clientSecret: process.env.AUTH_GOOGLE_CLIENT_SECRET,
+              async getUserInfo(tokens) {
+                const info = await google({
+                  clientId: process.env.AUTH_GOOGLE_CLIENT_ID!,
+                  clientSecret: process.env.AUTH_GOOGLE_CLIENT_SECRET!,
+                }).getUserInfo(tokens);
+                // Match the existing Clerk Google connection's subaddress rule.
+                if (info?.user.email && /[+=#]/.test(info.user.email)) return null;
+                return info;
+              },
             },
           }
         : {}),
@@ -119,6 +129,7 @@ export function createIdentityAuth(
             github: {
               clientId: process.env.AUTH_GITHUB_CLIENT_ID,
               clientSecret: process.env.AUTH_GITHUB_CLIENT_SECRET,
+              prompt: "select_account",
             },
           }
         : {}),

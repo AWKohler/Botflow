@@ -63,6 +63,16 @@ The protected preview passed real GitHub login to the original owner, synthetic 
 
 Plan changes stay inside the Botflow account UI. Server-signed five-minute quotes bind the user, current subscription, target price, amount, and proration time. Upgrades use Stripe pending updates so access changes only after successful payment; downgrades and annual-to-monthly changes use schedules at renewal. The user can cancel a scheduled change. The Stripe portal remains an optional fallback for invoices, cards, and cancellation. Portal price changes are disabled; all plan changes use the native timing and quote checks.
 
+## Follow-up validation (2026-09-30)
+
+The native browser flows passed immediate Pro-to-Max upgrade with a prorated test invoice, Max-to-Pro downgrade scheduled at renewal, cancellation of that schedule, adding a second test card, changing the default card, and rejecting removal of the active default card. The account view now waits for the signed Stripe webhook before displaying an upgrade as active.
+
+Verification and recovery messages were delivered to Resend's reserved test recipient. The preview accepted the emailed verification code, completed password reset, and signed in with the replacement password. The reserved account was then removed. This verifies the deployed email path and provider delivery events, not delivery into a customer's real inbox.
+
+The live Stripe catalog and portal are provisioned in an isolated mode-600 configuration at `.migration/live-billing.env`; customer subscriptions and renewals remain unchanged. Google Cloud currently denies the signed-in account access to the production OAuth client project 344758425697. The original client's callbacks cannot be changed until its owner account is available.
+
+A fresh Clerk inventory has 113 users. The six added users use social sign-in. All 18 password accounts have unchanged, non-null `password_last_updated_at` timestamps relative to the original encrypted snapshot. `snapshot.ts --reuse-passwords-from=PATH` can preserve those hashes only when every current password account has a matching timestamp and existing hash in a snapshot from the same instance. A changed/new password fails closed and requires a new CSV. The original snapshot remains archived; do not confuse its 107-user counts with current production.
+
 ## Remaining production gates
 
 - Add and verify provider callbacks ending `/api/auth/callback/google` and `/api/auth/callback/github`; retain Clerk callbacks during transition. Complete real Google/GitHub login and account-linking checks in preview.

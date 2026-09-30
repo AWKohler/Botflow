@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { parse } from "csv-parse/sync";
-import { encryptPrivateData } from "../../src/lib/auth/crypto";
+import { encryptPrivateData, decryptPrivateData } from "../../src/lib/auth/crypto";
 import { createHash } from "node:crypto";
 
 async function clerk(path: string): Promise<unknown> {
@@ -46,6 +46,7 @@ export interface ClerkUser {
   updated_at: number;
   last_sign_in_at: number | null;
   password_enabled: boolean;
+  password_last_updated_at?: number | null;
   banned: boolean;
   locked: boolean;
   two_factor_enabled: boolean;
@@ -106,6 +107,22 @@ async function main() {
   const csvPath = process.argv
     .find((arg) => arg.startsWith("--passwords="))
     ?.slice("--passwords=".length);
+  const reusePath = process.argv.find((arg) => arg.startsWith("--reuse-passwords-from="))?.slice("--reuse-passwords-from=".length);
+  if (csvPath && reusePath) throw new Error("Select either a fresh CSV or verified prior password hashes");
+  let reusedInstance: string | undefined;
+  if (reusePath) {
+    const prior = decryptPrivateData<Snapshot>(await readFile(reusePath, "utf8"), "clerk-migration-snapshot");
+    reusedInstance = prior.instanceId;
+    const previous = new Map(prior.users.map((user) => [user.id, user]));
+    for (const user of users.filter((user) => user.password_enabled)) {
+      const old = previous.get(user.id);
+      if (!user.password_last_updated_at || !old?.password_enabled ||
+          old.password_last_updated_at !== user.password_last_updated_at ||
+          !prior.passwords[user.id]?.password_digest)
+        throw new Error("A password changed or lacks a verified timestamp; a fresh Clerk CSV export is required");
+      passwords[user.id] = prior.passwords[user.id];
+    }
+  }
   if (csvPath) {
     const rows = parse(await readFile(csvPath, "utf8"), {
       columns: true,
@@ -144,6 +161,8 @@ async function main() {
       }
     }
   }
+  if (reusedInstance && reusedInstance !== instanceId)
+    throw new Error("Prior password export belongs to another Clerk instance");
   const payload = {
     version: 1 as const,
     exportedAt: new Date().toISOString(),

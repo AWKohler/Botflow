@@ -129,12 +129,27 @@ async function main() {
       (i: { id: string }) => i.id === p.clerkItemId,
     );
     if (
+      before.id !== p.clerkSubscriptionId ||
       !original ||
+      original.plan?.slug !== "pro" ||
+      original.plan?.fee?.amount !== p.amount ||
+      original.plan_period !== p.interval ||
+      !["active", "canceled"].includes(original.status) ||
       Math.floor(original.period_end / 1000) !== p.renewalTimestamp
     )
       throw new Error(
         "Clerk contract changed; resume reconciliation before cancellation",
       );
+    if (original.canceled_at && !migrated)
+      throw new Error("The customer canceled since reconciliation; preserve their cancellation and refresh the migration plan");
+    if (migrated && (
+      migrated.metadata.botflow_user_id !== p.userId ||
+      migrated.items.data.length !== 1 ||
+      migrated.items.data[0].price.id !== price.id ||
+      migrated.items.data[0].current_period_end !== p.renewalTimestamp ||
+      !["active", "trialing"].includes(migrated.status)
+    ))
+      throw new Error("Recovered Stripe subscription differs from the verified migration contract");
     const target = await db.query(
       "SELECT user_id FROM botflow_subscription WHERE user_id=$1 AND clerk_item_id=$2",
       [p.userId, p.clerkItemId],

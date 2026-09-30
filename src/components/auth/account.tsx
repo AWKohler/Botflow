@@ -81,6 +81,38 @@ export function AccountPanel({
   }, []);
   const [changingPlan, setChangingPlan] = useState(false);
   const [paymentSecret, setPaymentSecret] = useState("");
+  const [pendingPlan, setPendingPlan] = useState<{ plan: string; interval: string } | null>(null);
+  useEffect(() => {
+    if (!pendingPlan) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let attempts = 0;
+    async function reconcile() {
+      try {
+        const response = await fetch("/api/billing/status");
+        if (!response.ok) throw new Error("Billing status unavailable");
+        const data = await response.json();
+        if (stopped) return;
+        if (data.subscription) setSubscription(data.subscription);
+        if (data.subscription?.plan === pendingPlan!.plan && data.subscription?.interval === pendingPlan!.interval) {
+          setPendingPlan(null);
+          setMessage("Your new plan is active.");
+          refreshBilling();
+          return;
+        }
+      } catch {
+        // Stripe webhooks may arrive after the payment confirmation.
+      }
+      if (stopped) return;
+      if (++attempts < 15) timer = setTimeout(reconcile, 2000);
+      else {
+        setPendingPlan(null);
+        setMessage("Your payment was submitted. Refresh this page shortly to see the updated plan.");
+      }
+    }
+    void reconcile();
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [pendingPlan]);
   function refreshBilling() {
     fetch("/api/billing/manage")
       .then((r) => r.json())
@@ -164,13 +196,11 @@ export function AccountPanel({
             currentPlan={subscription?.plan ?? "free"}
             currentInterval={subscription?.interval ?? "month"}
             onClose={() => setChangingPlan(false)}
-            onSaved={() => {
-              setMessage("Your plan change has been saved.");
+            onSaved={(change) => {
+              setMessage(change.scheduled ? "Your plan change has been scheduled." : "Your payment was submitted. Updating your plan…");
               setChangingPlan(false);
               refreshBilling();
-              fetch("/api/billing/status")
-                .then((r) => r.json())
-                .then((r) => setSubscription(r.subscription));
+              if (!change.scheduled) setPendingPlan(change);
             }}
           />
         )}

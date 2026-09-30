@@ -33,7 +33,7 @@ export function ChangePlanModal({
   currentPlan: string;
   currentInterval: string;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (change: Pick<Quote, "plan" | "interval" | "scheduled">) => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [plan, setPlan] = useState<PaidPlan>(
@@ -77,7 +77,7 @@ export function ChangePlanModal({
         const result = await stripe.confirmCardPayment(data.clientSecret);
         if (result.error) throw new Error(result.error.message);
       }
-      onSaved();
+      onSaved(quote);
       ref.current?.close();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to change your plan");
