@@ -56,6 +56,7 @@ export interface ClerkUser {
   password_last_updated_at?: number | null;
   banned: boolean;
   locked: boolean;
+  lockout_expires_in_seconds?: number | null;
   two_factor_enabled: boolean;
   passkeys?: unknown[];
   external_accounts: {
@@ -247,6 +248,55 @@ async function main() {
   }
   if (finalUsers !== users.length)
     throw new Error("User count changed during export; retry");
+  if (process.env.AUTH_MIGRATION_TARGET === "production") {
+    let freeze:
+      | {
+          state: string;
+          strategy?: string;
+          instanceId: string;
+          originalUsers?: { id: string; locked: boolean; banned: boolean }[];
+        }
+      | undefined;
+    try {
+      freeze = decryptPrivateData(
+        await readFile(migrationArtifactPath("source-freeze.enc"), "utf8"),
+        "clerk-source-freeze",
+      );
+    } catch (error) {
+      if (
+        !(
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === "ENOENT"
+        )
+      )
+        throw error;
+    }
+    if (freeze?.state === "frozen" && freeze.strategy === "user-locks") {
+      if (
+        freeze.instanceId !== instanceId ||
+        freeze.originalUsers?.length !== users.length
+      )
+        throw new Error("Source lock checkpoint mismatch");
+      for (const user of users) {
+        const original = freeze.originalUsers.find(
+          (entry) => entry.id === user.id,
+        );
+        if (
+          !original ||
+          original.banned !== user.banned ||
+          (!user.banned &&
+            (!user.locked ||
+              (user.lockout_expires_in_seconds != null &&
+                user.lockout_expires_in_seconds < 900)))
+        )
+          throw new Error("Source lock expired or changed during export");
+        // Migration locks must never become bans in the replacement service.
+        user.locked = original.locked;
+      }
+    }
+  }
   const payload = {
     version: 1 as const,
     exportedAt: new Date().toISOString(),

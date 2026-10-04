@@ -57,6 +57,7 @@ async function main() {
     );
     assert.ok(row, `Missing identity ${source.id}`);
     assert.equal(row.email, primary.email_address.toLowerCase());
+    assert.equal(row.banned, source.banned || source.locked);
     const addresses = await db.query(
       "SELECT email,verified FROM identity_email WHERE user_id=$1 ORDER BY email",
       [source.id],

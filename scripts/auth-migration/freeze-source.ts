@@ -12,6 +12,9 @@ import {
 } from "../../src/lib/auth/crypto";
 interface Freeze {
   instanceId: string;
+  strategy?: "user-locks";
+  originalUsers?: { id: string; locked: boolean; banned: boolean }[];
+  lockedUsers?: string[];
   original: {
     allowlist: boolean;
     allowlist_blocklist_disabled_on_sign_in: boolean;
@@ -96,16 +99,17 @@ async function main() {
   if (process.argv.includes("--restore")) {
     if (!checkpoint || !process.argv.includes("--apply"))
       throw new Error("Restore requires the saved checkpoint and --apply");
-    const restored = await clerk(
-      "/instance/restrictions",
-      "PATCH",
-      checkpoint.original,
-    );
-    if (
-      restored.allowlist !== checkpoint.original.allowlist ||
-      restored.allowlist_blocklist_disabled_on_sign_in !==
-        checkpoint.original.allowlist_blocklist_disabled_on_sign_in
-    )
+    for (const id of checkpoint.lockedUsers || []) {
+      const unlocked = await clerk(
+        `/users/${encodeURIComponent(id)}/unlock`,
+        "POST",
+      );
+      if (unlocked.locked) throw new Error("Legacy account unlock failed");
+    }
+    const restored = await clerk("/instance/restrictions", "PATCH", {
+      allowlist: checkpoint.original.allowlist,
+    });
+    if (restored.allowlist !== checkpoint.original.allowlist)
       throw new Error("Source settings restoration could not be verified");
     checkpoint.state = "restored";
     await save(checkpoint);
@@ -125,9 +129,14 @@ async function main() {
     throw new Error(
       "A source pause requires an empty allowlist and no pending Clerk invitations",
     );
-  const users: { id: string }[] = [];
+  const users: {
+    id: string;
+    locked: boolean;
+    banned: boolean;
+    lockout_expires_in_seconds: number | null;
+  }[] = [];
   for (let offset = 0; ; offset += 100) {
-    const page = rows<{ id: string }>(
+    const page = rows<(typeof users)[number]>(
       await clerk(`/users?limit=100&offset=${offset}`),
     );
     users.push(...page);
@@ -143,9 +152,20 @@ async function main() {
   if (!response.ok)
     throw new Error("Unable to verify source restriction settings");
   const restrictions = (await response.json()).user_settings.restrictions;
-  if (!checkpoint || checkpoint.state === "restored")
+  if (
+    !checkpoint ||
+    checkpoint.state === "restored" ||
+    (!checkpoint.strategy && checkpoint.state === "prepared")
+  )
     checkpoint = {
       instanceId: instance.id,
+      strategy: "user-locks",
+      originalUsers: users.map(({ id, locked, banned }) => ({
+        id,
+        locked,
+        banned,
+      })),
+      lockedUsers: [],
       original: {
         allowlist: restrictions.allowlist.enabled,
         allowlist_blocklist_disabled_on_sign_in:
@@ -156,12 +176,19 @@ async function main() {
       sessionsRevoked: 0,
       startedAt: new Date().toISOString(),
     };
+  if (
+    checkpoint.strategy !== "user-locks" ||
+    !checkpoint.originalUsers ||
+    !checkpoint.lockedUsers
+  )
+    throw new Error("Unsupported pause checkpoint");
   if (!process.argv.includes("--apply")) {
     console.log(
       JSON.stringify({
         ready: true,
         users: users.length,
-        action: "Close legacy sign-in/sign-up and revoke old sessions",
+        action:
+          "Close legacy sign-up, temporarily lock sign-in, and revoke old sessions",
         apply: false,
       }),
     );
@@ -173,13 +200,35 @@ async function main() {
   await save(checkpoint);
   const closed = await clerk("/instance/restrictions", "PATCH", {
     allowlist: true,
-    allowlist_blocklist_disabled_on_sign_in: false,
   });
-  if (!closed.allowlist || closed.allowlist_blocklist_disabled_on_sign_in)
+  if (!closed.allowlist)
     throw new Error("Legacy sign-in closure could not be verified");
   checkpoint.state = "closed";
   await save(checkpoint);
   for (const user of users) {
+    const original = checkpoint.originalUsers.find(
+      (source) => source.id === user.id,
+    );
+    if (!original) throw new Error("Source directory changed during pause");
+    if (!original.locked && !original.banned) {
+      // Record intent before the API write so a crash can still restore the account.
+      if (!checkpoint.lockedUsers.includes(user.id)) {
+        checkpoint.lockedUsers.push(user.id);
+        await save(checkpoint);
+      }
+      const locked = await clerk(
+        `/users/${encodeURIComponent(user.id)}/lock`,
+        "POST",
+      );
+      if (
+        !locked.locked ||
+        (locked.lockout_expires_in_seconds !== null &&
+          locked.lockout_expires_in_seconds < 1800)
+      )
+        throw new Error(
+          "Sign-in lock is too short for a safe migration; restore and review lockout policy",
+        );
+    }
     const sessions: { id: string }[] = [];
     for (let offset = 0; ; offset += 100) {
       const page = rows<{ id: string }>(
@@ -209,13 +258,34 @@ async function main() {
       ).length
     )
       throw new Error("An active legacy session remains; do not import yet");
+  for (let offset = 0; ; offset += 100) {
+    const page = rows<(typeof users)[number]>(
+      await clerk(`/users?limit=100&offset=${offset}`),
+    );
+    for (const user of page) {
+      const original = checkpoint.originalUsers.find(
+        (source) => source.id === user.id,
+      );
+      if (
+        !original ||
+        original.banned !== user.banned ||
+        (!user.banned &&
+          (!user.locked ||
+            (user.lockout_expires_in_seconds !== null &&
+              user.lockout_expires_in_seconds < 1800)))
+      )
+        throw new Error("Legacy sign-in lock could not be verified");
+    }
+    if (page.length < 100) break;
+  }
   checkpoint.state = "frozen";
   checkpoint.frozenAt = new Date().toISOString();
   await save(checkpoint);
   console.log(
     JSON.stringify({
       legacySignInPaused: true,
-      userFlagsUnchanged: true,
+      temporarySourceLocks: checkpoint.lockedUsers.length,
+      originalAccountFlagsPreservedInSnapshot: true,
       users: users.length,
       sessionsRevoked: checkpoint.sessionsRevoked,
       waitForExistingJwtExpiryBeforeSnapshot: true,

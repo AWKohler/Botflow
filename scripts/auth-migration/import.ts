@@ -78,6 +78,8 @@ async function main() {
     const freeze = decryptPrivateData<{
       instanceId: string;
       state: string;
+      strategy?: string;
+      originalUsers?: { id: string; locked: boolean; banned: boolean }[];
       users: string[];
       frozenAt: string;
     }>(
@@ -109,13 +111,59 @@ async function main() {
       throw new Error("Cannot verify legacy sign-in pause");
     const restrictions = (await settingsResponse.json()).user_settings
       .restrictions;
-    if (
-      !restrictions.allowlist.enabled ||
-      restrictions.allowlist_blocklist_disabled_on_sign_in.enabled
-    )
+    if (!restrictions.allowlist.enabled)
       throw new Error(
         "Legacy sign-in must remain paused during the production import",
       );
+    if (
+      freeze.strategy !== "user-locks" ||
+      freeze.originalUsers?.length !== snapshot.users.length
+    )
+      throw new Error("Source sign-in lock checkpoint required");
+    const checkedUsers = new Set<string>();
+    for (let offset = 0; ; offset += 100) {
+      const response = await fetch(
+        `https://api.clerk.com/v1/users?limit=100&offset=${offset}`,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.CLERK_MIGRATION_SECRET_KEY}`,
+          },
+        },
+      );
+      if (!response.ok) throw new Error("Cannot verify source sign-in locks");
+      const current = (await response.json()) as {
+        id: string;
+        banned: boolean;
+        locked: boolean;
+        lockout_expires_in_seconds: number | null;
+      }[];
+      for (const user of current) {
+        if (checkedUsers.has(user.id))
+          throw new Error("Duplicate source user during pause verification");
+        checkedUsers.add(user.id);
+        const original = freeze.originalUsers.find(
+          (entry) => entry.id === user.id,
+        );
+        const imported = snapshot.users.find((entry) => entry.id === user.id);
+        if (
+          !original ||
+          !imported ||
+          user.banned !== original.banned ||
+          imported.banned !== original.banned ||
+          imported.locked !== original.locked ||
+          (!user.banned &&
+            (!user.locked ||
+              (user.lockout_expires_in_seconds !== null &&
+                user.lockout_expires_in_seconds < 600)))
+        )
+          throw new Error(
+            "Source sign-in lock expired or original account flags changed",
+          );
+      }
+      if (current.length < 100) break;
+    }
+    if (checkedUsers.size !== snapshot.users.length)
+      throw new Error("Source directory changed before import");
   }
   const targetHost = new URL(process.env.DATABASE_URL!).hostname;
   if (
