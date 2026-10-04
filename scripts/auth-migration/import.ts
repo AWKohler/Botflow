@@ -1,5 +1,9 @@
+import { migrationArtifactPath } from "./artifacts";
 import { config } from "dotenv";
-config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
+config({
+  path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local",
+  quiet: true,
+});
 import { readFile } from "node:fs/promises";
 import { randomUUID, createHash } from "node:crypto";
 import { getIdentityDb } from "../../src/lib/auth/database";
@@ -12,7 +16,7 @@ import type { Snapshot } from "./snapshot";
 
 async function main() {
   const snapshot = decryptPrivateData<Snapshot>(
-    await readFile(".migration/clerk-snapshot.enc", "utf8"),
+    await readFile(migrationArtifactPath("clerk-snapshot.enc"), "utf8"),
     "clerk-migration-snapshot",
   );
   const { digest, ...payload } = snapshot;
@@ -147,6 +151,17 @@ async function main() {
           primary.email_address.toLowerCase(),
         ],
       );
+      for (const address of user.email_addresses) {
+        if (address.id === user.primary_email_address_id) continue;
+        await client.query(
+          "INSERT INTO identity_email(email,user_id,verified) VALUES(lower($1),$2,$3)",
+          [
+            address.email_address,
+            user.id,
+            address.verification?.status === "verified",
+          ],
+        );
+      }
       if (user.password_enabled)
         await client.query(
           `INSERT INTO identity_account (id,"accountId","providerId","userId",password) VALUES ($1,$2,'credential',$2,$3)`,

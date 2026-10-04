@@ -1,5 +1,9 @@
+import { migrationArtifactPath } from "./artifacts";
 import { config } from "dotenv";
-config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
+config({
+  path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local",
+  quiet: true,
+});
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
@@ -17,7 +21,7 @@ async function main() {
     await readFile("scripts/auth-migration/001-identity.sql", "utf8"),
   );
   const snapshot = decryptPrivateData<Snapshot>(
-    await readFile(".migration/clerk-snapshot.enc", "utf8"),
+    await readFile(migrationArtifactPath("clerk-snapshot.enc"), "utf8"),
     "clerk-migration-snapshot",
   );
   let completed = 0,

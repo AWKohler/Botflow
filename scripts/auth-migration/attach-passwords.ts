@@ -1,5 +1,9 @@
+import { migrationArtifactPath } from "./artifacts";
 import { config } from "dotenv";
-config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
+config({
+  path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local",
+  quiet: true,
+});
 import { readFile, writeFile } from "node:fs/promises";
 import { parse } from "csv-parse/sync";
 import { createHash } from "node:crypto";
@@ -10,15 +14,21 @@ import {
 import type { Snapshot } from "./snapshot";
 async function main() {
   const snapshot = decryptPrivateData<Snapshot>(
-    await readFile(".migration/clerk-snapshot.enc", "utf8"),
+    await readFile(migrationArtifactPath("clerk-snapshot.enc"), "utf8"),
     "clerk-migration-snapshot",
   );
   const rows = parse(
-    await readFile(process.argv[2] || ".migration/clerk-passwords.csv"),
+    await readFile(
+      process.argv[2] || migrationArtifactPath("clerk-passwords.csv"),
+    ),
     { columns: true, bom: true, skip_empty_lines: true },
   ) as Record<string, string>[];
   const ids = new Set(snapshot.users.map((u) => u.id));
-  if (rows.some((r) => !ids.has(r.id)) || rows.length !== ids.size || new Set(rows.map((r) => r.id)).size !== ids.size)
+  if (
+    rows.some((r) => !ids.has(r.id)) ||
+    rows.length !== ids.size ||
+    new Set(rows.map((r) => r.id)).size !== ids.size
+  )
     throw new Error("CSV does not match the snapshot user set");
   snapshot.passwords = Object.fromEntries(
     rows
@@ -37,7 +47,7 @@ async function main() {
     .update(JSON.stringify(payload))
     .digest("hex");
   await writeFile(
-    ".migration/clerk-snapshot.enc",
+    migrationArtifactPath("clerk-snapshot.enc"),
     encryptPrivateData({ ...payload, digest }, "clerk-migration-snapshot"),
     { mode: 0o600 },
   );

@@ -59,4 +59,29 @@ CREATE TABLE IF NOT EXISTS identity_migration_run (
   id text PRIMARY KEY, source_instance text NOT NULL, user_count integer NOT NULL, manifest_digest text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+-- One email namespace prevents signup/OAuth races from taking a verified alias.
+CREATE TABLE IF NOT EXISTS identity_email (
+  email text PRIMARY KEY CHECK (email=lower(email)),
+  user_id text NOT NULL REFERENCES identity_user(id) ON DELETE CASCADE,
+  verified boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS identity_email_user_idx ON identity_email(user_id);
+CREATE OR REPLACE FUNCTION identity_sync_primary_email() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO identity_email(email,user_id,verified) VALUES(lower(NEW.email),NEW.id,NEW."emailVerified")
+  ON CONFLICT(email) DO UPDATE SET verified=EXCLUDED.verified
+  WHERE identity_email.user_id=EXCLUDED.user_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Email is already assigned' USING ERRCODE='23505'; END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS identity_primary_email_namespace ON identity_user;
+CREATE TRIGGER identity_primary_email_namespace AFTER INSERT OR UPDATE OF email,"emailVerified" ON identity_user
+FOR EACH ROW EXECUTE FUNCTION identity_sync_primary_email();
+INSERT INTO identity_email(email,user_id,verified) SELECT lower(email),id,"emailVerified" FROM identity_user
+ON CONFLICT(email) DO NOTHING;
+CREATE TABLE IF NOT EXISTS identity_email_challenge (
+  user_id text NOT NULL REFERENCES identity_user(id) ON DELETE CASCADE, email text NOT NULL,
+  digest text NOT NULL, attempts integer NOT NULL DEFAULT 0, expires_at timestamptz NOT NULL,
+  sent_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,email)
+);
 COMMIT;

@@ -34,7 +34,9 @@ export function AuthForm({
   const [busy, setBusy] = useState(false);
   const [resetToken, setResetToken] = useState("");
   useEffect(() => {
-    const token = new URLSearchParams(location.search).get("token");
+    const query = new URLSearchParams(location.search);
+    if (query.get("error")) setMessage("Sign-in could not be completed. Please try again or choose another method.");
+    const token = query.get("token");
     if (token) {
       setResetToken(token);
       setStep("reset-token");

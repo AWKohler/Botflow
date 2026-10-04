@@ -1,5 +1,9 @@
+import { migrationArtifactPath } from "./artifacts";
 import { config } from "dotenv";
-config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
+config({
+  path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local",
+  quiet: true,
+});
 import { readFile } from "node:fs/promises";
 import { decryptPrivateData } from "../../src/lib/auth/crypto";
 import { getIdentityDb } from "../../src/lib/auth/database";
@@ -8,18 +12,34 @@ import type { Snapshot } from "./snapshot";
 import { isDeepStrictEqual } from "node:util";
 // Assertion diffs may contain passwords, tokens, or integration secrets.
 const assert = {
-  ok(value: unknown, message: string) { if (!value) throw new Error(message); },
-  equal(actual: unknown, expected: unknown) { if (actual !== expected) throw new Error("Identity verification mismatch; secret values suppressed"); },
-  deepEqual(actual: unknown, expected: unknown) { if (!isDeepStrictEqual(actual, expected)) throw new Error("Metadata verification mismatch; secret values suppressed"); },
+  ok(value: unknown, message: string) {
+    if (!value) throw new Error(message);
+  },
+  equal(actual: unknown, expected: unknown) {
+    if (actual !== expected)
+      throw new Error(
+        "Identity verification mismatch; secret values suppressed",
+      );
+  },
+  deepEqual(actual: unknown, expected: unknown) {
+    if (!isDeepStrictEqual(actual, expected))
+      throw new Error(
+        "Metadata verification mismatch; secret values suppressed",
+      );
+  },
 };
 async function main() {
   const snapshot = decryptPrivateData<Snapshot>(
-    await readFile(".migration/clerk-snapshot.enc", "utf8"),
+    await readFile(migrationArtifactPath("clerk-snapshot.enc"), "utf8"),
     "clerk-migration-snapshot",
   );
-  const allowRotated = process.argv.includes("--allow-rehearsal-token-rotation");
+  const allowRotated = process.argv.includes(
+    "--allow-rehearsal-token-rotation",
+  );
   if (allowRotated && process.env.AUTH_MIGRATION_TARGET !== "staging")
-    throw new Error("Production verification must compare every imported token exactly");
+    throw new Error(
+      "Production verification must compare every imported token exactly",
+    );
   const db = getIdentityDb();
   let passwordCount = 0,
     providerCount = 0,
@@ -37,6 +57,19 @@ async function main() {
     );
     assert.ok(row, `Missing identity ${source.id}`);
     assert.equal(row.email, primary.email_address.toLowerCase());
+    const addresses = await db.query(
+      "SELECT email,verified FROM identity_email WHERE user_id=$1 ORDER BY email",
+      [source.id],
+    );
+    assert.deepEqual(
+      addresses.rows,
+      source.email_addresses
+        .map((address) => ({
+          email: address.email_address.toLowerCase(),
+          verified: address.verification?.status === "verified",
+        }))
+        .sort((a, b) => a.email.localeCompare(b.email)),
+    );
     assert.equal(
       row.emailVerified,
       primary.verification?.status === "verified",
@@ -77,9 +110,13 @@ async function main() {
           data: local.accessToken,
         });
         if (currentToken === token.token) tokenCount++;
-        else if (allowRotated && new Date(local.updatedAt) > new Date(local.createdAt))
+        else if (
+          allowRotated &&
+          new Date(local.updatedAt) > new Date(local.createdAt)
+        )
           rotatedTokenCount++;
-        else throw new Error("Provider token mismatch; secret values suppressed");
+        else
+          throw new Error("Provider token mismatch; secret values suppressed");
       }
     }
   }

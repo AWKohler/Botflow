@@ -1,5 +1,9 @@
+import { migrationArtifactPath } from "./artifacts";
 import { config } from "dotenv";
-config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
+config({
+  path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local",
+  quiet: true,
+});
 import { readFile, writeFile } from "node:fs/promises";
 import { decryptPrivateData } from "../../src/lib/auth/crypto";
 import type { Snapshot } from "./snapshot";
@@ -11,7 +15,7 @@ async function main() {
     apiVersion: "2025-08-27.basil",
   });
   const snapshot = decryptPrivateData<Snapshot>(
-    await readFile(".migration/clerk-snapshot.enc", "utf8"),
+    await readFile(migrationArtifactPath("clerk-snapshot.enc"), "utf8"),
     "clerk-migration-snapshot",
   );
   const customers: Stripe.Customer[] = [];
@@ -58,20 +62,18 @@ async function main() {
           status: s.status,
           metadata: s.metadata,
         })),
-        recentPayments: intents.data
-          .slice(0, 10)
-          .map((p) => ({
-            id: p.id,
-            amount: p.amount,
-            status: p.status,
-            created: p.created,
-            metadata: p.metadata,
-            description: p.description,
-            paymentMethod:
-              typeof p.payment_method === "string"
-                ? p.payment_method
-                : p.payment_method?.id,
-          })),
+        recentPayments: intents.data.slice(0, 10).map((p) => ({
+          id: p.id,
+          amount: p.amount,
+          status: p.status,
+          created: p.created,
+          metadata: p.metadata,
+          description: p.description,
+          paymentMethod:
+            typeof p.payment_method === "string"
+              ? p.payment_method
+              : p.payment_method?.id,
+        })),
       });
     }
     result.push({
@@ -90,7 +92,7 @@ async function main() {
     });
   }
   await writeFile(
-    ".migration/billing-reconciliation.json",
+    migrationArtifactPath("billing-reconciliation.json"),
     JSON.stringify(result, null, 2),
     { mode: 0o600 },
   );

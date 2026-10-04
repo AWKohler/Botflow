@@ -29,6 +29,30 @@ export function AccountPanel({
   const [newPassword, setNewPassword] = useState("");
   const [emailOtp, setEmailOtp] = useState("");
   const [emailChangePending, setEmailChangePending] = useState(false);
+  const [emailAddresses, setEmailAddresses] = useState<
+    { email: string; verified: boolean; primary: boolean }[]
+  >([]);
+  function refreshEmails() {
+    fetch("/api/identity/emails")
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.emails) setEmailAddresses(data.emails);
+      })
+      .catch(() => {});
+  }
+  async function emailAction(action: string, address: string, code?: string) {
+    const response = await fetch("/api/identity/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, email: address, otp: code }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: { message: data.error } };
+    refreshEmails();
+    if (action === "primary")
+      await authClient.getSession({ query: { disableCookieCache: true } });
+    return {};
+  }
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -72,7 +96,9 @@ export function AccountPanel({
   const [deleteToken, setDeleteToken] = useState("");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   useEffect(() => {
-    const token = new URLSearchParams(location.search).get("delete_token");
+    const query = new URLSearchParams(location.search);
+    if (query.get("error")) setMessage("That account could not be connected. It may already belong to another Botflow user.");
+    const token = query.get("delete_token");
     if (token) {
       setDeleteToken(token);
       setTab("security");
@@ -81,7 +107,10 @@ export function AccountPanel({
   }, []);
   const [changingPlan, setChangingPlan] = useState(false);
   const [paymentSecret, setPaymentSecret] = useState("");
-  const [pendingPlan, setPendingPlan] = useState<{ plan: string; interval: string } | null>(null);
+  const [pendingPlan, setPendingPlan] = useState<{
+    plan: string;
+    interval: string;
+  } | null>(null);
   useEffect(() => {
     if (!pendingPlan) return;
     let stopped = false;
@@ -94,7 +123,10 @@ export function AccountPanel({
         const data = await response.json();
         if (stopped) return;
         if (data.subscription) setSubscription(data.subscription);
-        if (data.subscription?.plan === pendingPlan!.plan && data.subscription?.interval === pendingPlan!.interval) {
+        if (
+          data.subscription?.plan === pendingPlan!.plan &&
+          data.subscription?.interval === pendingPlan!.interval
+        ) {
           setPendingPlan(null);
           setMessage("Your new plan is active.");
           refreshBilling();
@@ -107,11 +139,16 @@ export function AccountPanel({
       if (++attempts < 15) timer = setTimeout(reconcile, 2000);
       else {
         setPendingPlan(null);
-        setMessage("Your payment was submitted. Refresh this page shortly to see the updated plan.");
+        setMessage(
+          "Your payment was submitted. Refresh this page shortly to see the updated plan.",
+        );
       }
     }
     void reconcile();
-    return () => { stopped = true; clearTimeout(timer); };
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
   }, [pendingPlan]);
   function refreshBilling() {
     fetch("/api/billing/manage")
@@ -148,6 +185,7 @@ export function AccountPanel({
   }, []);
   useEffect(() => {
     if (!session) return;
+    refreshEmails();
     setName(session.user.name);
     setUsername(session.user.username ?? "");
     authClient.listSessions().then((r) => {
@@ -197,7 +235,11 @@ export function AccountPanel({
             currentInterval={subscription?.interval ?? "month"}
             onClose={() => setChangingPlan(false)}
             onSaved={(change) => {
-              setMessage(change.scheduled ? "Your plan change has been scheduled." : "Your payment was submitted. Updating your plan…");
+              setMessage(
+                change.scheduled
+                  ? "Your plan change has been scheduled."
+                  : "Your payment was submitted. Updating your plan…",
+              );
               setChangingPlan(false);
               refreshBilling();
               if (!change.scheduled) setPendingPlan(change);
@@ -326,64 +368,116 @@ export function AccountPanel({
                   </button>
                 </form>
                 <div className="border-t border-[var(--sand-border)] pt-6">
-                  <h3 className="font-medium">Email address</h3>
-                  <p className="mt-2 text-sm">
-                    {session.user.email}{" "}
-                    {session.user.emailVerified ? "· Verified" : "· Unverified"}
-                  </p>
+                  <h3 className="font-medium">Email addresses</h3>
+                  {emailAddresses.map((address) => (
+                    <div
+                      key={address.email}
+                      className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm"
+                    >
+                      <span>
+                        {address.email} ·{" "}
+                        {address.verified ? "Verified" : "Unverified"}
+                        {address.primary ? " · Primary" : ""}
+                      </span>
+                      {!address.primary && (
+                        <div className="flex gap-3">
+                          {address.verified && (
+                            <button
+                              disabled={busy}
+                              className="underline"
+                              onClick={() =>
+                                act(
+                                  () => emailAction("primary", address.email),
+                                  "Primary email updated.",
+                                )
+                              }
+                            >
+                              Make primary
+                            </button>
+                          )}
+                          <button
+                            disabled={busy}
+                            className="underline"
+                            onClick={() =>
+                              act(
+                                () => emailAction("remove", address.email),
+                                "Email removed.",
+                              )
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                   <form
                     className="mt-4 space-y-3"
                     onSubmit={(e) => {
                       e.preventDefault();
                       act(
                         async () => {
-                          const result = emailChangePending
-                            ? await authClient.emailOtp.changeEmail({
-                                newEmail: email,
-                                otp: emailOtp,
-                              })
-                            : await authClient.emailOtp.requestEmailChange({
-                                newEmail: email,
-                              });
-                          if (!result.error)
+                          const result = await emailAction(
+                            emailChangePending ? "verify" : "request",
+                            email,
+                            emailChangePending ? emailOtp : undefined,
+                          );
+                          if (!result.error) {
                             setEmailChangePending(!emailChangePending);
+                            if (emailChangePending) {
+                              setEmail("");
+                              setEmailOtp("");
+                            }
+                          }
                           return result;
                         },
                         emailChangePending
-                          ? "Email updated."
-                          : "Check your new email for a verification code.",
+                          ? "Email verified. You can now make it primary or use it to sign in."
+                          : "Check your email for a verification code.",
                       );
                     }}
                   >
                     <label className="block text-sm">
-                      New email address
+                      Add email address
                       <input
                         type="email"
                         required
                         value={email}
+                        readOnly={emailChangePending}
                         onChange={(e) => setEmail(e.target.value)}
                         className={fieldClass}
                       />
                     </label>
-                    <>
-                      {emailChangePending && (
-                        <label className="block text-sm">
-                          Verification code
-                          <input
-                            required
-                            value={emailOtp}
-                            onChange={(e) => setEmailOtp(e.target.value)}
-                            autoComplete="one-time-code"
-                            className={fieldClass}
-                          />
-                        </label>
-                      )}
-                      <button disabled={busy} className={primaryClass}>
-                        {emailChangePending
-                          ? "Verify new email"
-                          : "Change email"}
+                    {emailChangePending && (
+                      <label className="block text-sm">
+                        Verification code
+                        <input
+                          required
+                          value={emailOtp}
+                          onChange={(e) => setEmailOtp(e.target.value)}
+                          autoComplete="one-time-code"
+                          inputMode="numeric"
+                          pattern="[0-9]{6}"
+                          className={fieldClass}
+                        />
+                      </label>
+                    )}
+                    <button disabled={busy} className={primaryClass}>
+                      {emailChangePending ? "Verify email" : "Add email"}
+                    </button>
+                    {emailChangePending && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        className="ml-3 text-sm underline"
+                        onClick={() => {
+                          setEmailChangePending(false);
+                          setEmailOtp("");
+                        }}
+                      >
+                        Cancel
                       </button>
-                    </>
+                    )}
                   </form>
                 </div>
                 <div className="border-t border-[var(--sand-border)] pt-6">
@@ -400,9 +494,16 @@ export function AccountPanel({
                           className="underline"
                           disabled={busy}
                           onClick={() =>
-                            act(() =>
-                              authClient.unlinkAccount({ accountId: a.id }),
-                            )
+                            act(async () => {
+                              const result = await authClient.unlinkAccount({
+                                accountId: a.id,
+                              });
+                              if (!result.error) {
+                                const updated = await authClient.listAccounts();
+                                if (updated.data) setAccounts(updated.data);
+                              }
+                              return result;
+                            })
                           }
                         >
                           Disconnect

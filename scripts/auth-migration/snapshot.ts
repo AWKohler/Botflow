@@ -1,9 +1,16 @@
+import { migrationArtifactPath } from "./artifacts";
 /** Read-only Clerk export. Secrets are written only inside an AES-GCM envelope. */
 import { config } from "dotenv";
-config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
+config({
+  path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local",
+  quiet: true,
+});
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { parse } from "csv-parse/sync";
-import { encryptPrivateData, decryptPrivateData } from "../../src/lib/auth/crypto";
+import {
+  encryptPrivateData,
+  decryptPrivateData,
+} from "../../src/lib/auth/crypto";
 import { createHash } from "node:crypto";
 
 async function clerk(path: string): Promise<unknown> {
@@ -107,19 +114,32 @@ async function main() {
   const csvPath = process.argv
     .find((arg) => arg.startsWith("--passwords="))
     ?.slice("--passwords=".length);
-  const reusePath = process.argv.find((arg) => arg.startsWith("--reuse-passwords-from="))?.slice("--reuse-passwords-from=".length);
-  if (csvPath && reusePath) throw new Error("Select either a fresh CSV or verified prior password hashes");
+  const reusePath = process.argv
+    .find((arg) => arg.startsWith("--reuse-passwords-from="))
+    ?.slice("--reuse-passwords-from=".length);
+  if (csvPath && reusePath)
+    throw new Error(
+      "Select either a fresh CSV or verified prior password hashes",
+    );
   let reusedInstance: string | undefined;
   if (reusePath) {
-    const prior = decryptPrivateData<Snapshot>(await readFile(reusePath, "utf8"), "clerk-migration-snapshot");
+    const prior = decryptPrivateData<Snapshot>(
+      await readFile(reusePath, "utf8"),
+      "clerk-migration-snapshot",
+    );
     reusedInstance = prior.instanceId;
     const previous = new Map(prior.users.map((user) => [user.id, user]));
     for (const user of users.filter((user) => user.password_enabled)) {
       const old = previous.get(user.id);
-      if (!user.password_last_updated_at || !old?.password_enabled ||
-          old.password_last_updated_at !== user.password_last_updated_at ||
-          !prior.passwords[user.id]?.password_digest)
-        throw new Error("A password changed or lacks a verified timestamp; a fresh Clerk CSV export is required");
+      if (
+        !user.password_last_updated_at ||
+        !old?.password_enabled ||
+        old.password_last_updated_at !== user.password_last_updated_at ||
+        !prior.passwords[user.id]?.password_digest
+      )
+        throw new Error(
+          "A password changed or lacks a verified timestamp; a fresh Clerk CSV export is required",
+        );
       passwords[user.id] = prior.passwords[user.id];
     }
   }
@@ -129,6 +149,15 @@ async function main() {
       bom: true,
       skip_empty_lines: true,
     }) as Record<string, string>[];
+    const csvIds = rows.map((row) => row.id);
+    if (
+      csvIds.length !== users.length ||
+      new Set(csvIds).size !== users.length ||
+      users.some((user) => !csvIds.includes(user.id))
+    )
+      throw new Error(
+        "CSV user set differs from the current Clerk directory; export again",
+      );
     for (const row of rows)
       if (row.password_digest)
         passwords[row.id] = {
@@ -176,9 +205,9 @@ async function main() {
   const digest = createHash("sha256")
     .update(JSON.stringify(payload))
     .digest("hex");
-  await mkdir(".migration", { recursive: true, mode: 0o700 });
+  await mkdir(migrationArtifactPath(), { recursive: true, mode: 0o700 });
   await writeFile(
-    ".migration/clerk-snapshot.enc",
+    migrationArtifactPath("clerk-snapshot.enc"),
     encryptPrivateData({ ...payload, digest }, "clerk-migration-snapshot"),
     { mode: 0o600 },
   );
@@ -192,7 +221,7 @@ async function main() {
     digest,
   };
   await writeFile(
-    ".migration/snapshot-report.json",
+    migrationArtifactPath("snapshot-report.json"),
     JSON.stringify(report, null, 2),
     { mode: 0o600 },
   );

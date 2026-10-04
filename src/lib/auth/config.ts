@@ -7,19 +7,9 @@ import { getIdentityDb } from "./database";
 import { password } from "./password";
 import { ownerIds } from "./policy";
 import { encryptPrivateData } from "./crypto";
-import { Resend } from "resend";
+import { sendAuthEmail } from "./email";
+import { emailAliases } from "./email-aliases";
 
-async function sendAuthEmail(email: string, subject: string, text: string) {
-  if (!process.env.RESEND_API_KEY)
-    throw new Error("Authentication email delivery is not configured");
-  const result = await new Resend(process.env.RESEND_API_KEY).emails.send({
-    from: process.env.EMAIL_FROM || "Botflow <noreply@botflow.io>",
-    to: email,
-    subject,
-    text,
-  });
-  if (result.error) throw new Error("Authentication email delivery failed");
-}
 export function createIdentityAuth(
   deliver: typeof sendAuthEmail = sendAuthEmail,
 ) {
@@ -117,7 +107,8 @@ export function createIdentityAuth(
                   clientSecret: process.env.AUTH_GOOGLE_CLIENT_SECRET!,
                 }).getUserInfo(tokens);
                 // Match the existing Clerk Google connection's subaddress rule.
-                if (info?.user.email && /[+=#]/.test(info.user.email)) return null;
+                if (info?.user.email && /[+=#]/.test(info.user.email))
+                  return null;
                 return info;
               },
             },
@@ -142,6 +133,7 @@ export function createIdentityAuth(
       max: 30,
     },
     plugins: [
+      emailAliases(),
       username(),
       admin({
         adminUserIds: ownerIds(),

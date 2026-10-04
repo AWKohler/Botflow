@@ -1,6 +1,10 @@
+import { migrationArtifactPath } from "./artifacts";
 /** Dry-run by default. Preserve the reconciled customer, card, price, and renewal. */
 import { config } from "dotenv";
-config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
+config({
+  path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local",
+  quiet: true,
+});
 import { readFile, writeFile } from "node:fs/promises";
 import { getIdentityDb } from "../../src/lib/auth/database";
 import { billingStripe } from "../../src/lib/billing/stripe";
@@ -23,7 +27,10 @@ interface Reconciliation {
 }
 async function main() {
   const records = JSON.parse(
-    await readFile(".migration/billing-reconciliation.json", "utf8"),
+    await readFile(
+      migrationArtifactPath("billing-reconciliation.json"),
+      "utf8",
+    ),
   ) as Reconciliation[];
   const plans = records.map((r) => {
     const matches = r.candidates.filter(
@@ -141,15 +148,20 @@ async function main() {
         "Clerk contract changed; resume reconciliation before cancellation",
       );
     if (original.canceled_at && !migrated)
-      throw new Error("The customer canceled since reconciliation; preserve their cancellation and refresh the migration plan");
-    if (migrated && (
-      migrated.metadata.botflow_user_id !== p.userId ||
-      migrated.items.data.length !== 1 ||
-      migrated.items.data[0].price.id !== price.id ||
-      migrated.items.data[0].current_period_end !== p.renewalTimestamp ||
-      !["active", "trialing"].includes(migrated.status)
-    ))
-      throw new Error("Recovered Stripe subscription differs from the verified migration contract");
+      throw new Error(
+        "The customer canceled since reconciliation; preserve their cancellation and refresh the migration plan",
+      );
+    if (
+      migrated &&
+      (migrated.metadata.botflow_user_id !== p.userId ||
+        migrated.items.data.length !== 1 ||
+        migrated.items.data[0].price.id !== price.id ||
+        migrated.items.data[0].current_period_end !== p.renewalTimestamp ||
+        !["active", "trialing"].includes(migrated.status))
+    )
+      throw new Error(
+        "Recovered Stripe subscription differs from the verified migration contract",
+      );
     const target = await db.query(
       "SELECT user_id FROM botflow_subscription WHERE user_id=$1 AND clerk_item_id=$2",
       [p.userId, p.clerkItemId],
@@ -180,7 +192,7 @@ async function main() {
         "Stripe and Clerk renewal are both enabled; reconcile the checkpoint before continuing",
       );
     await writeFile(
-      ".migration/billing-cutover-checkpoint.json",
+      migrationArtifactPath("billing-cutover-checkpoint.json"),
       JSON.stringify(
         {
           ...p,
@@ -216,7 +228,7 @@ async function main() {
         "Clerk renewal is still active; do not mark cutover complete",
       );
     await writeFile(
-      ".migration/billing-cutover-checkpoint.json",
+      migrationArtifactPath("billing-cutover-checkpoint.json"),
       JSON.stringify(
         {
           ...p,
@@ -249,7 +261,7 @@ async function main() {
         "Billing activated but database update failed; recover from checkpoint immediately",
       );
     await writeFile(
-      ".migration/billing-cutover-checkpoint.json",
+      migrationArtifactPath("billing-cutover-checkpoint.json"),
       JSON.stringify(
         {
           ...p,

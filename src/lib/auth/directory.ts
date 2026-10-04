@@ -45,11 +45,7 @@ function toUser(row: DirectoryRow, includePrivate: boolean): IdentityUser {
     emailAddress: row.email,
     verification: { status: row.emailVerified ? "verified" : "unverified" },
   };
-  const aliases =
-    row.source_primary_email &&
-    row.source_primary_email.toLowerCase() !== row.email.toLowerCase()
-      ? []
-      : (row.email_addresses ?? []);
+  const aliases = row.email_addresses ?? [];
   const renamed =
     row.name !== [row.first_name, row.last_name].filter(Boolean).join(" ");
   const emails = [
@@ -92,7 +88,7 @@ export async function getIdentityUser(
   includePrivate = false,
 ): Promise<IdentityUser> {
   const { rows } = await getIdentityDb().query<DirectoryRow>(
-    "SELECT u.*, p.*, u.username AS username FROM identity_user u LEFT JOIN identity_profile p ON p.user_id=u.id WHERE u.id=$1",
+    "SELECT u.*, p.*, u.username AS username, (SELECT COALESCE(jsonb_agg(jsonb_build_object('id','email_' || e.email,'emailAddress',e.email,'verification',jsonb_build_object('status',CASE WHEN e.verified THEN 'verified' ELSE 'unverified' END))),'[]'::jsonb) FROM identity_email e WHERE e.user_id=u.id) AS email_addresses FROM identity_user u LEFT JOIN identity_profile p ON p.user_id=u.id WHERE u.id=$1",
     [id],
   );
   if (!rows[0]) throw new Error("User not found");
@@ -163,7 +159,7 @@ export async function identityClient() {
       ) {
         const emails =
           options.emailAddress?.map((e) => e.toLowerCase()) ?? null;
-        const where = `($4::text[] IS NULL OR u.id=ANY($4)) AND ($1::text[] IS NULL OR lower(u.email)=ANY($1) OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(p.email_addresses,'[]')) e WHERE lower(e->>'emailAddress')=ANY($1)))`;
+        const where = `($4::text[] IS NULL OR u.id=ANY($4)) AND ($1::text[] IS NULL OR lower(u.email)=ANY($1) OR EXISTS (SELECT 1 FROM identity_email e WHERE e.user_id=u.id AND e.email=ANY($1)))`;
         const params = [
           emails,
           Math.min(options.limit ?? 100, 500),
@@ -172,7 +168,7 @@ export async function identityClient() {
         ];
         const [result, count] = await Promise.all([
           getIdentityDb().query<DirectoryRow>(
-            `SELECT u.*, p.*, u.username AS username FROM identity_user u LEFT JOIN identity_profile p ON p.user_id=u.id WHERE ${where} ORDER BY u."createdAt" DESC LIMIT $2 OFFSET $3`,
+            `SELECT u.*, p.*, u.username AS username, (SELECT COALESCE(jsonb_agg(jsonb_build_object('id','email_' || e.email,'emailAddress',e.email,'verification',jsonb_build_object('status',CASE WHEN e.verified THEN 'verified' ELSE 'unverified' END))),'[]'::jsonb) FROM identity_email e WHERE e.user_id=u.id) AS email_addresses FROM identity_user u LEFT JOIN identity_profile p ON p.user_id=u.id WHERE ${where} ORDER BY u."createdAt" DESC LIMIT $2 OFFSET $3`,
             params,
           ),
           getIdentityDb().query<{ count: string }>(
