@@ -5,7 +5,7 @@
  * sandbox-based.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { migrateWebContainerProjectToSandbox } from "@/lib/webcontainer-migration";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 

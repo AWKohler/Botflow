@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
+import { SignedIn, SignedOut, UserButton } from '@/components/auth';
 import { ArrowRight, Cog } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SettingsModal } from '@/components/settings/SettingsModal';

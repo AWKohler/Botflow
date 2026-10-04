@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/db';
 import { projects, chatImages, projectAssets } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '@/lib/auth/server';
 import { requireProjectAccess, sanitizeProjectForRole } from '@/lib/project-access';
 import { getUserTier } from '@/lib/tier';
 import { deleteConvexBackend } from '@/lib/convex-platform';

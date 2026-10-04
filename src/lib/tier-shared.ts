@@ -1,7 +1,7 @@
 /**
  * Client-safe tier primitives — the type, the model→tier requirement map,
  * and the rank comparison. Extracted from tier.ts (which imports
- * @clerk/nextjs/server and therefore can't be pulled into client bundles)
+ * @/lib/auth/server and therefore can't be pulled into client bundles)
  * so the agent-backend derivation — shared verbatim by AgentPanel and the
  * server routes — can gate platform-mode models by tier. tier.ts re-exports
  * everything here, so existing server imports are untouched.

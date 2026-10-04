@@ -15,7 +15,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '@/lib/auth/server';
 import { and, eq } from 'drizzle-orm';
 import { randomBytes, createHash } from 'node:crypto';
 import { getDb } from '@/db';

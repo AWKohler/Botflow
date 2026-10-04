@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { PublicWorkspaceGuard, type PublicProjectData } from "@/components/public-workspace";
 
 export const dynamic = "force-dynamic";

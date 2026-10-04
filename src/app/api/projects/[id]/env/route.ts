@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/db';
 import { projectEnvVars } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '@/lib/auth/server';
 import { requireProjectAccess } from '@/lib/project-access';
 import { materializeFrontendEnv, platformConvexEnvVar } from '@/lib/sandbox-env';
 import { isReservedEnvKey } from '@/lib/platform-env';

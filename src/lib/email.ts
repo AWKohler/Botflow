@@ -6,11 +6,11 @@
  * — reaper warnings, restoration confirmations — we go through Resend.
  *
  * Clerk is still the source of truth for the user's email address; this module
- * just pulls it via `clerkClient` when given a userId.
+ * just pulls it via `identityClient` when given a userId.
  */
 
 import { Resend } from "resend";
-import { clerkClient } from "@clerk/nextjs/server";
+import { identityClient } from "@/lib/auth/server";
 
 const FROM_DEFAULT = process.env.EMAIL_FROM || "Botflow <noreply@botflow.io>";
 const REPLY_TO_DEFAULT = process.env.EMAIL_REPLY_TO || "support@botflow.io";
@@ -67,7 +67,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
  */
 export async function getEmailForClerkUser(userId: string): Promise<{ email: string; name: string | null } | null> {
   try {
-    const client = await clerkClient();
+    const client = await identityClient();
     const user = await client.users.getUser(userId);
     const primaryId = user.primaryEmailAddressId;
     const primary =

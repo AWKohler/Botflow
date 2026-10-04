@@ -10,7 +10,7 @@
  *   so a fresh conversation segment doesn't inherit stale browser logs.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import {
   clearBrowserLog,

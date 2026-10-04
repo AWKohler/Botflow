@@ -10,7 +10,7 @@
  * Safe to call multiple times — it just rotates the signing keys.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { setupConvexAuth } from "@/lib/convex-auth-setup";
 import { getUserCredentials } from "@/lib/user-credentials";

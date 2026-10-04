@@ -12,7 +12,7 @@
  *       previous segment_id).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 

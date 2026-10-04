@@ -12,28 +12,12 @@
  * deploy.
  */
 
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '@/lib/auth/server';
 
-/** Operator accounts: prod instance, then dev instance. */
-const DEFAULT_ADMIN_USER_IDS = [
-  'user_3AXfS5TWRWoxbVQtZBs5NH3qbfw', // prod
-  'user_320xpm1gJPwkWAuyi0WMD3gpNKd', // dev
-];
-
-function adminUserIds(): string[] {
-  const raw = process.env.PANEL_ADMIN_USER_IDS;
-  if (!raw) return DEFAULT_ADMIN_USER_IDS;
-  const ids = raw
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  // An env var set to whitespace/commas only would otherwise silently open the
-  // panel to nobody OR fall back to defaults ambiguously — treat it as unset.
-  return ids.length > 0 ? ids : DEFAULT_ADMIN_USER_IDS;
-}
+import { ownerIds } from '@/lib/auth/policy';
 
 export function isPanelAdmin(userId: string): boolean {
-  return adminUserIds().includes(userId);
+  return ownerIds().includes(userId);
 }
 
 /**
@@ -42,7 +26,7 @@ export function isPanelAdmin(userId: string): boolean {
  * (not 403) on null so the panel's existence isn't advertised to non-admins.
  */
 export async function requirePanelAdmin(): Promise<string | null> {
-  const { userId } = await auth();
-  if (!userId) return null;
+  const { userId, actor } = await auth();
+  if (!userId || actor) return null;
   return isPanelAdmin(userId) ? userId : null;
 }

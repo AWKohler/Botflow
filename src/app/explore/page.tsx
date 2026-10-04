@@ -3,7 +3,7 @@
 import { Input } from "@/components/ui/input";
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
+import { SignedIn, SignedOut, SignInButton, UserButton } from "@/components/auth";
 import { Sparkles, Flame, Clock, Search as SearchIcon } from "lucide-react";
 import { ShowcaseCard, type ShowcaseProject } from "@/components/showcase/ShowcaseCard";
 import { cn } from "@/lib/utils";

@@ -21,7 +21,7 @@
  * so the UI can show a toast without us holding the response.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '@/lib/auth/server';
 import { and, eq, isNull, gt, ne } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import { getDb } from '@/db';

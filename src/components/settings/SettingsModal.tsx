@@ -2,7 +2,7 @@
 
 import { Input } from "@/components/ui/input";
 import { useEffect, useState } from 'react';
-import { SignedIn, SignedOut, SignInButton, PricingTable } from '@clerk/nextjs';
+import { SignedIn, SignedOut, SignInButton, PricingTable } from '@/components/auth';
 import { useToast } from '@/components/ui/toast';
 import { X, ExternalLink, AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
