@@ -97,6 +97,26 @@ async function main() {
   if (checkpoint && checkpoint.instanceId !== instance.id)
     throw new Error("Pause checkpoint belongs to another source");
   if (process.argv.includes("--restore")) {
+    try {
+      const retirement = decryptPrivateData<{ state: string }>(
+        await readFile(migrationArtifactPath("source-retirement.enc"), "utf8"),
+        "clerk-source-retirement",
+      );
+      if (retirement.state !== "restored")
+        throw new Error(
+          "Legacy source is retired; reconcile native identity and billing changes before restoring it",
+        );
+    } catch (error) {
+      if (
+        !(
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === "ENOENT"
+        )
+      )
+        throw error;
+    }
     if (!checkpoint || !process.argv.includes("--apply"))
       throw new Error("Restore requires the saved checkpoint and --apply");
     for (const id of checkpoint.lockedUsers || []) {
