@@ -11,7 +11,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
-import { calculateCredits, MODEL_PRICING, MODEL_COST_MULTIPLIER } from "@/lib/credits";
+import { calculateCredits, MODEL_PRICING, MODEL_COST_MULTIPLIER, costMultiplierFromPricing } from "@/lib/credits";
 import { MODEL_CONFIGS } from "@/lib/agent/models";
 import { MODEL_TIER_REQUIREMENT } from "@/lib/tier-shared";
 
@@ -78,10 +78,9 @@ describe("gpt-6-astra pricing", () => {
     assert.equal(MODEL_CONFIGS["gpt-6-astra"].maxContextTokens, 1_050_000);
     assert.equal(MODEL_CONFIGS["gpt-6-astra"].supportsImages, true);
     assert.equal(MODEL_CONFIGS["gpt-6-astra"].apiModelId, "gpt-6-astra");
-    // Max-only on the platform key: identical rates to Claude Fable 5.
+    // Max-only on the platform key (Fable-class $10/$50 list price).
     assert.equal(MODEL_TIER_REQUIREMENT["gpt-6-astra"], "max");
-    assert.equal(MODEL_COST_MULTIPLIER["gpt-6-astra"], MODEL_COST_MULTIPLIER["claude-fable-5"]);
-    assert.deepEqual(MODEL_PRICING["gpt-6-astra"], MODEL_PRICING["claude-fable-5"]);
+    assert.equal(MODEL_COST_MULTIPLIER["gpt-6-astra"], costMultiplierFromPricing("gpt-6-astra"));
   });
 });
 

@@ -37,6 +37,7 @@
  * Pure logic + one Redis touch (the heuristic) — unit-testable on fixtures.
  */
 import { redis } from "@/lib/redis";
+import { MODEL_CONFIGS, type ModelConfig } from "@/lib/agent/models";
 import type { UsageDialect } from "./providers";
 
 /** Mirrors /api/agent's cap (route-local there); env-tunable the same way. */
@@ -88,6 +89,9 @@ export interface RewriteRejection {
  *    output caps on its own).
  *  - openai-chat streams: inject stream_options.include_usage (overriding a
  *    client that set it false) — no usage frame, no billing.
+ *  - anthropic (every cred mode): normalize fields the adaptive-only models
+ *    reject, and pin ModelConfig.effort on Messages calls — see
+ *    applyAnthropicModelPolicy.
  * Non-JSON bodies are rejected (every allowlisted endpoint takes JSON).
  */
 export function rewriteRequestBody(
@@ -96,6 +100,9 @@ export function rewriteRequestBody(
     dialect: UsageDialect;
     enforceModelAllowlist: string[] | null;
     capOutputTokens: number | null;
+    /** True for the Messages endpoint itself (pins effort); count_tokens and
+     *  friends still get the 400-avoidance normalization. */
+    anthropicMessagesCall?: boolean;
   },
 ): RewriteResult | RewriteRejection {
   let parsed: Record<string, unknown>;
@@ -116,6 +123,10 @@ export function rewriteRequestBody(
         };
       }
     }
+  }
+
+  if (opts.dialect === "anthropic" && model) {
+    applyAnthropicModelPolicy(parsed, model, opts.anthropicMessagesCall === true);
   }
 
   const streaming = opts.dialect === "google"
@@ -166,6 +177,54 @@ export function rewriteRequestBody(
   }
 
   return { body: JSON.stringify(parsed), model, effectiveMaxOutput, streaming };
+}
+
+const CONFIG_BY_API_MODEL = new Map<string, ModelConfig>(
+  Object.values(MODEL_CONFIGS).map((c) => [c.apiModelId, c]),
+);
+
+/**
+ * Per-model request policy for Anthropic bodies, keyed by the body's model
+ * (Claude Code also makes background calls on models we don't configure —
+ * those pass through untouched).
+ *  - adaptiveThinkingOnly models 400 on `thinking: disabled|enabled` and on
+ *    forced tool_choice (`any` / `tool`). The in-sandbox clients are pinned
+ *    to versions that predate these models, so normalize instead of failing:
+ *    drop the explicit thinking config (omitted = adaptive) and relax forced
+ *    tool_choice to auto (keeping disable_parallel_tool_use).
+ *  - effort: users get no effort control, so the model's pinned effort
+ *    overrides whatever the client sent.
+ */
+function applyAnthropicModelPolicy(
+  body: Record<string, unknown>,
+  model: string,
+  messagesCall: boolean,
+): void {
+  const config = CONFIG_BY_API_MODEL.get(model);
+  if (!config || config.provider !== "anthropic") return;
+
+  if (config.adaptiveThinkingOnly) {
+    const thinking = body.thinking as { type?: unknown } | undefined;
+    if (thinking && (thinking.type === "disabled" || thinking.type === "enabled")) {
+      delete body.thinking;
+    }
+    const toolChoice = body.tool_choice as
+      | { type?: unknown; disable_parallel_tool_use?: unknown }
+      | undefined;
+    if (toolChoice && (toolChoice.type === "any" || toolChoice.type === "tool")) {
+      body.tool_choice = {
+        type: "auto",
+        ...(toolChoice.disable_parallel_tool_use !== undefined
+          ? { disable_parallel_tool_use: toolChoice.disable_parallel_tool_use }
+          : {}),
+      };
+    }
+  }
+
+  if (config.effort && messagesCall) {
+    const outputConfig = (body.output_config ?? {}) as Record<string, unknown>;
+    body.output_config = { ...outputConfig, effort: config.effort };
+  }
 }
 
 /* ------------------------------ usage parsing ------------------------------ */

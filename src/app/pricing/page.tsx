@@ -73,7 +73,7 @@ const comparisonGroups: {
         values: { free: '3', pro: '20', max: 'Unlimited' },
       },
       {
-        feature: 'AI agent (Claude, GPT-5, Fireworks)',
+        feature: 'AI agent (Claude, GPT-6, Fireworks)',
         values: { free: true, pro: true, max: true },
       },
       {

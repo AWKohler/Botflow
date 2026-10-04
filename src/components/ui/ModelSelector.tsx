@@ -45,14 +45,12 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
   'fireworks-minimax-m3': 'free',
   'fireworks-kimi-k2p7': 'free',
   'fireworks-kimi-k3': 'pro',   // Pro+ for server key; free requires BYOK (Fireworks)
-  'gpt-6-astra': 'max',         // Max-only on server key; free/pro require BYOK/OAuth
-  'gpt-5.6-sol': 'pro',         // Pro+ for server key; free requires BYOK/OAuth
-  'gpt-5.6-terra': 'pro',       // Pro+
-  'gpt-5.6-luna': 'free',       // free — default model, served on the platform key
-  'gpt-5.5': 'pro',             // Pro+
-  'claude-sonnet-5': 'pro',     // Pro+
-  'claude-opus-5': 'pro',       // Pro+
-  'claude-fable-5': 'max',      // Max-only
+  'gpt-6-astra': 'max',         // Max-only
+  'gpt-6.1-sol': 'pro',         // Pro+ for server key; free requires BYOK/OAuth
+  'gpt-6-luna': 'free',         // free — default model, served on the platform key
+  'claude-sonnet-5-5': 'pro',   // Pro+
+  'claude-opus-5-5': 'pro',     // Pro+
+  'claude-fable-5-1': 'max',    // Max-only
   'gemini-3.1-pro-preview': 'pro', // Pro+ for server key; free requires BYOK
   'grok-4.5': 'pro',            // Pro+ for server key; free requires BYOK (xAI)
 };
@@ -62,37 +60,23 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
  * Selecting these skips the "missing API key" BYOK check.
  */
 const SERVER_KEY_MODELS = new Set<ModelId>([
-  'gpt-6-astra',
   'fireworks-minimax-m3',
   'fireworks-kimi-k2p7',
   'fireworks-kimi-k3',
-  'gpt-5.6-sol',
-  'gpt-5.6-terra',
-  'gpt-5.6-luna',
-  'gpt-5.5',
-  'claude-sonnet-5',
-  'claude-opus-5',
-  'claude-fable-5',
+  'gpt-6-astra',
+  'gpt-6.1-sol',
+  'gpt-6-luna',
+  'claude-sonnet-5-5',
+  'claude-opus-5-5',
+  'claude-fable-5-1',
   'gemini-3.1-pro-preview',
   'grok-4.5',
 ]);
 
-/** Rounded per-model cost multiplier for user display */
-const MODEL_COST_LABEL: Record<ModelId, string> = {
-  'fireworks-minimax-m3': 'x1',
-  'fireworks-kimi-k2p7': 'x3',
-  'gpt-5.6-luna': 'x3',
-  'grok-4.5': 'x4',
-  'gemini-3.1-pro-preview': 'x5',
-  'claude-sonnet-5': 'x5',
-  'gpt-5.6-terra': 'x6',
-  'fireworks-kimi-k3': 'x6',
-  'claude-opus-5': 'x10',
-  'gpt-5.6-sol': 'x12',
-  'gpt-5.5': 'x12',
-  'claude-fable-5': 'x20',
-  'gpt-6-astra': 'x20',
-};
+/** Per-model cost hint ("x6", "x0.3") — derived from pricing; see ModelConfig.costMultiplier. */
+function costLabel(modelId: ModelId): string {
+  return `x${MODEL_CONFIGS[modelId].costMultiplier}`;
+}
 
 const TIER_RANK: Record<string, number> = { free: 0, pro: 1, max: 2 };
 const TIER_LABELS: Record<string, string> = { pro: 'Pro', max: 'Max' };
@@ -103,23 +87,9 @@ function formatContextSize(tokens: number): string {
   return String(tokens);
 }
 
-// Order: cheapest → most expensive (by credit multiplier)
-const MODEL_ORDER: ModelId[] = [
-  'fireworks-minimax-m3',  // x1
-  'fireworks-kimi-k2p7',     // x3
-  'gpt-5.6-luna',            // x3
-  'grok-4.5',                // x4
-  'gemini-3.1-pro-preview',  // x5
-  'claude-sonnet-5',         // x5
-  'gpt-5.6-terra',           // x6
-  'fireworks-kimi-k3',       // x6
-  'claude-opus-5',           // x10
-  'gpt-5.6-sol',             // x12
-  // 'gpt-5.5',              // x12 — hidden from the selector (kept in the
-  //                         // registry/pricing so existing projects still run).
-  'claude-fable-5',          // x20 — Max-only
-  'gpt-6-astra',             // x20 — same rates as Fable 5 on every axis (Max-only)
-];
+// Order: cheapest → most expensive (by cost multiplier; stable for ties)
+const MODEL_ORDER: ModelId[] = (Object.keys(MODEL_CONFIGS) as ModelId[])
+  .sort((a, b) => MODEL_CONFIGS[a].costMultiplier - MODEL_CONFIGS[b].costMultiplier);
 
 export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', className, useTogetherKimi = false, leading, openDirection = 'down' }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
@@ -261,7 +231,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
 
             const tierBadge = requiredTierRank > 0 ? TIER_LABELS[requiredTier] : null;
             // Kimi K2.7 is x3 on both providers — Together homologated to Fireworks pricing.
-            const costLabel = MODEL_COST_LABEL[modelId];
+            const modelCostLabel = costLabel(modelId);
 
             return (
               <button
@@ -300,7 +270,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                   <div className="flex items-center gap-2 text-[11px] text-muted mt-0.5">
                     <span>{formatContextSize(config.maxContextTokens)} context</span>
                     <span className="text-muted/50">·</span>
-                    <span className="font-medium">{costLabel}</span>
+                    <span className="font-medium">{modelCostLabel}</span>
                   </div>
                   {isDisabled && (
                     <div className="text-[11px] text-muted mt-0.5">{disabledReason}</div>

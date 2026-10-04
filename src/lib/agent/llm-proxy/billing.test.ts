@@ -77,11 +77,11 @@ describe("settlement credit parity with /api/agent", () => {
 
   test("personal-cred modes bill zero, exactly like isUsingPersonalCredentials", () => {
     assert.equal(
-      computeSettlementCredits(usageOf(50_000, 2_000, 10_000, 0), "gpt-5.6-terra", "byok"),
+      computeSettlementCredits(usageOf(50_000, 2_000, 10_000, 0), "gpt-6.1-sol", "byok"),
       0,
     );
     assert.equal(
-      computeSettlementCredits(usageOf(50_000, 2_000, 10_000, 0), "claude-sonnet-5", "oauth"),
+      computeSettlementCredits(usageOf(50_000, 2_000, 10_000, 0), "claude-sonnet-5-5", "oauth"),
       0,
     );
   });
@@ -107,8 +107,8 @@ describe("settlement credit parity with /api/agent", () => {
   });
 
   test("anthropic cache WRITES are billed (never free)", () => {
-    const withWrite = computeSettlementCredits(usageOf(10_000, 100, 0, 8_000), "claude-opus-5", "platform");
-    const withoutWrite = computeSettlementCredits(usageOf(2_000, 100, 0, 0), "claude-opus-5", "platform");
+    const withWrite = computeSettlementCredits(usageOf(10_000, 100, 0, 8_000), "claude-opus-5-5", "platform");
+    const withoutWrite = computeSettlementCredits(usageOf(2_000, 100, 0, 0), "claude-opus-5-5", "platform");
     assert.ok(withWrite > withoutWrite);
   });
 
@@ -124,28 +124,28 @@ describe("settlement credit parity with /api/agent", () => {
     assert.ok(Math.abs(credits - expected) <= 1, `grok credits ${credits} vs xAI-derived ${expected}`);
   });
 
-  test("GPT-5.6 cache WRITES bill at the 1.25× premium (> same tokens as plain input)", () => {
+  test("GPT-6 cache WRITES bill at the 1.25× premium (> same tokens as plain input)", () => {
     // usageOf's first arg is prompt_tokens (the total) — reads AND writes are
     // SUBSETS of it, not added on top (live-verified). Reclassifying 800 tokens
     // from plain uncached (1×) to cache-WRITE (1.25×) must cost strictly more.
-    const asWrite = computeSettlementCredits(usageOf(12_800, 300, 11_500, 800), "gpt-5.6-sol", "platform");
-    const asPlainInput = computeSettlementCredits(usageOf(12_800, 300, 11_500, 0), "gpt-5.6-sol", "platform");
+    const asWrite = computeSettlementCredits(usageOf(12_800, 300, 11_500, 800), "gpt-6.1-sol", "platform");
+    const asPlainInput = computeSettlementCredits(usageOf(12_800, 300, 11_500, 0), "gpt-6.1-sol", "platform");
     // Writes cost 1.25× input, so reclassifying them as 1× plain input is cheaper.
     assert.ok(asWrite > asPlainInput, `write premium should exceed plain input: ${asWrite} vs ${asPlainInput}`);
-    // And Terra/Luna price writes proportionally to their own input rate.
+    // And Luna prices writes proportionally to their own input rate.
     assert.ok(
-      computeSettlementCredits(usageOf(2_000, 100, 0, 1_600), "gpt-5.6-luna", "platform") >
-      computeSettlementCredits(usageOf(2_000, 100, 0, 0), "gpt-5.6-luna", "platform"),
+      computeSettlementCredits(usageOf(2_000, 100, 0, 1_600), "gpt-6-luna", "platform") >
+      computeSettlementCredits(usageOf(2_000, 100, 0, 0), "gpt-6-luna", "platform"),
     );
   });
 });
 
 describe("reservation estimate", () => {
   test("input bounded by the model's context window (base64 blobs can't over-reserve)", () => {
-    const huge = estimateRequestCredits("claude-sonnet-5", 100 * 1024 * 1024, 32_000);
+    const huge = estimateRequestCredits("claude-sonnet-5-5", 100 * 1024 * 1024, 32_000);
     const atContext = estimateRequestCredits(
-      "claude-sonnet-5",
-      MODEL_CONFIGS["claude-sonnet-5"].maxContextTokens * 4,
+      "claude-sonnet-5-5",
+      MODEL_CONFIGS["claude-sonnet-5-5"].maxContextTokens * 4,
       32_000,
     );
     assert.equal(huge, atContext);
@@ -180,7 +180,7 @@ describe("model reverse-mapping", () => {
   test("apiModelIds map back; Together kimi maps to the fireworks pricing id", () => {
     assert.equal(modelIdForProviderModel("accounts/fireworks/models/kimi-k2p7-code"), "fireworks-kimi-k2p7");
     assert.equal(modelIdForProviderModel("moonshotai/Kimi-K2.7-Code"), "fireworks-kimi-k2p7");
-    assert.equal(modelIdForProviderModel("claude-sonnet-5"), "claude-sonnet-5");
+    assert.equal(modelIdForProviderModel("claude-sonnet-5-5"), "claude-sonnet-5-5");
     assert.equal(modelIdForProviderModel("claude-haiku-4-5-20251001"), null); // CC background model — skip row
     assert.equal(modelIdForProviderModel(null), null);
   });

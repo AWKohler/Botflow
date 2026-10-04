@@ -41,7 +41,10 @@ const MODEL_DISPLAY: Record<string, string> = {
   'fireworks-kimi-k2p6': 'Kimi K2.6', // historical usage records
   'fireworks-kimi-k3': 'Kimi K3',
 
-  'claude-sonnet-5': 'Claude Sonnet 5',
+  'claude-sonnet-5-5': 'Claude Sonnet 5.5',
+  'claude-opus-5-5': 'Claude Opus 5.5',
+  'claude-fable-5-1': 'Claude Fable 5.1',
+  'claude-sonnet-5': 'Claude Sonnet 5', // historical usage records
   'claude-sonnet-4.5': 'Claude Sonnet 4', // legacy usage records
   'claude-sonnet-4.6': 'Claude Sonnet 4.6', // legacy usage records
   'claude-sonnet-4-6': 'Claude Sonnet 4.6', // legacy usage records
@@ -54,7 +57,9 @@ const MODEL_DISPLAY: Record<string, string> = {
   'claude-opus-5': 'Claude Opus 5',
   'claude-fable-5': 'Claude Fable 5',
   'gpt-6-astra': 'GPT-6 Astra',
-  'gpt-5.6-sol': 'GPT-5.6 Sol',
+  'gpt-6.1-sol': 'GPT-6.1 Sol',
+  'gpt-6-luna': 'GPT-6 Luna',
+  'gpt-5.6-sol': 'GPT-5.6 Sol', // historical usage records (5.6 family + 5.5)
   'gpt-5.6-terra': 'GPT-5.6 Terra',
   'gpt-5.6-luna': 'GPT-5.6 Luna',
   'gpt-5.3-codex': 'GPT-5.3',  // historical usage rows

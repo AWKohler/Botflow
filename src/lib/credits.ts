@@ -13,7 +13,7 @@ import { redis } from './redis';
 import { getDb } from '@/db';
 import { usageRecords } from '@/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
-import type { ModelId } from './agent/models';
+import { MODEL_CONFIGS, type ModelId } from './agent/models';
 import type { Tier } from './tier';
 
 // ─── Env-var helpers ──────────────────────────────────────────────────────────
@@ -29,236 +29,149 @@ function envInt(key: string, fallback: number): number {
 // Base unit: $0.30 / MTok (MiniMax uncached input price)
 // Rate = model_price_per_MTok / 0.30
 
-interface ModelPricing {
+export interface ModelPricing {
   input: number;         // credits per uncached input token
   cachedInput: number;   // credits per cached input token
   output: number;        // credits per output token
-  cacheWrite?: number;   // credits per cache-write token (Anthropic only)
+  cacheWrite?: number;   // credits per cache-write token (absent = billed as uncached input)
 }
 
 const BASE_PRICE = 0.30; // MiniMax input $/MTok — our credit base unit
 
+/** Build a pricing row from $/MTok list prices. */
+function perMTok(input: number, cachedInput: number, output: number, cacheWrite?: number): ModelPricing {
+  return {
+    input: input / BASE_PRICE,
+    cachedInput: cachedInput / BASE_PRICE,
+    output: output / BASE_PRICE,
+    ...(cacheWrite !== undefined ? { cacheWrite: cacheWrite / BASE_PRICE } : {}),
+  };
+}
+
+// All rates are zero-markup pass-through of the provider's list price
+// (verified 2026-10-04 against platform.claude.com/docs/en/about-claude/pricing
+// and developers.openai.com/api/docs/pricing). Arguments: input, cached read,
+// output, cache write — all $/MTok.
 export const MODEL_PRICING: Record<string, ModelPricing> = {
-  'fireworks-minimax-m3': {
-    input:       0.30 / BASE_PRICE,   // 1.0
-    cachedInput: 0.06 / BASE_PRICE,   // 0.2
-    output:      1.20 / BASE_PRICE,   // 4.0
-  },
-  'fireworks-kimi-k2p7': {
-    input:       0.95 / BASE_PRICE,   // 3.17
-    cachedInput: 0.19 / BASE_PRICE,   // 0.63
-    output:      4.00 / BASE_PRICE,   // 13.33
-  },
-  'fireworks-kimi-k3': {
-    input:       3.00 / BASE_PRICE,   // 10.0
-    cachedInput: 0.30 / BASE_PRICE,   // 1.0
-    output:     15.00 / BASE_PRICE,   // 50.0
-  },
-  'gpt-5.5': {
-    input:       5.00 / BASE_PRICE,   // 16.67
-    cachedInput: 0.50 / BASE_PRICE,   // 1.67
-    output:      30.00 / BASE_PRICE,  // 100.0
-  },
-  // GPT-6 Astra — flagship. Standard rates below apply at or under 272K input
-  // tokens; past that the whole request reprices (ASTRA_LONG_CONTEXT_PRICING).
-  // Numerically identical to Claude Fable 5 on all four axes.
-  'gpt-6-astra': {
-    input:      10.00 / BASE_PRICE,   //  33.33
-    cachedInput: 1.00 / BASE_PRICE,   //   3.33
-    output:     50.00 / BASE_PRICE,   // 166.67
-    cacheWrite: 12.50 / BASE_PRICE,   //  41.67 (1.25× input)
-  },
-  // GPT-5.6 family. Flat pricing (no context-length tier). Unlike earlier
-  // OpenAI models, 5.6 bills cache WRITES at 1.25× uncached input — modeled via
-  // cacheWrite below. (Only charged when the meter reports cacheWriteTokens; see
-  // usage-meter — the OpenAI dialect must extract 5.6's cache-write count for it
-  // to take effect, otherwise writes fall back to plain input like the old models.)
-  'gpt-5.6-sol': {                    // flagship — same rates as GPT-5.5
-    input:       5.00 / BASE_PRICE,   // 16.67
-    cachedInput: 0.50 / BASE_PRICE,   // 1.67
-    output:      30.00 / BASE_PRICE,  // 100.0
-    cacheWrite:  6.25 / BASE_PRICE,   // 20.83 (1.25× input)
-  },
-  'gpt-5.6-terra': {                  // balanced — succeeds GPT-5.4
-    input:       2.50 / BASE_PRICE,   // 8.33
-    cachedInput: 0.25 / BASE_PRICE,   // 0.83
-    output:      15.00 / BASE_PRICE,  // 50.0
-    cacheWrite:  3.125 / BASE_PRICE,  // 10.42 (1.25× input)
-  },
-  'gpt-5.6-luna': {                   // fast/cheap — succeeds GPT-5.3
-    input:       1.00 / BASE_PRICE,   // 3.33
-    cachedInput: 0.10 / BASE_PRICE,   // 0.33
-    output:      6.00 / BASE_PRICE,   // 20.0
-    cacheWrite:  1.25 / BASE_PRICE,   // 4.17 (1.25× input)
-  },
-  // Claude Sonnet 5 — standard (regular) pricing, effective 2026-09-01 onward.
-  // Identical to the prior Sonnet 4.6 rates ($3 / $15 per MTok). Until then the
-  // introductory pricing below applies; the date switch lives in calculateCredits().
-  'claude-sonnet-5': {
-    input:       3.00 / BASE_PRICE,   // 10.0
-    cachedInput: 0.30 / BASE_PRICE,   // 1.0  (cache hit/refresh)
-    output:      15.00 / BASE_PRICE,  // 50.0
-    cacheWrite:  3.75 / BASE_PRICE,   // 12.5 (5-min ephemeral cache write)
-  },
-  // Claude Opus 5 — drop-in successor to Opus 4.8 at identical pricing
-  // ($5 / $0.50 / $25 per MTok, 1.25× cache write).
-  'claude-opus-5': {
-    input:       5.00 / BASE_PRICE,   // 16.67
-    cachedInput: 0.50 / BASE_PRICE,   // 1.67 (cache hit/refresh)
-    output:      25.00 / BASE_PRICE,  // 83.33
-    cacheWrite:  6.25 / BASE_PRICE,   // 20.83 (5-min ephemeral cache write)
-  },
-  // Claude Fable 5 ("Mythos") — exactly 2× Opus 5/4.8 on every axis. Zero-markup
-  // pass-through, same as every other model: rate = $/MTok ÷ 0.30.
-  'claude-fable-5': {
-    input:      10.00 / BASE_PRICE,   // 33.33
-    cachedInput: 1.00 / BASE_PRICE,   //  3.33 (cache hit/refresh)
-    output:     50.00 / BASE_PRICE,   // 166.67
-    cacheWrite: 12.50 / BASE_PRICE,   // 41.67 (5-min ephemeral cache write)
-  },
-  // Gemini 3.1 Pro pricing at ≤200K context — the >200K tier handled in calculateCredits()
-  'gemini-3.1-pro-preview': {
-    input:       2.00 / BASE_PRICE,   // 6.67
-    cachedInput: 0.20 / BASE_PRICE,   // 0.67
-    output:     12.00 / BASE_PRICE,   // 40.0
-    cacheWrite:  2.00 / BASE_PRICE,   // 6.67 — cache write billed at full input price
-  },
-  // xAI Grok 4.5. Pricing verified live against the API's cost_in_usd_ticks
-  // (1 tick = 1e-10 USD): $2 uncached / $0.50 cached / $6 output per MTok.
-  // Cache is passive/read-only (openai-chat cached_tokens, a subset of
-  // prompt_tokens) — no cache-write billing, so no cacheWrite field. Note the
-  // discount is only 75% ($2→$0.50), less than the 90% on most other models.
-  'grok-4.5': {
-    input:       2.00 / BASE_PRICE,   // 6.67
-    cachedInput: 0.50 / BASE_PRICE,   // 1.67
-    output:      6.00 / BASE_PRICE,   // 20.0
-  },
+  'fireworks-minimax-m3': perMTok(0.30, 0.06, 1.20),
+  'fireworks-kimi-k2p7':  perMTok(0.95, 0.19, 4.00),
+  'fireworks-kimi-k3':    perMTok(3.00, 0.30, 15.00),
+
+  // GPT-6 family. Cache writes bill at 1.25× input (GPT-5.6+ explicit
+  // caching; the meter extracts cache_write_tokens). Reads are 0.1× input,
+  // except 6.1 Sol at 0.05×. >272K prompts use LONG_CONTEXT_PRICING below.
+  'gpt-6-astra': perMTok(10.00, 1.00, 50.00, 12.50),
+  'gpt-6.1-sol': perMTok( 2.00, 0.10, 10.00,  2.50),
+  'gpt-6-luna':  perMTok( 0.10, 0.01,  0.50,  0.125),
+
+  // Claude 5.5 / 5.1 generation. Cache write = 5-minute ephemeral (1.25×
+  // input) — the only TTL Botflow requests. Reads: Opus 5.5 is 0.05× input,
+  // Fable 5.1 is 0.025×, Sonnet 5.5 the standard 0.1×. Flat pricing across
+  // the full 1M window (no long-context tier).
+  'claude-opus-5-5':   perMTok( 4.00, 0.20, 20.00,  5.00),
+  'claude-sonnet-5-5': perMTok( 2.00, 0.20, 10.00,  2.50),
+  'claude-fable-5-1':  perMTok(10.00, 0.25, 50.00, 12.50),
+
+  // Gemini 3.1 Pro at ≤200K — cache write billed at full input price.
+  'gemini-3.1-pro-preview': perMTok(2.00, 0.20, 12.00, 2.00),
+  // xAI Grok 4.5. Verified live against the API's cost_in_usd_ticks.
+  // Cache is passive/read-only (no cache-write billing); note the read
+  // discount is only 75% ($2→$0.50).
+  'grok-4.5': perMTok(2.00, 0.50, 6.00),
+
+  // ── Retired ids (resolveModelId maps them to successors) ──────────────────
+  // Kept ONLY so a proxy token minted before a deploy still settles at the
+  // real price instead of the MiniMax fallback. Current list prices.
+  'gpt-5.6-sol':     perMTok(4.00, 0.40, 20.00, 5.00),
+  'gpt-5.6-terra':   perMTok(2.00, 0.20, 12.00, 2.50),
+  'gpt-5.6-luna':    perMTok(0.20, 0.02,  1.20, 0.25),
+  'gpt-5.5':         perMTok(5.00, 0.50, 30.00),
+  'claude-opus-5':   perMTok(5.00, 0.50, 25.00, 6.25),
+  'claude-sonnet-5': perMTok(2.00, 0.20, 10.00, 2.50),
+  'claude-fable-5':  perMTok(10.00, 1.00, 50.00, 12.50),
 };
-
-// Gemini 3.1 Pro pricing at >200K context length
-const GEMINI_LONG_CONTEXT_PRICING: ModelPricing = {
-  input:       4.00 / BASE_PRICE,   // 13.33
-  cachedInput: 0.40 / BASE_PRICE,   // 1.33
-  output:     18.00 / BASE_PRICE,   // 60.0
-  cacheWrite:  4.00 / BASE_PRICE,   // 13.33
-};
-
-const GEMINI_LONG_CONTEXT_THRESHOLD = 200_000;
-
-// Grok 4.5 pricing above its long_context_threshold (200K) — EVERY axis
-// doubles, per xAI's own model metadata (prompt_text_token_price_long_context
-// 40000 = $4/MTok, cached 10000 = $1, completion 120000 = $12; all 2× the
-// ≤200K rates). Verified live against GET api.x.ai/v1/models/grok-4.5.
-const GROK_LONG_CONTEXT_PRICING: ModelPricing = {
-  input:       4.00 / BASE_PRICE,   // 13.33
-  cachedInput: 1.00 / BASE_PRICE,   // 3.33
-  output:     12.00 / BASE_PRICE,   // 40.0
-};
-
-const GROK_LONG_CONTEXT_THRESHOLD = 200_000;
-
-// GPT-6 Astra above its 272K input threshold. Input, cache read and cache
-// write all double; output is 1.5×. OpenAI applies these to the ENTIRE
-// request, not just the tokens past the threshold — same whole-table swap the
-// Gemini/Grok tiers use. Verified against the models.dev catalog entry
-// (cost.tiers[0], tier.type "context", size 272000).
-const ASTRA_LONG_CONTEXT_PRICING: ModelPricing = {
-  input:      20.00 / BASE_PRICE,   //  66.67 (2×)
-  cachedInput: 2.00 / BASE_PRICE,   //   6.67 (2×)
-  output:     75.00 / BASE_PRICE,   // 250.0  (1.5×)
-  cacheWrite: 25.00 / BASE_PRICE,   //  83.33 (2×)
-};
-
-const ASTRA_LONG_CONTEXT_THRESHOLD = 272_000;
-
-// Claude Sonnet 5 introductory pricing — $2 input / $10 output per MTok, a
-// temporary discount from the standard $3 / $15 rates in MODEL_PRICING above.
-// Anthropic applies it through 2026-08-31; standard pricing resumes 2026-09-01.
-// Cache write (5-min) and cache read follow the usual 1.25× / 0.1× of input.
-const SONNET5_INTRO_PRICING: ModelPricing = {
-  input:       2.00 / BASE_PRICE,   // 6.67
-  cachedInput: 0.20 / BASE_PRICE,   // 0.67 (cache hit/refresh)
-  output:     10.00 / BASE_PRICE,   // 33.33
-  cacheWrite:  2.50 / BASE_PRICE,   // 8.33 (5-min ephemeral cache write)
-};
-
-// First instant standard pricing applies (UTC). Before this, Sonnet 5 uses the
-// introductory rates above; on/after it, the standard rates in MODEL_PRICING.
-const SONNET5_INTRO_END = Date.UTC(2026, 8, 1); // 2026-09-01T00:00:00Z (month is 0-indexed)
 
 /**
- * Rounded per-model cost multiplier for frontend display.
- * Shown in model selector dropdown to give users a sense of relative cost.
- *
- * Kimi K2.7 is x3 ($0.95 input → 3.17 ≈ 3) on both Fireworks and Together AI —
- * Together homologated its pricing to match Fireworks, so the provider no longer
- * affects the cost.
+ * Long-context ("long prompt") tiers. When a single request's TOTAL prompt —
+ * uncached + cache-read + cache-write tokens — exceeds `threshold`, the whole
+ * request bills at `pricing` (providers price the request, not the marginal
+ * tokens). Per-request granularity matters: callers pass one API call's
+ * usage, never a turn's multi-call sum.
  */
-export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = {
-  'fireworks-minimax-m3': 1,
-  'fireworks-kimi-k2p7': 3,
-  'gpt-5.6-luna': 3,
-  'grok-4.5': 4,
-  'gemini-3.1-pro-preview': 5,
-  'claude-sonnet-5': 5,
-  'gpt-5.6-terra': 6,
-  'fireworks-kimi-k3': 6,
-  'claude-opus-5': 10,
-  'gpt-5.6-sol': 12,
-  'gpt-5.5': 12,
-  'claude-fable-5': 20,
-  'gpt-6-astra': 20,
+export const LONG_CONTEXT_PRICING: Record<string, { threshold: number; pricing: ModelPricing }> = {
+  // OpenAI: >272K input tokens — 2× input/cache, 1.5× output.
+  'gpt-6-astra': { threshold: 272_000, pricing: perMTok(20.00, 2.00, 75.00, 25.00) },
+  'gpt-6.1-sol': { threshold: 272_000, pricing: perMTok( 4.00, 0.20, 15.00,  5.00) },
+  'gpt-6-luna':  { threshold: 272_000, pricing: perMTok( 0.20, 0.02,  0.75,  0.25) },
+  'gpt-5.6-sol': { threshold: 272_000, pricing: perMTok( 8.00, 0.80, 30.00, 10.00) }, // retired id
+  // Gemini 3.1 Pro: >200K.
+  'gemini-3.1-pro-preview': { threshold: 200_000, pricing: perMTok(4.00, 0.40, 18.00, 4.00) },
+  // Grok 4.5: every rate doubles above 200K, per xAI's own model metadata
+  // (verified live against GET api.x.ai/v1/models/grok-4.5).
+  'grok-4.5': { threshold: 200_000, pricing: perMTok(4.00, 1.00, 12.00) },
 };
+
+/**
+ * Representative agent-loop request used for the selector's "xN" cost hint:
+ * per 100 prompt tokens, 85 are cache reads, 10 cache writes (the new tool
+ * results/messages appended each step), 5 uncached; plus 3 output tokens.
+ * Prompt-dominated, as agent loops are. Short-context rates.
+ */
+const COST_HINT_MIX = { uncached: 0.05, cachedRead: 0.85, cacheWrite: 0.10, output: 0.03 };
+
+function blendedCost(p: ModelPricing): number {
+  return (
+    COST_HINT_MIX.uncached * p.input +
+    COST_HINT_MIX.cachedRead * p.cachedInput +
+    COST_HINT_MIX.cacheWrite * (p.cacheWrite ?? p.input) +
+    COST_HINT_MIX.output * p.output
+  );
+}
+
+/**
+ * The selector multiplier a model's pricing implies: blended cost over the
+ * mix above relative to MiniMax-M3 (= x1). Rounded to one decimal below 1,
+ * else to the nearest integer. MODEL_CONFIGS[*].costMultiplier must equal
+ * this (enforced in billing-invariants.test.ts).
+ */
+export function costMultiplierFromPricing(model: string): number {
+  const ratio = blendedCost(MODEL_PRICING[model]) / blendedCost(MODEL_PRICING['fireworks-minimax-m3']);
+  return ratio < 1 ? Math.max(0.1, Math.round(ratio * 10) / 10) : Math.round(ratio);
+}
+
+/** Per-model cost multiplier for frontend display (mirrors MODEL_CONFIGS). */
+export const MODEL_COST_MULTIPLIER: Record<ModelId, number> = Object.fromEntries(
+  Object.values(MODEL_CONFIGS).map((c) => [c.id, c.costMultiplier]),
+) as Record<ModelId, number>;
 
 export interface CreditCalculationInput {
   model: ModelId;
   inputTokens: number;      // uncached input tokens (Anthropic: usage.inputTokens; OpenAI/FW: inputTokens - cachedRead)
   outputTokens: number;
   cachedReadTokens: number;  // tokens served from cache
-  cacheWriteTokens: number;  // tokens written to cache (Anthropic only)
+  cacheWriteTokens: number;  // tokens written to cache
+}
+
+/** The pricing row a single request bills at, including the long-context tier. */
+export function pricingForRequest(
+  model: string,
+  promptTokens: number,
+): ModelPricing {
+  const long = LONG_CONTEXT_PRICING[model];
+  if (long && promptTokens > long.threshold) return long.pricing;
+  // Fallback for an unknown id: treat as MiniMax pricing
+  return MODEL_PRICING[model] ?? MODEL_PRICING['fireworks-minimax-m3'];
 }
 
 /**
- * Calculate credits for a completed request using per-token-type pricing.
- * This replaces the old flat-multiplier rawToCredits() function.
+ * Calculate credits for ONE completed API request using per-token-type
+ * pricing. The long-context tier keys off this request's total prompt, so
+ * never pass a multi-request sum.
  */
 export function calculateCredits(params: CreditCalculationInput): number {
   const { model, inputTokens, outputTokens, cachedReadTokens, cacheWriteTokens } = params;
 
-  let pricing = MODEL_PRICING[model];
-  if (!pricing) {
-    // Fallback: treat as MiniMax pricing
-    pricing = MODEL_PRICING['fireworks-minimax-m3'];
-  }
-
-  // Prompt size the long-context tiers are measured against. The three input
-  // slices are disjoint (uncached + cache reads + cache writes), so they sum
-  // to the real prompt. Gemini and Grok never report cache writes — the google
-  // dialect doesn't parse them and xAI's cache is read-only — so that term is
-  // a no-op for those two; it matters for Astra, which does bill writes and
-  // would otherwise under-trigger its tier on long cached prompts.
-  const totalInputTokens = inputTokens + cachedReadTokens + cacheWriteTokens;
-
-  // Gemini 3.1 Pro: use higher pricing tier if total input context exceeds 200K
-  if (model === 'gemini-3.1-pro-preview' && totalInputTokens > GEMINI_LONG_CONTEXT_THRESHOLD) {
-    pricing = GEMINI_LONG_CONTEXT_PRICING;
-  }
-
-  // Grok 4.5: every rate doubles above 200K total context (xAI long-context tier).
-  if (model === 'grok-4.5' && totalInputTokens > GROK_LONG_CONTEXT_THRESHOLD) {
-    pricing = GROK_LONG_CONTEXT_PRICING;
-  }
-
-  // GPT-6 Astra: the whole request reprices above 272K input tokens.
-  if (model === 'gpt-6-astra' && totalInputTokens > ASTRA_LONG_CONTEXT_THRESHOLD) {
-    pricing = ASTRA_LONG_CONTEXT_PRICING;
-  }
-
-  // Claude Sonnet 5: introductory pricing applies through 2026-08-31 (UTC);
-  // standard rates (already in MODEL_PRICING) take over from 2026-09-01.
-  if (model === 'claude-sonnet-5' && Date.now() < SONNET5_INTRO_END) {
-    pricing = SONNET5_INTRO_PRICING;
-  }
+  const pricing = pricingForRequest(model, inputTokens + cachedReadTokens + cacheWriteTokens);
 
   const inputCredits = inputTokens * pricing.input;
   const cachedCredits = cachedReadTokens * pricing.cachedInput;

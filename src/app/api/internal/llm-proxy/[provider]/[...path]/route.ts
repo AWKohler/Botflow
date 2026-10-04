@@ -149,6 +149,7 @@ async function proxy(
       dialect,
       enforceModelAllowlist: isPlatform ? binding.modelAllowlist : null,
       capOutputTokens: isPlatform ? PLATFORM_MAX_OUTPUT_TOKENS : null,
+      anthropicMessagesCall: provider === "anthropic" && subpath === "v1/messages",
     });
     if ("rejected" in rewritten) {
       return dialectErrorResponse(provider, 403, rewritten.rejected, "invalid_request_error");

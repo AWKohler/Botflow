@@ -4,13 +4,11 @@
 
 export type ModelId =
   | "gpt-6-astra"
-  | "gpt-5.6-sol"
-  | "gpt-5.6-terra"
-  | "gpt-5.6-luna"
-  | "gpt-5.5"
-  | "claude-sonnet-5"
-  | "claude-opus-5"
-  | "claude-fable-5"
+  | "gpt-6.1-sol"
+  | "gpt-6-luna"
+  | "claude-sonnet-5-5"
+  | "claude-opus-5-5"
+  | "claude-fable-5-1"
   | "gemini-3.1-pro-preview"
   | "grok-4.5"
   | "fireworks-minimax-m3"
@@ -18,6 +16,8 @@ export type ModelId =
   | "fireworks-kimi-k3";
 
 export type Provider = "openai" | "anthropic" | "google" | "xai" | "fireworks";
+
+export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface ModelConfig {
   id: ModelId;
@@ -42,6 +42,29 @@ export interface ModelConfig {
   /** Whether this model supports image/file inputs */
   supportsImages: boolean;
   /**
+   * Rough relative cost shown in the model selector ("x4"), vs MiniMax-M3 = 1.
+   * Derived from credits.ts pricing over a representative agent-loop token
+   * mix (see costMultiplierFromPricing there) — billing-invariants.test.ts
+   * fails if this drifts from the pricing table, so update both together.
+   */
+  costMultiplier: number;
+  /**
+   * Reasoning effort pinned on every request (Anthropic `output_config.effort`).
+   * Users get no effort control, so this is the one knob. Applied by all
+   * three Claude rails: /api/agent providerOptions, the Claude Code bridge,
+   * and the LLM proxy (which overrides whatever the in-sandbox client sent).
+   * Undefined = provider default.
+   */
+  effort?: EffortLevel;
+  /**
+   * Anthropic models whose API rejects explicit thinking config
+   * (`disabled` / `budget_tokens`) and forced tool_choice (`any` / `tool`)
+   * with a 400 — Opus 5.5, Sonnet 5.5, Fable 5.1. The LLM proxy normalizes
+   * those fields so older in-sandbox clients (pinned Claude Code / OpenCode)
+   * keep working.
+   */
+  adaptiveThinkingOnly?: boolean;
+  /**
    * When true, the model is shown in the UI but cannot be selected or used.
    * Enforced both in the selector (grayed/non-selectable) and server-side
    * (request dispatch rejects it for ALL auth paths, including BYOK/OAuth).
@@ -64,81 +87,69 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
+    costMultiplier: 31,
   },
-  "gpt-5.6-sol": {
-    id: "gpt-5.6-sol",
+  "gpt-6.1-sol": {
+    id: "gpt-6.1-sol",
     provider: "openai",
-    apiModelId: "gpt-5.6-sol",
-    displayName: "GPT-5.6 Sol",
-    maxContextTokens: 1_000_000,
+    apiModelId: "gpt-6.1-sol",
+    displayName: "GPT-6.1 Sol",
+    maxContextTokens: 1_050_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
+    costMultiplier: 6,
   },
-  "gpt-5.6-terra": {
-    id: "gpt-5.6-terra",
+  "gpt-6-luna": {
+    id: "gpt-6-luna",
     provider: "openai",
-    apiModelId: "gpt-5.6-terra",
-    displayName: "GPT-5.6 Terra",
-    maxContextTokens: 1_000_000,
+    apiModelId: "gpt-6-luna",
+    displayName: "GPT-6 Luna",
+    maxContextTokens: 1_050_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
+    costMultiplier: 0.3,
   },
-  "gpt-5.6-luna": {
-    id: "gpt-5.6-luna",
-    provider: "openai",
-    apiModelId: "gpt-5.6-luna",
-    displayName: "GPT-5.6 Luna",
-    maxContextTokens: 1_000_000,
-    warnThreshold: 0.7,
-    criticalThreshold: 0.9,
-    supportsImages: true,
-  },
-  "gpt-5.5": {
-    id: "gpt-5.5",
-    provider: "openai",
-    apiModelId: "gpt-5.5",
-    displayName: "GPT-5.5",
-    maxContextTokens: 1_000_000,
-    warnThreshold: 0.7,
-    criticalThreshold: 0.9,
-    supportsImages: true,
-  },
-  "claude-sonnet-5": {
-    id: "claude-sonnet-5",
+  "claude-sonnet-5-5": {
+    id: "claude-sonnet-5-5",
     provider: "anthropic",
-    apiModelId: "claude-sonnet-5",
-    displayName: "Claude Sonnet 5",
+    apiModelId: "claude-sonnet-5-5",
+    displayName: "Claude Sonnet 5.5",
     maxContextTokens: 200_000,
-    // Anthropic grants 1M context on personal creds (Claude plans / API keys).
-    // Verified live for Opus (user session past 200K on OAuth); Sonnet assumed
-    // per Anthropic's 1M-context family — re-check if the meter misreports.
-    personalCredContextTokens: 1_000_000,
+    personalCredContextTokens: 1_000_000, // 1M on Claude OAuth/BYOK
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
+    costMultiplier: 6,
+    effort: "medium",
+    adaptiveThinkingOnly: true,
   },
-  "claude-opus-5": {
-    id: "claude-opus-5",
+  "claude-opus-5-5": {
+    id: "claude-opus-5-5",
     provider: "anthropic",
-    apiModelId: "claude-opus-5",
-    displayName: "Claude Opus 5",
+    apiModelId: "claude-opus-5-5",
+    displayName: "Claude Opus 5.5",
     maxContextTokens: 200_000,
-    personalCredContextTokens: 1_000_000, // 1M on Claude OAuth/BYOK (same as Opus 4.8)
+    personalCredContextTokens: 1_000_000, // 1M on Claude OAuth/BYOK
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
+    costMultiplier: 11,
+    effort: "medium",
+    adaptiveThinkingOnly: true,
   },
-  "claude-fable-5": {
-    id: "claude-fable-5",
+  "claude-fable-5-1": {
+    id: "claude-fable-5-1",
     provider: "anthropic",
-    apiModelId: "claude-fable-5",
-    displayName: "Claude Fable 5",
+    apiModelId: "claude-fable-5-1",
+    displayName: "Claude Fable 5.1",
     maxContextTokens: 1_000_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
+    costMultiplier: 26,
+    adaptiveThinkingOnly: true,
   },
   "gemini-3.1-pro-preview": {
     id: "gemini-3.1-pro-preview",
@@ -149,6 +160,7 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
+    costMultiplier: 6,
   },
   "grok-4.5": {
     id: "grok-4.5",
@@ -159,6 +171,7 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
+    costMultiplier: 7,
   },
   "fireworks-minimax-m3": {
     id: "fireworks-minimax-m3",
@@ -169,6 +182,7 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: false,
+    costMultiplier: 1,
   },
   // "fireworks-glm-5p1": {
   //   id: "fireworks-glm-5p1",
@@ -189,6 +203,7 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
+    costMultiplier: 3,
   },
   "fireworks-kimi-k3": {
     id: "fireworks-kimi-k3",
@@ -199,27 +214,72 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
+    costMultiplier: 9,
   },
+};
+
+/** The model new projects and unknown/removed stored values fall back to. */
+export const DEFAULT_MODEL_ID: ModelId = "gpt-6-luna";
+
+/**
+ * Retired / renamed model ids → their current successor. Stored project rows,
+ * ?model= links, and old clients still carry these. Single source of truth
+ * for every route that accepts a model id (via resolveModelId /
+ * isAcceptedModelInput) — add a row here when a model is replaced.
+ */
+const LEGACY_MODEL_ALIASES: Record<string, ModelId> = {
+  // OpenAI → GPT-6 family. There is no GPT-6 Terra; Terra's $2-input slot is
+  // now 6.1 Sol (cheaper output than Terra). GPT-6 Sol is superseded by 6.1
+  // Sol at identical prices with cheaper cache reads.
+  "gpt-6-sol": "gpt-6.1-sol",
+  "gpt-5.6-sol": "gpt-6.1-sol",
+  "gpt-5.6-terra": "gpt-6.1-sol",
+  "gpt-5.6-luna": "gpt-6-luna",
+  "gpt-5.5": "gpt-6.1-sol",
+  "gpt-5.4": "gpt-6.1-sol",
+  "gpt-5.3-codex": "gpt-6-luna",
+  "gpt-5.2": "gpt-6-luna",
+  "gpt-4.1": "gpt-6-luna",
+  // Anthropic → 5.5 / 5.1 generation
+  "claude-sonnet-5": "claude-sonnet-5-5",
+  "claude-sonnet-4.5": "claude-sonnet-5-5",
+  "claude-sonnet-4.6": "claude-sonnet-5-5",
+  "claude-sonnet-4-6": "claude-sonnet-5-5",
+  "claude-haiku-4.5": "claude-sonnet-5-5",
+  "claude-opus-5": "claude-opus-5-5",
+  "claude-opus-4-8": "claude-opus-5-5",
+  "claude-opus-4-7": "claude-opus-5-5",
+  "claude-opus-4.7": "claude-opus-5-5",
+  "claude-opus-4.6": "claude-opus-5-5",
+  "claude-opus-4.5": "claude-opus-5-5",
+  "claude-opus-4-1": "claude-opus-5-5",
+  "claude-fable-5": "claude-fable-5-1",
+  // GLM retired — Grok 4.5 replaces it in the lineup, but existing GLM-pinned
+  // projects fall back to Kimi (both free tier) so free users aren't paywalled
+  // onto pro Grok. [[grok-glm-replacement]]
+  "fireworks-glm-5": "fireworks-kimi-k2p7",
+  "fireworks-glm-5p1": "fireworks-kimi-k2p7",
+  "fireworks-glm-5p2": "fireworks-kimi-k2p7",
+  "fireworks-kimi-k2p6": "fireworks-kimi-k2p7",
+  "fireworks-minimax-m2p7": "fireworks-minimax-m3",
+  "fireworks-minimax-m2p5": "fireworks-minimax-m3",
+  "kimi-k2.5": "fireworks-minimax-m3",
+  "kimi-k2-thinking-turbo": "fireworks-minimax-m3",
 };
 
 /** Resolve stored model value — maps renames; unknown/removed models fall back to default */
 export function resolveModelId(stored: string | null | undefined): ModelId {
-  // Dot-notation renames (same model, new ID format)
-  if (stored === "claude-sonnet-4.5" || stored === "claude-sonnet-4.6" || stored === "claude-sonnet-4-6") return "claude-sonnet-5";
-  if (stored === "claude-opus-4.5" || stored === "claude-opus-4.6" || stored === "claude-opus-4.7" || stored === "claude-opus-4-7" || stored === "claude-opus-4-1" || stored === "claude-opus-4-8") return "claude-opus-5";
-  // OpenAI retired IDs → GPT-5.6 successors (Terra succeeds 5.4, Luna succeeds 5.3)
-  if (stored === "gpt-5.4") return "gpt-5.6-terra";
-  if (stored === "gpt-5.3-codex" || stored === "gpt-5.2" || stored === "gpt-4.1") return "gpt-5.6-luna";
-  // GLM retired — Grok 4.5 replaces it in the lineup, but existing GLM-pinned
-  // projects fall back to Kimi (both free tier) so free users aren't paywalled
-  // onto pro Grok. [[grok-glm-replacement]]
-  if (stored === "fireworks-glm-5" || stored === "fireworks-glm-5p1" || stored === "fireworks-glm-5p2") return "fireworks-kimi-k2p7";
-  if (stored === "fireworks-minimax-m2p7" || stored === "fireworks-minimax-m2p5") return "fireworks-minimax-m3";
-  if (stored === "fireworks-kimi-k2p6") return "fireworks-kimi-k2p7";
-  // Still-valid model: pass through
   if (stored && stored in MODEL_CONFIGS) return stored as ModelId;
+  if (stored && stored in LEGACY_MODEL_ALIASES) return LEGACY_MODEL_ALIASES[stored];
   // Unknown or removed model: silently use the default model
-  return "gpt-5.6-luna";
+  return DEFAULT_MODEL_ID;
+}
+
+/** Whether a client-supplied model id is acceptable input (a current model or
+ *  a known legacy alias). Routes that must reject garbage use this; it does
+ *  not resolve — pair with resolveModelId. */
+export function isAcceptedModelInput(model: string): boolean {
+  return model in MODEL_CONFIGS || model in LEGACY_MODEL_ALIASES;
 }
 
 /** Check if a model supports image/file inputs */

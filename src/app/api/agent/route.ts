@@ -14,7 +14,7 @@ import { isSandboxPlatform, projectUsesConvex, projectUsesMuhkoo } from "@/lib/p
 import { swiftProjectForbidden } from "@/lib/swift-access";
 import { getPersistentTools } from "@/lib/agent/persistent-tools";
 import { getGitTools, getSandboxedWebTools } from "@/lib/agent/sandboxed-web-tools";
-import { MODEL_CONFIGS, resolveModelId, isModelDisabled, modelDisabledReason, isOpenAIModel, isAnthropicModel, getProviderKeyName, type ModelId } from "@/lib/agent/models";
+import { MODEL_CONFIGS, DEFAULT_MODEL_ID, resolveModelId, isModelDisabled, modelDisabledReason, isOpenAIModel, isAnthropicModel, getProviderKeyName, type ModelId } from "@/lib/agent/models";
 import { agentLog, generateRequestId, setRequestId } from "@/lib/agent/logger";
 import { classifyError, formatErrorResponse } from "@/lib/agent/errors";
 import { USE_TOGETHER_KIMI } from "@/lib/feature-flags";
@@ -455,19 +455,6 @@ async function refreshAnthropicOAuthToken(
 // default 30m) — do NOT send it for 5.6 models or the request may be rejected.
 // ============================================================================
 
-async function injectOpenAICacheRetention(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  if (init?.body && typeof init.body === 'string') {
-    try {
-      const parsed = JSON.parse(init.body);
-      parsed.prompt_cache_retention = '24h';
-      return fetch(input, { ...init, body: JSON.stringify(parsed) });
-    } catch {
-      // ignore parse errors — fall through to normal fetch
-    }
-  }
-  return fetch(input, init);
-}
-
 // ============================================================================
 // Determine if this request is using a server-side key (paid tier) vs BYOK/OAuth
 // ============================================================================
@@ -478,13 +465,11 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
   'fireworks-minimax-m3', // free tier
   'fireworks-kimi-k2p7',     // free tier
   'fireworks-kimi-k3',       // pro+
-  'gpt-5.6-sol',             // pro+
-  'gpt-5.6-terra',           // pro+
-  'gpt-5.6-luna',            // pro+
-  'gpt-5.5',                 // pro+
-  'claude-sonnet-5',         // pro+
-  'claude-opus-5',           // pro+
-  'claude-fable-5',          // max-only
+  'gpt-6.1-sol',             // pro+
+  'gpt-6-luna',              // free tier
+  'claude-sonnet-5-5',       // pro+
+  'claude-opus-5-5',         // pro+
+  'claude-fable-5-1',        // max-only
   'gemini-3.1-pro-preview',  // pro+
   'grok-4.5',                // pro+
 ]);
@@ -532,7 +517,7 @@ export async function POST(req: Request) {
     if (oversized) return oversized;
 
     // Determine selected model for project and ensure ownership
-    let selectedModel: ModelId = "gpt-5.6-luna";
+    let selectedModel: ModelId = DEFAULT_MODEL_ID;
     // Default to true so non-project agent requests still get the full toolset.
     // Whose plan funds tier access + credits on the platform-metered path.
     // Defaults to the actor; becomes the OWNER for editors on projects with
@@ -1024,9 +1009,7 @@ export async function POST(req: Request) {
 
         // Path B: OpenAI BYOK API key
         if (creds.openaiApiKey) {
-          const openai = createOpenAI(selectedModel === 'gpt-5.5'
-            ? { apiKey: creds.openaiApiKey, fetch: injectOpenAICacheRetention }
-            : { apiKey: creds.openaiApiKey });
+          const openai = createOpenAI({ apiKey: creds.openaiApiKey });
           const result = streamText({
             model: openai.responses(modelConfig.apiModelId),
             messages: resolvedMessages,
@@ -1047,9 +1030,7 @@ export async function POST(req: Request) {
         // Path C: Server-side OpenAI key for Pro/Max tiers
         const serverOpenAIKey = process.env.OPENAI_API_KEY;
         if (isServerKeyModel(selectedModel) && serverOpenAIKey) {
-          const openai = createOpenAI(selectedModel === 'gpt-5.5'
-            ? { apiKey: serverOpenAIKey, fetch: injectOpenAICacheRetention }
-            : { apiKey: serverOpenAIKey });
+          const openai = createOpenAI({ apiKey: serverOpenAIKey });
           const result = streamText({
             model: openai.responses(modelConfig.apiModelId),
             messages: resolvedMessages,
@@ -1191,6 +1172,11 @@ export async function POST(req: Request) {
         );
       }
 
+      // Pinned reasoning effort (no user-facing effort control) — see ModelConfig.effort.
+      const anthropicProviderOptions = modelConfig.effort
+        ? { anthropic: { effort: modelConfig.effort } }
+        : undefined;
+
       // Priority: OAuth token > server-side API key (for server-key models) > BYOK API key
       let anthropicToken: string | null = null;
 
@@ -1216,6 +1202,7 @@ export async function POST(req: Request) {
             tools,
             onFinish,
             maxOutputTokens,
+            providerOptions: anthropicProviderOptions,
           });
           return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
         }
@@ -1229,6 +1216,7 @@ export async function POST(req: Request) {
             tools,
             onFinish,
             maxOutputTokens,
+            providerOptions: anthropicProviderOptions,
           });
           return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
         }
@@ -1250,6 +1238,7 @@ export async function POST(req: Request) {
         tools,
         onFinish,
         maxOutputTokens,
+        providerOptions: anthropicProviderOptions,
       });
       return result.toUIMessageStreamResponse({ headers: responseHeaders, onError: getStreamErrorMessage });
     };
