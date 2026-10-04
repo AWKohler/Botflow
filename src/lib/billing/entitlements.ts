@@ -8,6 +8,7 @@ export interface SubscriptionRecord {
   status: string;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
+  legacy_billing_cutover_at?: Date | null;
   period_end: Date | null;
   cancel_at_period_end: boolean;
   amount: number;

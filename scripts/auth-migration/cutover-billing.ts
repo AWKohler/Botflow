@@ -16,6 +16,7 @@ interface Reconciliation {
     plan: string;
     amount: number;
     interval: string;
+    periodStart: number;
     periodEnd: number;
     canceledAt: number | null;
   }[];
@@ -59,6 +60,7 @@ async function main() {
       paymentMethodId: matches[0].paymentMethodIds[0],
       amount: 100,
       interval: "month",
+      paidPeriodStartTimestamp: Math.floor(item.periodStart / 1000),
       renewalAt: new Date(item.periodEnd).toISOString(),
       renewalTimestamp: Math.floor(item.periodEnd / 1000),
       cancelAtPeriodEnd: !!item.canceledAt,
@@ -142,7 +144,8 @@ async function main() {
       original.plan?.fee?.amount !== p.amount ||
       original.plan_period !== p.interval ||
       !["active", "canceled"].includes(original.status) ||
-      Math.floor(original.period_end / 1000) !== p.renewalTimestamp
+      Math.floor(original.period_end / 1000) !== p.renewalTimestamp ||
+      Math.floor(original.period_start / 1000) !== p.paidPeriodStartTimestamp
     )
       throw new Error(
         "Clerk contract changed; resume reconciliation before cancellation",
@@ -157,6 +160,7 @@ async function main() {
         migrated.items.data.length !== 1 ||
         migrated.items.data[0].price.id !== price.id ||
         migrated.items.data[0].current_period_end !== p.renewalTimestamp ||
+        migrated.start_date !== p.paidPeriodStartTimestamp ||
         !["active", "trialing"].includes(migrated.status))
     )
       throw new Error(
@@ -177,6 +181,8 @@ async function main() {
           items: [{ price: price.id }],
           default_payment_method: p.paymentMethodId,
           billing_cycle_anchor: p.renewalTimestamp,
+          backdate_start_date: p.paidPeriodStartTimestamp,
+          billing_mode: { type: "classic" },
           proration_behavior: "none",
           cancel_at_period_end: true,
           metadata: {
@@ -187,6 +193,20 @@ async function main() {
         },
         { idempotencyKey: `clerk-cutover-v1:${p.clerkItemId}` },
       ));
+    const initialInvoice =
+      typeof subscription.latest_invoice === "string"
+        ? await stripe.invoices.retrieve(subscription.latest_invoice)
+        : subscription.latest_invoice;
+    if (
+      subscription.start_date !== p.paidPeriodStartTimestamp ||
+      subscription.items.data[0].current_period_end !== p.renewalTimestamp ||
+      (!migrated &&
+        ((initialInvoice?.amount_due || 0) !== 0 ||
+          (initialInvoice?.amount_paid || 0) !== 0))
+    )
+      throw new Error(
+        "Migrated subscription has an unexpected date or initial charge; do not cancel Clerk renewal",
+      );
     if (!original.canceled_at && !subscription.cancel_at_period_end)
       throw new Error(
         "Stripe and Clerk renewal are both enabled; reconcile the checkpoint before continuing",

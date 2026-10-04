@@ -85,3 +85,5 @@ CREATE TABLE IF NOT EXISTS identity_email_challenge (
   sent_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,email)
 );
 COMMIT;
+
+ALTER TABLE botflow_subscription ADD COLUMN IF NOT EXISTS legacy_billing_cutover_at timestamptz;

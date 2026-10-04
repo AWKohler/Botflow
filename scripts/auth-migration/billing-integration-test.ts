@@ -1,10 +1,14 @@
+import { paymentHistory } from "../../src/lib/billing/payment-history";
 import {
   quotePlanChange,
   applyPlanChange,
 } from "../../src/lib/billing/change-plan";
 /** Exercises real Stripe TEST objects and the signed webhook against isolated Neon. */
 import { config } from "dotenv";
-config({ path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local", quiet: true });
+config({
+  path: process.env.AUTH_MIGRATION_ENV_FILE || ".env.local",
+  quiet: true,
+});
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { billingStripe } from "../../src/lib/billing/stripe";
@@ -85,21 +89,51 @@ async function main() {
       "INSERT INTO botflow_subscription(user_id,source,stripe_customer_id,plan,status)VALUES($1,'stripe',$2,'free','active')",
       [userId, customer.id],
     );
+    const legacyPayment = await stripe.paymentIntents.create({
+      amount: 100,
+      currency: "usd",
+      customer: customer.id,
+      payment_method: payment.id,
+      confirm: true,
+      off_session: true,
+      automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+      metadata: { fixture: tag },
+    });
+    assert.equal(legacyPayment.status, "succeeded");
+    const legacyCutoff = new Date((legacyPayment.created + 1) * 1000);
     const anchor = Math.floor(Date.now() / 1000) + 7 * 86400;
+    const paidPeriodStart = Math.floor(Date.now() / 1000) - 23 * 86400;
     const sub = await stripe.subscriptions.create({
       customer: customer.id,
       items: [{ price: process.env.BILLING_PRICE_PRO_LEGACY! }],
       default_payment_method: payment.id,
       billing_cycle_anchor: anchor,
+      backdate_start_date: paidPeriodStart,
+      billing_mode: { type: "classic" },
       proration_behavior: "none",
       cancel_at_period_end: true,
       metadata: { botflow_user_id: userId },
     });
     subscriptions.push(sub.id);
+    assert.equal(sub.start_date, paidPeriodStart);
     assert.equal(sub.items.data[0].current_period_end, anchor);
     assert.equal(sub.cancel_at_period_end, true);
     const invoices = await stripe.invoices.list({ customer: customer.id });
     assert.ok(invoices.data.every((i) => i.amount_due === 0));
+    const history = await paymentHistory(stripe, customer.id, legacyCutoff);
+    assert.equal(history.filter((item) => item.kind === "receipt").length, 1);
+    assert.equal(history.find((item) => item.kind === "receipt")?.amount, 100);
+    assert.ok(
+      history
+        .find((item) => item.kind === "receipt")
+        ?.url?.startsWith("https://pay.stripe.com/"),
+    );
+    assert.equal(
+      (await paymentHistory(stripe, customer.id)).filter(
+        (item) => item.kind === "receipt",
+      ).length,
+      0,
+    );
     const event = await deliver(sub.id);
     assert.equal(await getPaidTier(userId), "pro");
     await deliver(sub.id, event);
@@ -129,6 +163,12 @@ async function main() {
     assert.equal(upgraded.scheduled, false);
     await deliver(sub.id);
     assert.equal(await getPaidTier(userId), "max");
+    assert.equal(
+      (await paymentHistory(stripe, customer.id, legacyCutoff)).filter(
+        (item) => item.kind === "receipt",
+      ).length,
+      1,
+    );
     const downgrade = await quotePlanChange(userId, "pro", "month");
     assert.equal(downgrade.scheduled, true);
     assert.equal(downgrade.amountDue, 0);
@@ -147,9 +187,18 @@ async function main() {
     await assert.rejects(() =>
       applyPlanChange(userId, downgrade.token + "tampered"),
     );
-    const annual = await quotePlanChange(userId,'max','year');assert.equal(annual.scheduled,false);await applyPlanChange(userId,annual.token);
-    const annualSubscription=await stripe.subscriptions.retrieve(sub.id);assert.equal(annualSubscription.items.data[0].price.recurring?.interval,'year');assert.equal(annualSubscription.schedule,null);
-    const monthly = await quotePlanChange(userId,'max','month');assert.equal(monthly.scheduled,true);await applyPlanChange(userId,monthly.token);
+    const annual = await quotePlanChange(userId, "max", "year");
+    assert.equal(annual.scheduled, false);
+    await applyPlanChange(userId, annual.token);
+    const annualSubscription = await stripe.subscriptions.retrieve(sub.id);
+    assert.equal(
+      annualSubscription.items.data[0].price.recurring?.interval,
+      "year",
+    );
+    assert.equal(annualSubscription.schedule, null);
+    const monthly = await quotePlanChange(userId, "max", "month");
+    assert.equal(monthly.scheduled, true);
+    await applyPlanChange(userId, monthly.token);
     await stripe.subscriptions.cancel(sub.id);
     await deliver(sub.id);
     assert.equal(await getPaidTier(userId), "free");
@@ -185,7 +234,8 @@ async function main() {
           renewalResumed: true,
           maxUpgrade: true,
           downgradeWaitsForRenewal: true,
-          annualUpgrade:true,monthlySwitchWaitsForRenewal:true,
+          annualUpgrade: true,
+          monthlySwitchWaitsForRenewal: true,
           quoteBoundToUser: true,
           tamperedQuoteRejected: true,
           immediateCancellationRevokesAccess: true,

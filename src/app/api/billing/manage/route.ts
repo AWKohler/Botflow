@@ -1,3 +1,4 @@
+import { paymentHistory } from "@/lib/billing/payment-history";
 import { planForPrice } from "@/lib/billing/plans";
 import { ensureFreeBillingCustomer } from "@/lib/billing/customer";
 import { NextResponse } from "next/server";
@@ -16,7 +17,11 @@ export async function GET() {
     return NextResponse.json({ invoices: [], paymentMethods: [] });
   const stripe = billingStripe();
   const [invoices, methods, customer, subscription] = await Promise.all([
-    stripe.invoices.list({ customer: row.stripe_customer_id, limit: 24 }),
+    paymentHistory(
+      stripe,
+      row.stripe_customer_id,
+      row.legacy_billing_cutover_at,
+    ),
     stripe.paymentMethods.list({
       customer: row.stripe_customer_id,
       type: "card",
@@ -54,16 +59,7 @@ export async function GET() {
   return NextResponse.json(
     {
       upcomingPlan,
-      invoices: invoices.data.map((i) => ({
-        id: i.id,
-        number: i.number,
-        created: i.created,
-        status: i.status,
-        amount: i.amount_paid,
-        currency: i.currency,
-        url: i.hosted_invoice_url,
-        pdf: i.invoice_pdf,
-      })),
+      invoices,
       paymentMethods: methods.data.map((m) => ({
         id: m.id,
         brand: m.card?.brand,

@@ -76,6 +76,7 @@ export function AccountPanel({
       effectiveAt: number;
     } | null;
     invoices: {
+      kind?: "invoice" | "receipt";
       id: string;
       number: string;
       created: number;
@@ -860,13 +861,13 @@ export function AccountPanel({
                             rel="noopener noreferrer"
                             className="underline"
                           >
-                            Invoice
+                            {invoice.kind === "receipt" ? "Receipt" : "Invoice"}
                           </a>
                         </div>
                       ))}
                       {!billingDetails.invoices.length && (
                         <p className="mt-3 text-sm text-[var(--sand-text-muted)]">
-                          No invoices yet
+                          No payments yet
                         </p>
                       )}
                     </section>
