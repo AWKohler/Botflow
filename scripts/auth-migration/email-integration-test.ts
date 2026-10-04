@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { hash } from "bcryptjs";
+import { betterAuth } from "better-auth";
 import { getIdentityDb } from "../../src/lib/auth/database";
 import { createIdentityAuth } from "../../src/lib/auth/config";
 import { handleIdentityEmails } from "../../src/lib/auth/manage-emails";
@@ -265,6 +266,91 @@ async function main() {
           password: "replacement-test-passphrase",
         })
       ).status,
+      200,
+    );
+    // Only this isolated test instance accepts a synthetic provider response.
+    const mockProvider = betterAuth({
+      ...identity.options,
+      socialProviders: {
+        google: {
+          clientId: "synthetic-client",
+          clientSecret: "synthetic-secret",
+          verifyIdToken: async () => true,
+          getUserInfo: async () => ({
+            user: {
+              id: `provider-${id}`,
+              name: "Provider test",
+              email: `provider-${id}@example.invalid`,
+              emailVerified: true,
+            },
+            data: { sub: `provider-${id}` },
+          }),
+        },
+      },
+    });
+    async function mockRequest(path: string, body: unknown, cookie: string) {
+      return mockProvider.handler(
+        new Request(`${base}/api/auth${path}`, {
+          method: "POST",
+          headers: {
+            origin: base,
+            cookie,
+            "content-type": "application/json",
+            "x-forwarded-for": `127.3.1.${++index}`,
+          },
+          body: JSON.stringify(body),
+        }),
+      );
+    }
+    const linkLogin = await auth("/sign-in/email", {
+      email: alias,
+      password: "replacement-test-passphrase",
+    });
+    const linked = await mockRequest(
+      "/link-social",
+      { provider: "google", idToken: { token: "synthetic-id-token" } },
+      cookies(linkLogin),
+    );
+    assert.equal(linked.status, 200);
+    assert.equal(
+      (
+        await db.query(
+          `SELECT "userId" FROM identity_account WHERE "providerId"='google' AND "accountId"=$1`,
+          [`provider-${id}`],
+        )
+      ).rows[0].userId,
+      id,
+    );
+    await db.query(
+      `INSERT INTO identity_account(id,"accountId","providerId","userId",password) VALUES($1,$2,'credential',$2,$3)`,
+      [randomUUID(), other, await hash("other-test-passphrase", 10)],
+    );
+    const otherLogin = await auth("/sign-in/email", {
+      email: reserved,
+      password: "other-test-passphrase",
+    });
+    const collision = await mockRequest(
+      "/link-social",
+      { provider: "google", idToken: { token: "synthetic-id-token" } },
+      cookies(otherLogin),
+    );
+    assert.equal(collision.status, 409);
+    const socialLogin = await mockRequest(
+      "/sign-in/social",
+      { provider: "google", idToken: { token: "synthetic-id-token" } },
+      "",
+    );
+    assert.equal(socialLogin.status, 200);
+    assert.equal((await socialLogin.json()).user.id, id);
+    const accountId = (
+      await db.query(
+        `SELECT id FROM identity_account WHERE "providerId"='google' AND "accountId"=$1`,
+        [`provider-${id}`],
+      )
+    ).rows[0].id;
+    assert.equal(
+      (await mockRequest("/unlink-account", { accountId }, cookies(linkLogin)))
+        .status,
       200,
     );
     const refreshedLogin = await auth("/sign-in/email", {

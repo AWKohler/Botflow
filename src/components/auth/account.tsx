@@ -97,7 +97,10 @@ export function AccountPanel({
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   useEffect(() => {
     const query = new URLSearchParams(location.search);
-    if (query.get("error")) setMessage("That account could not be connected. It may already belong to another Botflow user.");
+    if (query.get("error"))
+      setMessage(
+        "That account could not be connected. It may already belong to another Botflow user.",
+      );
     const token = query.get("delete_token");
     if (token) {
       setDeleteToken(token);
@@ -522,6 +525,7 @@ export function AccountPanel({
                               authClient.linkSocial({
                                 provider,
                                 callbackURL: "/account",
+                                errorCallbackURL: "/account",
                               }),
                             )
                           }

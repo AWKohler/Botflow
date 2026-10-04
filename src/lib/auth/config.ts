@@ -77,7 +77,11 @@ export function createIdentityAuth(
     account: {
       modelName: "identity_account",
       encryptOAuthTokens: true,
-      accountLinking: { enabled: true, trustedProviders: ["google", "github"] },
+      accountLinking: {
+        enabled: true,
+        trustedProviders: ["google", "github"],
+        allowDifferentEmails: true,
+      },
     },
     verification: { modelName: "identity_verification" },
     emailAndPassword: {
