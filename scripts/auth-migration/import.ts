@@ -74,6 +74,49 @@ async function main() {
     }),
   );
   if (!process.argv.includes("--apply")) return;
+  if (process.env.AUTH_MIGRATION_TARGET === "production") {
+    const freeze = decryptPrivateData<{
+      instanceId: string;
+      state: string;
+      users: string[];
+      frozenAt: string;
+    }>(
+      await readFile(migrationArtifactPath("source-freeze.enc"), "utf8"),
+      "clerk-source-freeze",
+    );
+    const frozenAt = new Date(freeze.frozenAt).getTime();
+    const captureStartedAt = Date.parse(snapshot.captureStartedAt || "");
+    const exportedAt = Date.parse(snapshot.exportedAt);
+    if (
+      freeze.instanceId !== snapshot.instanceId ||
+      freeze.state !== "frozen" ||
+      !Number.isFinite(frozenAt) ||
+      !Number.isFinite(captureStartedAt) ||
+      captureStartedAt < frozenAt + 70000 ||
+      !Number.isFinite(exportedAt) ||
+      exportedAt > Date.now() ||
+      Date.now() - exportedAt > 10 * 60 * 1000 ||
+      freeze.users.length !== snapshot.users.length ||
+      snapshot.users.some((user) => !freeze.users.includes(user.id))
+    )
+      throw new Error(
+        "Production import requires a fresh snapshot taken after legacy sessions expired and the source was paused",
+      );
+    const settingsResponse = await fetch(
+      "https://clerk.botflow.io/v1/environment",
+    );
+    if (!settingsResponse.ok)
+      throw new Error("Cannot verify legacy sign-in pause");
+    const restrictions = (await settingsResponse.json()).user_settings
+      .restrictions;
+    if (
+      !restrictions.allowlist.enabled ||
+      restrictions.allowlist_blocklist_disabled_on_sign_in.enabled
+    )
+      throw new Error(
+        "Legacy sign-in must remain paused during the production import",
+      );
+  }
   const targetHost = new URL(process.env.DATABASE_URL!).hostname;
   if (
     !["staging", "production"].includes(

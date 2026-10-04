@@ -68,6 +68,7 @@ export interface ClerkUser {
 export interface Snapshot {
   version: 1;
   exportedAt: string;
+  captureStartedAt?: string;
   instanceId: string;
   users: ClerkUser[];
   passwords: Record<
@@ -96,6 +97,7 @@ export interface SubscriptionItem {
   };
 }
 async function main() {
+  const captureStartedAt = new Date().toISOString();
   const users: ClerkUser[] = [];
   for (let offset = 0; ; offset += 100) {
     const page = (await clerk(
@@ -192,9 +194,63 @@ async function main() {
   }
   if (reusedInstance && reusedInstance !== instanceId)
     throw new Error("Prior password export belongs to another Clerk instance");
+  // Token fetches can take minutes; detect profile/password/provider mutations
+  // during the export without treating last-sign-in or token refresh as drift.
+  function identityDigest(user: ClerkUser) {
+    const identity = {
+      id: user.id,
+      firstName: user.first_name,
+      lastName: user.last_name,
+      username: user.username,
+      image: user.image_url,
+      primaryEmail: user.primary_email_address_id,
+      emails: user.email_addresses
+        .map((email) => ({
+          id: email.id,
+          address: email.email_address,
+          status: email.verification?.status,
+        }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+      publicMetadata: user.public_metadata,
+      privateMetadata: user.private_metadata,
+      unsafeMetadata: user.unsafe_metadata,
+      passwordEnabled: user.password_enabled,
+      passwordUpdatedAt: user.password_last_updated_at,
+      banned: user.banned,
+      locked: user.locked,
+      twoFactorEnabled: user.two_factor_enabled,
+      passkeys: user.passkeys,
+      providers: user.external_accounts
+        .map((account) => ({
+          id: account.id,
+          provider: account.provider,
+          userId: account.provider_user_id,
+          scopes: account.approved_scopes,
+        }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    };
+    return createHash("sha256").update(JSON.stringify(identity)).digest("hex");
+  }
+  const initial = new Map(users.map((user) => [user.id, identityDigest(user)]));
+  let finalUsers = 0;
+  for (let offset = 0; ; offset += 100) {
+    const page = (await clerk(
+      `/users?limit=100&offset=${offset}`,
+    )) as ClerkUser[];
+    for (const user of page)
+      if (initial.get(user.id) !== identityDigest(user))
+        throw new Error(
+          "An identity changed during export; take a fresh CSV and retry",
+        );
+    finalUsers += page.length;
+    if (page.length < 100) break;
+  }
+  if (finalUsers !== users.length)
+    throw new Error("User count changed during export; retry");
   const payload = {
     version: 1 as const,
     exportedAt: new Date().toISOString(),
+    captureStartedAt,
     instanceId,
     users,
     passwords,

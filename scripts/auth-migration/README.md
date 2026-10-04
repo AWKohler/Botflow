@@ -45,7 +45,7 @@ Run from the repository root with a mode-600 `.env.local`, or select a separate 
 9. `pnpm exec tsx scripts/auth-migration/provision-billing.ts` creates the test catalog. Live provisioning requires the script's explicit live-review guard.
 10. Run `pnpm test`, `pnpm exec tsx scripts/auth-migration/integration-test.ts`, `pnpm exec tsx scripts/auth-migration/billing-integration-test.ts`, and `pnpm build`.
 
-Before production import, freeze Clerk identity/billing changes briefly and take a fresh password export and fresh snapshot. Do not promote the stale staging copy or treat the insert-only importer as a continuous synchronization system. Reconcile the complete user set again before switching traffic.
+Before production import, run `freeze-source.ts` with the production configuration for a dry review, then apply with `--apply --brief-sign-in-pause` only once the staged production deployment is ready. It requires an empty Clerk allowlist and no pending Clerk invitations, applies the allowlist to sign-in as well as sign-up, and revokes and verifies all active legacy sessions. It does not ban users or change their account flags. The encrypted recovery checkpoint supports `freeze-source.ts --restore --apply`; revoked sessions still require signing in again. Wait at least 70 seconds after the freeze completes for previously issued JWTs to expire, then take a fresh password export and fresh snapshot. Production import verifies the pause, exact frozen user set, and a snapshot newer than session expiry and less than ten minutes old. Exports also recheck identity fields at the end to detect changes while billing/provider tokens are fetched. Do not promote the stale staging copy or treat the insert-only importer as a continuous synchronization system. Reconcile the complete user set again before switching traffic.
 
 ## Billing cutover and recovery
 
@@ -81,9 +81,15 @@ Secondary-email integration checks pass verified addition, hashed codes, expiry/
 
 ## Remaining production gates
 
-- Add and verify provider callbacks ending `/api/auth/callback/google` and `/api/auth/callback/github`; retain Clerk callbacks during transition. Complete real Google/GitHub login and account-linking checks in preview.
+- Add and verify provider callbacks ending `/api/auth/callback/google` and `/api/auth/callback/github`; retain Clerk callbacks during transition. Real Google/GitHub sign-in and deployed cross-account link rejection are verified. Synthetic linking checks already cover different-email linking, ownership conflicts, subsequent social sign-in and unlinking.
 - Verify real verification/recovery email delivery and owner sign-in, admin metadata controls, impersonation return, account changes, and Stripe checkout in the protected preview.
 - Confirm feature parity for any Clerk settings not exercised by the current Botflow UI. Self-service deletion uses an emailed confirmation token, cancels direct Stripe subscriptions, revokes sessions, and removes profile and integration secrets. Project records remain inaccessible under the deleted owner ID, matching the pre-existing retained-project behavior. Verified secondary emails support password/code sign-in, recovery, primary selection and removal. A database-wide email namespace prevents alias ownership races with sign-up and OAuth. All 117 source users currently have exactly one email; exported lists remain preserved.
 - Provision live direct-billing catalog and signed webhook; run fresh export/import/reconciliation; validate all counts and the grandfathered contract.
 - Coordinate production environment values, database migration, deployment and renewal cutover. Main auto-deploys, so do not merge ahead of those steps.
 - Retain a recoverable Clerk snapshot and the encryption keys. Only retire Clerk billing/services after authentication, secrets, entitlements, and renewals have been verified in production.
+
+## Production preparation (2026-10-04)
+
+Production's 398 project records are backed up in Neon branch `br-fragrant-salad-adws0rba`, with no compute endpoint. The existing Vercel environment is backed up in ignored mode-600 storage. Production auth/encryption keys are separate from rehearsal; 19 runtime variables and an empty identity schema are prepared. The live signed webhook exists but remains disabled. No customer subscriptions, renewals or passwords have changed.
+
+The production build `dpl_8ECkQdazYZtdA4WTq7DnRG2JXbnk` is staged on its generated protected URL; its auth health endpoint returns 200 with the existing project automation credential and rejects anonymous access through Vercel protection. `autoAssignCustomDomains=false` retained botflow.io on its Clerk deployment, but Vercel assigned generated project/branch aliases to the staged build. Those aliases were restored: botflow.io and the project base URL use `dpl_6HNBHMXBwbQzvZ57QyBhD85AvCWZ`; the protected branch preview uses `dpl_AcRqvDF2XiwQ3rptnx8fXQZGhsVV`. Always check aliases when staging a production build.
