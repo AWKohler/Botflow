@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/server';
 import { enforce, identifierFor } from '@/lib/rate-limit';
+import { safeRedirect } from '@/lib/auth/policy';
+import { redirectUrl, signOAuthState } from '@/lib/oauth-state';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -12,7 +14,8 @@ export async function GET(req: NextRequest) {
   const origin = new URL(req.url).origin;
   // Caller sends `returnTo`; also accept `return_to` for safety.
   const { searchParams } = new URL(req.url);
-  const returnTo = searchParams.get('returnTo') || searchParams.get('return_to') || '/projects';
+  // Same-origin paths only — this value is echoed back into a redirect.
+  const returnTo = safeRedirect(searchParams.get('returnTo') || searchParams.get('return_to'), '/projects');
 
   // This endpoint is reached via a full-page browser navigation, so every
   // response must be a redirect (or HTML) — never JSON, or the browser renders
@@ -25,11 +28,12 @@ export async function GET(req: NextRequest) {
     if (blocked) return blocked;
 
     if (!CLIENT_ID) {
-      return NextResponse.redirect(`${origin}${returnTo}?github_error=not_configured`);
+      return NextResponse.redirect(redirectUrl(origin, returnTo, { github_error: 'not_configured' }));
     }
 
-    // Encode returnTo into state so callback can redirect back
-    const state = Buffer.from(JSON.stringify({ userId, returnTo, ts: Date.now() })).toString('base64url');
+    // Signed + bound to this user (see src/lib/oauth-state.ts); the callback
+    // refuses any state it didn't mint for the signed-in user.
+    const state = signOAuthState('github', { userId, returnTo });
 
     const params = new URLSearchParams({
       client_id: CLIENT_ID,
@@ -42,6 +46,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(authUrl);
   } catch (e) {
     console.error('GitHub OAuth start failed:', e);
-    return NextResponse.redirect(`${origin}${returnTo}?github_error=server`);
+    return NextResponse.redirect(redirectUrl(origin, returnTo, { github_error: 'server' }));
   }
 }
