@@ -1,0 +1,19 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`calculateCredits > price list snapshot (1M input + 1M output per model) — changes show up in review 1`] = `
+{
+  "claude-fable-5": 200000001,
+  "claude-opus-5": 100000001,
+  "claude-sonnet-5": 60000000,
+  "fireworks-kimi-k2p7": 16500000,
+  "fireworks-kimi-k3": 60000000,
+  "fireworks-minimax-m3": 5000000,
+  "gemini-3.1-pro-preview": 73333334,
+  "gpt-5.5": 116666667,
+  "gpt-5.6-luna": 23333334,
+  "gpt-5.6-sol": 116666667,
+  "gpt-5.6-terra": 58333334,
+  "gpt-6-astra": 316666667,
+  "grok-4.5": 53333334,
+}
+`;
