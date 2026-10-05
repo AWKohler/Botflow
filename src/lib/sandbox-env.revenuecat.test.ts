@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { selectSwiftRevenueCatConfig } from "@/lib/sandbox-env";
 
 test("development Swift builds require a RevenueCat Test Store key", () => {

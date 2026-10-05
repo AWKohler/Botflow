@@ -4,9 +4,9 @@
  * per thread (refuse, never kill), the running-count admission ceiling, and
  * the stop script.
  *
- * Run: node --import tsx --test src/lib/agent/claude-code/bridge-control.test.ts
+ * Run: npx vitest run src/lib/agent/claude-code/bridge-control.test.ts
  */
-import { test, describe, after } from "node:test";
+import { test, describe, after } from "vitest";
 import assert from "node:assert/strict";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";

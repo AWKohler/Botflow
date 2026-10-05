@@ -8,7 +8,7 @@
  *   long context (>272K):    20 in / 2 cached / 25    cache-write / 75 out
  * Credits are $/MTok ÷ 0.30 (the MiniMax input base), applied per token.
  */
-import { test, describe } from "node:test";
+import { test, describe } from "vitest";
 import assert from "node:assert/strict";
 
 import { calculateCredits, MODEL_PRICING, MODEL_COST_MULTIPLIER, costMultiplierFromPricing } from "@/lib/credits";

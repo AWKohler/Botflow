@@ -6,9 +6,9 @@
  * (model select, project list) 429'd. These tests pin every polling endpoint
  * to its poll bucket and every interactive read/write to its own.
  *
- * Run with: node --import tsx --test src/lib/rate-limit-classify.test.ts
+ * Run with: npx vitest run src/lib/rate-limit-classify.test.ts
  */
-import { test, describe } from 'node:test';
+import { test, describe } from 'vitest';
 import assert from 'node:assert/strict';
 import { classifyApiRequest } from './rate-limit-classify';
 

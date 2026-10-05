@@ -1,9 +1,9 @@
 /**
  * Unit tests for the mount-time unfinished-turn detector.
  *
- * Run with: node --import tsx --test src/lib/agent/transcript-tail.test.ts
+ * Run with: npx vitest run src/lib/agent/transcript-tail.test.ts
  */
-import { test, describe } from "node:test";
+import { test, describe } from "vitest";
 import assert from "node:assert/strict";
 import { transcriptHasUnfinishedTail } from "./transcript-tail";
 

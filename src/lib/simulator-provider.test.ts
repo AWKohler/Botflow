@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, test } from "vitest";
 import { simulatorProvider } from "./simulator-provider";
 
 const original = process.env.SIMULATOR_PROVIDER;
