@@ -96,14 +96,24 @@ describe("settlement credit parity with /api/agent", () => {
     assert.ok(abovePerToken > belowPerToken, `expected surcharge: ${abovePerToken} > ${belowPerToken}`);
   });
 
-  test("grok-4.5 long-context tier DOUBLES every rate past 200K (xAI long_context)", () => {
+  test("grok-4.7 long-context tier DOUBLES every rate from 200K (xAI long_context)", () => {
     // Pure input, no output/cache: 100K (short tier) vs 300K (long tier).
     // Long tier is exactly 2× → per-token rate doubles.
-    const short = computeSettlementCredits(usageOf(100_000, 0, 0, 0), "grok-4.5", "platform");
-    const long = computeSettlementCredits(usageOf(300_000, 0, 0, 0), "grok-4.5", "platform");
+    const short = computeSettlementCredits(usageOf(100_000, 0, 0, 0), "grok-4.7", "platform");
+    const long = computeSettlementCredits(usageOf(300_000, 0, 0, 0), "grok-4.7", "platform");
     const shortPerTok = short / 100_000; // ≈ 6.67 credits/token ($2/MTok)
     const longPerTok = long / 300_000;   // ≈ 13.33 credits/token ($4/MTok)
     assert.ok(Math.abs(longPerTok / shortPerTok - 2) < 0.001, `expected 2× but got ${longPerTok / shortPerTok}`);
+  });
+
+  test("long-context boundary: xAI bills long AT 200K (≥), OpenAI only ABOVE 272K (>)", () => {
+    const perTok = (n: number, m: "grok-4.7" | "gpt-6.1-sol") =>
+      computeSettlementCredits(usageOf(n, 0, 0, 0), m, "platform") / n;
+    // grok: 199_999 short, exactly 200_000 already long (2×).
+    assert.ok(perTok(200_000, "grok-4.7") / perTok(199_999, "grok-4.7") > 1.99);
+    // gpt-6.1-sol: exactly 272_000 still short; 272_001 long (2× input).
+    assert.ok(Math.abs(perTok(272_000, "gpt-6.1-sol") / perTok(271_999, "gpt-6.1-sol") - 1) < 0.001);
+    assert.ok(perTok(272_001, "gpt-6.1-sol") / perTok(272_000, "gpt-6.1-sol") > 1.99);
   });
 
   test("anthropic cache WRITES are billed (never free)", () => {
@@ -112,12 +122,13 @@ describe("settlement credit parity with /api/agent", () => {
     assert.ok(withWrite > withoutWrite);
   });
 
-  test("grok-4.5 credits reconcile to xAI's live billing (captured cost_in_usd_ticks)", () => {
-    // Real cold call captured from api.x.ai (1 tick = 1e-10 USD):
+  test("grok-4.7 credits reconcile to xAI's live billing (captured cost_in_usd_ticks)", () => {
+    // Real cold call captured from api.x.ai on grok-4.5 while it billed
+    // $2/$0.50/$6 — identical to grok-4.7's list price (1 tick = 1e-10 USD):
     //   prompt_tokens=7755 (cached_tokens=128, a subset), output=completion(1)+reasoning(177)=178
     //   cost_in_usd_ticks=163_860_000 → $0.016386
     // 1 credit = $0.30/MTok = $3e-7, so $0.016386 / 3e-7 = 54_620 credits.
-    const credits = computeSettlementCredits(usageOf(7755, 178, 128, 0), "grok-4.5", "platform");
+    const credits = computeSettlementCredits(usageOf(7755, 178, 128, 0), "grok-4.7", "platform");
     const dollarsFromTicks = 163_860_000 * 1e-10;      // $0.016386
     const expected = dollarsFromTicks / 3e-7;           // 54_620 credits ($3e-7 = 1 credit)
     // calculateCredits Math.ceil's the FP sum, so allow the ≤1-credit ceil artifact.

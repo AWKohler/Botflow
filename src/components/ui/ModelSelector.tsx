@@ -52,7 +52,7 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
   'claude-opus-5-5': 'pro',     // Pro+
   'claude-fable-5-1': 'max',    // Max-only
   'gemini-3.1-pro-preview': 'pro', // Pro+ for server key; free requires BYOK
-  'grok-4.5': 'pro',            // Pro+ for server key; free requires BYOK (xAI)
+  'grok-4.7': 'pro',            // Pro+ for server key; free requires BYOK (xAI)
 };
 
 /**
@@ -70,7 +70,7 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
   'claude-opus-5-5',
   'claude-fable-5-1',
   'gemini-3.1-pro-preview',
-  'grok-4.5',
+  'grok-4.7',
 ]);
 
 /** Per-model cost hint ("x6", "x0.3") — derived from pricing; see ModelConfig.costMultiplier. */

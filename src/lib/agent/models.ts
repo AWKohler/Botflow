@@ -10,7 +10,7 @@ export type ModelId =
   | "claude-opus-5-5"
   | "claude-fable-5-1"
   | "gemini-3.1-pro-preview"
-  | "grok-4.5"
+  | "grok-4.7"
   | "fireworks-minimax-m3"
   | "fireworks-kimi-k2p7"
   | "fireworks-kimi-k3";
@@ -162,11 +162,11 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     supportsImages: true,
     costMultiplier: 6,
   },
-  "grok-4.5": {
-    id: "grok-4.5",
+  "grok-4.7": {
+    id: "grok-4.7",
     provider: "xai",
-    apiModelId: "grok-4.5",
-    displayName: "Grok 4.5",
+    apiModelId: "grok-4.7",
+    displayName: "Grok 4.7",
     maxContextTokens: 500_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
@@ -254,7 +254,8 @@ const LEGACY_MODEL_ALIASES: Record<string, ModelId> = {
   "claude-opus-4.5": "claude-opus-5-5",
   "claude-opus-4-1": "claude-opus-5-5",
   "claude-fable-5": "claude-fable-5-1",
-  // GLM retired — Grok 4.5 replaces it in the lineup, but existing GLM-pinned
+  "grok-4.5": "grok-4.7",
+  // GLM retired — Grok (now 4.7) replaces it in the lineup, but existing GLM-pinned
   // projects fall back to Kimi (both free tier) so free users aren't paywalled
   // onto pro Grok. [[grok-glm-replacement]]
   "fireworks-glm-5": "fireworks-kimi-k2p7",

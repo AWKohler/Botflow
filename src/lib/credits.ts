@@ -74,10 +74,11 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 
   // Gemini 3.1 Pro at ≤200K — cache write billed at full input price.
   'gemini-3.1-pro-preview': perMTok(2.00, 0.20, 12.00, 2.00),
-  // xAI Grok 4.5. Verified live against the API's cost_in_usd_ticks.
-  // Cache is passive/read-only (no cache-write billing); note the read
-  // discount is only 75% ($2→$0.50).
-  'grok-4.5': perMTok(2.00, 0.50, 6.00),
+  // xAI Grok 4.7 (docs.x.ai/docs/pricing). Same rates grok-4.5 billed at
+  // when they were verified live against cost_in_usd_ticks. Cache is
+  // passive/read-only (no cache-write billing); the read discount is only
+  // 75% ($2→$0.50).
+  'grok-4.7': perMTok(2.00, 0.50, 6.00),
 
   // ── Retired ids (resolveModelId maps them to successors) ──────────────────
   // Kept ONLY so a proxy token minted before a deploy still settles at the
@@ -89,6 +90,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'claude-opus-5':   perMTok(5.00, 0.50, 25.00, 6.25),
   'claude-sonnet-5': perMTok(2.00, 0.20, 10.00, 2.50),
   'claude-fable-5':  perMTok(10.00, 1.00, 50.00, 12.50),
+  'grok-4.5':        perMTok(2.00, 0.30, 6.00), // xAI cut 4.5's cached rate $0.50 → $0.30
 };
 
 /**
@@ -98,7 +100,10 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
  * tokens). Per-request granularity matters: callers pass one API call's
  * usage, never a turn's multi-call sum.
  */
-export const LONG_CONTEXT_PRICING: Record<string, { threshold: number; pricing: ModelPricing }> = {
+export const LONG_CONTEXT_PRICING: Record<
+  string,
+  { threshold: number; pricing: ModelPricing; /** long rates apply AT the threshold (≥), not just above it */ inclusive?: boolean }
+> = {
   // OpenAI: >272K input tokens — 2× input/cache, 1.5× output.
   'gpt-6-astra': { threshold: 272_000, pricing: perMTok(20.00, 2.00, 75.00, 25.00) },
   'gpt-6.1-sol': { threshold: 272_000, pricing: perMTok( 4.00, 0.20, 15.00,  5.00) },
@@ -106,9 +111,10 @@ export const LONG_CONTEXT_PRICING: Record<string, { threshold: number; pricing: 
   'gpt-5.6-sol': { threshold: 272_000, pricing: perMTok( 8.00, 0.80, 30.00, 10.00) }, // retired id
   // Gemini 3.1 Pro: >200K.
   'gemini-3.1-pro-preview': { threshold: 200_000, pricing: perMTok(4.00, 0.40, 18.00, 4.00) },
-  // Grok 4.5: every rate doubles above 200K, per xAI's own model metadata
-  // (verified live against GET api.x.ai/v1/models/grok-4.5).
-  'grok-4.5': { threshold: 200_000, pricing: perMTok(4.00, 1.00, 12.00) },
+  // Grok: every rate doubles once the prompt REACHES 200K ("≥ 200k tokens";
+  // all tokens in the request bill long — docs.x.ai/docs/pricing).
+  'grok-4.7': { threshold: 200_000, inclusive: true, pricing: perMTok(4.00, 1.00, 12.00) },
+  'grok-4.5': { threshold: 200_000, inclusive: true, pricing: perMTok(4.00, 0.60, 12.00) }, // retired id
 };
 
 /**
@@ -158,7 +164,9 @@ export function pricingForRequest(
   promptTokens: number,
 ): ModelPricing {
   const long = LONG_CONTEXT_PRICING[model];
-  if (long && promptTokens > long.threshold) return long.pricing;
+  if (long && (long.inclusive ? promptTokens >= long.threshold : promptTokens > long.threshold)) {
+    return long.pricing;
+  }
   // Fallback for an unknown id: treat as MiniMax pricing
   return MODEL_PRICING[model] ?? MODEL_PRICING['fireworks-minimax-m3'];
 }

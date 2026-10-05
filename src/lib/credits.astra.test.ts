@@ -88,10 +88,12 @@ describe("long-context threshold regression — cache writes are counted", () =>
   test("gemini and grok are unaffected (they never report cache writes)", () => {
     // Guard on the shared totalInputTokens expression: adding cacheWriteTokens
     // must stay a no-op for the two models whose dialects always report 0.
-    for (const model of ["gemini-3.1-pro-preview", "grok-4.5"] as const) {
+    // Last short-rate prompt per provider: Gemini bills long only ABOVE 200K;
+    // xAI bills long once the prompt REACHES 200K, so 199,999 is its last.
+    for (const [model, lastShort] of [["gemini-3.1-pro-preview", 200_000], ["grok-4.7", 199_999]] as const) {
       const under = calculateCredits({
         model,
-        inputTokens: 200_000,
+        inputTokens: lastShort,
         cachedReadTokens: 0,
         cacheWriteTokens: 0,
         outputTokens: 1_000,
@@ -99,8 +101,8 @@ describe("long-context threshold regression — cache writes are counted", () =>
       const p = MODEL_PRICING[model];
       assert.equal(
         under,
-        Math.ceil(200_000 * p.input + 1_000 * p.output),
-        `${model} at exactly 200K must still use standard rates`,
+        Math.ceil(lastShort * p.input + 1_000 * p.output),
+        `${model} at ${lastShort} must still use standard rates`,
       );
     }
   });

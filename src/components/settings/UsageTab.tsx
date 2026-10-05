@@ -66,7 +66,8 @@ const MODEL_DISPLAY: Record<string, string> = {
   'gpt-5.4': 'GPT-5.4',        // historical usage rows
   'gpt-5.5': 'GPT-5.5',
   'gemini-3.1-pro-preview': 'Gemini 3.1 Pro',
-  'grok-4.5': 'Grok 4.5',
+  'grok-4.7': 'Grok 4.7',
+  'grok-4.5': 'Grok 4.5', // historical usage records
 };
 
 export function UsageTab() {

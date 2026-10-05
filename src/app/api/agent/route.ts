@@ -471,7 +471,7 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
   'claude-opus-5-5',         // pro+
   'claude-fable-5-1',        // max-only
   'gemini-3.1-pro-preview',  // pro+
-  'grok-4.5',                // pro+
+  'grok-4.7',                // pro+
 ]);
 
 function isServerKeyModel(model: ModelId): boolean {
@@ -689,7 +689,7 @@ export async function POST(req: Request) {
       if (selectedModel === 'gemini-3.1-pro-preview') {
         return Boolean(creds.googleApiKey) && !process.env.GOOGLE_GENERATIVE_AI_API_KEY;
       }
-      if (selectedModel === 'grok-4.5') {
+      if (selectedModel === 'grok-4.7') {
         return Boolean(creds.xaiApiKey) && !process.env.XAI_API_KEY;
       }
       // Anthropic models — OAuth token only counts when the feature flag is on
