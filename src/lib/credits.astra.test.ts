@@ -11,7 +11,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
-import { calculateCredits, MODEL_PRICING, MODEL_COST_MULTIPLIER } from "@/lib/credits";
+import { calculateCredits, MODEL_PRICING, MODEL_COST_MULTIPLIER, costMultiplierFromPricing } from "@/lib/credits";
 import { MODEL_CONFIGS } from "@/lib/agent/models";
 import { MODEL_TIER_REQUIREMENT } from "@/lib/tier-shared";
 
@@ -78,10 +78,9 @@ describe("gpt-6-astra pricing", () => {
     assert.equal(MODEL_CONFIGS["gpt-6-astra"].maxContextTokens, 1_050_000);
     assert.equal(MODEL_CONFIGS["gpt-6-astra"].supportsImages, true);
     assert.equal(MODEL_CONFIGS["gpt-6-astra"].apiModelId, "gpt-6-astra");
-    // Max-only on the platform key: identical rates to Claude Fable 5.
+    // Max-only on the platform key (Fable-class $10/$50 list price).
     assert.equal(MODEL_TIER_REQUIREMENT["gpt-6-astra"], "max");
-    assert.equal(MODEL_COST_MULTIPLIER["gpt-6-astra"], MODEL_COST_MULTIPLIER["claude-fable-5"]);
-    assert.deepEqual(MODEL_PRICING["gpt-6-astra"], MODEL_PRICING["claude-fable-5"]);
+    assert.equal(MODEL_COST_MULTIPLIER["gpt-6-astra"], costMultiplierFromPricing("gpt-6-astra"));
   });
 });
 
@@ -89,10 +88,12 @@ describe("long-context threshold regression — cache writes are counted", () =>
   test("gemini and grok are unaffected (they never report cache writes)", () => {
     // Guard on the shared totalInputTokens expression: adding cacheWriteTokens
     // must stay a no-op for the two models whose dialects always report 0.
-    for (const model of ["gemini-3.1-pro-preview", "grok-4.5"] as const) {
+    // Last short-rate prompt per provider: Gemini bills long only ABOVE 200K;
+    // xAI bills long once the prompt REACHES 200K, so 199,999 is its last.
+    for (const [model, lastShort] of [["gemini-3.1-pro-preview", 200_000], ["grok-4.7", 199_999]] as const) {
       const under = calculateCredits({
         model,
-        inputTokens: 200_000,
+        inputTokens: lastShort,
         cachedReadTokens: 0,
         cacheWriteTokens: 0,
         outputTokens: 1_000,
@@ -100,8 +101,8 @@ describe("long-context threshold regression — cache writes are counted", () =>
       const p = MODEL_PRICING[model];
       assert.equal(
         under,
-        Math.ceil(200_000 * p.input + 1_000 * p.output),
-        `${model} at exactly 200K must still use standard rates`,
+        Math.ceil(lastShort * p.input + 1_000 * p.output),
+        `${model} at ${lastShort} must still use standard rates`,
       );
     }
   });

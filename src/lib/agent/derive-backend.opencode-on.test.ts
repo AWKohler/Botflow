@@ -42,7 +42,7 @@ describe("deriveAgentBackend — non-Anthropic models (flag on)", () => {
   test("openai model + Codex OAuth → opencode (codex_oauth_opencode)", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
-      model: "gpt-5.6-terra",
+      model: "gpt-6.1-sol",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasCodexOAuth: true },
     });
@@ -56,7 +56,7 @@ describe("deriveAgentBackend — non-Anthropic models (flag on)", () => {
   test("openai model + OpenAI BYOK only → opencode (byok_opencode)", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
-      model: "gpt-5.5",
+      model: "gpt-6.1-sol",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasOpenAIKey: true },
     });
@@ -67,7 +67,7 @@ describe("deriveAgentBackend — non-Anthropic models (flag on)", () => {
   test("openai model + NO personal creds → opencode PLATFORM mode for paid tiers", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
-      model: "gpt-5.6-terra",
+      model: "gpt-6.1-sol",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS },
       tier: "pro",
@@ -82,7 +82,7 @@ describe("deriveAgentBackend — non-Anthropic models (flag on)", () => {
   test("tier gate: free tier can't run pro platform models (tier_too_low, hidden); free models pass", async () => {
     const { deriveAgentBackend } = await load();
     const gated = deriveAgentBackend({
-      model: "gpt-5.6-terra",
+      model: "gpt-6.1-sol",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS },
       tier: "free",
@@ -153,7 +153,7 @@ describe("deriveAgentBackend — non-Anthropic models (flag on)", () => {
   test("non-sandbox platform never routes to opencode", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
-      model: "gpt-5.6-terra",
+      model: "gpt-6.1-sol",
       platform: "web",
       creds: { ...NO_CREDS, hasCodexOAuth: true, hasOpenAIKey: true },
     });
@@ -166,7 +166,7 @@ describe("deriveAgentBackend — Anthropic tree (flag on)", () => {
   test("Claude OAuth on sandbox → claude-code", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
-      model: "claude-sonnet-5",
+      model: "claude-sonnet-5-5",
       platform: "sandboxed-web",
       // Codex creds present too — must not distract the Anthropic tree.
       creds: { ...NO_CREDS, hasClaudeOAuth: true, hasCodexOAuth: true },
@@ -181,7 +181,7 @@ describe("deriveAgentBackend — Anthropic tree (flag on)", () => {
   test("Anthropic BYOK is LOCKED to claude-code (preference retired)", async () => {
     const { deriveAgentBackend } = await load();
     const byok = deriveAgentBackend({
-      model: "claude-opus-5",
+      model: "claude-opus-5-5",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasAnthropicKey: true },
     });
@@ -190,7 +190,7 @@ describe("deriveAgentBackend — Anthropic tree (flag on)", () => {
 
     // The deprecated preference input is ignored entirely.
     const withStalePreference = deriveAgentBackend({
-      model: "claude-opus-5",
+      model: "claude-opus-5-5",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasAnthropicKey: true },
       preferredAnthropicBackend: "botflow",
@@ -201,7 +201,7 @@ describe("deriveAgentBackend — Anthropic tree (flag on)", () => {
   test("no Anthropic creds: paid tier → opencode PLATFORM mode; free tier → not runnable", async () => {
     const { deriveAgentBackend } = await load();
     const paid = deriveAgentBackend({
-      model: "claude-sonnet-5",
+      model: "claude-sonnet-5-5",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS },
       tier: "pro",
@@ -211,7 +211,7 @@ describe("deriveAgentBackend — Anthropic tree (flag on)", () => {
     assert.equal(paid.reason, "platform_key_opencode");
 
     const maxOnly = deriveAgentBackend({
-      model: "claude-fable-5",
+      model: "claude-fable-5-1",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS },
       tier: "pro", // fable requires max on platform credits
@@ -220,7 +220,7 @@ describe("deriveAgentBackend — Anthropic tree (flag on)", () => {
     assert.equal(maxOnly.reason, "tier_too_low");
 
     const free = deriveAgentBackend({
-      model: "claude-sonnet-5",
+      model: "claude-sonnet-5-5",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS },
       tier: "free",
@@ -235,7 +235,7 @@ describe("resolveBackends — drop-in replacement semantics (flag on)", () => {
     const { resolveBackends } = await load();
     for (const creds of [{ ...NO_CREDS, hasCodexOAuth: true }, { ...NO_CREDS }]) {
       const res = resolveBackends({
-        model: "gpt-5.6-terra",
+        model: "gpt-6.1-sol",
         platform: "sandboxed-web",
         creds,
       });
@@ -248,7 +248,7 @@ describe("resolveBackends — drop-in replacement semantics (flag on)", () => {
   test("Anthropic BYOK → claude-code locked (no more two-backend choice)", async () => {
     const { resolveBackends } = await load();
     const res = resolveBackends({
-      model: "claude-sonnet-5",
+      model: "claude-sonnet-5-5",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasAnthropicKey: true },
     });
@@ -259,7 +259,7 @@ describe("resolveBackends — drop-in replacement semantics (flag on)", () => {
   test("Anthropic no personal creds → opencode locked (platform via proxy)", async () => {
     const { resolveBackends } = await load();
     const res = resolveBackends({
-      model: "claude-sonnet-5",
+      model: "claude-sonnet-5-5",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS },
     });

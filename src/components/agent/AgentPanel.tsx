@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { LiveActions } from '@/components/agent/LiveActions';
 import { useToast } from '@/components/ui/toast';
 import type { ToolCallData } from '@/lib/agent/ui-types';
-import { MODEL_CONFIGS, modelSupportsImages, resolveModelId, isOpenAIModel, effectiveContextTokens, type ModelId } from '@/lib/agent/models';
+import { MODEL_CONFIGS, DEFAULT_MODEL_ID, modelSupportsImages, resolveModelId, isOpenAIModel, isAnthropicModel, effectiveContextTokens, type ModelId } from '@/lib/agent/models';
 import { ModelSelector } from '@/components/ui/ModelSelector';
 import { LimitModal, parseLimitPayload, type LimitReachedPayload } from '@/components/ui/LimitModal';
 import { CreditGauge } from '@/components/ui/CreditGauge';
@@ -393,7 +393,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [initialized, setInitialized] = useState(false);
   const [actions, setActions] = useState<ToolCallData[]>([]);
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
-  const [model, setModel] = useState<ModelId>('gpt-5.6-luna');
+  const [model, setModel] = useState<ModelId>(DEFAULT_MODEL_ID);
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
   const [hasClaudeOAuth, setHasClaudeOAuth] = useState<boolean | null>(null);
@@ -1724,7 +1724,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     const hasImages = pendingImages.length > 0;
     if (!hasText && !hasImages) return;
 
-    const usingAnthropic = model === 'claude-sonnet-5' || model === 'claude-opus-5' || model === 'claude-fable-5';
+    const usingAnthropic = isAnthropicModel(model);
     const hasAnthropicCreds = hasAnthropicKey || (ANTHROPIC_OAUTH_ENABLED && hasClaudeOAuth);
     const hasOpenAICreds = hasCodexOAuth || hasOpenAIKey;
     // Pro/Max users can use OpenAI and Anthropic models via platform server keys — only

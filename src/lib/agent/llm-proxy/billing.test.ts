@@ -77,11 +77,11 @@ describe("settlement credit parity with /api/agent", () => {
 
   test("personal-cred modes bill zero, exactly like isUsingPersonalCredentials", () => {
     assert.equal(
-      computeSettlementCredits(usageOf(50_000, 2_000, 10_000, 0), "gpt-5.6-terra", "byok"),
+      computeSettlementCredits(usageOf(50_000, 2_000, 10_000, 0), "gpt-6.1-sol", "byok"),
       0,
     );
     assert.equal(
-      computeSettlementCredits(usageOf(50_000, 2_000, 10_000, 0), "claude-sonnet-5", "oauth"),
+      computeSettlementCredits(usageOf(50_000, 2_000, 10_000, 0), "claude-sonnet-5-5", "oauth"),
       0,
     );
   });
@@ -96,56 +96,67 @@ describe("settlement credit parity with /api/agent", () => {
     assert.ok(abovePerToken > belowPerToken, `expected surcharge: ${abovePerToken} > ${belowPerToken}`);
   });
 
-  test("grok-4.5 long-context tier DOUBLES every rate past 200K (xAI long_context)", () => {
+  test("grok-4.7 long-context tier DOUBLES every rate from 200K (xAI long_context)", () => {
     // Pure input, no output/cache: 100K (short tier) vs 300K (long tier).
     // Long tier is exactly 2× → per-token rate doubles.
-    const short = computeSettlementCredits(usageOf(100_000, 0, 0, 0), "grok-4.5", "platform");
-    const long = computeSettlementCredits(usageOf(300_000, 0, 0, 0), "grok-4.5", "platform");
+    const short = computeSettlementCredits(usageOf(100_000, 0, 0, 0), "grok-4.7", "platform");
+    const long = computeSettlementCredits(usageOf(300_000, 0, 0, 0), "grok-4.7", "platform");
     const shortPerTok = short / 100_000; // ≈ 6.67 credits/token ($2/MTok)
     const longPerTok = long / 300_000;   // ≈ 13.33 credits/token ($4/MTok)
     assert.ok(Math.abs(longPerTok / shortPerTok - 2) < 0.001, `expected 2× but got ${longPerTok / shortPerTok}`);
   });
 
+  test("long-context boundary: xAI bills long AT 200K (≥), OpenAI only ABOVE 272K (>)", () => {
+    const perTok = (n: number, m: "grok-4.7" | "gpt-6.1-sol") =>
+      computeSettlementCredits(usageOf(n, 0, 0, 0), m, "platform") / n;
+    // grok: 199_999 short, exactly 200_000 already long (2×).
+    assert.ok(perTok(200_000, "grok-4.7") / perTok(199_999, "grok-4.7") > 1.99);
+    // gpt-6.1-sol: exactly 272_000 still short; 272_001 long (2× input).
+    assert.ok(Math.abs(perTok(272_000, "gpt-6.1-sol") / perTok(271_999, "gpt-6.1-sol") - 1) < 0.001);
+    assert.ok(perTok(272_001, "gpt-6.1-sol") / perTok(272_000, "gpt-6.1-sol") > 1.99);
+  });
+
   test("anthropic cache WRITES are billed (never free)", () => {
-    const withWrite = computeSettlementCredits(usageOf(10_000, 100, 0, 8_000), "claude-opus-5", "platform");
-    const withoutWrite = computeSettlementCredits(usageOf(2_000, 100, 0, 0), "claude-opus-5", "platform");
+    const withWrite = computeSettlementCredits(usageOf(10_000, 100, 0, 8_000), "claude-opus-5-5", "platform");
+    const withoutWrite = computeSettlementCredits(usageOf(2_000, 100, 0, 0), "claude-opus-5-5", "platform");
     assert.ok(withWrite > withoutWrite);
   });
 
-  test("grok-4.5 credits reconcile to xAI's live billing (captured cost_in_usd_ticks)", () => {
-    // Real cold call captured from api.x.ai (1 tick = 1e-10 USD):
+  test("grok-4.7 credits reconcile to xAI's live billing (captured cost_in_usd_ticks)", () => {
+    // Real cold call captured from api.x.ai on grok-4.5 while it billed
+    // $2/$0.50/$6 — identical to grok-4.7's list price (1 tick = 1e-10 USD):
     //   prompt_tokens=7755 (cached_tokens=128, a subset), output=completion(1)+reasoning(177)=178
     //   cost_in_usd_ticks=163_860_000 → $0.016386
     // 1 credit = $0.30/MTok = $3e-7, so $0.016386 / 3e-7 = 54_620 credits.
-    const credits = computeSettlementCredits(usageOf(7755, 178, 128, 0), "grok-4.5", "platform");
+    const credits = computeSettlementCredits(usageOf(7755, 178, 128, 0), "grok-4.7", "platform");
     const dollarsFromTicks = 163_860_000 * 1e-10;      // $0.016386
     const expected = dollarsFromTicks / 3e-7;           // 54_620 credits ($3e-7 = 1 credit)
     // calculateCredits Math.ceil's the FP sum, so allow the ≤1-credit ceil artifact.
     assert.ok(Math.abs(credits - expected) <= 1, `grok credits ${credits} vs xAI-derived ${expected}`);
   });
 
-  test("GPT-5.6 cache WRITES bill at the 1.25× premium (> same tokens as plain input)", () => {
+  test("GPT-6 cache WRITES bill at the 1.25× premium (> same tokens as plain input)", () => {
     // usageOf's first arg is prompt_tokens (the total) — reads AND writes are
     // SUBSETS of it, not added on top (live-verified). Reclassifying 800 tokens
     // from plain uncached (1×) to cache-WRITE (1.25×) must cost strictly more.
-    const asWrite = computeSettlementCredits(usageOf(12_800, 300, 11_500, 800), "gpt-5.6-sol", "platform");
-    const asPlainInput = computeSettlementCredits(usageOf(12_800, 300, 11_500, 0), "gpt-5.6-sol", "platform");
+    const asWrite = computeSettlementCredits(usageOf(12_800, 300, 11_500, 800), "gpt-6.1-sol", "platform");
+    const asPlainInput = computeSettlementCredits(usageOf(12_800, 300, 11_500, 0), "gpt-6.1-sol", "platform");
     // Writes cost 1.25× input, so reclassifying them as 1× plain input is cheaper.
     assert.ok(asWrite > asPlainInput, `write premium should exceed plain input: ${asWrite} vs ${asPlainInput}`);
-    // And Terra/Luna price writes proportionally to their own input rate.
+    // And Luna prices writes proportionally to their own input rate.
     assert.ok(
-      computeSettlementCredits(usageOf(2_000, 100, 0, 1_600), "gpt-5.6-luna", "platform") >
-      computeSettlementCredits(usageOf(2_000, 100, 0, 0), "gpt-5.6-luna", "platform"),
+      computeSettlementCredits(usageOf(2_000, 100, 0, 1_600), "gpt-6-luna", "platform") >
+      computeSettlementCredits(usageOf(2_000, 100, 0, 0), "gpt-6-luna", "platform"),
     );
   });
 });
 
 describe("reservation estimate", () => {
   test("input bounded by the model's context window (base64 blobs can't over-reserve)", () => {
-    const huge = estimateRequestCredits("claude-sonnet-5", 100 * 1024 * 1024, 32_000);
+    const huge = estimateRequestCredits("claude-sonnet-5-5", 100 * 1024 * 1024, 32_000);
     const atContext = estimateRequestCredits(
-      "claude-sonnet-5",
-      MODEL_CONFIGS["claude-sonnet-5"].maxContextTokens * 4,
+      "claude-sonnet-5-5",
+      MODEL_CONFIGS["claude-sonnet-5-5"].maxContextTokens * 4,
       32_000,
     );
     assert.equal(huge, atContext);
@@ -180,7 +191,7 @@ describe("model reverse-mapping", () => {
   test("apiModelIds map back; Together kimi maps to the fireworks pricing id", () => {
     assert.equal(modelIdForProviderModel("accounts/fireworks/models/kimi-k2p7-code"), "fireworks-kimi-k2p7");
     assert.equal(modelIdForProviderModel("moonshotai/Kimi-K2.7-Code"), "fireworks-kimi-k2p7");
-    assert.equal(modelIdForProviderModel("claude-sonnet-5"), "claude-sonnet-5");
+    assert.equal(modelIdForProviderModel("claude-sonnet-5-5"), "claude-sonnet-5-5");
     assert.equal(modelIdForProviderModel("claude-haiku-4-5-20251001"), null); // CC background model — skip row
     assert.equal(modelIdForProviderModel(null), null);
   });

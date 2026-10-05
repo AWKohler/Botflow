@@ -287,7 +287,7 @@ export function WorkspaceMockup({
   codeContent,
   defaultView = 'preview',
   agentWorking = false,
-  modelName = 'GPT-5.3 Codex',
+  modelName = 'GPT-6.1 Sol',
   className,
   hideAgentPanel = false,
 }: WorkspaceMockupProps) {
