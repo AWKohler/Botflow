@@ -4,9 +4,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { createPortal } from 'react-dom';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, isToolUIPart, getToolName, type UIMessage } from 'ai';
-import { Button } from '@/components/ui/button';
 import { Markdown } from '@/components/ui/markdown';
-import { ChevronDown, ChevronRight, ArrowUp, X as IconX, Cog, AlertCircle, RotateCcw, Loader2, ListPlus, Check, ImagePlus, Smartphone } from 'lucide-react';
+import { ChevronDown, ChevronRight, ArrowUp, X as IconX, Cog, AlertCircle, RotateCcw, Loader2, ListPlus, Check, ImagePlus, Smartphone, PanelLeft, Plus } from 'lucide-react';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { cn } from '@/lib/utils';
 import { LiveActions } from '@/components/agent/LiveActions';
@@ -29,10 +28,35 @@ import { deriveAgentBackend, describeDerivation } from '@/lib/agent/derive-backe
 import { BackendChip, BackendGlyphInfo } from './BackendBadge';
 import { ThinkingBlock } from './ThinkingBlock';
 import { QuestionPrompt, type QuestionConfig, type QuestionAnswerPayload } from './QuestionPrompt';
+import {
+  ATTENTION_DOT_CLASS,
+  ThreadsSheet,
+  isBlankThread,
+  threadAttention,
+  useBackgroundThreadAlerts,
+  useThreads,
+  type ThreadAttention,
+} from './ThreadsSheet';
 import type { SubagentStep } from '@/lib/agent/claude-code/translator';
 import { transcriptHasUnfinishedTail } from '@/lib/agent/transcript-tail';
 
 type Props = { className?: string; projectId: string; initialPrompt?: string; platform?: ProjectPlatform };
+
+/** One thread's conversation view. The exported AgentPanel (below) owns the
+ *  thread list and mounts one of these per selected thread (keyed, so a
+ *  switch is a clean remount; the previous thread's agent keeps running in
+ *  the sandbox and is reattached when you come back). */
+type ThreadPanelProps = Props & {
+  threadId: string;
+  /** The thread's model as last known by the thread list. */
+  initialModel?: ModelId;
+  onOpenThreads: () => void;
+  onNewChat: () => void;
+  /** Most urgent status among the OTHER threads, for the dot on the threads button. */
+  threadsAttention: ThreadAttention | null;
+  /** Ask the thread list to refresh (model changed, turn finished, reset). */
+  onThreadChanged: () => void;
+};
 
 interface PendingImage {
   id: string;
@@ -250,13 +274,32 @@ function repairOrphanedToolCalls(messages: AnyPart[]): AnyPart[] {
 // ============================================================================
 // Main AgentPanel
 // ============================================================================
-export function AgentPanel({ className, projectId, initialPrompt, platform = 'web' }: Props) {
+function AgentThreadPanel({
+  className,
+  projectId,
+  initialPrompt,
+  platform = 'web',
+  threadId,
+  initialModel,
+  onOpenThreads,
+  onNewChat,
+  threadsAttention,
+  onThreadChanged,
+}: ThreadPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const savedIdsRef = useRef<Set<string>>(new Set());
   const [initialized, setInitialized] = useState(false);
   const [actions, setActions] = useState<ToolCallData[]>([]);
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
-  const [model, setModel] = useState<ModelId>(DEFAULT_MODEL_ID);
+  const [model, setModel] = useState<ModelId>(initialModel ?? DEFAULT_MODEL_ID);
+  const onThreadChangedRef = useRef(onThreadChanged);
+  onThreadChangedRef.current = onThreadChanged;
+  /** Clear this thread's unread dot for the current user. */
+  const markViewed = useCallback(() => {
+    fetch(`/api/projects/${encodeURIComponent(projectId)}/threads/${encodeURIComponent(threadId)}/viewed`, {
+      method: 'POST',
+    }).catch(() => {});
+  }, [projectId, threadId]);
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
   const [hasClaudeOAuth, setHasClaudeOAuth] = useState<boolean | null>(null);
@@ -582,14 +625,14 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // turn answers 422 with a user-facing error — there is no fallback agent.
   const transportRef = useRef(new DefaultChatTransport({
     api: '/api/agent/opencode',
-    body: { projectId, platform },
+    body: { projectId, platform, threadId },
     // resumeStream() → GET the reattach route, which replays the current
     // in-sandbox turn's event file (Claude Code or OpenCode — the turn record
     // picks the translator) and follows it while the bridge lives. The
     // recovery logic only calls resumeStream() for in-sandbox turns. A 204
     // (nothing to resume) is a clean no-op.
     prepareReconnectToStreamRequest: () => ({
-      api: `/api/agent/claude-code/reattach?projectId=${encodeURIComponent(projectId)}${
+      api: `/api/agent/claude-code/reattach?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}${
         reattachTurnIdRef.current ? `&turnId=${encodeURIComponent(reattachTurnIdRef.current)}` : ''
       }`,
     }),
@@ -674,7 +717,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectId, message }),
+            body: JSON.stringify({ projectId, threadId, message }),
           });
           savedIdsRef.current.add(message.id);
           // Stamp the message with the current segment so subsequent
@@ -686,6 +729,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           console.error('Failed to persist assistant message:', err);
         }
       })();
+
+      // The user watched this turn finish — it isn't "unread" for them.
+      markViewed();
+      onThreadChangedRef.current();
 
       // Emit event to trigger snapshot capture
       if (typeof window !== 'undefined') {
@@ -897,7 +944,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     const epoch = recoveryEpochRef.current;
     try {
       const res = await fetch(
-        `/api/agent/claude-code/turn-status?projectId=${encodeURIComponent(projectId)}`,
+        `/api/agent/claude-code/turn-status?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}`,
       );
       const data = res.ok
         ? ((await res.json()) as {
@@ -945,7 +992,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         fetch('/api/agent/claude-code/stop', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectId }),
+          body: JSON.stringify({ projectId, threadId }),
         }).catch(() => {});
         return { outcome: 'wedged', recordExists };
       }
@@ -979,7 +1026,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     } finally {
       reattachInFlightRef.current = false;
     }
-  }, [projectId, resumeStream, setMessages]);
+  }, [projectId, threadId, resumeStream, setMessages]);
 
   const attemptTurnRecovery = useCallback(async () => {
     if (userStoppedRef.current) return;
@@ -1345,12 +1392,17 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&includeAllSegments=true`);
+        const res = await fetch(
+          `/api/chat?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}&includeAllSegments=true`,
+        );
         if (!res.ok) throw new Error('Failed to load chat');
         const data = await res.json();
         if (cancelled) return;
         if (typeof data?.currentSegmentId === 'string') {
           setCurrentSegmentId(data.currentSegmentId);
+        }
+        if (typeof data?.model === 'string') {
+          setModel(resolveModelId(data.model));
         }
         if (Array.isArray(data?.messages)) {
           setMessages(data.messages);
@@ -1383,20 +1435,16 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       }
     }
     load();
+    markViewed();
     return () => { cancelled = true; };
-  }, [projectId, setMessages]);
+  }, [projectId, threadId, setMessages, markViewed]);
 
   // Load project model and user settings (BYOK presence)
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`);
-        if (res.ok) {
-          const proj = await res.json();
-          setModel(resolveModelId(proj?.model));
-          // Note: project.agentBackend is no longer read — the agent backend
-          // is derived per-render from (model, platform, creds, preference).
-        }
+        // The model is per thread (see the chat load above); the agent
+        // backend is derived per-render from (model, platform, creds).
       } catch {}
       try {
         const s = await fetch('/api/user-settings');
@@ -1452,7 +1500,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             await fetch('/api/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ projectId, message: m }),
+              body: JSON.stringify({ projectId, threadId, message: m }),
             });
             savedIdsRef.current.add(m.id);
             if (currentSegmentIdRef.current) {
@@ -1465,7 +1513,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       }
     }
     void persistNewMessages();
-  }, [messages.length, projectId, initialized]);
+  }, [messages.length, projectId, threadId, initialized]);
 
   // Initial prompt submission — fire once when initialized with no existing messages
   const initialPromptSentRef = useRef(false);
@@ -1774,7 +1822,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                 const confirmed = window.confirm('Reset chat to free up context? This will delete all messages.');
                 if (!confirmed) return;
                 try {
-                  const r = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+                  const r = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}`, { method: 'DELETE' });
                   const data = await r.json().catch(() => ({} as { currentSegmentId?: string }));
                   if (typeof data.currentSegmentId === 'string') setCurrentSegmentId(data.currentSegmentId);
                   savedIdsRef.current.clear();
@@ -1846,19 +1894,43 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     <div className={cn('flex h-full flex-col text-sm bg-surface text-fg p-2.5', className)}>
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 bg-surface">
-        <div className="flex items-center gap-2">
-          {/* -ml-3 cancels the ghost padding so the label lines up with the
-              header edge, mirroring the Settings glyph on the right. */}
-          <Button
+        <div className="flex items-center gap-1">
+          {/* Threads sheet toggle. -ml-1.5 cancels the hit-area padding so the
+              glyph lines up with the header edge, mirroring Settings. */}
+          <button
             type="button"
-            size="sm"
-            variant="ghost"
-            className="-ml-3"
+            onClick={onOpenThreads}
+            title="Chats"
+            aria-label="Open chats"
+            className="relative -ml-1.5 flex size-7 items-center justify-center rounded-full text-muted transition-colors hover:bg-soft hover:text-fg"
+          >
+            <PanelLeft size={16} />
+            {threadsAttention && (
+              <span
+                aria-hidden
+                className={cn(
+                  'absolute right-0.5 top-0.5 size-2 rounded-full ring-2 ring-surface',
+                  ATTENTION_DOT_CLASS[threadsAttention],
+                )}
+              />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={onNewChat}
+            className="flex h-7 items-center gap-1 rounded-full pl-2 pr-2.5 text-xs font-medium text-muted transition-colors hover:bg-soft hover:text-fg"
+          >
+            <Plus size={14} />
+            New chat
+          </button>
+          <button
+            type="button"
+            className="flex h-7 items-center rounded-full px-2.5 text-xs font-medium text-muted transition-colors hover:bg-soft hover:text-fg"
             onClick={async () => {
-              const confirmed = window.confirm('Reset chat? This will permanently delete all messages for this project.');
+              const confirmed = window.confirm('Reset this chat? This permanently deletes its messages. Your other chats are not affected.');
               if (!confirmed) return;
               try {
-                const r = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+                const r = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}`, { method: 'DELETE' });
                 const data = await r.json().catch(() => ({} as { currentSegmentId?: string }));
                 if (typeof data.currentSegmentId === 'string') setCurrentSegmentId(data.currentSegmentId);
                 savedIdsRef.current.clear();
@@ -1869,6 +1941,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                 setTokenEstimate(0);
                 setClaudeCodeUsage(null);
                 setIsCompacting(false);
+                onThreadChanged();
                 // Wipe browser-log ring buffer — new segment, fresh slate.
                 fetch(`/api/projects/${encodeURIComponent(projectId)}/browser-log`, { method: 'DELETE' }).catch(() => {});
                 // Clean up any pending image attachments
@@ -1882,7 +1955,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             }}
           >
             Reset
-          </Button>
+          </button>
         </div>
         <div className="flex items-center gap-2">
           {(() => {
@@ -2375,8 +2448,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
               className="min-w-0"
               value={model}
               onChange={async (next) => {
+                // The model belongs to THIS thread only.
                 const patchModel = () =>
-                  fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+                  fetch(`/api/projects/${encodeURIComponent(projectId)}/threads/${encodeURIComponent(threadId)}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ model: next }),
@@ -2398,8 +2472,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                     await new Promise((r) => setTimeout(r, retryAfter * 1000));
                     res = await patchModel();
                   }
-                  if (res.ok) setModel(next);
-                  else toast({ title: 'Failed to change model' });
+                  if (res.ok) {
+                    setModel(next);
+                    onThreadChanged();
+                  } else toast({ title: 'Failed to change model' });
                 } catch {
                   toast({ title: 'Failed to change model' });
                 }
@@ -2458,7 +2534,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                       fetch('/api/agent/claude-code/stop', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ projectId }),
+                        body: JSON.stringify({ projectId, threadId }),
                       }).catch(() => {});
                     }
                     // Signal workspace to dismiss any pending tool-driven modals
@@ -2535,6 +2611,163 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         document.body
       )}
 
+    </div>
+  );
+}
+
+// ============================================================================
+// AgentPanel — the thread list + one mounted thread view
+// ============================================================================
+const STORED_THREAD_KEY = (projectId: string) => `botflow:agent-thread:${projectId}`;
+
+function readStoredThread(projectId: string): string | null {
+  try {
+    return localStorage.getItem(STORED_THREAD_KEY(projectId));
+  } catch {
+    return null;
+  }
+}
+
+function storeThread(projectId: string, threadId: string) {
+  try {
+    localStorage.setItem(STORED_THREAD_KEY(projectId), threadId);
+  } catch {
+    /* private mode / blocked storage — selection just isn't remembered */
+  }
+}
+
+export function AgentPanel({ className, projectId, initialPrompt, platform = 'web' }: Props) {
+  const { toast } = useToast();
+  const { threads, error, refresh, create, update, remove } = useThreads(projectId);
+  const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // The landing-page prompt belongs to the thread the panel first opens on.
+  const initialPromptThreadRef = useRef<string | null>(null);
+  const creatingRef = useRef(false);
+
+  const selectThread = useCallback(
+    (threadId: string) => {
+      setCurrentThreadId(threadId);
+      storeThread(projectId, threadId);
+      setSheetOpen(false);
+    },
+    [projectId],
+  );
+
+  // Pick the thread to show once the list loads: the remembered one if it's
+  // still open, else the most recently active, else a brand-new thread.
+  useEffect(() => {
+    if (!threads) return;
+    const open = threads.filter((t) => !t.archived);
+    if (currentThreadId && open.some((t) => t.id === currentThreadId)) return;
+    if (currentThreadId && threads.some((t) => t.id === currentThreadId)) {
+      // The current thread was archived (here or by a collaborator) — keep
+      // showing it; the user moves on when they pick another.
+      return;
+    }
+    const stored = readStoredThread(projectId);
+    const pick = (stored && open.find((t) => t.id === stored)) || open[0];
+    if (pick) {
+      if (!initialPromptThreadRef.current) initialPromptThreadRef.current = pick.id;
+      setCurrentThreadId(pick.id);
+      return;
+    }
+    if (creatingRef.current) return;
+    creatingRef.current = true;
+    void create().then((t) => {
+      creatingRef.current = false;
+      if (!t) return;
+      if (!initialPromptThreadRef.current) initialPromptThreadRef.current = t.id;
+      selectThread(t.id);
+    });
+  }, [threads, currentThreadId, projectId, create, selectThread]);
+
+  const currentThread = useMemo(
+    () => threads?.find((t) => t.id === currentThreadId) ?? null,
+    [threads, currentThreadId],
+  );
+
+  const handleNewChat = useCallback(async () => {
+    // Reuse an untouched thread instead of piling up empty ones.
+    if (currentThread && isBlankThread(currentThread)) {
+      setSheetOpen(false);
+      return;
+    }
+    const t = await create(currentThread?.model);
+    if (t) selectThread(t.id);
+    else toast({ title: 'Could not start a new chat' });
+  }, [currentThread, create, selectThread, toast]);
+
+  const handleDelete = useCallback(
+    async (threadId: string) => {
+      const target = threads?.find((t) => t.id === threadId);
+      const name = target?.title ?? 'this chat';
+      if (!window.confirm(`Delete “${name}”? Its messages are permanently removed and a running agent is stopped.`)) return;
+      const result = await remove(threadId);
+      if (!result.ok) {
+        toast({ title: 'Could not delete chat', description: result.error });
+        return;
+      }
+      if (threadId === currentThreadId) {
+        setCurrentThreadId(null); // the picker effect selects the next one
+      }
+    },
+    [threads, remove, currentThreadId, toast],
+  );
+
+  const handleArchive = useCallback(
+    async (threadId: string, archived: boolean) => {
+      const ok = await update(threadId, { archived });
+      if (!ok) toast({ title: archived ? 'Could not archive chat' : 'Could not unarchive chat' });
+    },
+    [update, toast],
+  );
+
+  const attention = useMemo(
+    () => threadAttention((threads ?? []).filter((t) => t.id !== currentThreadId)),
+    [threads, currentThreadId],
+  );
+  useBackgroundThreadAlerts(threads, currentThreadId);
+
+  return (
+    <div className={cn('relative flex h-full flex-col', className)}>
+      {currentThreadId ? (
+        <AgentThreadPanel
+          key={currentThreadId}
+          className="h-full"
+          projectId={projectId}
+          platform={platform}
+          initialPrompt={currentThreadId === initialPromptThreadRef.current ? initialPrompt : undefined}
+          threadId={currentThreadId}
+          initialModel={currentThread?.model}
+          onOpenThreads={() => setSheetOpen(true)}
+          onNewChat={() => void handleNewChat()}
+          threadsAttention={attention}
+          onThreadChanged={() => void refresh()}
+        />
+      ) : (
+        <div className="flex h-full items-center justify-center bg-surface text-xs text-muted">
+          {error ? (
+            <button type="button" onClick={() => void refresh()} className="underline hover:text-fg">
+              {error} Retry
+            </button>
+          ) : (
+            <Loader2 size={16} className="animate-spin" />
+          )}
+        </div>
+      )}
+      <ThreadsSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        threads={threads}
+        error={error}
+        currentThreadId={currentThreadId}
+        onSelect={selectThread}
+        onNewChat={() => void handleNewChat()}
+        onRename={(id, title) => update(id, { title })}
+        onArchive={(id, archived) => void handleArchive(id, archived)}
+        onDelete={(id) => void handleDelete(id)}
+      />
     </div>
   );
 }
