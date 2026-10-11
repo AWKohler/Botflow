@@ -303,17 +303,22 @@ export async function writeOpenCodeScripts(projectId: string): Promise<void> {
 export async function writeOpenCodeAppendPrompt(
   projectId: string,
   content: string,
-): Promise<void> {
+  threadId: string,
+): Promise<string> {
   const sandbox = await getOrCreatePersistentSandbox(projectId);
   const paths = await resolveOpenCodePaths(projectId);
+  // One file per thread: concurrently running threads get different prompts
+  // (the cross-agent awareness note names the OTHER threads).
+  const path = `${paths.ocDir}/append-prompt-${threadId.replace(/[^0-9a-f-]/gi, "")}.md`;
   await sandbox.runCommand({
     cmd: "sh",
     args: ["-c", `mkdir -p ${paths.ocDir}`],
   });
   await sandbox.writeFiles([
     {
-      path: paths.appendPromptPath,
+      path,
       content: Buffer.from(content, "utf-8"),
     },
   ]);
+  return path;
 }

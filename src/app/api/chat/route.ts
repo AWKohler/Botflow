@@ -2,40 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { and, desc, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '@/db';
-import { chatMessages, chatSessions, projects } from '@/db/schema';
+import { chatMessages, chatSessions } from '@/db/schema';
 import { requireProjectAccess } from '@/lib/project-access';
 import { auth } from '@/lib/auth/server';
+import { ensureThreadSegment, resolveThread, threadModel } from '@/lib/agent/threads';
+import { clearClaudeCodeSessionId } from '@/lib/agent/claude-code/session-store';
+import { clearOpenCodeSessionId } from '@/lib/agent/opencode/session-store';
 
 // Chat endpoints are IO-bound and may stream/persist large payloads; extend limits
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-// Helper: find or create a chat session for a project
-async function getOrCreateSession(db: ReturnType<typeof getDb>, projectId: string) {
-  const existing = await db.select().from(chatSessions).where(eq(chatSessions.projectId, projectId)).limit(1);
-  if (existing.length > 0) return existing[0];
-  const [created] = await db.insert(chatSessions).values({ projectId }).returning();
-  return created;
-}
-
-/**
- * Returns the project's current_segment_id, lazy-minting one if missing.
- * Pre-migration projects should already have a segment from the backfill, but
- * defensive against any path that creates a project without one.
- */
-async function ensureProjectSegment(
-  db: ReturnType<typeof getDb>,
-  project: typeof projects.$inferSelect,
-): Promise<string> {
-  if (project.currentSegmentId) return project.currentSegmentId;
-  const segmentId = randomUUID();
-  await db
-    .update(projects)
-    .set({ currentSegmentId: segmentId, updatedAt: new Date() })
-    .where(eq(projects.id, project.id));
-  return segmentId;
-}
+// Every endpoint addresses ONE thread (docs/features/multi-agent-threads.md).
+// `threadId` is optional for older clients: they get the project's most
+// recently active thread, created on demand.
 
 export async function GET(req: NextRequest) {
   try {
@@ -46,18 +27,19 @@ export async function GET(req: NextRequest) {
 
     // When the client wants the older messages too (for the segment-divider
     // view), it passes ?includeAllSegments=true. Otherwise we scope strictly
-    // to the current segment so the agent's history matches what it sees.
+    // to the thread's current segment so the agent's history matches what it sees.
     const includeAllSegments = req.nextUrl.searchParams.get('includeAllSegments') === 'true';
 
     const db = getDb();
     const access = await requireProjectAccess(projectId, userId);
     if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    const session = await getOrCreateSession(db, projectId);
-    const currentSegmentId = await ensureProjectSegment(db, access.project);
+    const thread = await resolveThread(access.project, userId, req.nextUrl.searchParams.get('threadId'));
+    if (!thread) return NextResponse.json({ error: 'Thread not found' }, { status: 404 });
+    const currentSegmentId = await ensureThreadSegment(thread);
 
     const whereClause = includeAllSegments
-      ? eq(chatMessages.sessionId, session.id)
-      : and(eq(chatMessages.sessionId, session.id), eq(chatMessages.segmentId, currentSegmentId));
+      ? eq(chatMessages.sessionId, thread.id)
+      : and(eq(chatMessages.sessionId, thread.id), eq(chatMessages.segmentId, currentSegmentId));
 
     const rows = await db
       .select()
@@ -74,6 +56,7 @@ export async function GET(req: NextRequest) {
         // Include segmentId so the client can render segment dividers without
         // a second fetch. The active segment matches `currentSegmentId`.
         segmentId: r.segmentId,
+        userId: r.userId,
         createdAt: r.createdAt,
       };
       if (stored && typeof stored === 'object' && 'parts' in stored) {
@@ -84,7 +67,14 @@ export async function GET(req: NextRequest) {
       }
       return { ...base, parts: [{ type: 'text', text: String(stored ?? '') }] };
     });
-    return NextResponse.json({ sessionId: session.id, messages, currentSegmentId });
+    return NextResponse.json({
+      threadId: thread.id,
+      sessionId: thread.id,
+      model: threadModel(thread, access.project),
+      title: thread.title,
+      messages,
+      currentSegmentId,
+    });
   } catch (err) {
     console.error('GET /api/chat failed:', err);
     return NextResponse.json({ error: 'Failed to fetch chat' }, { status: 500 });
@@ -96,31 +86,37 @@ export async function POST(req: NextRequest) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
-    const { projectId, message } = body as { projectId?: string; message?: { id: string; role: string; content?: unknown; parts?: unknown } };
+    const { projectId, threadId, message } = body as {
+      projectId?: string;
+      threadId?: string;
+      message?: { id: string; role: string; content?: unknown; parts?: unknown };
+    };
     if (!projectId || !message?.id || !message?.role) {
       return NextResponse.json({ error: 'projectId and full message are required' }, { status: 400 });
     }
     const db = getDb();
     const access = await requireProjectAccess(projectId, userId);
     if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    const session = await getOrCreateSession(db, projectId);
-    const currentSegmentId = await ensureProjectSegment(db, access.project);
+    const thread = await resolveThread(access.project, userId, threadId);
+    if (!thread) return NextResponse.json({ error: 'Thread not found' }, { status: 404 });
+    const currentSegmentId = await ensureThreadSegment(thread);
 
     const storedContent = message.parts
       ? { parts: message.parts }
       : (message.content as object);
 
-    // Stamp every new message with the project's current segment id. Upsert
-    // by (sessionId, messageId) so streaming updates to the same assistant
-    // message don't create duplicates.
+    // Stamp every new message with the thread's current segment id. Upsert
+    // by (thread, messageId) so streaming updates to the same assistant
+    // message — and the server's own end-of-turn save — never duplicate.
     await db
       .insert(chatMessages)
       .values({
-        sessionId: session.id,
+        sessionId: thread.id,
         messageId: message.id,
         role: message.role,
         content: storedContent,
         segmentId: currentSegmentId,
+        userId: message.role === 'user' ? userId : null,
       })
       .onConflictDoUpdate({
         target: [chatMessages.sessionId, chatMessages.messageId],
@@ -128,7 +124,7 @@ export async function POST(req: NextRequest) {
           role: message.role,
           content: storedContent,
           // Don't touch segmentId on update — preserves the message's
-          // original segment even if the project later switches backends.
+          // original segment even if the thread later switches backends.
         },
       });
     return NextResponse.json({ ok: true });
@@ -147,16 +143,23 @@ export async function DELETE(req: NextRequest) {
     const db = getDb();
     const access = await requireProjectAccess(projectId, userId);
     if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    const session = await getOrCreateSession(db, projectId);
-    // Reset deletes EVERY segment's messages and mints a fresh segment id
-    // so the next message starts a clean slate.
-    await db.delete(chatMessages).where(eq(chatMessages.sessionId, session.id));
+    const thread = await resolveThread(access.project, userId, req.nextUrl.searchParams.get('threadId'));
+    if (!thread) return NextResponse.json({ error: 'Thread not found' }, { status: 404 });
+
+    // Reset clears THIS thread: its messages, its title (the next prompt
+    // names it again), and the agents' session pointers so the next turn
+    // starts a genuinely fresh session. Other threads are untouched.
+    await db.delete(chatMessages).where(eq(chatMessages.sessionId, thread.id));
     const newSegmentId = randomUUID();
     await db
-      .update(projects)
-      .set({ currentSegmentId: newSegmentId, updatedAt: new Date() })
-      .where(eq(projects.id, projectId));
-    return NextResponse.json({ ok: true, currentSegmentId: newSegmentId });
+      .update(chatSessions)
+      .set({ currentSegmentId: newSegmentId, title: null, lastTurnError: null, updatedAt: new Date() })
+      .where(eq(chatSessions.id, thread.id));
+    await Promise.all([
+      clearClaudeCodeSessionId(thread.id).catch(() => {}),
+      clearOpenCodeSessionId(thread.id).catch(() => {}),
+    ]);
+    return NextResponse.json({ ok: true, threadId: thread.id, currentSegmentId: newSegmentId });
   } catch (err) {
     console.error('DELETE /api/chat failed:', err);
     return NextResponse.json({ error: 'Failed to reset chat' }, { status: 500 });

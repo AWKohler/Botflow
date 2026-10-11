@@ -71,6 +71,8 @@ export async function createConnectRequest(opts: {
   mode: StripeMode;
   state: string;
   authorizeUrl: string;
+  /** Thread whose agent asked (drives its "needs input" status). */
+  threadId?: string | null;
 }): Promise<{ id: string }> {
   const db = getDb();
   const [row] = await db
@@ -81,6 +83,7 @@ export async function createConnectRequest(opts: {
       mode: opts.mode,
       state: opts.state,
       authorizeUrl: opts.authorizeUrl,
+      threadId: opts.threadId ?? null,
       status: 'pending',
     })
     .returning({ id: stripeConnectRequests.id });

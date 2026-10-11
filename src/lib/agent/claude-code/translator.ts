@@ -175,7 +175,15 @@ interface State {
   subagents: Map<string, SubagentStep[]>;
 }
 
-export function createTranslator(writer: UIMessageStreamWriter): {
+/** Options shared by both translators. */
+export interface TranslatorOptions {
+  /** Id for the assistant message this turn produces. A deterministic id
+   *  (assistantMessageIdForTurn) lets the live stream, a reattach replay, and
+   *  the server-side persistence all write the SAME message. */
+  messageId?: string;
+}
+
+export function createTranslator(writer: UIMessageStreamWriter, options: TranslatorOptions = {}): {
   push: (event: BridgeEvent) => void;
   end: () => void;
 } {
@@ -200,7 +208,7 @@ export function createTranslator(writer: UIMessageStreamWriter): {
   function ensureStarted() {
     if (state.started) return;
     state.started = true;
-    writer.write({ type: "start" });
+    writer.write(options.messageId ? { type: "start", messageId: options.messageId } : { type: "start" });
     writer.write({ type: "start-step" });
   }
 

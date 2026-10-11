@@ -44,6 +44,19 @@ export function agentUnavailableResponse(reason: AgentUnavailableReason): Respon
   });
 }
 
+/** 429 + `{ error, reason: "capacity" }` — the sandbox can't take another
+ *  agent right now (running-agent ceiling or memory; see bridge-control). */
+export function capacityResponse(running: number): Response {
+  const message =
+    running > 0
+      ? `This project already has ${running} agent${running === 1 ? "" : "s"} running and its sandbox is at capacity. Wait for one to finish (or stop one), then send again.`
+      : "This project's sandbox is low on memory right now. Wait a moment, then send again.";
+  return new Response(JSON.stringify({ error: message, reason: "capacity" }), {
+    status: 429,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 export function jsonError(status: number, message: string): Response {
   return new Response(JSON.stringify({ error: message }), {
     status,

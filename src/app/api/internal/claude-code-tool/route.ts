@@ -924,6 +924,7 @@ export async function POST(req: Request) {
             mode,
             state,
             authorizeUrl,
+            threadId: binding.threadId ?? null,
           });
           requestId = created.id;
         }
@@ -1588,6 +1589,7 @@ export async function POST(req: Request) {
                 provider: inputProvider,
                 status: "pending",
                 convexSiteUrl,
+                threadId: binding.threadId ?? null,
               })
               .returning();
             requestId = oauthRecord.id;
@@ -1818,6 +1820,7 @@ export async function POST(req: Request) {
           key: key as string,
           message: typeof body.input?.message === "string" ? body.input.message : null,
           isSecret: body.input?.isSecret === true,
+          threadId: binding.threadId ?? null,
         }));
 
       const outcome = await pollEnvVarRequestOnce({
@@ -1907,7 +1910,10 @@ export async function POST(req: Request) {
         await dbLocal.insert(chatQuestions).values({
           projectId: binding.projectId,
           userId: binding.userId,
-          segmentId: project.currentSegmentId,
+          // The asking thread's segment (tokens minted before threads carry
+          // neither field — fall back to the project's legacy segment).
+          segmentId: binding.segmentId ?? project.currentSegmentId,
+          threadId: binding.threadId ?? null,
           toolCallId,
           questions: inputQuestions as unknown as object,
           status: "pending",

@@ -61,7 +61,7 @@
  *   }
  */
 
-export const OPENCODE_SCRIPTS_VERSION = "11";
+export const OPENCODE_SCRIPTS_VERSION = "12";
 
 export const OPENCODE_BRIDGE_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -92,6 +92,28 @@ function fail(message) {
   emit({ type: "error", error: message });
   process.exit(1);
 }
+
+// Tell the platform this turn is over so it saves the reply server-side — no
+// browser may be watching this thread. Best-effort and bounded: a failed
+// notify only means the reply is saved when a viewer next opens the thread.
+async function notifyTurnFinished() {
+  const base = process.env.BOTFLOW_API_BASE;
+  const token = process.env.BOTFLOW_TURN_TOKEN;
+  if (!base || !token) return;
+  const headers = { "authorization": "Bearer " + token, "content-type": "application/json" };
+  if (process.env.BOTFLOW_VERCEL_BYPASS) {
+    headers["x-vercel-protection-bypass"] = process.env.BOTFLOW_VERCEL_BYPASS;
+  }
+  try {
+    await fetch(base + "/api/internal/agent/turn-finished", {
+      method: "POST",
+      headers,
+      body: "{}",
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch {}
+}
+
 
 // ---------------------------------------------------------------------------
 // Config
@@ -235,6 +257,7 @@ process.on("SIGTERM", () => {
     killServer();
     process.exit(1);
   }, 1000);
+  notifyTurnFinished();
 });
 
 async function startServer() {
@@ -338,7 +361,7 @@ function finish(aborted) {
   finished = true;
   emit({ type: "end_turn", ...(aborted ? { aborted: true } : {}) });
   killServer();
-  process.exit(0);
+  notifyTurnFinished().finally(() => process.exit(0));
 }
 
 function handleEvent(event) {
@@ -390,7 +413,7 @@ function handleEvent(event) {
         : (name || "Unknown session error");
       emit({ type: "error", error: name ? name + ": " + message : message });
       killServer();
-      process.exit(1);
+      notifyTurnFinished().finally(() => process.exit(1));
     }
   }
 }

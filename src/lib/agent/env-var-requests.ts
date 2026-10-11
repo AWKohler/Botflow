@@ -64,6 +64,8 @@ export async function createEnvVarRequest(params: {
   key: string;
   message?: string | null;
   isSecret?: boolean;
+  /** Thread whose agent asked (drives its "needs input" status). */
+  threadId?: string | null;
 }): Promise<string> {
   const db = getDb();
   const [existing] = await db
@@ -107,6 +109,7 @@ export async function createEnvVarRequest(params: {
       key: params.key,
       message: params.message ?? null,
       isSecret: params.isSecret ?? false,
+      threadId: params.threadId ?? null,
       status: "pending",
     })
     .returning({ id: envVarRequests.id });
