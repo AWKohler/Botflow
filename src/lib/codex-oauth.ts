@@ -1,12 +1,10 @@
 /**
  * Codex (ChatGPT-plan) OAuth helpers — refresh + access-token resolution.
  *
- * Shared by /api/agent (direct Codex-backend API calls) and /api/agent/opencode
- * (OpenCode subprocess path). Both paths need a valid access token, just used
- * differently:
- *  - /api/agent: as the Authorization bearer on chatgpt.com backend calls
- *  - /api/agent/opencode: written into ~/.local/share/opencode/auth.json inside
- *    the sandbox, then used by the opencode binary itself
+ * Used by /api/agent/opencode (OpenCode subprocess path) and the LLM proxy.
+ * OpenCode writes the access token into ~/.local/share/opencode/auth.json
+ * inside the sandbox, where the opencode binary uses it directly (the one
+ * credential the proxy doesn't front).
  *
  * The client id is OpenAI's public Codex client — the same one OpenCode's
  * native ChatGPT-plan auth uses, which is what makes our stored tokens

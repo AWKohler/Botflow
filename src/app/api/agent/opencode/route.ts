@@ -1,14 +1,14 @@
 /**
  * /api/agent/opencode
  *
- * The OpenCode agent path — the drop-in replacement for the Botflow agent on
- * non-Anthropic models. Drives an `opencode` subprocess inside the user's
- * Vercel Sandbox using the USER'S OWN credentials (Codex/ChatGPT-plan OAuth
- * or BYOK provider keys), written into the sandbox's OpenCode auth store.
- * Platform server keys never enter the sandbox: users without personal creds
- * fall back to /api/agent via the same 412 contract the Claude Code route
- * uses, and Anthropic models are hard-rejected here (Claude plans flow
- * through Claude Code per Anthropic's ToS).
+ * The OpenCode agent path — runs every model that Claude Code doesn't.
+ * Drives an `opencode` subprocess inside the user's Vercel Sandbox. Provider
+ * traffic goes through the LLM proxy (the sandbox holds a turn-scoped token;
+ * BYOK keys and platform server keys never enter it); Codex/ChatGPT-plan OAuth
+ * is the one credential written into the sandbox's OpenCode auth store.
+ * Personal-credential Anthropic traffic is refused here (it derives to Claude
+ * Code per Anthropic's ToS). When the turn can't run, the route returns 422
+ * with a user-facing `error` — there is no fallback agent.
  *
  * Structure is a deliberate near-clone of /api/agent/claude-code — the two
  * in-sandbox routes share the turn-input helpers, host-tool selection, and
@@ -41,7 +41,6 @@ import { limitReachedResponse } from "@/lib/plan-response";
 import { recordTokenUsage } from "@/lib/usage";
 
 import {
-  OPENCODE_BACKEND_ENABLED,
   REVENUECAT_ENABLED,
   STRIPE_CONNECT_ENABLED,
   USE_TOGETHER_KIMI,
@@ -91,7 +90,7 @@ import {
 } from "@/lib/agent/claude-code/turn-registry";
 import { selectHostTools } from "@/lib/agent/host-tools/definitions";
 import {
-  fallbackResponse as fallback,
+  agentUnavailableResponse,
   jsonError,
   extractCurrentUserText,
   extractCurrentUserMessageId,
@@ -112,10 +111,6 @@ interface RequestBody {
 }
 
 export async function POST(req: Request) {
-  if (!OPENCODE_BACKEND_ENABLED) {
-    return fallback("flag_disabled");
-  }
-
   const { userId } = await auth();
   if (!userId) return jsonError(401, "Unauthorized");
 
@@ -146,7 +141,7 @@ export async function POST(req: Request) {
     return jsonError(400, "projectId required");
   }
   if (!platform || !isSandboxPlatform(platform)) {
-    return fallback("non_sandbox_platform");
+    return agentUnavailableResponse("unsupported_platform");
   }
 
   const access = await requireProjectAccess(projectId, userId);
@@ -183,8 +178,11 @@ export async function POST(req: Request) {
     tier: userTier,
     useTogetherKimi: USE_TOGETHER_KIMI,
   });
-  if (derived.backend !== "opencode" || !derived.runnable) {
-    return fallback(derived.reason);
+  if (derived.backend !== "opencode") {
+    return agentUnavailableResponse("backend_mismatch");
+  }
+  if (!derived.runnable) {
+    return agentUnavailableResponse(derived.reason);
   }
 
   const modelRef = resolveOpenCodeModel(selectedModel, { useTogetherKimi: USE_TOGETHER_KIMI });
@@ -264,16 +262,16 @@ export async function POST(req: Request) {
     : null;
   const writtenRefreshToken = useCodex ? (codexAuth.codexOAuthRefreshToken ?? null) : null;
   if (useCodex && !codexToken) {
-    // Codex creds present but unusable (refresh failed) — fall back rather
-    // than 500; the legacy engine can still serve via its own paths.
-    return fallback("no_provider_credentials");
+    // Codex creds present but unusable (refresh failed) — tell the user to
+    // reconnect rather than 500.
+    return agentUnavailableResponse("no_provider_credentials");
   }
 
   const proxyProvider = proxyProviderForOpenCodeId(modelRef.providerID);
   let llmProxyToken: string | null = null;
   if (!useCodex) {
     if (!proxyProvider) {
-      return fallback("no_provider_credentials"); // unmappable — cannot happen for registry models
+      return agentUnavailableResponse("no_provider_credentials"); // unmappable — cannot happen for registry models
     }
     if (credMode === null) {
       // Platform mode pre-flight — a cheap KV-only early exit at turn start
@@ -303,9 +301,9 @@ export async function POST(req: Request) {
         });
       }
       if (!process.env[LLM_PROXY_PROVIDERS[proxyProvider].platformKeyEnv]) {
-        // Platform key not configured on this deployment — 412 keeps the
-        // legacy engine serving during the bake.
-        return fallback("no_provider_credentials");
+        // Platform key not configured on this deployment.
+        console.error(`[opencode] platform key ${LLM_PROXY_PROVIDERS[proxyProvider].platformKeyEnv} is not configured`);
+        return agentUnavailableResponse("no_provider_credentials");
       }
     }
     llmProxyToken = await mintLlmProxyToken({

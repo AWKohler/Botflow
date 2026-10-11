@@ -9,7 +9,8 @@ import { countUserConvexProjects } from '@/lib/usage';
 import { getUserCredentials, setUserCredentials, type UserCredentials } from '@/lib/user-credentials';
 import { isManagedConvexEnabled, normalizeProjectPlatform, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
 import { resolveModelId } from '@/lib/agent/models';
-import { credFlagsFromUserCredentials, resolveBackends, type AgentBackend } from '@/lib/agent/backend-resolution';
+import { credFlagsFromUserCredentials } from '@/lib/agent/backend-resolution';
+import { deriveAgentBackend } from '@/lib/agent/derive-backend';
 import { chooseProviderForNewProject } from '@/lib/sandbox-provider';
 import { USE_TOGETHER_KIMI } from '@/lib/feature-flags';
 import { canUseSwift } from '@/lib/swift-access';
@@ -296,17 +297,14 @@ export async function GET(request: Request) {
       seedBundleUrl = src?.publicSourceUrl ?? null;
     }
 
-    // Resolve the initial agent backend for this project. The user's BYOK
-    // preference applies only when both backends are available; OAuth users
-    // are locked to claude-code automatically.
-    const resolvedModel = model;
-    const backendResolution = resolveBackends({
-      model: resolvedModel,
+    // Informational only — the agent is re-derived from model + creds on
+    // every turn; projects.agent_backend is no longer read.
+    const initialAgentBackend = deriveAgentBackend({
+      model,
       platform,
       creds: credFlagsFromUserCredentials(creds),
       useTogetherKimi: USE_TOGETHER_KIMI,
-    });
-    const initialAgentBackend: AgentBackend = backendResolution.defaultBackend;
+    }).backend;
 
     // Free-tier owners get the self-hosted sandbox backend (when the rollout
     // switch is on); paid tiers stay on Vercel. Sticky for the project's life.

@@ -1,11 +1,9 @@
 /**
  * Anthropic OAuth helpers — refresh + access-token resolution.
  *
- * Shared by /api/agent (BYOK path) and /api/agent/claude-code (Claude Code
- * subprocess path). Both paths need a valid access token, just used differently:
- *  - /api/agent: as the Authorization bearer on direct API calls
- *  - /api/agent/claude-code: written into ~/.claude/.credentials.json inside
- *    the sandbox, then used by the `claude` binary itself
+ * Used by /api/agent/claude-code (to pick the OAuth vs API-key credential
+ * shape), the LLM proxy (which injects the real token server-side — the
+ * sandbox only ever holds a proxy token), and the Claude plan usage route.
  */
 import { setUserCredentials } from "@/lib/user-credentials";
 

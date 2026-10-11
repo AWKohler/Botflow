@@ -3,44 +3,24 @@
 /**
  * Agent backend UI elements.
  *
- * Two pieces:
- *  - <BackendBadge> — small always-visible pill at the top of AgentPanel.
- *      Shows the active backend's glyph + name. Pure visual, no interaction.
+ *  - <BackendGlyphInfo> — the backend glyph fused into the composer's model
+ *      selector, with a hover tooltip naming the agent (Claude Code / OpenCode).
  *  - <BackendChip> — inline info chip rendered below the header. Always
  *      informational (no toggle). Clicking opens a popover explaining WHY
  *      the user is on the current agent for the current model. Hidden when
- *      there's nothing meaningful to surface (free user on a non-Anthropic
- *      model — the top badge says it all).
+ *      there's nothing meaningful to surface (plan-credit turns).
  *
- * The agent is fully derived from (model, platform, creds, preference); the
- * user can't toggle backends here. BYOK users override their default via
- * Settings → Connections.
- *
- * Both share brand glyphs from /brand/ + /model-icons/ so the agent identity
- * stays consistent across the panel.
+ * The agent is fully derived from (model, platform, creds); the user can't
+ * toggle backends here.
  */
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { AgentBackend } from "@/lib/agent/backend-resolution";
 import { describeDerivation, type DerivationReason } from "@/lib/agent/derive-backend";
-import { OPENCODE_BACKEND_ENABLED } from "@/lib/feature-flags";
 
 interface GlyphProps {
   size?: number;
   className?: string;
-}
-
-function BotflowGlyph({ size = 14, className }: GlyphProps) {
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src="/brand/botflow-glyph.svg"
-      alt=""
-      width={size}
-      height={size}
-      className={cn("shrink-0", className)}
-    />
-  );
 }
 
 function AnthropicGlyph({ size = 14, className }: GlyphProps) {
@@ -78,16 +58,12 @@ function OpenCodeGlyph({ size = 14, className }: GlyphProps) {
 
 export function BackendGlyph({ backend, size = 14, className }: { backend: AgentBackend; size?: number; className?: string }) {
   if (backend === "claude-code") return <AnthropicGlyph size={size} className={className} />;
-  if (backend === "opencode") return <OpenCodeGlyph size={size} className={className} />;
-  return <BotflowGlyph size={size} className={className} />;
+  return <OpenCodeGlyph size={size} className={className} />;
 }
 
 function backendLabel(backend: AgentBackend): string {
   if (backend === "claude-code") return "Claude Code";
-  if (backend === "opencode") return "OpenCode";
-  // Under the OpenCode flag, "Botflow" is retired as a presented agent
-  // identity — botflow-served turns (platform-key paths) read neutrally.
-  return OPENCODE_BACKEND_ENABLED ? "Assistant" : "Botflow";
+  return "OpenCode";
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -102,9 +78,6 @@ const BACKEND_DETAIL: Record<AgentBackend, string> = {
     "Anthropic's agentic coding harness, running the model directly inside your project sandbox.",
   opencode:
     "The open-source OpenCode agent, running the model directly inside your project sandbox with your own credentials.",
-  botflow: OPENCODE_BACKEND_ENABLED
-    ? "The built-in server-side engine that runs models covered by your plan's credits."
-    : "Botflow's native agent — the harness powering every model outside of Claude Code.",
 };
 
 export function BackendGlyphInfo({
@@ -142,29 +115,13 @@ export function BackendGlyphInfo({
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
- * Top-of-panel badge
- * ────────────────────────────────────────────────────────────────────── */
-
-export function BackendBadge({ backend }: { backend: AgentBackend }) {
-  return (
-    <div
-      className="inline-flex items-center gap-1.5 rounded-full bg-elevated border border-border px-2 py-0.5 text-[11px] text-muted"
-      title={`Agent: ${backendLabel(backend)}`}
-    >
-      <BackendGlyph backend={backend} size={12} />
-      <span className="font-medium text-fg leading-none">{backendLabel(backend)}</span>
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────────────
  * Inline info chip
  * ────────────────────────────────────────────────────────────────────── */
 
 /**
- * Reasons that warrant the inline chip. Other reasons (non-Anthropic models,
- * platform-key fallback for paid tier) are "boring" — the top badge already
- * communicates "you're on Botflow" and the user doesn't need a popover for it.
+ * Reasons that warrant the inline chip. Plan-credit turns
+ * (platform_key_opencode) are "boring" — the glyph in the model selector
+ * already says which agent runs, and the user doesn't need a popover for it.
  *
  * The chip surfaces specifically when:
  *  - The user is on a path that's worth explaining (OAuth → Claude Code)
@@ -174,8 +131,7 @@ export function BackendBadge({ backend }: { backend: AgentBackend }) {
 const CHIP_VISIBLE_REASONS: ReadonlySet<DerivationReason> = new Set<DerivationReason>([
   "oauth_claude_code",
   "byok_claude_code",
-  "byok_botflow",
-  "oauth_no_path",
+  "unsupported_platform",
   "no_credentials",
   "codex_oauth_opencode",
   "byok_opencode",

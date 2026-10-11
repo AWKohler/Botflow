@@ -4,8 +4,8 @@
  *
  * The bridge emits SDK messages from `@anthropic-ai/claude-agent-sdk` wrapped
  * in `{ type: "sdk_message", message }`. We unwrap and translate so the
- * existing AgentPanel — which expects AI SDK protocol — renders identically
- * to the regular /api/agent flow.
+ * existing AgentPanel — which expects AI SDK protocol — renders it the same
+ * way as the OpenCode path.
  *
  * Tool names are normalized to lowercase native ("Read" → "read", "Bash" →
  * "bash", etc.) per the design decision; this keeps the UI labels visually

@@ -4,19 +4,42 @@
  *
  * These were extracted VERBATIM from the Claude Code route so the two routes
  * can't drift on the contracts that must stay identical:
- *   - the 412 `{fallback: true}` response the client AgentPanel keys on to
- *     transparently retry against /api/agent,
+ *   - the 422 "agent unavailable" response (there is no fallback agent),
  *   - current-turn text/image extraction (last-message-only semantics),
  *   - the image fetch caps,
  *   - the prior-conversation preamble format used after backend switches.
  */
 import type { UIMessage } from "ai";
+import { describeDerivation, type DerivationReason } from "./derive-backend";
 
-/** 412 + a structured body. The client AgentPanel inspects status === 412
- *  and retries against /api/agent. */
-export function fallbackResponse(reason: string): Response {
-  return new Response(JSON.stringify({ fallback: true, reason }), {
-    status: 412,
+/** Why a route refused to run the turn. Derivation reasons reuse the chip's
+ *  copy; the rest are route-level checks. */
+export type AgentUnavailableReason =
+  | DerivationReason
+  | "backend_mismatch"
+  | "no_anthropic_credentials"
+  | "no_provider_credentials";
+
+const UNAVAILABLE_COPY: Record<Exclude<AgentUnavailableReason, DerivationReason>, string> = {
+  // The client derived a different agent than the server — its credential
+  // snapshot is stale (e.g. a key was added or removed in another tab).
+  backend_mismatch:
+    "Your connected accounts changed since this page loaded. Reload the page and try again.",
+  no_anthropic_credentials:
+    "Your Claude credentials couldn't be used. Reconnect Claude in Settings → Connections and try again.",
+  no_provider_credentials:
+    "No usable credentials for this model's provider. Check Settings → Connections.",
+};
+
+/** 422 + `{ error, reason }`. There is no fallback agent: the client shows
+ *  `error` in the agent panel's error banner. */
+export function agentUnavailableResponse(reason: AgentUnavailableReason): Response {
+  const message =
+    reason in UNAVAILABLE_COPY
+      ? UNAVAILABLE_COPY[reason as keyof typeof UNAVAILABLE_COPY]
+      : describeDerivation(reason as DerivationReason).body;
+  return new Response(JSON.stringify({ error: message, reason }), {
+    status: 422,
     headers: { "Content-Type": "application/json" },
   });
 }

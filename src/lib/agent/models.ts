@@ -50,9 +50,9 @@ export interface ModelConfig {
   costMultiplier: number;
   /**
    * Reasoning effort pinned on every request (Anthropic `output_config.effort`).
-   * Users get no effort control, so this is the one knob. Applied by all
-   * three Claude rails: /api/agent providerOptions, the Claude Code bridge,
-   * and the LLM proxy (which overrides whatever the in-sandbox client sent).
+   * Users get no effort control, so this is the one knob. Applied by both
+   * Claude rails: the Claude Code bridge and the LLM proxy (which overrides
+   * whatever the in-sandbox client sent).
    * Undefined = provider default.
    */
   effort?: EffortLevel;

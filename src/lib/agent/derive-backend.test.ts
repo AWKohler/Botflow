@@ -1,22 +1,17 @@
 /**
- * Decision-table tests for deriveAgentBackend / resolveBackends with the
- * OpenCode backend flag ON (plus the Claude Code + Anthropic OAuth flags, so
- * the Anthropic tree is exercised in its production shape).
+ * Decision-table tests for deriveAgentBackend (with the Anthropic OAuth flag
+ * on, so the Anthropic tree is exercised in its production shape).
  *
- * The LLM-proxy decision table: non-Anthropic → OpenCode unconditionally
+ * Only the in-sandbox agents exist: non-Anthropic → OpenCode unconditionally
  * (credentials pick the MODE, tier gates platform mode); Anthropic personal
- * creds (OAuth or BYOK) → Claude Code locked; Anthropic platform-key (paid)
- * → OpenCode platform mode.
+ * creds (OAuth or BYOK) → Claude Code; Anthropic platform-key (paid) →
+ * OpenCode platform mode; non-sandbox platforms → not runnable.
  *
  * Env is set BEFORE the modules under test load: static imports hoist, so the
- * modules are pulled in lazily via dynamic import inside the tests. The
- * flag-OFF matrix lives in a separate file — node --test runs each file in
- * its own process, which is what makes the module-level flag consts testable.
+ * modules are pulled in lazily via dynamic import inside the tests.
  *
- * Run: node --import tsx --test src/lib/agent/derive-backend.opencode-on.test.ts
+ * Run: node --import tsx --test src/lib/agent/derive-backend.test.ts
  */
-process.env.NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED = "true";
-process.env.NEXT_PUBLIC_CLAUDE_CODE_ENABLED = "true";
 process.env.NEXT_PUBLIC_ANTHROPIC_OAUTH_ENABLED = "true";
 
 import { test, describe } from "node:test";
@@ -33,12 +28,10 @@ const NO_CREDS = {
 };
 
 async function load() {
-  const derive = await import("./derive-backend");
-  const resolution = await import("./backend-resolution");
-  return { ...derive, ...resolution };
+  return import("./derive-backend");
 }
 
-describe("deriveAgentBackend — non-Anthropic models (flag on)", () => {
+describe("deriveAgentBackend — non-Anthropic models", () => {
   test("openai model + Codex OAuth → opencode (codex_oauth_opencode)", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
@@ -121,7 +114,7 @@ describe("deriveAgentBackend — non-Anthropic models (flag on)", () => {
     assert.equal(withoutKey.reason, "platform_key_opencode");
   });
 
-  test("kimi honors USE_TOGETHER_KIMI for the BYOK mode; missing key falls to platform, never botflow", async () => {
+  test("kimi honors USE_TOGETHER_KIMI for the BYOK mode; missing key falls to platform mode", async () => {
     const { deriveAgentBackend } = await load();
     const togetherOnWithTogetherKey = deriveAgentBackend({
       model: "fireworks-kimi-k2p7",
@@ -150,19 +143,22 @@ describe("deriveAgentBackend — non-Anthropic models (flag on)", () => {
     assert.equal(togetherOffWithFireworksKey.reason, "byok_opencode");
   });
 
-  test("non-sandbox platform never routes to opencode", async () => {
+  test("non-sandbox platform has no agent, whatever the creds", async () => {
     const { deriveAgentBackend } = await load();
-    const out = deriveAgentBackend({
-      model: "gpt-6.1-sol",
-      platform: "web",
-      creds: { ...NO_CREDS, hasCodexOAuth: true, hasOpenAIKey: true },
-    });
-    assert.equal(out.backend, "botflow");
-    assert.equal(out.reason, "non_anthropic_model");
+    for (const model of ["gpt-6.1-sol", "claude-sonnet-5-5"] as const) {
+      const out = deriveAgentBackend({
+        model,
+        platform: "web",
+        creds: { ...NO_CREDS, hasClaudeOAuth: true, hasCodexOAuth: true, hasOpenAIKey: true },
+        tier: "max",
+      });
+      assert.equal(out.runnable, false);
+      assert.equal(out.reason, "unsupported_platform");
+    }
   });
 });
 
-describe("deriveAgentBackend — Anthropic tree (flag on)", () => {
+describe("deriveAgentBackend — Anthropic tree", () => {
   test("Claude OAuth on sandbox → claude-code", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
@@ -178,7 +174,7 @@ describe("deriveAgentBackend — Anthropic tree (flag on)", () => {
     });
   });
 
-  test("Anthropic BYOK is LOCKED to claude-code (preference retired)", async () => {
+  test("Anthropic BYOK is locked to claude-code", async () => {
     const { deriveAgentBackend } = await load();
     const byok = deriveAgentBackend({
       model: "claude-opus-5-5",
@@ -187,15 +183,6 @@ describe("deriveAgentBackend — Anthropic tree (flag on)", () => {
     });
     assert.equal(byok.backend, "claude-code");
     assert.equal(byok.reason, "byok_claude_code");
-
-    // The deprecated preference input is ignored entirely.
-    const withStalePreference = deriveAgentBackend({
-      model: "claude-opus-5-5",
-      platform: "sandboxed-web",
-      creds: { ...NO_CREDS, hasAnthropicKey: true },
-      preferredAnthropicBackend: "botflow",
-    });
-    assert.equal(withStalePreference.backend, "claude-code");
   });
 
   test("no Anthropic creds: paid tier → opencode PLATFORM mode; free tier → not runnable", async () => {
@@ -230,52 +217,34 @@ describe("deriveAgentBackend — Anthropic tree (flag on)", () => {
   });
 });
 
-describe("resolveBackends — drop-in replacement semantics (flag on)", () => {
-  test("non-Anthropic → locked to opencode regardless of creds", async () => {
-    const { resolveBackends } = await load();
-    for (const creds of [{ ...NO_CREDS, hasCodexOAuth: true }, { ...NO_CREDS }]) {
-      const res = resolveBackends({
-        model: "gpt-6.1-sol",
-        platform: "sandboxed-web",
-        creds,
-      });
-      assert.deepEqual(res.available, ["opencode"]);
-      assert.equal(res.locked, "opencode");
-      assert.equal(res.reason, "opencode_replaces_botflow");
+describe("deriveAgentBackend — only in-sandbox agents", () => {
+  test("every model × cred × tier × platform combination yields claude-code or opencode", async () => {
+    const { deriveAgentBackend } = await load();
+    const { MODEL_CONFIGS } = await import("./models");
+    const credSets = [
+      { ...NO_CREDS },
+      { ...NO_CREDS, hasClaudeOAuth: true },
+      { ...NO_CREDS, hasAnthropicKey: true },
+      { ...NO_CREDS, hasCodexOAuth: true },
+      { ...NO_CREDS, hasOpenAIKey: true, hasFireworksKey: true, hasGoogleKey: true },
+    ];
+    for (const model of Object.keys(MODEL_CONFIGS) as Array<keyof typeof MODEL_CONFIGS>) {
+      for (const creds of credSets) {
+        for (const tier of [undefined, "free", "pro", "max"] as const) {
+          for (const platform of ["sandboxed-web", "swift", "web", null]) {
+            const out = deriveAgentBackend({ model, platform, creds, tier });
+            assert.ok(
+              out.backend === "claude-code" || out.backend === "opencode",
+              `${model}/${platform}/${tier} → ${out.backend}`,
+            );
+          }
+        }
+      }
     }
-  });
-
-  test("Anthropic BYOK → claude-code locked (no more two-backend choice)", async () => {
-    const { resolveBackends } = await load();
-    const res = resolveBackends({
-      model: "claude-sonnet-5-5",
-      platform: "sandboxed-web",
-      creds: { ...NO_CREDS, hasAnthropicKey: true },
-    });
-    assert.deepEqual(res.available, ["claude-code"]);
-    assert.equal(res.locked, "claude-code");
-  });
-
-  test("Anthropic no personal creds → opencode locked (platform via proxy)", async () => {
-    const { resolveBackends } = await load();
-    const res = resolveBackends({
-      model: "claude-sonnet-5-5",
-      platform: "sandboxed-web",
-      creds: { ...NO_CREDS },
-    });
-    assert.deepEqual(res.available, ["opencode"]);
-    assert.equal(res.locked, "opencode");
-  });
-
-  test("isAgentBackend accepts the new value and still rejects junk", async () => {
-    const { isAgentBackend } = await load();
-    assert.equal(isAgentBackend("opencode"), true);
-    assert.equal(isAgentBackend("claude-code"), true);
-    assert.equal(isAgentBackend("copilot"), false);
   });
 });
 
-describe("describeDerivation — copy (flag on)", () => {
+describe("describeDerivation — copy", () => {
   test("opencode + claude-code reasons carry their agent branding", async () => {
     const { describeDerivation } = await load();
     assert.match(describeDerivation("codex_oauth_opencode").title, /OpenCode/);
@@ -284,10 +253,8 @@ describe("describeDerivation — copy (flag on)", () => {
     assert.match(describeDerivation("byok_claude_code").title, /Claude Code/);
   });
 
-  test("proxied copy never claims keys enter the sandbox; Botflow brand stays out of fallback copy", async () => {
+  test("proxied copy never claims keys enter the sandbox", async () => {
     const { describeDerivation } = await load();
     assert.match(describeDerivation("platform_key_opencode").body, /never enter the sandbox/);
-    assert.doesNotMatch(describeDerivation("non_anthropic_model").title, /Botflow/);
-    assert.doesNotMatch(describeDerivation("platform_key_botflow").title, /Botflow/);
   });
 });
