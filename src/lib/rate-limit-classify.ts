@@ -65,6 +65,9 @@ const RULES: Array<[RegExp, Tier]> = [
   [/^\/api\/projects\/[^/]+\/convex\/oauth-provider-status/, { read: 'poll', mutate: 'write' }],
   [/^\/api\/projects\/[^/]+\/stripe\/connect-request/, { read: 'poll', mutate: 'write' }],
   [/^\/api\/projects\/[^/]+\/swift-preview\/state/, { read: 'poll', mutate: 'write' }],
+  // Agent threads list + status (polled every few seconds while the workspace
+  // is visible). Reads DB + Redis only — never the sandbox.
+  [/^\/api\/projects\/[^/]+\/threads/, { read: 'poll', mutate: 'write' }],
   // File listing/signature/content GETs run `find|cksum`/`cat` inside the
   // sandbox — heavier than a Redis read, so they get their own tighter bucket.
   [/^\/api\/projects\/[^/]+\/sandbox\/files/, { read: 'pollHeavy', mutate: 'write' }],
@@ -78,7 +81,7 @@ const RULES: Array<[RegExp, Tier]> = [
   [/^\/api\/(chat-images|chat)(\/|$)/, { read: 'read', mutate: 'write' }],
   [/^\/api\/domains/, { read: 'read', mutate: 'write' }],
   [/^\/api\/github\/repos/, { read: 'read', mutate: 'write' }],
-  [/^\/api\/projects\/[^/]+\/(env|stripe|revenuecat|github|visual-edit|browser-log|agent-backend|chat)/, { read: 'read', mutate: 'write' }],
+  [/^\/api\/projects\/[^/]+\/(env|stripe|revenuecat|github|visual-edit|browser-log|chat)/, { read: 'read', mutate: 'write' }],
   // Generic project reads (list, detail) vs mutations (create, PATCH model,
   // DELETE). Keeping these split is the heart of the fix: a saturated write
   // bucket must never block loading the projects page, and saturated polling

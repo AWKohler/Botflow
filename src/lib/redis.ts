@@ -12,6 +12,7 @@ import { Redis } from '@upstash/redis';
 /** No-op stub returned when env vars are missing */
 const noopRedis = {
   get: async () => null,
+  mget: async (...keys: string[]) => keys.map(() => null),
   set: async () => 'OK' as const,
   setex: async () => 'OK' as const,
   del: async () => 0,

@@ -27,7 +27,7 @@ import { sharedTurnBlockReason } from "@/lib/sharing";
 import { getUserCredentials, setUserCredentials } from "@/lib/user-credentials";
 import { getFreshCodexAccessToken } from "@/lib/codex-oauth";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
-import { resolveModelId, MODEL_CONFIGS } from "@/lib/agent/models";
+import { MODEL_CONFIGS } from "@/lib/agent/models";
 import { isSandboxPlatform } from "@/lib/project-platform";
 import { swiftProjectForbidden } from "@/lib/swift-access";
 import { getUserTier } from "@/lib/tier";
@@ -78,9 +78,10 @@ import {
 import { mintToolToken, revokeToolToken } from "@/lib/agent/claude-code/tool-token";
 import {
   buildPrepareTurnScript,
+  parseCapacityRefusal,
+  threadAbortFile,
+  threadPidFile,
   turnEventFile,
-  BRIDGE_PID_FILE,
-  BRIDGE_RUN_DIR,
 } from "@/lib/agent/claude-code/bridge-control";
 import {
   getTurnRecord,
@@ -90,7 +91,21 @@ import {
 } from "@/lib/agent/claude-code/turn-registry";
 import { selectHostTools } from "@/lib/agent/host-tools/definitions";
 import {
+  awarenessNote,
+  ensureThreadSegment,
+  noteTurnStarted,
+  otherRunningThreadTitles,
+  resolveThread,
+  setTitleIfEmpty,
+  threadModel,
+} from "@/lib/agent/threads";
+import {
+  assistantMessageIdForTurn,
+  saveUserMessage,
+} from "@/lib/agent/turn-persistence";
+import {
   agentUnavailableResponse,
+  capacityResponse,
   jsonError,
   extractCurrentUserText,
   extractCurrentUserMessageId,
@@ -108,6 +123,8 @@ interface RequestBody {
   messages: UIMessage[];
   projectId?: string;
   platform?: string;
+  /** Thread to run in. Omitted by older clients → the most recent thread. */
+  threadId?: string;
 }
 
 export async function POST(req: Request) {
@@ -127,7 +144,7 @@ export async function POST(req: Request) {
     return jsonError(400, "Invalid JSON body");
   }
 
-  const { messages, projectId, platform } = body;
+  const { messages, projectId, platform, threadId: requestedThreadId } = body;
   if (!Array.isArray(messages) || messages.length === 0) {
     return jsonError(400, "messages array required");
   }
@@ -155,14 +172,20 @@ export async function POST(req: Request) {
     return jsonError(403, "Swift projects are currently in private beta.");
   }
 
-  // Sharing (Phase 3): one live agent per project across ALL collaborators —
-  // never kill another user's bridge; tell this user to wait instead.
-  const sharedBlock = await sharedTurnBlockReason(projectId, userId);
+  const thread = await resolveThread(project, userId, requestedThreadId);
+  if (!thread) {
+    return jsonError(404, "Thread not found");
+  }
+  const threadId = thread.id;
+
+  // Sharing: never kill ANOTHER collaborator's live bridge in this thread —
+  // tell this user to wait instead. Other threads run independently.
+  const sharedBlock = await sharedTurnBlockReason(projectId, threadId, userId);
   if (sharedBlock) {
     return jsonError(409, sharedBlock);
   }
 
-  const selectedModel = resolveModelId(project.model);
+  const selectedModel = threadModel(thread, project);
 
   const creds = await getUserCredentials(userId);
   const credFlags = credFlagsFromUserCredentials(creds);
@@ -343,18 +366,27 @@ export async function POST(req: Request) {
   const usesConvex =
     project.backendType === "platform" || project.backendType === "user";
   const usesMuhkoo = project.backendType === "muhkoo";
-  await writeOpenCodeAppendPrompt(
+  // Other threads' live agents share this sandbox — say so, so this agent
+  // re-reads before editing and stays on its own task. Per-thread file: the
+  // note differs between concurrently running threads.
+  const otherAgents = awarenessNote(await otherRunningThreadTitles(projectId, threadId).catch(() => []));
+  const appendPromptPath = await writeOpenCodeAppendPrompt(
     projectId,
-    buildOpenCodeAppendPrompt({
-      platform: platform as "sandboxed-web" | "swift",
-      hasBackend: usesConvex,
-      usesMuhkoo,
-      hasConvexEnv: usesConvex && Boolean(project.userConvexUrl || project.convexDeployUrl),
-    }),
+    [
+      buildOpenCodeAppendPrompt({
+        platform: platform as "sandboxed-web" | "swift",
+        hasBackend: usesConvex,
+        usesMuhkoo,
+        hasConvexEnv: usesConvex && Boolean(project.userConvexUrl || project.convexDeployUrl),
+      }),
+      otherAgents,
+    ].filter(Boolean).join("\n\n"),
+    threadId,
   );
 
   // ── Bridge config ─────────────────────────────────────────────────────────
-  const sessionId = await getOpenCodeSessionId(projectId);
+  const sessionId = await getOpenCodeSessionId(threadId);
+  const segmentId = await ensureThreadSegment(thread);
   const customTools = selectHostTools({
     platform,
     usesConvex,
@@ -364,15 +396,22 @@ export async function POST(req: Request) {
     revenuecatEnabled: REVENUECAT_ENABLED,
   });
 
-  const toolToken = customTools.length
-    ? await mintToolToken({ userId, projectId })
-    : null;
+  // Always minted: it also authenticates the end-of-turn notify (server-side
+  // save). The MCP host-tool server is only configured when there are tools.
+  const toolToken = await mintToolToken({
+    userId,
+    projectId,
+    threadId,
+    turnId,
+    backend: "opencode",
+    segmentId,
+  });
 
   const paths = await resolveOpenCodePaths(projectId);
   const configPath = `/tmp/.botflow-opencode-config-${turnId}.json`;
-  // Fixed path inside the shared run dir so the stop route can find it
-  // without knowing the turn id; the prepare script clears any stale one.
-  const abortPath = `${BRIDGE_RUN_DIR}/abort`;
+  // Per-thread path so the stop route can find it without knowing the turn
+  // id; the prepare script clears any stale one.
+  const abortPath = threadAbortFile(threadId);
   const eventFile = turnEventFile(turnId);
 
   const bridgeConfig = {
@@ -381,7 +420,7 @@ export async function POST(req: Request) {
     ...(sessionId ? { sessionId } : {}),
     model: modelRef,
     cwd: "/vercel/sandbox",
-    appendPromptPath: paths.appendPromptPath,
+    appendPromptPath,
     opencodeBin: paths.binPath,
     abortPath,
     // Proxied modes point the provider at /api/internal/llm-proxy with the
@@ -404,7 +443,7 @@ export async function POST(req: Request) {
           },
         }
       : {}),
-    ...(toolToken
+    ...(customTools.length
       ? {
           mcp: {
             scriptPath: paths.mcpScriptPath,
@@ -431,17 +470,24 @@ export async function POST(req: Request) {
 
   const sandbox = await getOrCreatePersistentSandbox(projectId);
 
-  // ── One bridge per project ────────────────────────────────────────────────
+  // ── One bridge per THREAD ─────────────────────────────────────────────────
   // Same contract as the CC route: the bridge runs detached (it must survive
-  // this route's maxDuration so the client can reattach), so a NEW turn kills
-  // whatever bridge — Claude Code OR OpenCode, they share the pidfile — is
-  // still running, revokes its tool token, sweeps stale artifacts, clears any
-  // stale abort sentinel, and pre-creates the event file for tail -f.
-  const prevTurn = await getTurnRecord(projectId).catch(() => null);
-  await sandbox.runCommand({
+  // this route's maxDuration so the client can reattach), so a new turn kills
+  // this thread's previous bridge — Claude Code OR OpenCode, they share the
+  // thread's pidfile — revokes its tokens, sweeps stale artifacts, clears the
+  // thread's abort sentinel, admits against sandbox capacity, and pre-creates
+  // the event file for tail -f. Other threads' bridges keep running.
+  const prevTurn = await getTurnRecord(projectId, threadId).catch(() => null);
+  const prepared = await sandbox.runCommand({
     cmd: "sh",
-    args: ["-c", buildPrepareTurnScript(eventFile)],
+    args: ["-c", buildPrepareTurnScript(threadId, eventFile)],
   });
+  const refusal = parseCapacityRefusal(await prepared.stdout());
+  if (refusal) {
+    revokeToolToken(toolToken).catch(() => {});
+    if (llmProxyToken) revokeLlmProxyToken(llmProxyToken).catch(() => {});
+    return capacityResponse(refusal.running);
+  }
   if (prevTurn?.toolToken) {
     revokeToolToken(prevTurn.toolToken).catch(() => {});
   }
@@ -464,7 +510,12 @@ export async function POST(req: Request) {
     env: {
       BOTFLOW_CONFIG_PATH: configPath,
       BOTFLOW_EVENT_FILE: eventFile,
-      BOTFLOW_PID_FILE: BRIDGE_PID_FILE,
+      BOTFLOW_PID_FILE: threadPidFile(threadId),
+      BOTFLOW_API_BASE: new URL(req.url).origin,
+      BOTFLOW_TURN_TOKEN: toolToken,
+      ...(process.env.VERCEL_ENV === "preview" && process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+        ? { BOTFLOW_VERCEL_BYPASS: process.env.VERCEL_AUTOMATION_BYPASS_SECRET }
+        : {}),
     },
     detached: true,
   });
@@ -481,14 +532,26 @@ export async function POST(req: Request) {
   const spawningUserMessageId = extractCurrentUserMessageId(messages);
   await setTurnRecord(projectId, {
     turnId,
+    threadId,
     userId,
     backend: "opencode",
     ...(spawningUserMessageId ? { userMessageId: spawningUserMessageId } : {}),
     eventFile,
     startedAt: Date.now(),
-    ...(toolToken ? { toolToken } : {}),
+    toolToken,
     ...(llmProxyToken ? { llmProxyToken } : {}),
   }).catch(() => {});
+
+  // Thread bookkeeping: status/ordering, a title from the first prompt, and
+  // the prompt itself saved server-side (attributed to its author).
+  await noteTurnStarted(threadId).catch(() => {});
+  if (userPrompt) await setTitleIfEmpty(thread, userPrompt).catch(() => {});
+  const lastMessage = messages[messages.length - 1];
+  if (lastMessage?.role === "user") {
+    await saveUserMessage(threadId, segmentId, lastMessage, userId).catch((err) =>
+      console.error("[opencode] failed to save the user message:", err),
+    );
+  }
 
   // Turn marker: proxied usage rows are per-REQUEST (countTurn:false at the
   // proxy), so the turn itself is counted once here — codex turns included,
@@ -498,7 +561,7 @@ export async function POST(req: Request) {
   // ── Stream stdout NDJSON → AI SDK UIMessageStream ───────────────────────
   const stream = createUIMessageStream<UIMessage>({
     execute: async ({ writer }) => {
-      const translator = createOpenCodeTranslator(writer);
+      const translator = createOpenCodeTranslator(writer, { messageId: assistantMessageIdForTurn(turnId) });
       let buffer = "";
       let lastSessionIdSeen: string | null = null;
       let endedNormally = false;
@@ -527,19 +590,19 @@ export async function POST(req: Request) {
               // platform hard-kills this route at maxDuration, and losing the
               // session pointer forces the continuation turn to start a fresh
               // session and rediscover all its context.
-              setOpenCodeSessionId(projectId, event.sessionId).catch(() => {});
+              setOpenCodeSessionId(threadId, event.sessionId).catch(() => {});
             }
             translator.push(event);
             if (event.type === "end_turn") {
               endedNormally = true;
-              markTurnEnded(projectId, turnId).catch(() => {});
+              markTurnEnded(projectId, threadId, turnId).catch(() => {});
               break;
             }
             if (event.type === "error") {
               // The bridge emits `error` only when it's exiting — mark the
               // turn dead so the client falls back to a fresh continuation
               // instead of trying to reattach to a corpse.
-              markTurnDead(projectId, turnId).catch(() => {});
+              markTurnDead(projectId, threadId, turnId).catch(() => {});
               break;
             }
           }
@@ -556,7 +619,7 @@ export async function POST(req: Request) {
           // Backstop persist (the eager write above already ran on the happy
           // path; this covers exotic orderings). Non-fatal.
           try {
-            await setOpenCodeSessionId(projectId, lastSessionIdSeen);
+            await setOpenCodeSessionId(threadId, lastSessionIdSeen);
           } catch {
             // Non-fatal.
           }
