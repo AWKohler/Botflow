@@ -7,11 +7,11 @@ because project collaboration means co-tenants can read anything in a
 sandbox. The proxy injects the real credential server-side and is the ONLY
 component that turns usage into money.
 
-Gated by `NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED` (strictly opt-in — it now
-governs billing behavior). Flag off = full legacy kill switch: Botflow via
-/api/agent, Claude Code with real credentials, byte-identical.
+Always on. The `NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED` kill switch and the
+legacy Botflow engine (`/api/agent`) it fell back to were removed with the
+Botflow agent's retirement (see multi-agent-threads.md, Phase 0).
 
-## Routing decision table (flag ON, sandbox platform)
+## Routing decision table (sandbox platform)
 
 | Traffic | Backend | credMode | Sandbox holds |
 |---|---|---|---|
@@ -99,8 +99,8 @@ like the MCP callback bypass). If either vehicle fails verification, set
 Redis is shared).
 
 ## Rollout runbook
-1. Land dark (flag opt-in restored in the same branch — previews/staging
-   need `NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED=true` set explicitly).
+1. *(Historical — the opt-in flag no longer exists.)* Land dark behind
+   `NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED`.
 2. Staging bake with the e2e checklist: usage_records old-vs-new diff on
    identical prompts per model family; CC-through-proxy parity (OAuth+BYOK,
    reattach after route death, stop, 40-min sliding-TTL turn); sandbox

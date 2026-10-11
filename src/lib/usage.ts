@@ -156,10 +156,9 @@ export async function getMonthlyTokenUsage(userId: string, model: string): Promi
 /** Upsert token usage after a completed agent call.
  *
  * `opts.countTurn` (default true) controls the agentTurns increment: the
- * legacy /api/agent path records once per TURN so turn-counting rides along;
- * the LLM proxy records once per provider REQUEST (N per turn) and passes
- * false — the agent routes record a zero-token turn marker at spawn instead,
- * keeping agentTurns' meaning stable. */
+ * LLM proxy records once per provider REQUEST (N per turn) and passes
+ * false — the agent routes record a zero-token turn marker at spawn instead
+ * (countTurn true), keeping agentTurns' meaning stable. */
 export async function recordTokenUsage(
   userId: string,
   model: string,

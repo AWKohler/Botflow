@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls, isToolUIPart, getToolName, type UIMessage } from 'ai';
+import { DefaultChatTransport, isToolUIPart, getToolName, type UIMessage } from 'ai';
 import { Button } from '@/components/ui/button';
 import { Markdown } from '@/components/ui/markdown';
 import { ChevronDown, ChevronRight, ArrowUp, X as IconX, Cog, AlertCircle, RotateCcw, Loader2, ListPlus, Check, ImagePlus, Smartphone } from 'lucide-react';
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { LiveActions } from '@/components/agent/LiveActions';
 import { useToast } from '@/components/ui/toast';
 import type { ToolCallData } from '@/lib/agent/ui-types';
-import { MODEL_CONFIGS, DEFAULT_MODEL_ID, modelSupportsImages, resolveModelId, isOpenAIModel, isAnthropicModel, effectiveContextTokens, type ModelId } from '@/lib/agent/models';
+import { MODEL_CONFIGS, DEFAULT_MODEL_ID, modelSupportsImages, resolveModelId, effectiveContextTokens, type ModelId } from '@/lib/agent/models';
 import { ModelSelector } from '@/components/ui/ModelSelector';
 import { LimitModal, parseLimitPayload, type LimitReachedPayload } from '@/components/ui/LimitModal';
 import { CreditGauge } from '@/components/ui/CreditGauge';
@@ -25,16 +25,10 @@ import { ANTHROPIC_OAUTH_ENABLED } from '@/lib/feature-flags';
 import {
   type AgentBackend,
 } from '@/lib/agent/backend-resolution';
-import { deriveAgentBackend } from '@/lib/agent/derive-backend';
+import { deriveAgentBackend, describeDerivation } from '@/lib/agent/derive-backend';
 import { BackendChip, BackendGlyphInfo } from './BackendBadge';
 import { ThinkingBlock } from './ThinkingBlock';
 import { QuestionPrompt, type QuestionConfig, type QuestionAnswerPayload } from './QuestionPrompt';
-import {
-  BOTFLOW_NATIVE_TOOLS,
-  CLAUDE_CODE_TO_BOTFLOW,
-  OPENCODE_TO_BOTFLOW,
-  sanitizeToolUseId,
-} from '@/lib/agent/tool-name-map';
 import type { SubagentStep } from '@/lib/agent/claude-code/translator';
 import { transcriptHasUnfinishedTail } from '@/lib/agent/transcript-tail';
 
@@ -206,139 +200,8 @@ function formatTokenCount(tokens: number): string {
   return String(tokens);
 }
 
-// ============================================================================
-// Cross-agent message transform
-// ============================================================================
-//
-// Rewrites a single UIMessage so it's safe to send to the Botflow agent's
-// Anthropic-backed `/api/agent` route, even when the message originated from
-// a turn that ran through Claude Code. Anthropic strictly validates that
-// every `tool_use` block in the request references a tool name registered
-// in the current `tools` parameter; foreign names cause a 400.
-//
-// Strategy:
-//   1. For tool parts whose name maps to a Botflow tool (CLAUDE_CODE_TO_BOTFLOW
-//      entry with a `to`/`mapInput`): rename + rewrite input. Keep state +
-//      output untouched so the matching tool_result still pairs correctly.
-//   2. For tool parts with no Botflow counterpart (entry === null): collapse
-//      the whole part into a text part summarizing what happened, so the
-//      receiving agent has prose context without a phantom tool call.
-//   3. For tool parts that are already native to Botflow (in BOTFLOW_NATIVE_TOOLS):
-//      pass through unchanged.
-//   4. Sanitize toolCallId on every tool part as belt-and-suspenders against
-//      legacy data with invalid characters.
-//
-// Going to Claude Code: this transform is NOT applied — the Claude Code
-// route only takes a string prompt, and the route's own preamble logic
-// summarizes prior conversation as text.
-//
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyPart = any;
-
-function transformMessageForBotflow(message: AnyPart): AnyPart {
-  if (!message || !Array.isArray(message.parts)) return message;
-  const newParts: AnyPart[] = [];
-  for (const part of message.parts) {
-    const transformed = transformPartForBotflow(part);
-    // A transform may emit zero (rare), one, or more parts. Spread.
-    if (Array.isArray(transformed)) {
-      for (const p of transformed) newParts.push(p);
-    } else if (transformed) {
-      newParts.push(transformed);
-    }
-  }
-  return { ...message, parts: newParts };
-}
-
-function transformPartForBotflow(part: AnyPart): AnyPart | AnyPart[] | null {
-  if (!part || typeof part !== 'object') return part;
-  const type: string = part.type ?? '';
-
-  // Non-tool parts pass through (text, reasoning, file, data-*, step-start, etc.).
-  if (!type.startsWith('tool-') && type !== 'dynamic-tool') return part;
-
-  // Extract the tool name from either static-typed (`tool-Read`) or dynamic
-  // (`dynamic-tool` with .toolName) shape.
-  const rawName: string =
-    type === 'dynamic-tool'
-      ? String(part.toolName ?? '')
-      : type.slice('tool-'.length);
-
-  if (!rawName) return part;
-
-  // Native Botflow tool — pass through, just sanitize the id.
-  if (BOTFLOW_NATIVE_TOOLS.has(rawName)) {
-    if (part.toolCallId) {
-      const safe = sanitizeToolUseId(String(part.toolCallId));
-      if (safe !== part.toolCallId) return { ...part, toolCallId: safe };
-    }
-    return part;
-  }
-
-  // Look up in the cross-agent maps: Claude Code names first (PascalCase +
-  // MCP snake_case), then OpenCode-only natives (lowercase). The key spaces
-  // are disjoint, and platform (MCP) tools arrive pre-stripped by the
-  // OpenCode translator under the exact names the CC map already rewrites.
-  const rule = CLAUDE_CODE_TO_BOTFLOW[rawName] ?? OPENCODE_TO_BOTFLOW[rawName];
-
-  // No mapping — could be a tool we don't know about. Collapse to a text
-  // summary so the receiving agent has prose context but doesn't try to
-  // replay an unknown tool call.
-  if (rule === null || rule === undefined) {
-    return summarizeUnmappedToolPart(rawName, part);
-  }
-
-  // Mapped — rename and rewrite the input. Preserve state + output so the
-  // tool_use/tool_result pairing inside the AI SDK serialization stays valid.
-  const newType = `tool-${rule.to}`;
-  const newInput =
-    part.input !== undefined ? rule.mapInput(part.input) : part.input;
-
-  const safeId = part.toolCallId
-    ? sanitizeToolUseId(String(part.toolCallId))
-    : part.toolCallId;
-
-  // Static-typed shape: drop dynamic-tool's `toolName` field; just change `type`.
-  if (type === 'dynamic-tool') {
-    return {
-      ...part,
-      type: newType,
-      toolName: rule.to,
-      ...(safeId !== part.toolCallId ? { toolCallId: safeId } : {}),
-      ...(newInput !== part.input ? { input: newInput } : {}),
-    };
-  }
-  return {
-    ...part,
-    type: newType,
-    ...(safeId !== part.toolCallId ? { toolCallId: safeId } : {}),
-    ...(newInput !== part.input ? { input: newInput } : {}),
-  };
-}
-
-function summarizeUnmappedToolPart(name: string, part: AnyPart): AnyPart {
-  // Build a short, prose-style summary the next agent can read like a log
-  // entry. We deliberately don't include the full input/output dumps to
-  // keep token cost down; an interested agent can re-derive specifics by
-  // reading the current filesystem.
-  let summary = `[Earlier turn used \`${name}\``;
-  const state = part.state ?? '';
-  if (state === 'output-available' && part.output !== undefined) {
-    const out = typeof part.output === 'string'
-      ? part.output
-      : (() => { try { return JSON.stringify(part.output); } catch { return String(part.output); } })();
-    summary += ` and got a result (${truncatePreview(out)})`;
-  } else if (state === 'output-error' && part.errorText) {
-    summary += ` and errored: ${truncatePreview(String(part.errorText))}`;
-  }
-  summary += '. The project filesystem reflects whatever changed.]';
-  return { type: 'text', text: summary };
-}
-
-function truncatePreview(s: string, max = 200): string {
-  if (s.length <= max) return s;
-  return s.slice(0, max - 1) + '…';
-}
 
 /**
  * Repair orphaned tool calls in the message list before the next API request.
@@ -653,10 +516,11 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   currentSegmentIdRef.current = currentSegmentId;
 
   // --- Token tracking ---
-  // For Botflow projects: char/4 estimate of accumulated message content.
-  // For Claude Code projects: the real usage number reported by the SDK via
-  // the transient `data-claude-code-usage` part — claude knows its own context
-  // size after any internal compaction, so the bar tracks reality.
+  // The real usage number reported by the agent via the transient
+  // `data-claude-code-usage` / `data-opencode-usage` part — the agent knows
+  // its own context size after any internal compaction, so the bar tracks
+  // reality. Until the first usage report arrives: a char/4 estimate of the
+  // accumulated message content.
   const [tokenEstimate, setTokenEstimate] = useState(0);
   const [claudeCodeUsage, setClaudeCodeUsage] = useState<{
     tokens: number;
@@ -703,15 +567,6 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // exists) can trigger a continue.
   const maybeAutoContinueRef = useRef<() => boolean>(() => false);
 
-  // True when the LAST agent request was actually served by an in-sandbox
-  // agent route — /api/agent/claude-code OR /api/agent/opencode — (i.e. it
-  // didn't 412-fall-back to /api/agent). In-sandbox turns are single-shot:
-  // the bridge runs the whole agentic loop inside one POST, so the client
-  // must NEVER auto-resubmit them: a resubmit carries a trailing assistant
-  // message, which both routes reject with 409 ("Last message must be a user
-  // message") and the agent stops.
-  const lastTurnServedByInSandboxAgentRef = useRef(false);
-
   // --- Ref that the transport's prepare/fetch closures read at request time.
   //     Holds the project's persisted agent_backend so we route every turn to
   //     the right endpoint. Updates whenever the user (or load) changes the
@@ -720,11 +575,13 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   agentBackendRef.current = agentBackend;
 
   // --- Stable transport ref (v6) ---
-  // Endpoint is chosen per-request from the project's persisted agentBackend.
-  // The 412 fallback from /api/agent/claude-code is kept as a safety net: if
-  // creds went stale between turns, we transparently retry /api/agent.
+  // Endpoint is chosen per-request from the derived agent backend (see
+  // prepareSendMessagesRequest). Both in-sandbox routes are single-shot: the
+  // bridge runs the whole agentic loop inside one POST, so turns are never
+  // auto-resubmitted (no sendAutomaticallyWhen). A route that can't run the
+  // turn answers 422 with a user-facing error — there is no fallback agent.
   const transportRef = useRef(new DefaultChatTransport({
-    api: '/api/agent',
+    api: '/api/agent/opencode',
     body: { projectId, platform },
     // resumeStream() → GET the reattach route, which replays the current
     // in-sandbox turn's event file (Claude Code or OpenCode — the turn record
@@ -736,12 +593,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         reattachTurnIdRef.current ? `&turnId=${encodeURIComponent(reattachTurnIdRef.current)}` : ''
       }`,
     }),
-    prepareSendMessagesRequest: ({ body, messages, api }) => {
+    prepareSendMessagesRequest: ({ body, messages }) => {
       const backend = agentBackendRef.current;
-      const useInSandboxAgent = backend === 'claude-code' || backend === 'opencode';
-      // Assume the intended endpoint serves this turn; the fetch wrapper
-      // flips this off if a 412 falls the request back to /api/agent.
-      lastTurnServedByInSandboxAgentRef.current = useInSandboxAgent;
 
       // Scope to the current segment. Segments now only break on explicit
       // Reset (no longer on agent switch), so most of the time this is a
@@ -756,46 +609,16 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           })
         : messages;
 
-      // For Botflow outgoing: rewrite any foreign (Claude Code / OpenCode)
-      // tool_use parts into Botflow's tool vocabulary so Anthropic doesn't
-      // reject the request with `messages.X.content.Y.tool_use` errors.
-      // Unmapped tool parts are collapsed into text summaries. Also
-      // defensively sanitize any tool_use IDs that don't match Anthropic's
-      // regex.
-      //
-      // For in-sandbox outgoing (Claude Code / OpenCode): the bridges take
-      // only the user prompt (no messages array), so we pass `scoped`
-      // through unchanged — the routes build their own prior-conversation
-      // preamble.
-      const transformed = useInSandboxAgent
-        ? scoped
-        : scoped.map(transformMessageForBotflow);
-
-      // Repair any orphaned tool calls (tool_use with no tool_result) that
-      // were left by a Stop-button abort mid-stream.
-      const finalMessages = repairOrphanedToolCalls(transformed);
+      // The bridges take only the user prompt (no messages array); the
+      // routes build their own prior-conversation preamble from `scoped`.
+      // Repair any orphaned tool calls (tool_use with no tool_result) left by
+      // a Stop-button abort mid-stream so that preamble stays coherent.
+      const finalMessages = repairOrphanedToolCalls(scoped);
 
       return {
         body: { ...(body ?? {}), messages: finalMessages },
-        ...(backend === 'claude-code'
-          ? { api: '/api/agent/claude-code' }
-          : backend === 'opencode'
-            ? { api: '/api/agent/opencode' }
-            : { api }),
+        api: backend === 'claude-code' ? '/api/agent/claude-code' : '/api/agent/opencode',
       };
-    },
-    fetch: async (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      const res = await fetch(input, init);
-      // 412 from an in-sandbox route = "not eligible / creds went stale" —
-      // transparently land the turn on /api/agent. Rare: the derivation
-      // should already match what's available server-side.
-      if (res.status === 412 && /\/api\/agent\/(claude-code|opencode)/.test(url)) {
-        // This turn is now Botflow-served — its tool loop needs resubmits.
-        lastTurnServedByInSandboxAgentRef.current = false;
-        return fetch(url.replace(/\/api\/agent\/(claude-code|opencode)/, '/api/agent'), init);
-      }
-      return res;
     },
   }));
 
@@ -949,9 +772,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           return [...prev, entry];
         });
 
-        // Client-side WebContainer tool execution was removed with the WebContainer
-        // deprecation. Sandbox/swift platforms execute tools server-side (the client
-        // never receives onToolCall for them); only endTurn (handled above) reaches here.
+        // Tools execute inside the sandbox; the client only records the call
+        // for Live Actions. (useChat fires onToolCall for every streamed
+        // tool-input-available chunk, including the in-sandbox agents'.)
       } catch (err: unknown) {
         console.error('Tool error', err);
         const message = err instanceof Error ? err.message : String(err);
@@ -963,40 +786,6 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           resultPreview: message,
         }) : a));
       }
-    },
-    // v6: auto-resubmit when tool calls are complete (replaces maxSteps).
-    //
-    // Wrap the default helper so we DON'T auto-resubmit once the turn has
-    // explicitly ended. A completed `endTurn` tool part — the real one the
-    // Botflow agent calls, or the synthetic one the Claude Code translator
-    // appends to EVERY turn — is our "stop here" marker, and it overrides
-    // whatever other tools ran in the same turn. The previous guard only
-    // suppressed resubmission when endTurn was the ONLY tool in the message,
-    // so any Claude Code turn that did real work (its bash/read/mcp parts all
-    // stream into the same single-step assistant message) tripped the helper
-    // into re-POSTing — and /api/agent/claude-code replays the last user
-    // prompt on every POST, so the turn looped until the user intervened.
-    sendAutomaticallyWhen: ({ messages }) => {
-      // In-sandbox turns (Claude Code / OpenCode) are single-shot: the bridge
-      // runs the whole agentic loop inside one POST and every tool part
-      // arrives already complete, so the helper below would re-POST after
-      // EVERY turn that did real work. Worse, when a turn dies early (bridge
-      // crash, maxDuration kill) the synthetic endTurn marker never arrives
-      // and the resubmit hits the route's replay guard — 409, agent stops.
-      // Never auto-resubmit a turn an in-sandbox agent actually served
-      // (fallback-served turns still may).
-      if (lastTurnServedByInSandboxAgentRef.current) return false;
-      if (!lastAssistantMessageIsCompleteWithToolCalls({ messages })) return false;
-      const last = messages[messages.length - 1];
-      if (!last || last.role !== 'assistant') return false;
-      for (const part of last.parts ?? []) {
-        if (!isToolUIPart(part) || getToolName(part) !== 'endTurn') continue;
-        const state = (part as { state?: string }).state;
-        if (state === 'output-available' || state === 'output-error') {
-          return false;
-        }
-      }
-      return true;
     },
   });
 
@@ -1040,15 +829,11 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     setShowCompletionWarning(false);
     setIsBusy(true);
     toolAbortRef.current = new AbortController();
-    // Per-backend wording: both in-sandbox agents (Claude Code + OpenCode)
-    // have reattach-first recovery, so their nudge only fires after a failed
-    // reattach and leans on the resumed session transcript. Botflow keys on
-    // endTurn.
-    const backend = agentBackendRef.current;
-    const nudge = backend === 'claude-code' || backend === 'opencode'
-      ? '[system-note] Automatic continuation: your previous turn stopped before finishing and could not be re-attached. Your resumed session transcript is the source of truth for what already happened — trust it, do not re-read files or re-verify work it already shows as done. Continue from where it leaves off; if the task is already complete, give a brief summary of what was done.'
-      : '[system-note] Automatic continuation: the previous response ended without calling endTurn. Continue the remaining work; if everything is already complete, call endTurn now with a brief summary.';
-    sendMessageRef.current({ text: nudge });
+    // Both in-sandbox agents have reattach-first recovery, so this nudge only
+    // fires after a failed reattach and leans on the resumed session transcript.
+    sendMessageRef.current({
+      text: '[system-note] Automatic continuation: your previous turn stopped before finishing and could not be re-attached. Your resumed session transcript is the source of truth for what already happened — trust it, do not re-read files or re-verify work it already shows as done. Continue from where it leaves off; if the task is already complete, give a brief summary of what was done.',
+    });
     return true;
   }, [MAX_AUTO_CONTINUES]);
   maybeAutoContinueRef.current = maybeAutoContinue;
@@ -1173,10 +958,6 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         while (out.length > 0 && out[out.length - 1].role === 'assistant') out.pop();
         return out;
       });
-      // The resumed turn is in-sandbox by definition — make sure a LATER
-      // cut of this same stream re-enters reattach-first recovery instead
-      // of auto-resubmitting (which would 409 on the replay guard).
-      lastTurnServedByInSandboxAgentRef.current = true;
       // Pin the reattach to the exact turn the status check validated — a
       // turn spawned between these two requests 204s instead of replaying.
       reattachTurnIdRef.current = typeof data.turnId === 'string' ? data.turnId : null;
@@ -1203,15 +984,12 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const attemptTurnRecovery = useCallback(async () => {
     if (userStoppedRef.current) return;
     if (reattachInFlightRef.current) return;
-    const backend = agentBackendRef.current;
-    if ((backend === 'claude-code' || backend === 'opencode') && lastTurnServedByInSandboxAgentRef.current) {
-      const { outcome } = await reattachToLiveTurn();
-      if (outcome === 'reattached') return;
-      // A user message arrived mid-recovery — its turn owns the flow now;
-      // neither a nudge nor a warning belongs to this stale attempt.
-      if (outcome === 'superseded') return;
-      if (userStoppedRef.current || endTurnCalledRef.current) return;
-    }
+    const { outcome } = await reattachToLiveTurn();
+    if (outcome === 'reattached') return;
+    // A user message arrived mid-recovery — its turn owns the flow now;
+    // neither a nudge nor a warning belongs to this stale attempt.
+    if (outcome === 'superseded') return;
+    if (userStoppedRef.current || endTurnCalledRef.current) return;
     if (!maybeAutoContinue()) {
       setShowCompletionWarning(true);
     }
@@ -1724,17 +1502,13 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     const hasImages = pendingImages.length > 0;
     if (!hasText && !hasImages) return;
 
-    const usingAnthropic = isAnthropicModel(model);
-    const hasAnthropicCreds = hasAnthropicKey || (ANTHROPIC_OAUTH_ENABLED && hasClaudeOAuth);
-    const hasOpenAICreds = hasCodexOAuth || hasOpenAIKey;
-    // Pro/Max users can use OpenAI and Anthropic models via platform server keys — only
-    // block free-tier users who have no personal credentials for these providers.
-    const isPayingTier = userTier === 'pro' || userTier === 'max';
-    if (!isPayingTier) {
-      if ((isOpenAIModel(model) && hasOpenAICreds === false) || (usingAnthropic && hasAnthropicCreds === false)) {
-        toast({ title: 'Missing API key', description: `Please add your ${isOpenAIModel(model) ? 'OpenAI' : 'Anthropic'} API key in Settings, or upgrade to Pro.` });
-        return;
-      }
+    // The derivation is the gate: there is no fallback agent, so a model this
+    // user can't run (missing credentials, plan too low) is refused up front
+    // with the same explanation the backend chip shows.
+    if (!derivedBackend.runnable) {
+      const copy = describeDerivation(derivedBackend.reason);
+      toast({ title: copy.title, description: copy.body });
+      return;
     }
 
     // Warn if model doesn't support images but images are attached
@@ -1784,7 +1558,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     sendMessage({ text: input.trim(), files: fileParts.length > 0 ? fileParts : undefined });
     setInput('');
     removePromptFromUrl();
-  }, [model, hasOpenAIKey, hasAnthropicKey, hasClaudeOAuth, hasCodexOAuth, isAgentWorking, input, pendingImages, messageQueue.length, sendMessage, removePromptFromUrl, toast]);
+  }, [model, derivedBackend.runnable, derivedBackend.reason, isAgentWorking, input, pendingImages, messageQueue.length, sendMessage, removePromptFromUrl, toast]);
 
   // --- Re-prompt for lazy completion ---
   const handleReprompt = useCallback(() => {
@@ -2716,8 +2490,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           </div>
         </div>
 
-        {/* Inset bottom — Token counter. Shows real Claude Code usage when
-            available; falls back to our char/4 estimate for Botflow. */}
+        {/* Inset bottom — Token counter. Shows the agent's real usage when
+            available; falls back to our char/4 estimate before the first report. */}
         {(displayedTokens > 0 || isCompacting) && (
           <div
             className="flex items-center gap-2 px-4 py-2 border-t border-border cursor-help"

@@ -1,14 +1,14 @@
 # OpenCode agent backend
 
-Flag: `NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED` (strictly opt-in). When ON,
-OpenCode serves EVERY model except personal-credential Anthropic traffic
+Always on (the `NEXT_PUBLIC_OPENCODE_BACKEND_ENABLED` flag was removed when
+the Botflow agent was retired). OpenCode serves EVERY model except personal-credential Anthropic traffic
 (Claude OAuth per ToS and Anthropic BYOK both run on Claude Code), and ALL
 provider traffic — platform, BYOK, and OAuth — transits the universal LLM
 proxy: sandboxes hold turn-scoped `bfap_` tokens, never real credentials
 (sole exception: Codex/ChatGPT-plan OAuth). Billing for platform-mode turns
 happens at the proxy. See **docs/features/llm-proxy.md** for the routing
-table, dialect metering, and rollout runbook. The legacy `/api/agent` engine
-remains only as the 412-fallback during the bake.
+table, dialect metering, and rollout runbook. There is no fallback engine:
+a turn that can't run returns 422 with a user-facing reason.
 
 Pinned versions (env-overridable; installed locally in the sandbox under
 `~/.botflow/opencode/`, no sudo):

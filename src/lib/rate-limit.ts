@@ -85,7 +85,7 @@ export const RATE_LIMIT_BUCKETS: Record<RateLimitBucket, { tokens: number; windo
   oauthStart:    { tokens: envInt('RL_OAUTH_START', 10),     window: '60 s' }, // oauth */start, stripe oauth start
   oauthExchange: { tokens: envInt('RL_OAUTH_EXCHANGE', 5),   window: '60 s' }, // oauth */callback + exchange (token/code grinding)
   oauthPoll:     { tokens: envInt('RL_OAUTH_POLL', 45),      window: '60 s' }, // codex/poll client loop (~1/2s = 30/min); headroom for jitter/retry/clock-drift
-  agent:         { tokens: envInt('RL_AGENT', 12),           window: '60 s' }, // /api/agent LLM turn
+  agent:         { tokens: envInt('RL_AGENT', 12),           window: '60 s' }, // /api/agent/* in-sandbox agent turn
   claudeCode:    { tokens: envInt('RL_CLAUDE_CODE', 10),     window: '60 s' }, // /api/agent/claude-code subprocess+sandbox
   opencode:      { tokens: envInt('RL_OPENCODE', 10),        window: '60 s' }, // /api/agent/opencode subprocess+sandbox
   toolCallback:  { tokens: envInt('RL_TOOL_CALLBACK', 180),  window: '60 s' }, // /api/internal/claude-code-tool (fans out per turn; continuation re-polls use the 'poll' bucket instead)
