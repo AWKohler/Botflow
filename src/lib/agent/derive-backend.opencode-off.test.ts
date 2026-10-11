@@ -36,7 +36,7 @@ describe("flag off — OpenCode never routes", () => {
   test("openai model + full personal creds → botflow, exactly as before", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
-      model: "gpt-5.6-terra",
+      model: "gpt-6.1-sol",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasCodexOAuth: true, hasOpenAIKey: true },
       useTogetherKimi: true,
@@ -63,7 +63,7 @@ describe("flag off — OpenCode never routes", () => {
   test("Anthropic OAuth still routes to claude-code (CC flag independent)", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
-      model: "claude-sonnet-5",
+      model: "claude-sonnet-5-5",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasClaudeOAuth: true },
     });

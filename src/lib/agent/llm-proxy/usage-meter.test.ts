@@ -116,7 +116,7 @@ describe("openai-chat dialect", () => {
       {
         choices: [],
         usage: {
-          // Real capture from gpt-5.6-sol, cold call (whole prefix written).
+          // Real capture from gpt-6.1-sol, cold call (whole prefix written).
           prompt_tokens: 10256,
           completion_tokens: 4,
           prompt_tokens_details: { cached_tokens: 0, cache_write_tokens: 10253 },
@@ -239,7 +239,7 @@ describe("rewriteRequestBody", () => {
   test("platform mode rejects off-allowlist models", () => {
     const out = rewriteRequestBody(JSON.stringify({ model: "gpt-4o", stream: true }), {
       dialect: "openai-chat",
-      enforceModelAllowlist: ["gpt-5.6-terra"],
+      enforceModelAllowlist: ["gpt-6.1-sol"],
       capOutputTokens: 32000,
     });
     assert.ok("rejected" in out);
@@ -247,8 +247,8 @@ describe("rewriteRequestBody", () => {
 
   test("injects include_usage even when the client disabled it, and inserts the output cap when absent", () => {
     const out = rewriteRequestBody(
-      JSON.stringify({ model: "gpt-5.6-terra", stream: true, stream_options: { include_usage: false } }),
-      { dialect: "openai-chat", enforceModelAllowlist: ["gpt-5.6-terra"], capOutputTokens: 32000 },
+      JSON.stringify({ model: "gpt-6.1-sol", stream: true, stream_options: { include_usage: false } }),
+      { dialect: "openai-chat", enforceModelAllowlist: ["gpt-6.1-sol"], capOutputTokens: 32000 },
     );
     assert.ok(!("rejected" in out));
     const body = JSON.parse(out.body);
@@ -260,8 +260,8 @@ describe("rewriteRequestBody", () => {
 
   test("clamps an oversized requested cap (responses dialect field name)", () => {
     const out = rewriteRequestBody(
-      JSON.stringify({ model: "gpt-5.6-luna", stream: true, max_output_tokens: 900000 }),
-      { dialect: "openai-responses", enforceModelAllowlist: ["gpt-5.6-luna"], capOutputTokens: 32000 },
+      JSON.stringify({ model: "gpt-6-luna", stream: true, max_output_tokens: 900000 }),
+      { dialect: "openai-responses", enforceModelAllowlist: ["gpt-6-luna"], capOutputTokens: 32000 },
     );
     assert.ok(!("rejected" in out));
     assert.equal(JSON.parse(out.body).max_output_tokens, 32000);
@@ -278,12 +278,66 @@ describe("rewriteRequestBody", () => {
 
   test("personal-cred mode leaves the body unclamped", () => {
     const out = rewriteRequestBody(
-      JSON.stringify({ model: "claude-sonnet-5", stream: true, max_tokens: 64000 }),
+      JSON.stringify({ model: "claude-sonnet-5-5", stream: true, max_tokens: 64000 }),
       { dialect: "anthropic", enforceModelAllowlist: null, capOutputTokens: null },
     );
     assert.ok(!("rejected" in out));
     assert.equal(JSON.parse(out.body).max_tokens, 64000);
     assert.equal(out.effectiveMaxOutput, 64000);
+  });
+
+  test("anthropic: pins Opus/Sonnet 5.5 effort on Messages calls, overriding the client", () => {
+    for (const model of ["claude-opus-5-5", "claude-sonnet-5-5"]) {
+      const out = rewriteRequestBody(
+        JSON.stringify({ model, max_tokens: 1000, output_config: { effort: "xhigh", format: { type: "json_schema" } } }),
+        { dialect: "anthropic", enforceModelAllowlist: null, capOutputTokens: null, anthropicMessagesCall: true },
+      );
+      assert.ok(!("rejected" in out));
+      const body = JSON.parse(out.body);
+      assert.equal(body.output_config.effort, "medium", model);
+      assert.deepEqual(body.output_config.format, { type: "json_schema" }, "other output_config fields survive");
+    }
+  });
+
+  test("anthropic: no effort pin on non-Messages calls or unpinned/unknown models", () => {
+    const countTokens = rewriteRequestBody(
+      JSON.stringify({ model: "claude-opus-5-5", messages: [] }),
+      { dialect: "anthropic", enforceModelAllowlist: null, capOutputTokens: null, anthropicMessagesCall: false },
+    );
+    assert.ok(!("rejected" in countTokens));
+    assert.equal(JSON.parse(countTokens.body).output_config, undefined);
+    for (const model of ["claude-fable-5-1", "claude-haiku-4-5"]) {
+      const out = rewriteRequestBody(
+        JSON.stringify({ model, max_tokens: 10 }),
+        { dialect: "anthropic", enforceModelAllowlist: null, capOutputTokens: null, anthropicMessagesCall: true },
+      );
+      assert.ok(!("rejected" in out));
+      assert.equal(JSON.parse(out.body).output_config, undefined, model);
+    }
+  });
+
+  test("anthropic: adaptive-only models drop explicit thinking and relax forced tool_choice", () => {
+    const out = rewriteRequestBody(
+      JSON.stringify({
+        model: "claude-fable-5-1",
+        max_tokens: 10,
+        thinking: { type: "enabled", budget_tokens: 4096 },
+        tool_choice: { type: "tool", name: "x", disable_parallel_tool_use: true },
+      }),
+      { dialect: "anthropic", enforceModelAllowlist: null, capOutputTokens: null, anthropicMessagesCall: true },
+    );
+    assert.ok(!("rejected" in out));
+    const body = JSON.parse(out.body);
+    assert.equal(body.thinking, undefined);
+    assert.deepEqual(body.tool_choice, { type: "auto", disable_parallel_tool_use: true });
+
+    const kept = rewriteRequestBody(
+      JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 10, thinking: { type: "between_tools" }, tool_choice: { type: "auto" } }),
+      { dialect: "anthropic", enforceModelAllowlist: null, capOutputTokens: null, anthropicMessagesCall: true },
+    );
+    assert.ok(!("rejected" in kept));
+    assert.deepEqual(JSON.parse(kept.body).thinking, { type: "between_tools" });
+    assert.deepEqual(JSON.parse(kept.body).tool_choice, { type: "auto" });
   });
 
   test("non-JSON body rejected", () => {

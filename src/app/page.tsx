@@ -1012,7 +1012,7 @@ import {
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { useToast } from '@/components/ui/toast';
 import { ModelSelector } from '@/components/ui/ModelSelector';
-import { modelSupportsImages, resolveModelId, type ModelId } from '@/lib/agent/models';
+import { DEFAULT_MODEL_ID, modelSupportsImages, resolveModelId, type ModelId } from '@/lib/agent/models';
 import { processImageForUpload } from '@/lib/image-processing';
 import { checkDeviceSupport } from '@/lib/device';
 import { cn } from '@/lib/utils';
@@ -1259,7 +1259,7 @@ const features = [
     title: 'Your choice of AI',
     shortTitle: 'Models',
     description:
-      'Pick from GPT-5.3 Codex, Claude Opus, Claude Sonnet, and more. Use platform credits or bring your own keys.',
+      'Pick from GPT-6, Claude Opus, Claude Sonnet, Gemini, and more. Use platform credits or bring your own keys.',
   },
 ];
 
@@ -1348,7 +1348,7 @@ export default function LandingV2() {
   // for Web (1px), Swift orange and thicker (2px) when Swift is selected.
   const promptFrameColor = platform === 'swift' ? SWIFT_ORANGE : 'var(--sand-border)';
   const promptFrameWidth = platform === 'swift' ? 2 : 1;
-  const [model, setModel] = useState<ModelId>('gpt-5.6-luna');
+  const [model, setModel] = useState<ModelId>(DEFAULT_MODEL_ID);
   const { toast } = useToast();
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
@@ -1393,7 +1393,7 @@ export default function LandingV2() {
   const PENDING_NAME_KEY = 'huggable_pending_project_name';
   const serverKeyModels = useMemo(() => new Set([
     'fireworks-minimax-m3', 'fireworks-kimi-k2p7', 'fireworks-kimi-k3',
-    'gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'claude-sonnet-5', 'claude-sonnet-4.6', 'claude-opus-4.7', 'claude-opus-4-8', 'claude-opus-5',
+    'gpt-6.1-sol', 'gpt-6-luna', 'claude-sonnet-5-5', 'claude-opus-5-5',
   ]), []);
   const landingSignInModalAppearance = {
     elements: {
@@ -1470,7 +1470,7 @@ export default function LandingV2() {
     if (serverKeyModels.has(model)) return true;
     const hasOpenAICreds = hasCodexOAuth || hasOpenAIKey;
     const keyChecks: Record<string, { hasKey: boolean | null; provider: string }> = {
-      'gpt-5.6-sol': { hasKey: hasOpenAICreds, provider: 'OpenAI' },
+      'gpt-6-astra': { hasKey: hasOpenAICreds, provider: 'OpenAI' },
     };
     const check = keyChecks[model];
     if (check?.hasKey === false) {
@@ -2336,7 +2336,7 @@ export default function LandingV2() {
               creditPct={47}
               agentWorking={true}
               defaultView="preview"
-              modelName="Claude Opus 5"
+              modelName="Claude Opus 5.5"
               className="shadow-[0_8px_60px_-12px_rgba(0,0,0,0.25)]"
             />
           </div>
@@ -2531,7 +2531,7 @@ export default function LandingV2() {
                 creditPct={22}
                 defaultView="code"
                 agentWorking={false}
-                modelName="Claude Sonnet 5"
+                modelName="Claude Sonnet 5.5"
                 className="shadow-[0_8px_40px_-12px_rgba(0,0,0,0.2)]"
               />
             </Reveal>

@@ -6,7 +6,7 @@ import { auth } from '@/lib/auth/server';
 import { requireProjectAccess, sanitizeProjectForRole } from '@/lib/project-access';
 import { getUserTier } from '@/lib/tier';
 import { deleteConvexBackend } from '@/lib/convex-platform';
-import { isModelDisabled, modelDisabledReason } from '@/lib/agent/models';
+import { isAcceptedModelInput, isModelDisabled, modelDisabledReason, resolveModelId } from '@/lib/agent/models';
 import { UTApi } from 'uploadthing/server';
 
 const utapi = new UTApi();
@@ -54,52 +54,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       htmlSnapshotUrl?: string;
       publicDescription?: string;
     };
-    if (
-      model &&
-      model !== 'gpt-6-astra' &&
-      model !== 'gpt-5.6-sol' &&
-      model !== 'gpt-5.6-terra' &&
-      model !== 'gpt-5.6-luna' &&
-      model !== 'gpt-5.3-codex' && // backwards compat → resolves to gpt-5.6-luna
-      model !== 'gpt-5.4' && // backwards compat → resolves to gpt-5.6-terra
-      model !== 'gpt-5.5' &&
-      model !== 'gpt-5.2' && // backwards compat
-      model !== 'gpt-4.1' && // backwards compat
-      model !== 'claude-sonnet-5' &&
-      model !== 'claude-sonnet-4-6' && // backwards compat → resolves to sonnet-5
-      model !== 'claude-sonnet-4.5' && // backwards compat
-      model !== 'claude-sonnet-4.6' && // backwards compat
-      model !== 'claude-haiku-4.5' && // removed → mapped to sonnet
-      model !== 'claude-opus-4-7' && // backwards compat → resolves to 4-8
-      model !== 'claude-opus-5' &&
-      model !== 'claude-opus-4-8' && // backwards compat → resolves to opus-5
-      model !== 'claude-fable-5' &&
-      model !== 'claude-opus-4.6' && // backwards compat
-      model !== 'claude-opus-4.7' && // backwards compat
-      model !== 'claude-opus-4.5' && // backwards compat
-      model !== 'kimi-k2.5' && // removed → mapped to minimax
-      model !== 'kimi-k2-thinking-turbo' && // removed → mapped to minimax
-      model !== 'fireworks-minimax-m2p7' && // backwards compat → resolves to m3
-      model !== 'fireworks-minimax-m3' &&
-      model !== 'fireworks-glm-5p2' && // retired → resolves to fireworks-kimi-k2p7
-      model !== 'fireworks-glm-5p1' && // retired → resolves to fireworks-kimi-k2p7
-      model !== 'fireworks-kimi-k2p7' &&
-      model !== 'fireworks-kimi-k2p6' && // backwards compat → resolved to k2p7
-      model !== 'fireworks-kimi-k3' &&
-      model !== 'gemini-3.1-pro-preview' &&
-      model !== 'grok-4.5'
-    ) {
+    // Current ids and known legacy aliases are accepted (stored resolved).
+    if (model && !isAcceptedModelInput(model)) {
       return NextResponse.json({ error: 'Invalid model' }, { status: 400 });
     }
     // Reject globally disabled models (e.g. rescinded by the provider) for all
     // users and auth paths — can't switch a project onto an unusable model.
-    if (model && isModelDisabled(model)) {
-      return NextResponse.json({ error: modelDisabledReason(model) }, { status: 403 });
+    if (model && isModelDisabled(resolveModelId(model))) {
+      return NextResponse.json({ error: modelDisabledReason(resolveModelId(model)) }, { status: 403 });
     }
     const updateData: Partial<typeof access.project> = {
       updatedAt: new Date(),
     };
-    if (model) updateData.model = model;
+    if (model) updateData.model = resolveModelId(model);
     if (thumbnailUrl !== undefined) updateData.thumbnailUrl = thumbnailUrl;
     if (htmlSnapshotUrl !== undefined) updateData.htmlSnapshotUrl = htmlSnapshotUrl;
     if (publicDescription !== undefined) updateData.publicDescription = publicDescription;

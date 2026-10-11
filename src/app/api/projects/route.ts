@@ -10,7 +10,7 @@ import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
 import { countUserProjects } from '@/lib/usage';
 import { limitReachedResponse } from '@/lib/plan-response';
 import { isManagedConvexEnabled, normalizeProjectPlatform, normalizeBackendType, type ProjectPlatform, type BackendType } from '@/lib/project-platform';
-import { isModelDisabled, modelDisabledReason } from '@/lib/agent/models';
+import { isModelDisabled, modelDisabledReason, resolveModelId } from '@/lib/agent/models';
 import { chooseProviderForNewProject } from '@/lib/sandbox-provider';
 import { canUseSwift } from '@/lib/swift-access';
 
@@ -70,21 +70,7 @@ export async function POST(request: NextRequest) {
       name?: string;
       platform?: ProjectPlatform;
       backendType?: BackendType;
-      model?:
-        | 'gpt-6-astra'
-        | 'gpt-5.6-sol'
-        | 'gpt-5.6-terra'
-        | 'gpt-5.6-luna'
-        | 'gpt-5.5'
-        | 'claude-sonnet-5'
-        | 'claude-opus-5'
-        | 'claude-opus-4-8' // legacy — resolves to claude-opus-5
-        | 'claude-fable-5'
-        | 'fireworks-minimax-m3'
-        | 'fireworks-kimi-k2p7'
-        | 'fireworks-kimi-k3'
-        | 'gemini-3.1-pro-preview'
-        | 'grok-4.5';
+      model?: string;
     };
 
     if (!name) {
@@ -94,8 +80,8 @@ export async function POST(request: NextRequest) {
     // Reject globally disabled models (e.g. rescinded by the provider) before
     // they can be persisted as a project's preferred model — applies to every
     // user and auth path.
-    if (model && isModelDisabled(model)) {
-      return NextResponse.json({ error: modelDisabledReason(model) }, { status: 403 });
+    if (model && isModelDisabled(resolveModelId(model))) {
+      return NextResponse.json({ error: modelDisabledReason(resolveModelId(model)) }, { status: 403 });
     }
 
     // Enforce project count limit (beta testers are exempt)
@@ -164,34 +150,8 @@ export async function POST(request: NextRequest) {
         backendType: resolvedBackendType,
         sandboxTemplate,
         sandboxProvider,
-        model:
-          model === 'gpt-6-astra'
-            ? 'gpt-6-astra'
-          : model === 'gpt-5.6-sol'
-            ? 'gpt-5.6-sol'
-          : model === 'gpt-5.6-terra'
-            ? 'gpt-5.6-terra'
-          : model === 'gpt-5.6-luna'
-            ? 'gpt-5.6-luna'
-          : model === 'gpt-5.5'
-            ? 'gpt-5.5'
-          : model === 'claude-sonnet-5'
-            ? 'claude-sonnet-5'
-            : model === 'claude-opus-5' || model === 'claude-opus-4-8'
-            ? 'claude-opus-5'
-            : model === 'claude-fable-5'
-            ? 'claude-fable-5'
-            : model === 'fireworks-minimax-m3'
-            ? 'fireworks-minimax-m3'
-            : model === 'fireworks-kimi-k2p7'
-            ? 'fireworks-kimi-k2p7'
-            : model === 'fireworks-kimi-k3'
-            ? 'fireworks-kimi-k3'
-            : model === 'gemini-3.1-pro-preview'
-            ? 'gemini-3.1-pro-preview'
-            : model === 'grok-4.5'
-            ? 'grok-4.5'
-            : 'gpt-5.6-luna', // default model
+        // Legacy/renamed ids map to their successor; unknown → default model.
+        model: resolveModelId(model),
       })
       .returning();
 

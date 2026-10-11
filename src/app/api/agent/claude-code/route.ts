@@ -299,6 +299,7 @@ export async function POST(req: Request) {
     ...(images.length ? { images } : {}),
     ...(sessionId ? { sessionId } : {}),
     model: MODEL_CONFIGS[selectedModel].apiModelId,
+    ...(MODEL_CONFIGS[selectedModel].effort ? { effort: MODEL_CONFIGS[selectedModel].effort } : {}),
     cwd: "/vercel/sandbox",
     appendSystemPrompt,
     ...(customTools.length ? { customTools } : {}),

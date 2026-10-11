@@ -31,6 +31,7 @@ export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
  *     images?: { media_type: string, data: string }[],  // base64 image blocks
  *     sessionId?: string,
  *     model?: string,
+ *     effort?: "low" | "medium" | "high" | "xhigh" | "max", // pinned reasoning effort
  *     cwd?: string,
  *     appendSystemPrompt?: string,
  *     customTools?: string[],         // names of MCP tools to enable
@@ -974,7 +975,7 @@ async function main() {
 
   emit({ type: "ready" });
 
-  const { prompt, images, sessionId, model, cwd, appendSystemPrompt, customTools, oauthProviderIds } = config;
+  const { prompt, images, sessionId, model, effort, cwd, appendSystemPrompt, customTools, oauthProviderIds } = config;
 
   const tools = buildCustomTools(customTools, oauthProviderIds);
   const mcpServer = tools.length > 0 ? createSdkMcpServer({ name: "botflow", tools }) : null;
@@ -982,6 +983,7 @@ async function main() {
   const options = {
     ...(sessionId ? { resume: sessionId } : {}),
     ...(model ? { model } : {}),
+    ...(effort ? { effort } : {}),
     ...(cwd ? { cwd } : {}),
     ...(appendSystemPrompt
       ? {

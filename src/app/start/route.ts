@@ -143,42 +143,8 @@ export async function GET(request: Request) {
   const platform = (seedSlug ? 'sandboxed-web' : normalizeProjectPlatform(platformParam)) as ProjectPlatform;
   const backendTypeParam = url.searchParams.get('backendType');
   const modelParam = url.searchParams.get('model');
-  const model = (
-    modelParam === 'gpt-6-astra' ? 'gpt-6-astra' :
-    modelParam === 'gpt-5.6-sol' ? 'gpt-5.6-sol' :
-    modelParam === 'gpt-5.6-terra' ? 'gpt-5.6-terra' :
-    modelParam === 'gpt-5.6-luna' ? 'gpt-5.6-luna' :
-    modelParam === 'gpt-5.5' ? 'gpt-5.5' :
-    modelParam === 'gpt-5.4' ? 'gpt-5.6-terra' : // migrate legacy → Terra succeeds 5.4
-    modelParam === 'gpt-5.3-codex' ? 'gpt-5.6-luna' : // migrate legacy → Luna succeeds 5.3
-    modelParam === 'gpt-5.2' ? 'gpt-5.6-luna' : // migrate legacy
-    modelParam === 'gpt-4.1' ? 'gpt-5.6-luna' : // migrate legacy
-    modelParam === 'claude-sonnet-5' ? 'claude-sonnet-5' :
-    modelParam === 'claude-sonnet-4-6' ? 'claude-sonnet-5' : // migrate legacy → superseded by Sonnet 5
-    modelParam === 'claude-sonnet-4.6' ? 'claude-sonnet-5' : // migrate legacy
-    modelParam === 'claude-sonnet-4.5' ? 'claude-sonnet-5' : // migrate legacy
-    modelParam === 'claude-haiku-4.5' ? 'claude-sonnet-5' : // removed model
-    modelParam === 'claude-opus-5' ? 'claude-opus-5' :
-    modelParam === 'claude-opus-4-8' ? 'claude-opus-5' : // migrate legacy → superseded by Opus 5
-    modelParam === 'claude-opus-4-7' ? 'claude-opus-5' : // migrate legacy
-    modelParam === 'claude-opus-4.7' ? 'claude-opus-5' : // migrate legacy
-    modelParam === 'claude-opus-4.6' ? 'claude-opus-5' : // migrate legacy
-    modelParam === 'claude-opus-4.5' ? 'claude-opus-5' : // migrate legacy
-    modelParam === 'claude-fable-5' ? 'claude-fable-5' :
-    modelParam === 'fireworks-minimax-m2p5' ? 'fireworks-minimax-m3' : // updated model
-    modelParam === 'fireworks-minimax-m2p7' ? 'fireworks-minimax-m3' : // updated model
-    modelParam === 'kimi-k2.5' ? 'fireworks-minimax-m3' : // removed model
-    modelParam === 'kimi-k2-thinking-turbo' ? 'fireworks-minimax-m3' : // removed model
-    modelParam === 'fireworks-minimax-m3' ? 'fireworks-minimax-m3' :
-    modelParam === 'fireworks-glm-5p2' ? 'fireworks-kimi-k2p7' : // GLM retired → Kimi (both free)
-    modelParam === 'fireworks-glm-5p1' ? 'fireworks-kimi-k2p7' : // GLM retired → Kimi (both free)
-    modelParam === 'fireworks-kimi-k2p6' ? 'fireworks-kimi-k2p7' : // updated model
-    modelParam === 'fireworks-kimi-k2p7' ? 'fireworks-kimi-k2p7' :
-    modelParam === 'fireworks-kimi-k3' ? 'fireworks-kimi-k3' :
-    modelParam === 'gemini-3.1-pro-preview' ? 'gemini-3.1-pro-preview' :
-    modelParam === 'grok-4.5' ? 'grok-4.5' :
-    'gpt-5.6-luna' // default model
-  ) as 'gpt-6-astra' | 'gpt-5.6-sol' | 'gpt-5.6-terra' | 'gpt-5.6-luna' | 'gpt-5.5' | 'claude-sonnet-5' | 'claude-opus-5' | 'claude-fable-5' | 'fireworks-minimax-m3' | 'fireworks-kimi-k2p7' | 'fireworks-kimi-k3' | 'gemini-3.1-pro-preview' | 'grok-4.5';
+  // Legacy/renamed ids map to their successor; unknown → default model.
+  const model = resolveModelId(modelParam);
 
   if (!userId) {
     return redirectToSignIn({ returnBackUrl: request.url });
@@ -333,7 +299,7 @@ export async function GET(request: Request) {
     // Resolve the initial agent backend for this project. The user's BYOK
     // preference applies only when both backends are available; OAuth users
     // are locked to claude-code automatically.
-    const resolvedModel = resolveModelId(model);
+    const resolvedModel = model;
     const backendResolution = resolveBackends({
       model: resolvedModel,
       platform,

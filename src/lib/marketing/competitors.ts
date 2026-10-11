@@ -11,7 +11,7 @@
 //      that go stale. Date the page instead (LAST_UPDATED).
 // ============================================================================
 
-export const LAST_UPDATED = 'July 2026';
+export const LAST_UPDATED = 'October 2026';
 
 // Managed-Convex kill switch (NEXT_PUBLIC_DISABLE_MANAGED_CONVEX): with it off,
 // Convex lives in the user's own (free) account, so never claim "managed".
@@ -109,7 +109,7 @@ export const ALT_PROFILES: Record<string, AltProfile> = {
       'Shipping a real product — a web app, a native iOS app, or both — from one workspace.',
     strengths: [
       'A real backend from the first prompt — Convex (database, auth, real-time sync) is provisioned and wired automatically, no Firebase or Supabase setup.',
-      'Bring your own Claude Pro or Max subscription and the actual Claude Code agent does the building — consuming zero platform credits. Or pick from 9+ models (GPT-5, Claude, Gemini, and more) with transparent per-token pricing.',
+      'Bring your own Claude Pro or Max subscription and the actual Claude Code agent does the building — consuming zero platform credits. Or pick from 9+ models (GPT-6, Claude, Gemini, and more) with transparent per-token pricing.',
       'Real ownership end to end: standard React + Convex projects with GitHub sync on web, and native SwiftUI with managed App Store builds, server-side signing, and TestFlight upload (early access) on iOS.',
     ],
     tradeoffs: [
@@ -423,7 +423,7 @@ export const COMPETITORS: Record<CompetitorSlug, Competitor> = {
             us: 'Yes — the real Claude Code agent',
             them: false,
           },
-          { feature: 'Choose your model', us: '9+ models (GPT-5, Claude, Gemini…)', them: 'Managed for you' },
+          { feature: 'Choose your model', us: '9+ models (GPT-6, Claude, Gemini…)', them: 'Managed for you' },
           { feature: 'Bring your own API keys', us: true, them: false },
           { feature: 'Credit pricing', us: 'Per-token, published multipliers', them: 'Per-message credits' },
         ],
@@ -473,7 +473,7 @@ export const COMPETITORS: Record<CompetitorSlug, Competitor> = {
       },
       {
         title: 'Model choice with honest pricing',
-        body: 'Pick GPT-5, Claude, Gemini, and more — or bring your own API keys at zero markup. Credits are per-token with published per-model multipliers, so a heavy debugging session never feels like a slot machine.',
+        body: 'Pick GPT-6, Claude, Gemini, and more — or bring your own API keys at zero markup. Credits are per-token with published per-model multipliers, so a heavy debugging session never feels like a slot machine.',
       },
       {
         title: 'A backend that can leave with you',
@@ -1230,7 +1230,7 @@ export const COMPETITORS: Record<CompetitorSlug, Competitor> = {
       },
       {
         title: 'Model choice and your own Claude',
-        body: 'Base44 picks your model. Botflow offers 9+ (GPT-5, Claude, Gemini, and more), BYO API keys at zero markup, and the unique option to build with the real Claude Code agent on your existing Claude subscription — zero credits.',
+        body: 'Base44 picks your model. Botflow offers 9+ (GPT-6, Claude, Gemini, and more), BYO API keys at zero markup, and the unique option to build with the real Claude Code agent on your existing Claude subscription — zero credits.',
       },
       {
         title: 'Headroom without a cliff',
