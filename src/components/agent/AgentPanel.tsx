@@ -191,7 +191,7 @@ function GaugeWithTooltip({
   return (
     <div className="relative group inline-flex">
       {children}
-      <div className="pointer-events-none absolute left-0 top-full mt-1.5 z-50 hidden group-hover:block w-max max-w-[240px] rounded-lg border border-border bg-elevated px-3 py-2 shadow-xl">
+      <div className="pointer-events-none absolute right-0 top-full mt-1.5 z-50 hidden group-hover:block w-max max-w-[240px] rounded-lg border border-border bg-elevated px-3 py-2 shadow-xl">
         <div className="text-[11px] font-medium text-fg">{label}</div>
         {lines.map((line, i) => (
           <div key={i} className="text-[11px] text-muted leading-relaxed">{line}</div>
@@ -2073,46 +2073,13 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 bg-surface">
         <div className="flex items-center gap-2">
-          <button onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings" className="text-muted hover:text-fg">
-            <Cog size={16} />
-          </button>
-          {(() => {
-            // Shrink both gauges a touch when they sit side-by-side so they
-            // don't crowd each other.
-            const showClaudePlan = Boolean(usesClaudePlan && claudePlanUsage);
-            const gaugeSize = showClaudePlan ? 'xs' : 'sm';
-            return (
-              <>
-                <GaugeWithTooltip
-                  label="Botflow credits"
-                  lines={[`${Math.round(creditPct)}% of your weekly platform credits used.`]}
-                >
-                  <CreditGauge pct={creditPct} size={gaugeSize} />
-                </GaugeWithTooltip>
-                {showClaudePlan && claudePlanUsage && (
-                  <GaugeWithTooltip
-                    label="Claude plan usage"
-                    lines={[
-                      ...(claudePlanUsage.fiveHour !== null ? [`Session (5h): ${claudePlanUsage.fiveHour}% used`] : []),
-                      ...(claudePlanUsage.sevenDay !== null ? [`Week (7d): ${claudePlanUsage.sevenDay}% used`] : []),
-                      'Claude Code runs on your Claude subscription.',
-                    ]}
-                  >
-                    <CreditGauge
-                      pct={Math.max(claudePlanUsage.fiveHour ?? 0, claudePlanUsage.sevenDay ?? 0)}
-                      size={gaugeSize}
-                    />
-                  </GaugeWithTooltip>
-                )}
-              </>
-            );
-          })()}
-        </div>
-        <div className="flex items-center gap-2">
+          {/* -ml-3 cancels the ghost padding so the label lines up with the
+              header edge, mirroring the Settings glyph on the right. */}
           <Button
             type="button"
             size="sm"
             variant="ghost"
+            className="-ml-3"
             onClick={async () => {
               const confirmed = window.confirm('Reset chat? This will permanently delete all messages for this project.');
               if (!confirmed) return;
@@ -2142,6 +2109,43 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           >
             Reset
           </Button>
+        </div>
+        <div className="flex items-center gap-2">
+          {(() => {
+            // Shrink both gauges a touch when they sit side-by-side so they
+            // don't crowd each other. Mirrored layout: the Botflow gauge sits
+            // next to Settings at the outer edge, the Claude plan gauge inside it.
+            const showClaudePlan = Boolean(usesClaudePlan && claudePlanUsage);
+            const gaugeSize = showClaudePlan ? 'xs' : 'sm';
+            return (
+              <>
+                {showClaudePlan && claudePlanUsage && (
+                  <GaugeWithTooltip
+                    label="Claude plan usage"
+                    lines={[
+                      ...(claudePlanUsage.fiveHour !== null ? [`Session (5h): ${claudePlanUsage.fiveHour}% used`] : []),
+                      ...(claudePlanUsage.sevenDay !== null ? [`Week (7d): ${claudePlanUsage.sevenDay}% used`] : []),
+                      'Claude Code runs on your Claude subscription.',
+                    ]}
+                  >
+                    <CreditGauge
+                      pct={Math.max(claudePlanUsage.fiveHour ?? 0, claudePlanUsage.sevenDay ?? 0)}
+                      size={gaugeSize}
+                    />
+                  </GaugeWithTooltip>
+                )}
+                <GaugeWithTooltip
+                  label="Botflow credits"
+                  lines={[`${Math.round(creditPct)}% of your weekly platform credits used.`]}
+                >
+                  <CreditGauge pct={creditPct} size={gaugeSize} />
+                </GaugeWithTooltip>
+              </>
+            );
+          })()}
+          <button onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings" className="text-muted hover:text-fg">
+            <Cog size={16} />
+          </button>
         </div>
       </div>
 
