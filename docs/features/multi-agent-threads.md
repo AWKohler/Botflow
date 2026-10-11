@@ -1,6 +1,6 @@
 # Multi-agent threads — plan
 
-Status: **planned** (2026-10-11). Phase 0 in progress on `feat/retire-botflow-agent`.
+Status (2026-10-11): Phase 0 in PR #69 (`feat/retire-botflow-agent`). Phase 1 built on `feat/agent-threads` — see §11.
 
 Each project gets a ChatGPT/Claude-style list of agent threads in the agent
 panel. Each thread works like opening a new Claude Code or OpenCode terminal: it
@@ -243,3 +243,51 @@ Claude Code `Task` subagents as nested, read-only sidebar entries with their own
 | Concurrent turns race the credit reservation | Audit `llm-proxy/billing` reservations under concurrency in Phase 1 |
 | Status poll keeps sandboxes awake | Poll bucket, paused while hidden, explicitly excluded from keepalive |
 | Viewer streams cost function time | Stream only the on-screen thread; reattach chunks as today |
+
+---
+
+## 11. Phase 1 — what shipped, gaps, deploy runbook
+
+**Shipped** (`feat/agent-threads`):
+- Data model + backfill (§3). Verified against an in-memory Postgres (PGlite), run twice.
+- Per-thread runtime (§4): turn records, session pointers, pidfiles and abort files are all
+  keyed by thread; stop, reattach and turn-status take `threadId`. Claude Code OAuth turns
+  pass their proxy token via `CLAUDE_CODE_OAUTH_TOKEN`, not the shared credentials file.
+- Capacity admission (§5) inside the prepare script; refusals return 429 with a clear message.
+  The script is exercised for real in `bridge-control.test.ts`.
+- Server-side saves (§4): bridges call `/api/internal/agent/turn-finished`. The reply is saved
+  under the per-turn id `turn-<turnId>`, which the live stream and reattach also use.
+- Thread API, the status poll (poll bucket, paused while the tab is hidden, DB + Redis only),
+  per-thread model, the awareness note, and question/HITL attribution.
+- UI: header is [threads] [+ New chat] [Reset] … [gauges] [Settings]. The sheet overlays the
+  agent column; it closes on Esc or any click outside it. Rows show status dots, rename,
+  archive and delete. New chat reuses an untouched thread. Background threads that need input
+  or fail raise a toast. The selected thread is remembered per project.
+
+**Known gaps (not done in Phase 1):**
+- **Infra locks** (installs, dev-server restarts, git) are not built yet. Agents run those
+  through their own shell, so a lock needs a bridge-side wrapper; the awareness note is the
+  only guard for now.
+- **Needs-input requests are still one per project.** A second thread's env-var / OAuth /
+  Stripe request dismisses the first thread's pending one. Goes with Phase 2's
+  permission-gated version.
+- **ChatGPT/Codex OAuth:** its tokens live in the shared OpenCode `auth.json`. Two Codex
+  threads running at once for the same user can race on token refresh.
+- **Calibration:** `AGENT_MEM_RESERVE_MB` is an estimate until agent memory use is measured
+  on both sandbox providers.
+- **Turns in flight at deploy time:** their old per-project turn record and session pointer
+  aren't read, so they can't be reattached. Those threads continue with the
+  prior-conversation preamble.
+
+**Deploy runbook:**
+1. Run `node scripts/migrate-agent-threads.mjs` against staging, then production, **before**
+   deploying. It is idempotent; the app needs the new columns.
+2. Optional env (defaults shown): `MAX_RUNNING_AGENTS_PER_PROJECT=6`,
+   `AGENT_MEM_RESERVE_MB=700`, `SANDBOX_MEM_FLOOR_MB=512`.
+3. Staging checks:
+   - two threads running at once, one Claude Code and one OpenCode;
+   - switch away mid-turn and come back (reattach);
+   - close the tab mid-turn, and confirm the reply is saved;
+   - Stop one thread while the other keeps going;
+   - push the running count to the ceiling and confirm the 429 message;
+   - a question in a background thread turns its dot amber and raises a toast.

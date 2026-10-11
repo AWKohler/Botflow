@@ -24,7 +24,7 @@ import { requireProjectAccess } from "@/lib/project-access";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { getFreshAnthropicAccessToken } from "@/lib/anthropic-oauth";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
-import { resolveModelId, MODEL_CONFIGS, isAnthropicModel } from "@/lib/agent/models";
+import { MODEL_CONFIGS, isAnthropicModel } from "@/lib/agent/models";
 import { isSandboxPlatform } from "@/lib/project-platform";
 import { swiftProjectForbidden } from "@/lib/swift-access";
 
@@ -33,7 +33,6 @@ import { OAUTH_PROVIDER_IDS } from "@/lib/oauth-providers/registry";
 import { deriveAgentBackend } from "@/lib/agent/derive-backend";
 import {
   ensureClaudeInstalled,
-  writeClaudeCredentials,
   writeBridgeScript,
   resolveSandboxPaths,
 } from "@/lib/agent/claude-code/setup";
@@ -52,8 +51,9 @@ import {
 import { recordTokenUsage } from "@/lib/usage";
 import {
   buildPrepareTurnScript,
+  parseCapacityRefusal,
+  threadPidFile,
   turnEventFile,
-  BRIDGE_PID_FILE,
 } from "@/lib/agent/claude-code/bridge-control";
 import {
   getTurnRecord,
@@ -64,7 +64,21 @@ import {
 import { enforce, identifierFor } from "@/lib/rate-limit";
 import { sharedTurnBlockReason } from "@/lib/sharing";
 import {
+  awarenessNote,
+  ensureThreadSegment,
+  noteTurnStarted,
+  otherRunningThreadTitles,
+  resolveThread,
+  setTitleIfEmpty,
+  threadModel,
+} from "@/lib/agent/threads";
+import {
+  assistantMessageIdForTurn,
+  saveUserMessage,
+} from "@/lib/agent/turn-persistence";
+import {
   agentUnavailableResponse,
+  capacityResponse,
   jsonError,
   extractCurrentUserText,
   extractCurrentUserMessageId,
@@ -82,6 +96,8 @@ interface RequestBody {
   messages: UIMessage[];
   projectId?: string;
   platform?: string;
+  /** Thread to run in. Omitted by older clients → the most recent thread. */
+  threadId?: string;
 }
 
 export async function POST(req: Request) {
@@ -102,7 +118,7 @@ export async function POST(req: Request) {
     return jsonError(400, "Invalid JSON body");
   }
 
-  const { messages, projectId, platform } = body;
+  const { messages, projectId, platform, threadId: requestedThreadId } = body;
   if (!Array.isArray(messages) || messages.length === 0) {
     return jsonError(400, "messages array required");
   }
@@ -134,14 +150,20 @@ export async function POST(req: Request) {
     return jsonError(403, "Swift projects are currently in private beta.");
   }
 
-  // Sharing (Phase 3): one live agent per project across ALL collaborators —
-  // never kill another user's bridge; tell this user to wait instead.
-  const sharedBlock = await sharedTurnBlockReason(projectId, userId);
+  const thread = await resolveThread(project, userId, requestedThreadId);
+  if (!thread) {
+    return jsonError(404, "Thread not found");
+  }
+  const threadId = thread.id;
+
+  // Sharing: never kill ANOTHER collaborator's live bridge in this thread —
+  // tell this user to wait instead. Other threads run independently.
+  const sharedBlock = await sharedTurnBlockReason(projectId, threadId, userId);
   if (sharedBlock) {
     return jsonError(409, sharedBlock);
   }
 
-  const selectedModel = resolveModelId(project.model);
+  const selectedModel = threadModel(thread, project);
   if (!isAnthropicModel(selectedModel)) {
     return agentUnavailableResponse("backend_mismatch");
   }
@@ -234,35 +256,29 @@ export async function POST(req: Request) {
     return jsonError(500, installResult.error);
   }
 
-  await writeClaudeCredentials(
-    projectId,
-    oauthToken
-      ? {
-          // OAuth shape: the CLI treats the proxy token as its access
-          // token. Far-future expiry so it never attempts its own refresh
-          // (the proxy refreshes the REAL token server-side).
-          accessToken: llmProxyToken,
-          expiresAt: Date.now() + 60 * 60 * 1000,
-        }
-      : { apiKey: llmProxyToken },
-  );
-
   await writeBridgeScript(projectId);
 
   // ── Build the bridge config and drop it as a file in the sandbox ─────────
-  const sessionId = await getClaudeCodeSessionId(projectId);
+  const sessionId = await getClaudeCodeSessionId(threadId);
+  const segmentId = await ensureThreadSegment(thread);
   // Convex-specific tools/prompt gate on this — MuhKoo has a backend but no
   // Convex deploy/logs/table tools (mirrors projectUsesConvex).
   const usesConvex =
     project.backendType === "platform" || project.backendType === "user";
   const usesMuhkoo = project.backendType === "muhkoo";
 
-  const appendSystemPrompt = buildClaudeCodeAppendPrompt({
-    platform: platform as "sandboxed-web" | "swift",
-    hasBackend: usesConvex,
-    usesMuhkoo,
-    hasConvexEnv: usesConvex && Boolean(project.userConvexUrl || project.convexDeployUrl),
-  });
+  // Other threads' live agents share this sandbox — say so, so this agent
+  // re-reads before editing and stays on its own task.
+  const otherAgents = awarenessNote(await otherRunningThreadTitles(projectId, threadId).catch(() => []));
+  const appendSystemPrompt = [
+    buildClaudeCodeAppendPrompt({
+      platform: platform as "sandboxed-web" | "swift",
+      hasBackend: usesConvex,
+      usesMuhkoo,
+      hasConvexEnv: usesConvex && Boolean(project.userConvexUrl || project.convexDeployUrl),
+    }),
+    otherAgents,
+  ].filter(Boolean).join("\n\n");
 
   // Tools whose execution stays on our server (the bridge calls back via
   // /api/internal/claude-code-tool). Gating is shared with the OpenCode route
@@ -295,17 +311,26 @@ export async function POST(req: Request) {
 
   const sandbox = await getOrCreatePersistentSandbox(projectId);
 
-  // ── One bridge per project ────────────────────────────────────────────────
+  // ── One bridge per THREAD ─────────────────────────────────────────────────
   // The bridge runs detached, so a maxDuration-killed route leaves it alive
-  // (by design — see the reattach route). But a NEW turn must never race the
-  // previous one in the same sandbox: kill the old bridge (its SIGTERM handler
-  // interrupts the claude subprocess), revoke its tool token, sweep stale turn
-  // artifacts, and pre-create the new event file so tail -f attaches cleanly.
-  const prevTurn = await getTurnRecord(projectId).catch(() => null);
-  await sandbox.runCommand({
+  // (by design — see the reattach route). A new turn in this thread must never
+  // race the thread's previous one: kill that bridge (its SIGTERM handler
+  // interrupts the claude subprocess), revoke its tokens, sweep stale turn
+  // artifacts, admit against sandbox capacity, and pre-create the new event
+  // file so tail -f attaches cleanly. Other threads' bridges keep running.
+  const prevTurn = await getTurnRecord(projectId, threadId).catch(() => null);
+  const prepared = await sandbox.runCommand({
     cmd: "sh",
-    args: ["-c", buildPrepareTurnScript(eventFile)],
+    // Pre-threads turns wrote the proxy token to a shared credentials file;
+    // OAuth now rides CLAUDE_CODE_OAUTH_TOKEN per process, so drop the stale
+    // file before it can shadow anything.
+    args: ["-c", `rm -f "$HOME/.claude/.credentials.json"\n${buildPrepareTurnScript(threadId, eventFile)}`],
   });
+  const refusal = parseCapacityRefusal(await prepared.stdout());
+  if (refusal) {
+    revokeLlmProxyToken(llmProxyToken).catch(() => {});
+    return capacityResponse(refusal.running);
+  }
   if (prevTurn?.toolToken) {
     revokeToolToken(prevTurn.toolToken).catch(() => {});
   }
@@ -321,32 +346,40 @@ export async function POST(req: Request) {
   ]);
 
   // Mint a per-turn bearer token so the bridge can call back to our internal
-  // tool endpoint without holding a Clerk session.
-  const toolToken = customTools.length
-    ? await mintToolToken({ userId, projectId })
-    : null;
+  // tool endpoint — and report the turn's end for the server-side save —
+  // without holding a user session.
+  const toolToken = await mintToolToken({
+    userId,
+    projectId,
+    threadId,
+    turnId,
+    backend: "claude-code",
+    segmentId,
+  });
 
   // ── Spawn the bridge ────────────────────────────────────────────────────
   const bridgeEnv: Record<string, string> = {
     BOTFLOW_CONFIG_PATH: configPath,
     BOTFLOW_EVENT_FILE: eventFile,
-    BOTFLOW_PID_FILE: BRIDGE_PID_FILE,
+    BOTFLOW_PID_FILE: threadPidFile(threadId),
+    BOTFLOW_API_BASE: new URL(req.url).origin,
+    BOTFLOW_TOOL_TOKEN: toolToken,
+    BOTFLOW_TURN_TOKEN: toolToken,
   };
-  if (toolToken) {
-    bridgeEnv.BOTFLOW_API_BASE = new URL(req.url).origin;
-    bridgeEnv.BOTFLOW_TOOL_TOKEN = toolToken;
-    // On protected preview deployments the host-tool callback would otherwise
-    // die on Vercel's Deployment Protection wall (401 before our route runs) —
-    // every host tool (setup_auth, convex_deploy, ask_question, …) fails.
-    if (process.env.VERCEL_ENV === "preview" && process.env.VERCEL_AUTOMATION_BYPASS_SECRET) {
-      bridgeEnv.BOTFLOW_VERCEL_BYPASS = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-    }
+  // On protected preview deployments the host-tool callback would otherwise
+  // die on Vercel's Deployment Protection wall (401 before our route runs) —
+  // every host tool (setup_auth, convex_deploy, ask_question, …) fails.
+  if (process.env.VERCEL_ENV === "preview" && process.env.VERCEL_AUTOMATION_BYPASS_SECRET) {
+    bridgeEnv.BOTFLOW_VERCEL_BYPASS = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
   }
   bridgeEnv.ANTHROPIC_BASE_URL = `${llmProxyOrigin(new URL(req.url).origin)}/api/internal/llm-proxy/anthropic`;
-  if (!oauthToken) {
-    // BYOK shape rides the env var (takes precedence over the credentials
-    // file); the value is the proxy token, never the real key. OAuth leaves
-    // it unset so claude reads the proxy token from ~/.claude/.credentials.json.
+  // The proxy token rides the process env in BOTH shapes — never a shared
+  // file — so concurrent threads' agents can't read each other's turn token.
+  // OAuth: the CLI sends it as a bearer with the OAuth beta header (the proxy
+  // refreshes the REAL token server-side). BYOK: sent as the API key.
+  if (oauthToken) {
+    bridgeEnv.CLAUDE_CODE_OAUTH_TOKEN = llmProxyToken;
+  } else {
     bridgeEnv.ANTHROPIC_API_KEY = llmProxyToken;
   }
   // Preview deployments answer cookie-less requests with the Deployment
@@ -371,14 +404,26 @@ export async function POST(req: Request) {
   const spawningUserMessageId = extractCurrentUserMessageId(messages);
   await setTurnRecord(projectId, {
     turnId,
+    threadId,
     userId,
     backend: "claude-code",
     ...(spawningUserMessageId ? { userMessageId: spawningUserMessageId } : {}),
     eventFile,
     startedAt: Date.now(),
-    ...(toolToken ? { toolToken } : {}),
+    toolToken,
     llmProxyToken,
   }).catch(() => {});
+
+  // Thread bookkeeping: status/ordering, a title from the first prompt, and
+  // the prompt itself saved server-side (attributed to its author).
+  await noteTurnStarted(threadId).catch(() => {});
+  if (userPrompt) await setTitleIfEmpty(thread, userPrompt).catch(() => {});
+  const lastMessage = messages[messages.length - 1];
+  if (lastMessage?.role === "user") {
+    await saveUserMessage(threadId, segmentId, lastMessage, userId).catch((err) =>
+      console.error("[claude-code] failed to save the user message:", err),
+    );
+  }
 
   // Turn marker: proxied usage rows are per-REQUEST (countTurn:false at the
   // proxy), so the turn itself is counted once here — this also brings CC
@@ -388,7 +433,7 @@ export async function POST(req: Request) {
   // ── Stream stdout NDJSON → AI SDK UIMessageStream ───────────────────────
   const stream = createUIMessageStream<UIMessage>({
     execute: async ({ writer }) => {
-      const translator = createTranslator(writer);
+      const translator = createTranslator(writer, { messageId: assistantMessageIdForTurn(turnId) });
       let buffer = "";
       let lastSessionIdSeen: string | null = null;
       let endedNormally = false;
@@ -417,19 +462,19 @@ export async function POST(req: Request) {
               // platform hard-kills this route at maxDuration, and losing the
               // session pointer forces the continuation turn to start a fresh
               // session and rediscover all its context.
-              setClaudeCodeSessionId(projectId, event.sessionId).catch(() => {});
+              setClaudeCodeSessionId(threadId, event.sessionId).catch(() => {});
             }
             translator.push(event);
             if (event.type === "end_turn") {
               endedNormally = true;
-              markTurnEnded(projectId, turnId).catch(() => {});
+              markTurnEnded(projectId, threadId, turnId).catch(() => {});
               break;
             }
             if (event.type === "error") {
               // The bridge emits `error` only when it's exiting — mark the
               // turn dead so the client falls back to a fresh continuation
               // instead of trying to reattach to a corpse.
-              markTurnDead(projectId, turnId).catch(() => {});
+              markTurnDead(projectId, threadId, turnId).catch(() => {});
               break;
             }
           }
@@ -446,7 +491,7 @@ export async function POST(req: Request) {
           // Backstop persist (the eager write above already ran on the happy
           // path; this covers exotic orderings). Non-fatal.
           try {
-            await setClaudeCodeSessionId(projectId, lastSessionIdSeen);
+            await setClaudeCodeSessionId(threadId, lastSessionIdSeen);
           } catch {
             // Non-fatal.
           }

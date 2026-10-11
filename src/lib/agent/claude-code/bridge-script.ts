@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "35";
+export const BRIDGE_SCRIPT_VERSION = "36";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -45,6 +45,7 @@ export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
  * Env vars (set by the host):
  *   BOTFLOW_CONFIG_PATH   — path to the config JSON file (required)
  *   BOTFLOW_API_BASE      — origin for our internal callback API (https://...)
+ *   BOTFLOW_TURN_TOKEN    — bearer for the end-of-turn notify (server-side save)
  *   BOTFLOW_TOOL_TOKEN    — bearer token validated by the callback endpoint
  *   BOTFLOW_EVENT_FILE    — NDJSON tee file; every stdout event is also
  *                           appended here so the host can re-attach to this
@@ -83,6 +84,27 @@ function emit(event) {
   }
 }
 
+// Tell the platform this turn is over so it saves the reply server-side — no
+// browser may be watching this thread. Best-effort and bounded: a failed
+// notify only means the reply is saved when a viewer next opens the thread.
+async function notifyTurnFinished() {
+  const base = process.env.BOTFLOW_API_BASE;
+  const token = process.env.BOTFLOW_TURN_TOKEN;
+  if (!base || !token) return;
+  const headers = { "authorization": "Bearer " + token, "content-type": "application/json" };
+  if (process.env.BOTFLOW_VERCEL_BYPASS) {
+    headers["x-vercel-protection-bypass"] = process.env.BOTFLOW_VERCEL_BYPASS;
+  }
+  try {
+    await fetch(base + "/api/internal/agent/turn-finished", {
+      method: "POST",
+      headers,
+      body: "{}",
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch {}
+}
+
 // The in-flight query() generator, held so SIGTERM can interrupt the claude
 // subprocess instead of orphaning it — a superseded/stopped turn must stop
 // editing files immediately.
@@ -97,6 +119,7 @@ process.on("SIGTERM", () => {
   } catch {}
   // Give the interrupt a moment to reach the subprocess, then exit regardless.
   setTimeout(() => process.exit(1), 1500);
+  notifyTurnFinished();
 });
 
 // ---------------------------------------------------------------------------
@@ -1140,6 +1163,7 @@ async function main() {
       }
     }
     emit({ type: "end_turn" });
+    await notifyTurnFinished();
     process.exit(0);
   } catch (err) {
     // Include the constructor name and a trimmed stack so a minified or
@@ -1153,6 +1177,7 @@ async function main() {
     const stack = (err && err.stack) ? String(err.stack).split("\\n").slice(0, 6).join("\\n") : "";
     const summary = stack ? \`\${name}: \${message}\\n\${stack}\` : \`\${name}: \${message}\`;
     emit({ type: "error", error: summary });
+    await notifyTurnFinished();
     process.exit(1);
   }
 }
