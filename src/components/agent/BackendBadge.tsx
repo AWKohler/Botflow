@@ -107,15 +107,27 @@ const BACKEND_DETAIL: Record<AgentBackend, string> = {
     : "Botflow's native agent — the harness powering every model outside of Claude Code.",
 };
 
-export function BackendGlyphInfo({ backend }: { backend: AgentBackend }) {
+export function BackendGlyphInfo({
+  backend,
+  tooltipPlacement = "below-start",
+}: {
+  backend: AgentBackend;
+  /** Where the tooltip opens relative to the glyph. 'above-end' suits a pill at
+   *  the bottom-right of a prompt box, where a downward or rightward tooltip
+   *  would run off the panel. */
+  tooltipPlacement?: "below-start" | "above-end";
+}) {
   return (
     <span className="group/glyph relative inline-flex items-center">
       <BackendGlyph backend={backend} size={14} />
-      {/* Tooltip — anchored to the glyph, drops just below the pill.
+      {/* Tooltip — anchored to the glyph, just outside the pill.
           pointer-events-none so it never swallows the pill's click. */}
       <span
         role="tooltip"
-        className="pointer-events-none absolute left-0 top-full z-50 mt-2 hidden w-60 rounded-lg border border-border bg-surface p-2.5 text-left shadow-xl group-hover/glyph:block"
+        className={cn(
+          "pointer-events-none absolute z-50 hidden w-60 rounded-lg border border-border bg-surface p-2.5 text-left font-normal shadow-xl group-hover/glyph:block",
+          tooltipPlacement === "above-end" ? "right-0 bottom-full mb-2.5" : "left-0 top-full mt-2",
+        )}
       >
         <span className="flex items-center gap-1.5">
           <BackendGlyph backend={backend} size={13} />

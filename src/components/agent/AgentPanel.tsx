@@ -2109,45 +2109,6 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           })()}
         </div>
         <div className="flex items-center gap-2">
-          <ModelSelector
-            value={model}
-            onChange={async (next) => {
-              const patchModel = () =>
-                fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
-                  method: 'PATCH',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ model: next }),
-                });
-              try {
-                let res = await patchModel();
-                if (res.status === 429) {
-                  // Rate-limited (e.g. bursty background traffic) — this is
-                  // transient, so say so and retry once after Retry-After
-                  // instead of a dead-end "failed".
-                  const retryAfter = Math.min(
-                    Math.max(Number(res.headers.get('Retry-After')) || 5, 1),
-                    30,
-                  );
-                  toast({
-                    title: 'Too many requests',
-                    description: `Retrying in ${retryAfter}s…`,
-                  });
-                  await new Promise((r) => setTimeout(r, retryAfter * 1000));
-                  res = await patchModel();
-                }
-                if (res.ok) setModel(next);
-                else toast({ title: 'Failed to change model' });
-              } catch {
-                toast({ title: 'Failed to change model' });
-              }
-            }}
-            providerAccess={providerAccess}
-            userTier={userTier}
-            onTierLocked={setLimitPayload}
-            size="sm"
-            useTogetherKimi={useTogetherKimi}
-            leading={<BackendGlyphInfo backend={agentBackend} />}
-          />
           <Button
             type="button"
             size="sm"
@@ -2628,7 +2589,53 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             </span>
           )}
 
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex min-w-0 items-center gap-1.5">
+            {/* Model selector — lives in the prompt box beside Send, with the
+                agent-backend glyph fused in. Opens upward/right-aligned since
+                the composer sits at the bottom of the panel. */}
+            <ModelSelector
+              className="min-w-0"
+              value={model}
+              onChange={async (next) => {
+                const patchModel = () =>
+                  fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: next }),
+                  });
+                try {
+                  let res = await patchModel();
+                  if (res.status === 429) {
+                    // Rate-limited (e.g. bursty background traffic) — this is
+                    // transient, so say so and retry once after Retry-After
+                    // instead of a dead-end "failed".
+                    const retryAfter = Math.min(
+                      Math.max(Number(res.headers.get('Retry-After')) || 5, 1),
+                      30,
+                    );
+                    toast({
+                      title: 'Too many requests',
+                      description: `Retrying in ${retryAfter}s…`,
+                    });
+                    await new Promise((r) => setTimeout(r, retryAfter * 1000));
+                    res = await patchModel();
+                  }
+                  if (res.ok) setModel(next);
+                  else toast({ title: 'Failed to change model' });
+                } catch {
+                  toast({ title: 'Failed to change model' });
+                }
+              }}
+              providerAccess={providerAccess}
+              userTier={userTier}
+              onTierLocked={setLimitPayload}
+              size="sm"
+              variant="composer"
+              openDirection="up"
+              align="end"
+              useTogetherKimi={useTogetherKimi}
+              leading={<BackendGlyphInfo backend={agentBackend} tooltipPlacement="above-end" />}
+            />
             <div className="flex items-center gap-1">
               {isAgentWorking && input.trim() ? (
                 /* Queue button: shown when agent is working AND user has typed something */

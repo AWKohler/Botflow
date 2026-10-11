@@ -16,6 +16,9 @@ export interface ModelSelectorProps {
   /** Called when user selects a tier-locked model — triggers upsell modal */
   onTierLocked?: (payload: LimitReachedPayload) => void;
   size?: 'sm' | 'md';
+  /** 'composer' renders a borderless, fully-rounded trigger that sits inside a
+   *  prompt box next to its round icon buttons (attach, send). */
+  variant?: 'default' | 'composer';
   className?: string;
   /** When true, Kimi K2.7 is served by Together AI (USE_TOGETHER_KIMI flag),
    *  so its provider badge reads "Together" instead of "Fireworks". */
@@ -29,6 +32,9 @@ export interface ModelSelectorProps {
    *  overflow-hidden; 'down' (default) for top toolbars like the agent panel,
    *  where opening upward would run off the top of the panel. */
   openDirection?: 'up' | 'down';
+  /** Which trigger edge the dropdown lines up with. Defaults to 'end' for the
+   *  small size and 'start' otherwise. */
+  align?: 'start' | 'end';
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -117,7 +123,7 @@ const MODEL_ORDER: ModelId[] = [
   'claude-fable-5',          // x20 — most expensive (Max-only)
 ];
 
-export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', className, useTogetherKimi = false, leading, openDirection = 'down' }: ModelSelectorProps) {
+export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', variant = 'default', className, useTogetherKimi = false, leading, openDirection = 'down', align }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -206,6 +212,8 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
   }, [open]);
 
   const isSm = size === 'sm';
+  const isComposer = variant === 'composer';
+  const dropdownAlign = align ?? (isSm ? 'end' : 'start');
 
   return (
     <div ref={containerRef} className={cn('relative pointer-events-auto', className)}>
@@ -213,21 +221,36 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
         className={cn(
-          'inline-flex items-center gap-1.5 border transition min-w-0',
-          isSm
-            ? 'bg-elevated border-border rounded-md px-2 py-1 text-xs text-muted max-w-[180px]'
-            : 'pointer-events-auto rounded-full border-border bg-elevated px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm hover:border-transparent hover:bg-accent/15 max-w-[120px] sm:max-w-[200px]',
+          'inline-flex items-center gap-1.5 transition min-w-0',
+          isComposer
+            ? cn(
+                'h-6 rounded-full pl-1.5 pr-2 text-xs font-medium text-muted hover:bg-soft hover:text-foreground max-w-[200px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+                open && 'bg-soft text-foreground',
+              )
+            : isSm
+              ? 'border bg-elevated border-border rounded-md px-2 py-1 text-xs text-muted max-w-[180px]'
+              : 'border pointer-events-auto rounded-full border-border bg-elevated px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm hover:border-transparent hover:bg-accent/15 max-w-[120px] sm:max-w-[200px]',
         )}
       >
         {leading != null && (
           <>
             {leading}
-            <span aria-hidden className="h-4 w-px shrink-0 bg-border" />
+            {/* In the composer the glyph and model name read as one chip, so
+                spacing alone separates them — no divider. */}
+            {!isComposer && <span aria-hidden className="h-4 w-px shrink-0 bg-border" />}
           </>
         )}
         <span className="truncate">{currentConfig.displayName}</span>
-        <ChevronDown className={cn(isSm ? 'h-3 w-3' : 'h-3.5 w-3.5', 'opacity-50 shrink-0')} />
+        <ChevronDown
+          className={cn(
+            isSm || isComposer ? 'h-3 w-3' : 'h-3.5 w-3.5',
+            'opacity-50 shrink-0 transition-transform',
+            open && isComposer && 'rotate-180',
+          )}
+        />
       </button>
 
       {/* Dropdown */}
@@ -239,8 +262,8 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
             // prompt box, where a downward menu is clipped by the hero's
             // overflow-hidden); 'down' opens below (top toolbars like the agent
             // panel, where opening upward would run off the top of the panel).
-            openDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1',
-            isSm ? 'right-0' : 'left-0',
+            openDirection === 'up' ? (isComposer ? 'bottom-full mb-2' : 'bottom-full mb-1') : 'top-full mt-1',
+            dropdownAlign === 'end' ? 'right-0' : 'left-0',
           )}
         >
           {MODEL_ORDER.map((modelId) => {
