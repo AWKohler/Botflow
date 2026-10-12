@@ -1,7 +1,7 @@
 /**
- * GET /api/agent/claude-code/reattach?projectId=...
+ * GET /api/agent/claude-code/reattach?projectId=...&threadId=...[&turnId=...]
  *
- * Re-attach to the project's current in-sandbox agent turn — Claude Code OR
+ * Re-attach to a thread's current in-sandbox agent turn — Claude Code OR
  * OpenCode (the URL predates the second backend; the turn record's `backend`
  * field picks the right translator). Both bridges run detached in the
  * sandbox and tee every NDJSON event to a per-turn file, so when the
@@ -30,6 +30,8 @@ import {
 import { requireProjectAccess } from "@/lib/project-access";
 import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
 import { createTranslator, type BridgeEvent } from "@/lib/agent/claude-code/translator";
+import { assistantMessageIdForTurn } from "@/lib/agent/turn-persistence";
+import { getThread } from "@/lib/agent/threads";
 import {
   createOpenCodeTranslator,
   type OpenCodeBridgeEvent,
@@ -55,8 +57,9 @@ export async function GET(req: NextRequest) {
   if (blocked) return blocked;
 
   const projectId = req.nextUrl.searchParams.get("projectId");
-  if (!projectId) {
-    return NextResponse.json({ ok: false, error: "projectId required" }, { status: 400 });
+  const threadId = req.nextUrl.searchParams.get("threadId");
+  if (!projectId || !threadId) {
+    return NextResponse.json({ ok: false, error: "projectId and threadId required" }, { status: 400 });
   }
 
   const access = await requireProjectAccess(projectId, userId);
@@ -64,7 +67,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Project not found" }, { status: 404 });
   }
 
-  const record = await getTurnRecord(projectId);
+  if (!(await getThread(projectId, threadId))) {
+    return NextResponse.json({ ok: false, error: "Thread not found" }, { status: 404 });
+  }
+
+  const record = await getTurnRecord(projectId, threadId);
   if (!record || record.dead) {
     // Nothing to resume — the AI SDK treats 204 as "no stream", and the
     // client falls back to its auto-continue path.
@@ -85,7 +92,7 @@ export async function GET(req: NextRequest) {
     sandbox = await getOrCreatePersistentSandbox(projectId);
   } catch {
     // Sandbox gone (expired/slept and failed to resume) → so is the bridge.
-    await markTurnDead(projectId, turnId).catch(() => {});
+    await markTurnDead(projectId, threadId, turnId).catch(() => {});
     return new Response(null, { status: 204 });
   }
 
@@ -93,7 +100,7 @@ export async function GET(req: NextRequest) {
   // if the bridge is already gone this degrades to a one-shot cat.
   const cmd = await sandbox.runCommand({
     cmd: "sh",
-    args: ["-c", buildTailTurnScript(eventFile)],
+    args: ["-c", buildTailTurnScript(threadId, eventFile)],
   });
 
   const stream = createUIMessageStream<UIMessage>({
@@ -101,9 +108,12 @@ export async function GET(req: NextRequest) {
       // Same push/end surface on both translators; the event unions differ,
       // so each cast matches the backend that wrote the file.
       const isOpenCode = record.backend === "opencode";
+      // Same message id as the original POST stream and the server-side
+      // persistence, so the replay rebuilds the SAME assistant message.
+      const messageId = assistantMessageIdForTurn(turnId);
       const translator = isOpenCode
-        ? createOpenCodeTranslator(writer)
-        : createTranslator(writer);
+        ? createOpenCodeTranslator(writer, { messageId })
+        : createTranslator(writer, { messageId });
       let buffer = "";
       let sawEndTurn = false;
 
@@ -143,9 +153,9 @@ export async function GET(req: NextRequest) {
         // THIS route is the thing that died — that's the correct outcome (the
         // turn may still be alive; the record must stay reattachable).
         if (sawEndTurn) {
-          await markTurnEnded(projectId, turnId).catch(() => {});
+          await markTurnEnded(projectId, threadId, turnId).catch(() => {});
         } else {
-          await markTurnDead(projectId, turnId).catch(() => {});
+          await markTurnDead(projectId, threadId, turnId).catch(() => {});
         }
       } finally {
         translator.end();

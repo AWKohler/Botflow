@@ -38,6 +38,12 @@ describe('workspace polling GETs → poll buckets (the incident class)', () => {
     assert.equal(classifyApiRequest('GET', `/api/projects/${PID}/swift-preview/state`), 'poll');
   });
 
+  test('threads list/status poll is a poll read; thread mutations are writes', () => {
+    assert.equal(classifyApiRequest('GET', `/api/projects/${PID}/threads`), 'poll');
+    assert.equal(classifyApiRequest('POST', `/api/projects/${PID}/threads`), 'write');
+    assert.equal(classifyApiRequest('PATCH', `/api/projects/${PID}/threads/abc`), 'write');
+  });
+
   test('sandbox files GET (signature + content) → pollHeavy, PUT → write', () => {
     assert.equal(classifyApiRequest('GET', `/api/projects/${PID}/sandbox/files`), 'pollHeavy');
     assert.equal(classifyApiRequest('PUT', `/api/projects/${PID}/sandbox/files`), 'write');

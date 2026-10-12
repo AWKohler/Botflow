@@ -21,6 +21,7 @@
  *    stripped back to the short names the UI already renders for the CC path.
  */
 import type { UIMessageChunk, UIMessageStreamWriter } from "ai";
+import type { TranslatorOptions } from "../claude-code/translator";
 
 /* ----------------------------- bridge events ----------------------------- */
 
@@ -111,7 +112,7 @@ interface State {
   toolPhase: Map<string, "input-start" | "input-available" | "closed">;
 }
 
-export function createOpenCodeTranslator(writer: UIMessageStreamWriter): {
+export function createOpenCodeTranslator(writer: UIMessageStreamWriter, options: TranslatorOptions = {}): {
   push: (event: OpenCodeBridgeEvent) => void;
   end: () => void;
 } {
@@ -132,7 +133,7 @@ export function createOpenCodeTranslator(writer: UIMessageStreamWriter): {
   function ensureStarted() {
     if (state.started) return;
     state.started = true;
-    emit({ type: "start" });
+    emit(options.messageId ? { type: "start", messageId: options.messageId } : { type: "start" });
     emit({ type: "start-step" });
   }
 

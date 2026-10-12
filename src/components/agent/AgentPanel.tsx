@@ -4,9 +4,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { createPortal } from 'react-dom';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, isToolUIPart, getToolName, type UIMessage } from 'ai';
-import { Button } from '@/components/ui/button';
 import { Markdown } from '@/components/ui/markdown';
-import { ChevronDown, ChevronRight, ArrowUp, X as IconX, Cog, AlertCircle, RotateCcw, Loader2, ListPlus, Check, ImagePlus, Smartphone } from 'lucide-react';
+import { ChevronDown, ChevronRight, ArrowUp, X as IconX, Cog, AlertCircle, RotateCcw, Loader2, ListPlus, Check, ImagePlus, Smartphone, PanelLeft, Plus } from 'lucide-react';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { cn } from '@/lib/utils';
 import { LiveActions } from '@/components/agent/LiveActions';
@@ -29,10 +28,49 @@ import { deriveAgentBackend, describeDerivation } from '@/lib/agent/derive-backe
 import { BackendChip, BackendGlyphInfo } from './BackendBadge';
 import { ThinkingBlock } from './ThinkingBlock';
 import { QuestionPrompt, type QuestionConfig, type QuestionAnswerPayload } from './QuestionPrompt';
+import {
+  ATTENTION_DOT_CLASS,
+  PeopleChips,
+  ThreadsSheet,
+  isBlankThread,
+  threadAttention,
+  useBackgroundThreadAlerts,
+  useThreads,
+  type QueueItemSummary,
+  type ThreadAttention,
+  type ThreadPerson,
+} from './ThreadsSheet';
 import type { SubagentStep } from '@/lib/agent/claude-code/translator';
 import { transcriptHasUnfinishedTail } from '@/lib/agent/transcript-tail';
 
 type Props = { className?: string; projectId: string; initialPrompt?: string; platform?: ProjectPlatform };
+
+/** One thread's conversation view. The exported AgentPanel (below) owns the
+ *  thread list and mounts one of these per selected thread (keyed, so a
+ *  switch is a clean remount; the previous thread's agent keeps running in
+ *  the sandbox and is reattached when you come back). */
+type ThreadPanelProps = Props & {
+  threadId: string;
+  /** The thread's model as last known by the thread list. */
+  initialModel?: ModelId;
+  onOpenThreads: () => void;
+  onNewChat: () => void;
+  /** Most urgent status among the OTHER threads, for the dot on the threads button. */
+  threadsAttention: ThreadAttention | null;
+  /** Ask the thread list to refresh (model changed, turn finished, reset). */
+  onThreadChanged: () => void;
+  /** The thread's live turn (any member's), from the status poll. */
+  liveTurnId: string | null;
+  /** When the thread's last turn ended, from the status poll. */
+  lastTurnEndedAt: string | null;
+  /** Messages waiting for this thread's agent (shared by all members). */
+  queue: QueueItemSummary[];
+  people: Record<string, ThreadPerson>;
+  /** The signed-in user (null until the first poll). */
+  me: string | null;
+  /** Other members viewing this thread right now. */
+  viewerIds: string[];
+};
 
 interface PendingImage {
   id: string;
@@ -260,13 +298,38 @@ function repairOrphanedToolCalls(messages: AnyPart[]): AnyPart[] {
 // ============================================================================
 // Main AgentPanel
 // ============================================================================
-export function AgentPanel({ className, projectId, initialPrompt, platform = 'web' }: Props) {
+function AgentThreadPanel({
+  className,
+  projectId,
+  initialPrompt,
+  platform = 'web',
+  threadId,
+  initialModel,
+  onOpenThreads,
+  onNewChat,
+  threadsAttention,
+  onThreadChanged,
+  liveTurnId,
+  lastTurnEndedAt,
+  queue,
+  people,
+  me,
+  viewerIds,
+}: ThreadPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const savedIdsRef = useRef<Set<string>>(new Set());
   const [initialized, setInitialized] = useState(false);
   const [actions, setActions] = useState<ToolCallData[]>([]);
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
-  const [model, setModel] = useState<ModelId>(DEFAULT_MODEL_ID);
+  const [model, setModel] = useState<ModelId>(initialModel ?? DEFAULT_MODEL_ID);
+  const onThreadChangedRef = useRef(onThreadChanged);
+  onThreadChangedRef.current = onThreadChanged;
+  /** Clear this thread's unread dot for the current user. */
+  const markViewed = useCallback(() => {
+    fetch(`/api/projects/${encodeURIComponent(projectId)}/threads/${encodeURIComponent(threadId)}/viewed`, {
+      method: 'POST',
+    }).catch(() => {});
+  }, [projectId, threadId]);
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
   const [hasClaudeOAuth, setHasClaudeOAuth] = useState<boolean | null>(null);
@@ -304,7 +367,6 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   // --- Message queue ---
-  const [messageQueue, setMessageQueue] = useState<string[]>([]);
 
   // --- endTurn detection ---
   const [endTurnCalled, setEndTurnCalled] = useState(false);
@@ -601,14 +663,14 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // turn answers 422 with a user-facing error — there is no fallback agent.
   const transportRef = useRef(new DefaultChatTransport({
     api: '/api/agent/opencode',
-    body: { projectId, platform },
+    body: { projectId, platform, threadId },
     // resumeStream() → GET the reattach route, which replays the current
     // in-sandbox turn's event file (Claude Code or OpenCode — the turn record
     // picks the translator) and follows it while the bridge lives. The
     // recovery logic only calls resumeStream() for in-sandbox turns. A 204
     // (nothing to resume) is a clean no-op.
     prepareReconnectToStreamRequest: () => ({
-      api: `/api/agent/claude-code/reattach?projectId=${encodeURIComponent(projectId)}${
+      api: `/api/agent/claude-code/reattach?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}${
         reattachTurnIdRef.current ? `&turnId=${encodeURIComponent(reattachTurnIdRef.current)}` : ''
       }`,
     }),
@@ -693,7 +755,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectId, message }),
+            body: JSON.stringify({ projectId, threadId, message }),
           });
           savedIdsRef.current.add(message.id);
           // Stamp the message with the current segment so subsequent
@@ -705,6 +767,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           console.error('Failed to persist assistant message:', err);
         }
       })();
+
+      // The user watched this turn finish — it isn't "unread" for them.
+      markViewed();
+      onThreadChangedRef.current();
 
       // Emit event to trigger snapshot capture
       if (typeof window !== 'undefined') {
@@ -732,6 +798,21 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         }
         return;
       }
+
+      // Another turn is live in this thread (a member's, or a queued one the
+      // server just started): move the message we tried to send into the
+      // thread's queue instead of showing an error.
+      try {
+        const parsed = JSON.parse(msg) as { reason?: string };
+        if (parsed?.reason === 'thread_busy') {
+          const pending = messagesRef.current[messagesRef.current.length - 1];
+          if (pending?.role === 'user') {
+            setMessages((prev) => prev.filter((m) => m.id !== pending.id));
+            void enqueueOnServerRef.current(pending.parts, pending.id);
+          }
+          return;
+        }
+      } catch { /* not JSON, fall through */ }
 
       // Check for structured limit_reached payload first
       try {
@@ -826,8 +907,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // --- Refs for values needed in effects (avoid deps that change every render) ---
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
-  const messageQueueRef = useRef(messageQueue);
-  messageQueueRef.current = messageQueue;
+  const liveTurnIdRef = useRef(liveTurnId);
+  liveTurnIdRef.current = liveTurnId;
+  const enqueueOnServerRef = useRef<(parts: UIMessage['parts'], id?: string) => Promise<boolean>>(async () => false);
   // Wrapped so EVERY send through the ref bumps the recovery epoch first
   // (see recoveryEpochRef below): any new outgoing turn supersedes an
   // in-flight reattach recovery. Direct sendMessage() call sites bump
@@ -925,7 +1007,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     const epoch = recoveryEpochRef.current;
     try {
       const res = await fetch(
-        `/api/agent/claude-code/turn-status?projectId=${encodeURIComponent(projectId)}`,
+        `/api/agent/claude-code/turn-status?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}`,
       );
       const data = res.ok
         ? ((await res.json()) as {
@@ -973,7 +1055,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         fetch('/api/agent/claude-code/stop', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectId }),
+          body: JSON.stringify({ projectId, threadId }),
         }).catch(() => {});
         return { outcome: 'wedged', recordExists };
       }
@@ -1007,7 +1089,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     } finally {
       reattachInFlightRef.current = false;
     }
-  }, [projectId, resumeStream, setMessages]);
+  }, [projectId, threadId, resumeStream, setMessages]);
 
   const attemptTurnRecovery = useCallback(async () => {
     if (userStoppedRef.current) return;
@@ -1069,50 +1151,6 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     })();
   }, [initialized, reattachToLiveTurn]);
 
-  // --- Late modal completions → tell the agent ---
-  // When the user finishes a tool-opened modal (OAuth credentials, env var)
-  // AFTER the agent stopped waiting for it, the workspace fires this event
-  // (the completion route reports agentWaiting=false). Without it the agent
-  // never learns the credentials arrived and keeps reporting them missing.
-  // Busy → queue the note for after the turn; idle → send it right away.
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{
-        projectId: string;
-        kind: 'oauth-provider' | 'env-var' | 'stripe-connect';
-        subject: string;
-      }>).detail;
-      if (!detail || detail.projectId !== projectId) return;
-      let note: string;
-      switch (detail.kind) {
-        case 'oauth-provider':
-          note =
-            `[system-note] The user just saved ${detail.subject} OAuth credentials in the workspace modal — it was still pending from earlier and was never dismissed. ` +
-            'Finish the wiring now: call the setup_oauth_provider / setupOAuthProvider tool again — with credentials saved it returns INSTANTLY with the exact registration snippet (including any required profile() mapping). ' +
-            'Register the provider in convex/auth.ts exactly as that snippet shows (keep existing providers), run the Convex deploy, complete the snippet\'s remaining platform steps (web: the sign-in button; Swift: none — the hosted page updates automatically), then ask the user for one test sign-in and check the Convex logs for auth errors before reporting success.';
-          break;
-        case 'env-var':
-          note =
-            `[system-note] The user just entered the ${detail.subject} environment variable in the workspace modal — it was still pending from earlier and was never dismissed. ` +
-            'Continue the work that needed it (the value is stored server-side; never ask to see it).';
-          break;
-        case 'stripe-connect':
-          note =
-            '[system-note] The user just connected their Stripe account — the earlier connect request completed. ' +
-            'Call initialize_stripe_payments again to finish setup (it will return already-connected with next steps).';
-          break;
-      }
-      if (isBusyRef.current) {
-        setMessageQueue(q => [...q, note]);
-      } else {
-        userStoppedRef.current = false;
-        sendMessageRef.current({ text: note });
-      }
-    };
-    window.addEventListener('agent-modal-completed', handler);
-    return () => window.removeEventListener('agent-modal-completed', handler);
-  }, [projectId]);
-
   // --- Debounced busy state: goes true immediately on activity, only goes false after a delay ---
   useEffect(() => {
     const active = status === 'streaming' || status === 'submitted';
@@ -1172,15 +1210,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   useEffect(() => {
     // Detect transition from busy → not busy (the real end of agent work)
     if (prevBusyRef.current && !isBusy) {
-      if (messageQueueRef.current.length > 0) {
-        // Process message queue
-        const [next, ...rest] = messageQueueRef.current;
-        setMessageQueue(rest);
-        autoContinuesUsedRef.current = 0;
-        setTimeout(() => {
-          sendMessageRef.current({ text: next });
-        }, 300);
-      } else if (
+      // Queued messages are started server-side when the turn ends.
+      if (
         !endTurnCalledRef.current
         && !agentErrorRef.current
         && !limitPayloadRef.current
@@ -1373,12 +1404,17 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&includeAllSegments=true`);
+        const res = await fetch(
+          `/api/chat?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}&includeAllSegments=true`,
+        );
         if (!res.ok) throw new Error('Failed to load chat');
         const data = await res.json();
         if (cancelled) return;
         if (typeof data?.currentSegmentId === 'string') {
           setCurrentSegmentId(data.currentSegmentId);
+        }
+        if (typeof data?.model === 'string') {
+          setModel(resolveModelId(data.model));
         }
         if (Array.isArray(data?.messages)) {
           setMessages(data.messages);
@@ -1411,20 +1447,16 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       }
     }
     load();
+    markViewed();
     return () => { cancelled = true; };
-  }, [projectId, setMessages]);
+  }, [projectId, threadId, setMessages, markViewed]);
 
   // Load project model and user settings (BYOK presence)
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`);
-        if (res.ok) {
-          const proj = await res.json();
-          setModel(resolveModelId(proj?.model));
-          // Note: project.agentBackend is no longer read — the agent backend
-          // is derived per-render from (model, platform, creds, preference).
-        }
+        // The model is per thread (see the chat load above); the agent
+        // backend is derived per-render from (model, platform, creds).
       } catch {}
       try {
         const s = await fetch('/api/user-settings');
@@ -1480,7 +1512,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             await fetch('/api/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ projectId, message: m }),
+              body: JSON.stringify({ projectId, threadId, message: m }),
             });
             savedIdsRef.current.add(m.id);
             if (currentSegmentIdRef.current) {
@@ -1493,7 +1525,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       }
     }
     void persistNewMessages();
-  }, [messages.length, projectId, initialized]);
+  }, [messages.length, projectId, threadId, initialized]);
 
   // Initial prompt submission — fire once when initialized with no existing messages
   const initialPromptSentRef = useRef(false);
@@ -1524,6 +1556,116 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   }, [messages.length, actions.length]);
 
   // --- Submit handler ---
+  // --- Shared thread: server queue, following other members' turns ---
+  const onThreadChangedRefForQueue = onThreadChangedRef;
+  /** Put a user message in this thread's server-side queue. */
+  const enqueueOnServer = useCallback(
+    async (parts: UIMessage['parts'], existingId?: string): Promise<boolean> => {
+      if (parts.length === 0) return false;
+      const message = { id: existingId ?? crypto.randomUUID(), role: 'user' as const, parts };
+      try {
+        const res = await fetch(
+          `/api/projects/${encodeURIComponent(projectId)}/threads/${encodeURIComponent(threadId)}/queue`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }) },
+        );
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          toast({ title: 'Could not queue your message', description: body.error });
+          return false;
+        }
+        onThreadChangedRefForQueue.current();
+        return true;
+      } catch {
+        toast({ title: 'Could not queue your message' });
+        return false;
+      }
+    },
+    [projectId, threadId, toast, onThreadChangedRefForQueue],
+  );
+
+  /** Replace the transcript with the thread's saved messages (the DB is the
+   *  source of truth once several members and server-started turns write it). */
+  const reloadMessages = useCallback(async (): Promise<UIMessage[] | null> => {
+    try {
+      const res = await fetch(
+        `/api/chat?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}&includeAllSegments=true`,
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!Array.isArray(data?.messages)) return null;
+      if (typeof data.currentSegmentId === 'string') setCurrentSegmentId(data.currentSegmentId);
+      const segMap = new Map<string, string>();
+      for (const m of data.messages) if (typeof m.segmentId === 'string') segMap.set(m.id, m.segmentId);
+      savedIdsRef.current = new Set(data.messages.map((m: { id: string }) => m.id));
+      segmentByMessageIdRef.current = segMap;
+      setMessages(data.messages);
+      return data.messages as UIMessage[];
+    } catch {
+      return null;
+    }
+  }, [projectId, threadId, setMessages]);
+
+  // Follow a turn this viewer didn't start (another member's, or one the
+  // server started from the queue): pull the saved prompt, then reattach to
+  // the live event stream — the same replay path as recovery.
+  const followedTurnRef = useRef<string | null>(null);
+  useEffect(() => {
+    // Our own stream's assistant message carries its turn id ("turn-<id>"),
+    // so a turn we're already streaming is never re-followed.
+    const tail = messages[messages.length - 1];
+    if (tail?.role === 'assistant' && tail.id.startsWith('turn-')) {
+      followedTurnRef.current = tail.id.slice('turn-'.length);
+    }
+  }, [messages]);
+  useEffect(() => {
+    if (!initialized || !liveTurnId) return;
+    if (followedTurnRef.current === liveTurnId) return;
+    if (status === 'streaming' || status === 'submitted' || isBusyRef.current || reattachInFlightRef.current) return;
+    followedTurnRef.current = liveTurnId;
+    void (async () => {
+      const fresh = await reloadMessages();
+      const lastUser = fresh ? [...fresh].reverse().find((m) => m.role === 'user') : undefined;
+      userStoppedRef.current = false;
+      await reattachToLiveTurn(lastUser ? { expectedUserMessageId: lastUser.id } : undefined);
+    })();
+  }, [initialized, liveTurnId, status, reloadMessages, reattachToLiveTurn]);
+
+  // A turn ended that this viewer didn't watch to the end (or at all): the
+  // server saved its reply — reload so everyone converges on the same history.
+  const lastEndedSeenRef = useRef<string | null>(lastTurnEndedAt);
+  useEffect(() => {
+    if (!initialized || !lastTurnEndedAt || lastTurnEndedAt === lastEndedSeenRef.current) return;
+    lastEndedSeenRef.current = lastTurnEndedAt;
+    if (status === 'streaming' || status === 'submitted' || isBusyRef.current) return;
+    void reloadMessages();
+  }, [initialized, lastTurnEndedAt, status, reloadMessages]);
+
+  const removeQueued = useCallback(async (queueId: string) => {
+    await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/threads/${encodeURIComponent(threadId)}/queue/${encodeURIComponent(queueId)}`,
+      { method: 'DELETE' },
+    ).catch(() => {});
+    onThreadChangedRefForQueue.current();
+  }, [projectId, threadId, onThreadChangedRefForQueue]);
+
+  // Backstop: messages waiting on an idle thread (the end-of-turn notify was
+  // lost, or a capacity refusal put one back) — nudge the server to start one.
+  const lastDrainNudgeRef = useRef(0);
+  useEffect(() => {
+    if (queue.length === 0 || liveTurnId || isBusyRef.current) return;
+    if (!queue.some((q) => q.status === 'queued')) return;
+    if (Date.now() - lastDrainNudgeRef.current < 15_000) return;
+    lastDrainNudgeRef.current = Date.now();
+    fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/threads/${encodeURIComponent(threadId)}/queue/drain`,
+      { method: 'POST' },
+    )
+      .then(() => onThreadChangedRefForQueue.current())
+      .catch(() => {});
+  }, [queue, liveTurnId, projectId, threadId, onThreadChangedRefForQueue]);
+
+  enqueueOnServerRef.current = enqueueOnServer;
+
   const onFormSubmit = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const hasText = input.trim().length > 0;
@@ -1544,13 +1686,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       toast({ title: `${MODEL_CONFIGS[model].displayName} doesn't support images — images will be ignored` });
     }
 
-    // --- Message queueing: if agent is working, queue the message ---
-    if (isAgentWorking) {
-      setMessageQueue(prev => [...prev, input.trim()]);
-      setInput('');
-      toast({ title: 'Message queued', description: `Will be sent when the agent finishes. (${messageQueue.length + 1} in queue)` });
-      return;
-    }
+    // Busy thread (this viewer's turn or anyone's) → the message waits in
+    // the thread's server-side queue and starts when the running turn ends.
+    const queueInstead = isAgentWorking || Boolean(liveTurnIdRef.current);
 
     // Wait for any in-flight uploads to complete
     if (pendingUploadsRef.current.size > 0) {
@@ -1572,6 +1710,14 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     currentImages.forEach(img => URL.revokeObjectURL(img.localUrl));
     setPendingImages([]);
 
+    if (queueInstead) {
+      const text = input.trim();
+      setInput('');
+      removePromptFromUrl();
+      await enqueueOnServer([...fileParts, ...(text ? [{ type: 'text' as const, text }] : [])]);
+      return;
+    }
+
     setAgentError(null);
     setRetryCountdown(null);
     setEndTurnCalled(false);
@@ -1586,7 +1732,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     sendMessage({ text: input.trim(), files: fileParts.length > 0 ? fileParts : undefined });
     setInput('');
     removePromptFromUrl();
-  }, [model, derivedBackend.runnable, derivedBackend.reason, isAgentWorking, input, pendingImages, messageQueue.length, sendMessage, removePromptFromUrl, toast]);
+  }, [model, derivedBackend.runnable, derivedBackend.reason, isAgentWorking, input, pendingImages, sendMessage, removePromptFromUrl, toast, enqueueOnServer]);
 
   // --- Re-prompt for lazy completion ---
   const handleReprompt = useCallback(() => {
@@ -1802,7 +1948,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                 const confirmed = window.confirm('Reset chat to free up context? This will delete all messages.');
                 if (!confirmed) return;
                 try {
-                  const r = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+                  const r = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}`, { method: 'DELETE' });
                   const data = await r.json().catch(() => ({} as { currentSegmentId?: string }));
                   if (typeof data.currentSegmentId === 'string') setCurrentSegmentId(data.currentSegmentId);
                   savedIdsRef.current.clear();
@@ -1886,19 +2032,43 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     <div className={cn('flex h-full flex-col text-sm bg-surface text-fg p-2.5', className)}>
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 bg-surface">
-        <div className="flex items-center gap-2">
-          {/* -ml-3 cancels the ghost padding so the label lines up with the
-              header edge, mirroring the Settings glyph on the right. */}
-          <Button
+        <div className="flex items-center gap-1">
+          {/* Threads sheet toggle. -ml-1.5 cancels the hit-area padding so the
+              glyph lines up with the header edge, mirroring Settings. */}
+          <button
             type="button"
-            size="sm"
-            variant="ghost"
-            className="-ml-3"
+            onClick={onOpenThreads}
+            title="Chats"
+            aria-label="Open chats"
+            className="relative -ml-1.5 flex size-7 items-center justify-center rounded-full text-muted transition-colors hover:bg-soft hover:text-fg"
+          >
+            <PanelLeft size={16} />
+            {threadsAttention && (
+              <span
+                aria-hidden
+                className={cn(
+                  'absolute right-0.5 top-0.5 size-2 rounded-full ring-2 ring-surface',
+                  ATTENTION_DOT_CLASS[threadsAttention],
+                )}
+              />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={onNewChat}
+            className="flex h-7 items-center gap-1 rounded-full pl-2 pr-2.5 text-xs font-medium text-muted transition-colors hover:bg-soft hover:text-fg"
+          >
+            <Plus size={14} />
+            New chat
+          </button>
+          <button
+            type="button"
+            className="flex h-7 items-center rounded-full px-2.5 text-xs font-medium text-muted transition-colors hover:bg-soft hover:text-fg"
             onClick={async () => {
-              const confirmed = window.confirm('Reset chat? This will permanently delete all messages for this project.');
+              const confirmed = window.confirm('Reset this chat? This permanently deletes its messages. Your other chats are not affected.');
               if (!confirmed) return;
               try {
-                const r = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+                const r = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}`, { method: 'DELETE' });
                 const data = await r.json().catch(() => ({} as { currentSegmentId?: string }));
                 if (typeof data.currentSegmentId === 'string') setCurrentSegmentId(data.currentSegmentId);
                 savedIdsRef.current.clear();
@@ -1909,6 +2079,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                 setTokenEstimate(0);
                 setClaudeCodeUsage(null);
                 setIsCompacting(false);
+                onThreadChanged();
                 // Wipe browser-log ring buffer — new segment, fresh slate.
                 fetch(`/api/projects/${encodeURIComponent(projectId)}/browser-log`, { method: 'DELETE' }).catch(() => {});
                 // Clean up any pending image attachments
@@ -1922,9 +2093,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             }}
           >
             Reset
-          </Button>
+          </button>
         </div>
         <div className="flex items-center gap-2">
+          <PeopleChips userIds={viewerIds} people={people} />
           {(() => {
             // Shrink both gauges a touch when they sit side-by-side so they
             // don't crowd each other. Mirrored layout: the Botflow gauge sits
@@ -2034,9 +2206,20 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                 </Fragment>
               );
             }
+            // Shared threads: label prompts written by another member.
+            const authorId = m.role === 'user' ? (m as { userId?: string | null }).userId ?? null : null;
+            const otherAuthor = authorId && me && authorId !== me ? people[authorId] ?? { name: 'A member', initials: '?' } : null;
             return (
               <Fragment key={m.id}>
                 {dividerEl}
+                {otherAuthor && (
+                  <div className={cn('-mb-1.5 flex items-center gap-1.5 px-1 text-[11px] text-muted', olderClass)}>
+                    <span className="flex size-4 items-center justify-center rounded-full bg-soft text-[8px] font-semibold text-fg">
+                      {otherAuthor.initials}
+                    </span>
+                    {otherAuthor.name}
+                  </div>
+                )}
                 <div className={cn('rounded-xl px-2 py-3 text-[1.1rem] tracking tight min-w-0 max-w-full overflow-hidden break-words [overflow-wrap:anywhere]', m.role === 'user' ? 'bg-elevated' : '', olderClass)}>
                 {filteredParts.map((part, i) => {
                   if (part.type === 'text') return <Markdown key={i} content={part.text} />;
@@ -2303,6 +2486,47 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           </div>
         )}
 
+        {/* Inset top — this thread's queue (shared by all members) */}
+        {queue.length > 0 && (
+          <div className="space-y-1 border-b border-border px-3 py-2">
+            {queue.map((q) => {
+              const author = people[q.userId];
+              const mine = q.userId === me;
+              return (
+                <div key={q.id} className="flex items-center gap-2 text-xs">
+                  <span
+                    className="flex size-4 shrink-0 items-center justify-center rounded-full bg-soft text-[8px] font-semibold text-fg"
+                    title={mine ? 'You' : author?.name}
+                  >
+                    {mine ? <ListPlus size={9} /> : author?.initials ?? '?'}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {q.status === 'failed' ? (
+                      <span className="text-red-400">Couldn&apos;t start: {q.error ?? 'unknown error'}</span>
+                    ) : (
+                      <>
+                        <span className="text-muted">{q.status === 'claimed' ? 'Starting…' : 'Queued'}</span>{' '}
+                        <span className="text-fg/90">{q.text || (q.hasImages ? 'Image' : '')}</span>
+                      </>
+                    )}
+                  </span>
+                  {q.status !== 'claimed' && (
+                    <button
+                      type="button"
+                      onClick={() => void removeQueued(q.id)}
+                      className="flex size-5 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-soft hover:text-fg"
+                      title="Remove from queue"
+                      aria-label="Remove from queue"
+                    >
+                      <IconX size={11} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {/* Textarea */}
         <div data-state="closed" style={{ cursor: 'text' }} className="px-4 pt-3">
           <div className="relative flex flex-1 items-center">
@@ -2400,13 +2624,6 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             </button>
           )}
 
-          {/* Queued message count */}
-          {messageQueue.length > 0 && (
-            <span className="text-[10px] text-muted bg-soft border border-border rounded-full px-2 py-0.5">
-              {messageQueue.length} queued
-            </span>
-          )}
-
           <div className="ml-auto flex min-w-0 items-center gap-1.5">
             {/* Model selector — lives in the prompt box beside Send, with the
                 agent-backend glyph fused in. Opens upward/right-aligned since
@@ -2415,8 +2632,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
               className="min-w-0"
               value={model}
               onChange={async (next) => {
+                // The model belongs to THIS thread only.
                 const patchModel = () =>
-                  fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+                  fetch(`/api/projects/${encodeURIComponent(projectId)}/threads/${encodeURIComponent(threadId)}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ model: next }),
@@ -2438,8 +2656,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                     await new Promise((r) => setTimeout(r, retryAfter * 1000));
                     res = await patchModel();
                   }
-                  if (res.ok) setModel(next);
-                  else toast({ title: 'Failed to change model' });
+                  if (res.ok) {
+                    setModel(next);
+                    onThreadChanged();
+                  } else toast({ title: 'Failed to change model' });
                 } catch {
                   toast({ title: 'Failed to change model' });
                 }
@@ -2455,7 +2675,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
               leading={<BackendGlyphInfo backend={agentBackend} tooltipPlacement="above-end" />}
             />
             <div className="flex items-center gap-1">
-              {isAgentWorking && input.trim() ? (
+              {(isAgentWorking || liveTurnId) && input.trim() ? (
                 /* Queue button: shown when agent is working AND user has typed something */
                 <button
                   id="chatinput-queue-button"
@@ -2487,7 +2707,6 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                       busyDebounceRef.current = null;
                     }
                     setShowCompletionWarning(false);
-                    setMessageQueue([]);
                     // Both in-sandbox agents run DETACHED in the sandbox —
                     // aborting the client stream alone leaves them working.
                     // Kill for real via the shared stop route (the bridges'
@@ -2498,8 +2717,12 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                       fetch('/api/agent/claude-code/stop', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ projectId }),
-                      }).catch(() => {});
+                        // Stop also clears the thread's queue — otherwise the
+                        // next queued message would start right away.
+                        body: JSON.stringify({ projectId, threadId, clearQueue: true }),
+                      })
+                        .then(() => onThreadChanged())
+                        .catch(() => {});
                     }
                     // Signal workspace to dismiss any pending tool-driven modals
                     // (e.g. OAuthProviderModal from setupOAuthProvider) and tell
@@ -2575,6 +2798,225 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         document.body
       )}
 
+    </div>
+  );
+}
+
+// ============================================================================
+// AgentPanel — the thread list + one mounted thread view
+// ============================================================================
+const STORED_THREAD_KEY = (projectId: string) => `botflow:agent-thread:${projectId}`;
+
+function readStoredThread(projectId: string): string | null {
+  try {
+    return localStorage.getItem(STORED_THREAD_KEY(projectId));
+  } catch {
+    return null;
+  }
+}
+
+function storeThread(projectId: string, threadId: string) {
+  try {
+    localStorage.setItem(STORED_THREAD_KEY(projectId), threadId);
+  } catch {
+    /* private mode / blocked storage — selection just isn't remembered */
+  }
+}
+
+export function AgentPanel({ className, projectId, initialPrompt, platform = 'web' }: Props) {
+  const { toast } = useToast();
+  const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
+  const { threads, viewers, people, me, queue, error, refresh, create, update, remove } = useThreads(
+    projectId,
+    currentThreadId,
+  );
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // The landing-page prompt belongs to the thread the panel first opens on.
+  const initialPromptThreadRef = useRef<string | null>(null);
+  const creatingRef = useRef(false);
+
+  const selectThread = useCallback(
+    (threadId: string) => {
+      setCurrentThreadId(threadId);
+      storeThread(projectId, threadId);
+      setSheetOpen(false);
+    },
+    [projectId],
+  );
+
+  // Pick the thread to show once the list loads: the remembered one if it's
+  // still open, else the most recently active, else a brand-new thread.
+  useEffect(() => {
+    if (!threads) return;
+    const open = threads.filter((t) => !t.archived);
+    if (currentThreadId && open.some((t) => t.id === currentThreadId)) return;
+    if (currentThreadId && threads.some((t) => t.id === currentThreadId)) {
+      // The current thread was archived (here or by a collaborator) — keep
+      // showing it; the user moves on when they pick another.
+      return;
+    }
+    const stored = readStoredThread(projectId);
+    const pick = (stored && open.find((t) => t.id === stored)) || open[0];
+    if (pick) {
+      if (!initialPromptThreadRef.current) initialPromptThreadRef.current = pick.id;
+      setCurrentThreadId(pick.id);
+      return;
+    }
+    if (creatingRef.current) return;
+    creatingRef.current = true;
+    void create().then((t) => {
+      creatingRef.current = false;
+      if (!t) return;
+      if (!initialPromptThreadRef.current) initialPromptThreadRef.current = t.id;
+      selectThread(t.id);
+    });
+  }, [threads, currentThreadId, projectId, create, selectThread]);
+
+  const currentThread = useMemo(
+    () => threads?.find((t) => t.id === currentThreadId) ?? null,
+    [threads, currentThreadId],
+  );
+
+  const handleNewChat = useCallback(async () => {
+    // Reuse an untouched thread instead of piling up empty ones.
+    if (currentThread && isBlankThread(currentThread)) {
+      setSheetOpen(false);
+      return;
+    }
+    const t = await create(currentThread?.model);
+    if (t) selectThread(t.id);
+    else toast({ title: 'Could not start a new chat' });
+  }, [currentThread, create, selectThread, toast]);
+
+  const handleDelete = useCallback(
+    async (threadId: string) => {
+      const target = threads?.find((t) => t.id === threadId);
+      const name = target?.title ?? 'this chat';
+      if (!window.confirm(`Delete “${name}”? Its messages are permanently removed and a running agent is stopped.`)) return;
+      const result = await remove(threadId);
+      if (!result.ok) {
+        toast({ title: 'Could not delete chat', description: result.error });
+        return;
+      }
+      if (threadId === currentThreadId) {
+        setCurrentThreadId(null); // the picker effect selects the next one
+      }
+    },
+    [threads, remove, currentThreadId, toast],
+  );
+
+  const handleArchive = useCallback(
+    async (threadId: string, archived: boolean) => {
+      const ok = await update(threadId, { archived });
+      if (!ok) toast({ title: archived ? 'Could not archive chat' : 'Could not unarchive chat' });
+    },
+    [update, toast],
+  );
+
+  const attention = useMemo(
+    () => threadAttention((threads ?? []).filter((t) => t.id !== currentThreadId)),
+    [threads, currentThreadId],
+  );
+  useBackgroundThreadAlerts(threads, currentThreadId);
+
+  // --- Late modal completions → tell the agent that asked ---
+  // When the user finishes a tool-opened modal (OAuth credentials, env var,
+  // Stripe) AFTER the agent stopped waiting for it, the workspace fires this
+  // event (the completion route reports agentWaiting=false). The note goes to
+  // the chat whose agent asked, through its server-side queue: it starts now
+  // if that agent is idle, or right after its current turn.
+  const currentThreadIdRef = useRef(currentThreadId);
+  currentThreadIdRef.current = currentThreadId;
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{
+        projectId: string;
+        kind: 'oauth-provider' | 'env-var' | 'stripe-connect';
+        subject: string;
+        threadId?: string | null;
+      }>).detail;
+      if (!detail || detail.projectId !== projectId) return;
+      const target = detail.threadId ?? currentThreadIdRef.current;
+      if (!target) return;
+      let note: string;
+      switch (detail.kind) {
+        case 'oauth-provider':
+          note =
+            `[system-note] The user just saved ${detail.subject} OAuth credentials in the workspace modal — it was still pending from earlier and was never dismissed. ` +
+            'Finish the wiring now: call the setup_oauth_provider / setupOAuthProvider tool again — with credentials saved it returns INSTANTLY with the exact registration snippet (including any required profile() mapping). ' +
+            'Register the provider in convex/auth.ts exactly as that snippet shows (keep existing providers), run the Convex deploy, complete the snippet\'s remaining platform steps (web: the sign-in button; Swift: none — the hosted page updates automatically), then ask the user for one test sign-in and check the Convex logs for auth errors before reporting success.';
+          break;
+        case 'env-var':
+          note =
+            `[system-note] The user just entered the ${detail.subject} environment variable in the workspace modal — it was still pending from earlier and was never dismissed. ` +
+            'Continue the work that needed it (the value is stored server-side; never ask to see it).';
+          break;
+        case 'stripe-connect':
+          note =
+            '[system-note] The user just connected their Stripe account — the earlier connect request completed. ' +
+            'Call initialize_stripe_payments again to finish setup (it will return already-connected with next steps).';
+          break;
+      }
+      fetch(`/api/projects/${encodeURIComponent(projectId)}/threads/${encodeURIComponent(target)}/queue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: { id: crypto.randomUUID(), role: 'user', parts: [{ type: 'text', text: note }] } }),
+      })
+        .then(() => refresh())
+        .catch((err) => console.error('Failed to deliver the modal-completion note:', err));
+    };
+    window.addEventListener('agent-modal-completed', handler);
+    return () => window.removeEventListener('agent-modal-completed', handler);
+  }, [projectId, refresh]);
+
+  return (
+    <div className={cn('relative flex h-full flex-col', className)}>
+      {currentThreadId ? (
+        <AgentThreadPanel
+          key={currentThreadId}
+          className="h-full"
+          projectId={projectId}
+          platform={platform}
+          initialPrompt={currentThreadId === initialPromptThreadRef.current ? initialPrompt : undefined}
+          threadId={currentThreadId}
+          initialModel={currentThread?.model}
+          onOpenThreads={() => setSheetOpen(true)}
+          onNewChat={() => void handleNewChat()}
+          threadsAttention={attention}
+          onThreadChanged={() => void refresh()}
+          liveTurnId={currentThread?.liveTurnId ?? null}
+          lastTurnEndedAt={currentThread?.lastTurnEndedAt ?? null}
+          queue={queue}
+          people={people}
+          me={me}
+          viewerIds={(viewers[currentThreadId] ?? []).filter((id) => id !== me)}
+        />
+      ) : (
+        <div className="flex h-full items-center justify-center bg-surface text-xs text-muted">
+          {error ? (
+            <button type="button" onClick={() => void refresh()} className="underline hover:text-fg">
+              {error} Retry
+            </button>
+          ) : (
+            <Loader2 size={16} className="animate-spin" />
+          )}
+        </div>
+      )}
+      <ThreadsSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        threads={threads}
+        viewers={viewers}
+        people={people}
+        me={me}
+        error={error}
+        currentThreadId={currentThreadId}
+        onSelect={selectThread}
+        onNewChat={() => void handleNewChat()}
+        onRename={(id, title) => update(id, { title })}
+        onArchive={(id, archived) => void handleArchive(id, archived)}
+        onDelete={(id) => void handleDelete(id)}
+      />
     </div>
   );
 }

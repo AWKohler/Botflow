@@ -23,6 +23,15 @@ const TTL_SECONDS = 60 * 30; // 30 minutes — generous to cover long turns
 export interface ToolTokenBinding {
   userId: string;
   projectId: string;
+  /** Thread whose turn minted the token — scopes questions/HITL requests and
+   *  the end-of-turn save. Absent on tokens minted before threads existed. */
+  threadId?: string;
+  /** The turn this token belongs to. */
+  turnId?: string;
+  /** Which bridge runs the turn — picks the translator for the end-of-turn save. */
+  backend?: "claude-code" | "opencode";
+  /** The thread's conversation segment when the turn started. */
+  segmentId?: string;
 }
 
 export async function mintToolToken(binding: ToolTokenBinding): Promise<string> {

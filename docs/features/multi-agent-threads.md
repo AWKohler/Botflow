@@ -1,6 +1,6 @@
 # Multi-agent threads — plan
 
-Status: **planned** (2026-10-11). Phase 0 in progress on `feat/retire-botflow-agent`.
+Status (2026-10-11): Phase 0 in PR #69 (`feat/retire-botflow-agent`). Phase 1 in PR #70 (`feat/agent-threads`, §11). Phase 2 built on `feat/shared-threads` (§12).
 
 Each project gets a ChatGPT/Claude-style list of agent threads in the agent
 panel. Each thread works like opening a new Claude Code or OpenCode terminal: it
@@ -243,3 +243,101 @@ Claude Code `Task` subagents as nested, read-only sidebar entries with their own
 | Concurrent turns race the credit reservation | Audit `llm-proxy/billing` reservations under concurrency in Phase 1 |
 | Status poll keeps sandboxes awake | Poll bucket, paused while hidden, explicitly excluded from keepalive |
 | Viewer streams cost function time | Stream only the on-screen thread; reattach chunks as today |
+
+---
+
+## 11. Phase 1 — what shipped, gaps, deploy runbook
+
+**Shipped** (`feat/agent-threads`):
+- Data model + backfill (§3). Verified against an in-memory Postgres (PGlite), run twice.
+- Per-thread runtime (§4): turn records, session pointers, pidfiles and abort files are all
+  keyed by thread; stop, reattach and turn-status take `threadId`. Claude Code OAuth turns
+  pass their proxy token via `CLAUDE_CODE_OAUTH_TOKEN`, not the shared credentials file.
+- Capacity admission (§5) inside the prepare script; refusals return 429 with a clear message.
+  The script is exercised for real in `bridge-control.test.ts`.
+- Server-side saves (§4): bridges call `/api/internal/agent/turn-finished`. The reply is saved
+  under the per-turn id `turn-<turnId>`, which the live stream and reattach also use.
+- Thread API, the status poll (poll bucket, paused while the tab is hidden, DB + Redis only),
+  per-thread model, the awareness note, and question/HITL attribution.
+- UI: header is [threads] [+ New chat] [Reset] … [gauges] [Settings]. The sheet overlays the
+  agent column; it closes on Esc or any click outside it. Rows show status dots, rename,
+  archive and delete. New chat reuses an untouched thread. Background threads that need input
+  or fail raise a toast. The selected thread is remembered per project.
+
+**Known gaps (not done in Phase 1):**
+- **Infra locks** (installs, dev-server restarts, git) are not built yet. Agents run those
+  through their own shell, so a lock needs a bridge-side wrapper; the awareness note is the
+  only guard for now.
+- **Needs-input requests are still one per project.** A second thread's env-var / OAuth /
+  Stripe request dismisses the first thread's pending one. Goes with Phase 2's
+  permission-gated version.
+- **ChatGPT/Codex OAuth:** its tokens live in the shared OpenCode `auth.json`. Two Codex
+  threads running at once for the same user can race on token refresh.
+- **Calibration:** `AGENT_MEM_RESERVE_MB` is an estimate until agent memory use is measured
+  on both sandbox providers.
+- **Turns in flight at deploy time:** their old per-project turn record and session pointer
+  aren't read, so they can't be reattached. Those threads continue with the
+  prior-conversation preamble.
+
+**Deploy runbook:**
+1. Run `node scripts/migrate-agent-threads.mjs` against staging, then production, **before**
+   deploying. It is idempotent; the app needs the new columns.
+2. Optional env (defaults shown): `MAX_RUNNING_AGENTS_PER_PROJECT=6`,
+   `AGENT_MEM_RESERVE_MB=700`, `SANDBOX_MEM_FLOOR_MB=512`.
+3. Staging checks:
+   - two threads running at once, one Claude Code and one OpenCode;
+   - switch away mid-turn and come back (reattach);
+   - close the tab mid-turn, and confirm the reply is saved;
+   - Stop one thread while the other keeps going;
+   - push the running count to the ceiling and confirm the 429 message;
+   - a question in a background thread turns its dot amber and raises a toast.
+
+---
+
+## 12. Phase 2 — what shipped, gaps, deploy runbook
+
+**Shipped** (`feat/shared-threads`):
+- **Turn starters.** The agent routes' bodies moved into `startClaudeCodeTurn` /
+  `startOpenCodeTurn` (`src/lib/agent/turn-start`). Each spawns the bridge and returns
+  `toResponse()` for the live stream, so the server can start turns that nobody is streaming.
+- **One live turn per thread, never killed.** The prepare script refuses (409 `thread_busy`)
+  while the thread's bridge is alive. A short Redis spawn lock covers the moment before a new
+  bridge writes its pidfile. `sharedTurnBlockReason` is gone.
+- **Server-side queue** (`chat_thread_queue`). Messages sent to a busy thread wait server-side
+  and are visible to every member. `drainThreadQueue` claims the oldest one with a
+  compare-and-set and starts it **as its author**, so it bills to them and uses their
+  credentials. Drain triggers: turn end, enqueue, and a viewer backstop. Bridges remove their
+  pidfile before the end-of-turn notify so the drain sees the thread as free. Stop clears the
+  queue first.
+- **Following.** The threads poll reports each thread's live turn id. A viewer who didn't start
+  a turn reloads the saved prompt and reattaches to the live event stream. When a turn ends,
+  every viewer reloads from the database, so everyone converges on the same history.
+  `turn-finished` also saves the agent's session pointer.
+- **Attribution and presence.** Prompts from other members show their name. The header shows
+  who else is viewing the thread; sheet rows show viewers and queued counts. Presence is one
+  Redis hash per project; member identities are Redis-cached.
+- **Needs-input permissions.** Secret client env values are owner-only server-side. A member
+  who can't complete a request sees "Waiting for the project owner" instead of a form;
+  editors can still tell the agent to skip an env var. An env-var request no longer dismisses
+  another chat's pending request; the second agent is told to wait and retry. Late-submit
+  notes go to the chat that asked, through its queue.
+
+**Known gaps:**
+- **Following delay:** a viewer starts following another member's turn within one poll
+  (about 4s), not instantly.
+- **One request per kind:** OAuth and Stripe requests are still one per project, by design;
+  the second chat reuses the existing request.
+- **Codex OAuth refresh race** (from Phase 1) is unchanged.
+- **Queue drain retries:** a turn refused for capacity is retried by the next turn end or the
+  viewer backstop (at most every 15s per viewer).
+
+**Deploy runbook:**
+1. Run `node scripts/migrate-thread-queue.mjs` (after Phase 1's migration), staging then prod.
+2. Bridges are version-bumped (Claude Code 37, OpenCode 13); sandboxes rewrite them on their next turn.
+3. Staging checks, with two accounts on one shared project:
+   - B sees A's turn stream live;
+   - B's message to A's busy thread queues, shows for both, and starts as B when A's turn ends;
+   - Stop clears the queue;
+   - presence chips and author labels appear;
+   - an editor sees the owner-only card for OAuth, Stripe and secret env vars;
+   - a late env-var submit reaches the chat that asked.

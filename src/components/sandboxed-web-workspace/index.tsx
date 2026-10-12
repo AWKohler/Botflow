@@ -74,6 +74,7 @@ import {
 } from "@/components/workspace/convex-status-notices";
 import { StripeConnectModal } from "@/components/workspace/stripe-connect-modal";
 import { EnvVarModal } from "@/components/workspace/env-var-modal";
+import { OwnerOnlyRequest } from "@/components/workspace/owner-only-request";
 import { StripeTab, StripeModeToggle } from "@/components/sandboxed-web-workspace/stripe-tab";
 import { SandboxGitHubPanel } from "./github-panel";
 import { SandboxPublishPanel } from "./publish-panel";
@@ -107,6 +108,11 @@ export function SandboxedWebWorkspace({
   // interstitial. Owner-vs-editor gates the resolution CTA.
   const [convexStatus, setConvexStatus] = useState<string>("active");
   const [viewerIsOwner, setViewerIsOwner] = useState(true);
+  // Editors may set backend env vars only when the owner allows it.
+  const [editorsManageBackend, setEditorsManageBackend] = useState(false);
+  // Needs-input requests this (non-owner) viewer chose to hide locally.
+  const [hiddenRequestIds, setHiddenRequestIds] = useState<Set<string>>(new Set());
+  const hideRequest = (id: string) => setHiddenRequestIds((prev) => new Set(prev).add(id));
   const [showConvexPausedModal, setShowConvexPausedModal] = useState(false);
   // Once per workspace-open (returns on refresh/reopen by design).
   const convexPausedModalShownRef = useRef(false);
@@ -238,6 +244,7 @@ export function SandboxedWebWorkspace({
         }
         if (proj?.authConfigured === true) setHasAuth(true);
         if (proj?.viewerRole === "editor") setViewerIsOwner(false);
+        if (proj?.editorsManageBackend === true) setEditorsManageBackend(true);
         if (typeof proj?.convexStatus === "string" && !convexStatusFromPollRef.current) {
           setConvexStatus(proj.convexStatus);
         }
@@ -840,6 +847,7 @@ export function SandboxedWebWorkspace({
     // Role rides the poll too — the one-shot mount fetch can fail, and an
     // editor must never fail open into owner-only CTAs.
     if (proj?.viewerRole === "editor") setViewerIsOwner(false);
+    setEditorsManageBackend(proj?.editorsManageBackend === true);
   }, 45_000, backendType === "platform" && sandboxStatus === "ready");
 
   // Paused modal: fire once per workspace-open when a MANAGED backend is (or
@@ -947,7 +955,7 @@ export function SandboxedWebWorkspace({
         mode: "test" | "live";
         authorizeUrl: string;
       } | null;
-      justCompleted?: { id: string } | null;
+      justCompleted?: { id: string; threadId?: string | null } | null;
     };
     if (!signal.aborted && data.ok) {
       setPendingStripeRequest(data.pending);
@@ -967,7 +975,7 @@ export function SandboxedWebWorkspace({
           stripeCompletionNotifiedRef.current = completed.id;
           window.dispatchEvent(
             new CustomEvent("agent-modal-completed", {
-              detail: { projectId, kind: "stripe-connect", subject: "Stripe" },
+              detail: { projectId, kind: "stripe-connect", subject: "Stripe", threadId: completed.threadId ?? null },
             }),
           );
         }
@@ -1076,8 +1084,16 @@ export function SandboxedWebWorkspace({
           onClose={() => setShowConvexPausedModal(false)}
         />
       )}
+      {/* Needs-input requests follow the sharing permission table: a member
+          who can't complete one sees who it's waiting on instead. */}
+      {pendingOAuthRequest && !viewerIsOwner && !hiddenRequestIds.has(pendingOAuthRequest.id) && (
+        <OwnerOnlyRequest
+          subject="sign-in provider credentials"
+          onHide={() => hideRequest(pendingOAuthRequest.id)}
+        />
+      )}
       {/* OAuth credential modal — shown when agent calls setupOAuthProvider */}
-      {pendingOAuthRequest && (
+      {pendingOAuthRequest && viewerIsOwner && (
         <OAuthProviderModal
           requestId={pendingOAuthRequest.id}
           provider={pendingOAuthRequest.provider}
@@ -1087,7 +1103,10 @@ export function SandboxedWebWorkspace({
         />
       )}
       {/* Stripe Connect modal — shown when agent calls initializeStripePayments */}
-      {pendingStripeRequest && (
+      {pendingStripeRequest && !viewerIsOwner && !hiddenRequestIds.has(pendingStripeRequest.id) && (
+        <OwnerOnlyRequest subject="a Stripe connection" onHide={() => hideRequest(pendingStripeRequest.id)} />
+      )}
+      {pendingStripeRequest && viewerIsOwner && (
         <StripeConnectModal
           requestId={pendingStripeRequest.id}
           projectId={projectId}
@@ -1097,7 +1116,28 @@ export function SandboxedWebWorkspace({
         />
       )}
       {/* Env-var entry modal — shown when agent calls requestEnvVar */}
-      {pendingEnvVarRequest && (
+      {pendingEnvVarRequest &&
+        !(pendingEnvVarRequest.target === "server"
+          ? viewerIsOwner || editorsManageBackend
+          : !pendingEnvVarRequest.isSecret || viewerIsOwner) &&
+        !hiddenRequestIds.has(pendingEnvVarRequest.id) && (
+          <OwnerOnlyRequest
+            subject={`a value for ${pendingEnvVarRequest.key}`}
+            onHide={() => hideRequest(pendingEnvVarRequest.id)}
+            onSkip={() => {
+              fetch(`/api/projects/${projectId}/env/request`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ requestId: pendingEnvVarRequest.id, dismissed: true }),
+              }).catch(() => {});
+              setPendingEnvVarRequest(null);
+            }}
+          />
+        )}
+      {pendingEnvVarRequest &&
+        (pendingEnvVarRequest.target === "server"
+          ? viewerIsOwner || editorsManageBackend
+          : !pendingEnvVarRequest.isSecret || viewerIsOwner) && (
         <EnvVarModal
           requestId={pendingEnvVarRequest.id}
           projectId={projectId}

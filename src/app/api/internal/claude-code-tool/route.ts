@@ -924,6 +924,7 @@ export async function POST(req: Request) {
             mode,
             state,
             authorizeUrl,
+            threadId: binding.threadId ?? null,
           });
           requestId = created.id;
         }
@@ -1588,6 +1589,7 @@ export async function POST(req: Request) {
                 provider: inputProvider,
                 status: "pending",
                 convexSiteUrl,
+                threadId: binding.threadId ?? null,
               })
               .returning();
             requestId = oauthRecord.id;
@@ -1809,6 +1811,31 @@ export async function POST(req: Request) {
         });
       }
 
+      // One env-var modal per project. If ANOTHER chat's agent is already
+      // waiting on the user for a different variable, don't dismiss its
+      // request (createEnvVarRequest would) — tell this agent to wait.
+      if (!envWaitRequestId && binding.threadId) {
+        const { envVarRequests: envBusyTable } = await import("@/db/schema");
+        const [otherPending] = await getDb()
+          .select({ key: envBusyTable.key, target: envBusyTable.target, threadId: envBusyTable.threadId })
+          .from(envBusyTable)
+          .where(and(eq(envBusyTable.projectId, binding.projectId), eq(envBusyTable.status, "pending")))
+          .limit(1);
+        if (
+          otherPending &&
+          otherPending.threadId &&
+          otherPending.threadId !== binding.threadId &&
+          !(otherPending.key === key && otherPending.target === target)
+        ) {
+          return NextResponse.json({
+            ok: true,
+            content:
+              `Another agent in this project is waiting for the user to enter ${otherPending.key}. ` +
+              "Only one variable can be requested at a time. Continue with other work, then call request_env_var again in a minute.",
+          });
+        }
+      }
+
       const requestId =
         envWaitRequestId ??
         (await createEnvVarRequest({
@@ -1818,6 +1845,7 @@ export async function POST(req: Request) {
           key: key as string,
           message: typeof body.input?.message === "string" ? body.input.message : null,
           isSecret: body.input?.isSecret === true,
+          threadId: binding.threadId ?? null,
         }));
 
       const outcome = await pollEnvVarRequestOnce({
@@ -1907,7 +1935,10 @@ export async function POST(req: Request) {
         await dbLocal.insert(chatQuestions).values({
           projectId: binding.projectId,
           userId: binding.userId,
-          segmentId: project.currentSegmentId,
+          // The asking thread's segment (tokens minted before threads carry
+          // neither field — fall back to the project's legacy segment).
+          segmentId: binding.segmentId ?? project.currentSegmentId,
+          threadId: binding.threadId ?? null,
           toolCallId,
           questions: inputQuestions as unknown as object,
           status: "pending",

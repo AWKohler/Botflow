@@ -162,6 +162,17 @@ export async function POST(
         );
       }
     }
+    // Secret values stay owner-only (sharing permission table): an editor can
+    // see the request and dismiss it, but not supply the secret.
+    if (request.target === "client" && request.isSecret && !body.dismissed) {
+      const access = await requireProjectAccess(projectId, userId);
+      if (access?.role !== "owner") {
+        return NextResponse.json(
+          { ok: false, error: "Only the project owner can set secret values." },
+          { status: 403 },
+        );
+      }
+    }
 
     if (body.dismissed) {
       // Only dismiss a still-pending request — a delayed dismiss must NOT flip a
@@ -266,6 +277,8 @@ export async function POST(
       key: request.key,
       target: request.target,
       agentWaiting,
+      // The chat whose agent asked — the late-submit note goes there.
+      threadId: request.threadId ?? null,
     });
   } catch (err) {
     console.error("[env/request] POST error:", err);
