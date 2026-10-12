@@ -20,6 +20,7 @@ import { IPhoneDeviceRunner } from "./iphone-device-runner";
 import { PublishToAppStore } from "./publish-to-app-store";
 import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
 import { OAuthProviderModal } from "@/components/workspace/oauth-provider-modal";
+import { OwnerOnlyRequest } from "@/components/workspace/owner-only-request";
 import {
   ConvexPausedModal,
   ConvexStatusBanner,
@@ -132,6 +133,7 @@ export function PersistentWorkspace({
   const managedBackend = project?.backendType === "platform";
   const convexStatus = (project?.convexStatus ?? "active") as ConvexNoticeStatus;
   const viewerIsOwner = project?.viewerRole !== "editor";
+  const [hiddenOAuthRequestId, setHiddenOAuthRequestId] = useState<string | null>(null);
   const [showConvexPausedModal, setShowConvexPausedModal] = useState(false);
   const convexPausedModalShownRef = useRef(false);
   // RevenueCat (iOS in-app purchases) — requires a Convex backend.
@@ -467,8 +469,16 @@ export function PersistentWorkspace({
 
   return (
     <div className="h-screen flex bolt-bg text-fg">
+      {/* Owner-only (sharing permission table): other members see who the
+          request is waiting on instead of a form they can't submit. */}
+      {pendingOAuthRequest && !viewerIsOwner && hiddenOAuthRequestId !== pendingOAuthRequest.id && (
+        <OwnerOnlyRequest
+          subject="sign-in provider credentials"
+          onHide={() => setHiddenOAuthRequestId(pendingOAuthRequest.id)}
+        />
+      )}
       {/* OAuth credential modal — shown when agent calls setupOAuthProvider */}
-      {pendingOAuthRequest && (
+      {pendingOAuthRequest && viewerIsOwner && (
         <OAuthProviderModal
           requestId={pendingOAuthRequest.id}
           provider={pendingOAuthRequest.provider}

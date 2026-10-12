@@ -1,5 +1,5 @@
 /**
- * POST /api/agent/claude-code/stop  { projectId, threadId }
+ * POST /api/agent/claude-code/stop  { projectId, threadId, clearQueue? }
  *
  * Kill ONE thread's detached in-sandbox agent bridge — Claude Code or
  * OpenCode; both write the thread's pidfile and handle SIGTERM (CC interrupts
@@ -9,13 +9,16 @@
  * editing files the user had just asked it to stop editing.
  *
  * Also revokes the turn's tool-callback token and marks the turn dead so the
- * recovery path won't try to reattach to it.
+ * recovery path won't try to reattach to it. With `clearQueue` (the Stop
+ * button) the thread's waiting messages are removed FIRST — the killed
+ * bridge's end-of-turn notify would otherwise start the next one.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { getThread } from "@/lib/agent/threads";
 import { stopThreadAgent } from "@/lib/agent/stop-thread";
+import { cancelAllQueued } from "@/lib/agent/thread-queue";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -30,9 +33,9 @@ export async function POST(req: NextRequest) {
   const blocked = await enforce(identifierFor(userId, req), "pollHeavy");
   if (blocked) return blocked;
 
-  let body: { projectId?: string; threadId?: string };
+  let body: { projectId?: string; threadId?: string; clearQueue?: boolean };
   try {
-    body = (await req.json()) as { projectId?: string; threadId?: string };
+    body = (await req.json()) as { projectId?: string; threadId?: string; clearQueue?: boolean };
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
   }
@@ -50,7 +53,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Thread not found" }, { status: 404 });
   }
 
+  const cleared = body.clearQueue ? await cancelAllQueued(threadId) : 0;
   await stopThreadAgent(projectId, threadId);
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, cleared });
 }

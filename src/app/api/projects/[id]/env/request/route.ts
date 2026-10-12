@@ -277,6 +277,8 @@ export async function POST(
       key: request.key,
       target: request.target,
       agentWaiting,
+      // The chat whose agent asked — the late-submit note goes there.
+      threadId: request.threadId ?? null,
     });
   } catch (err) {
     console.error("[env/request] POST error:", err);

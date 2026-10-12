@@ -11,11 +11,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Archive, ArchiveRestore, ChevronDown, Pencil, Plus, Trash2, X as IconX } from 'lucide-react';
 import type { ThreadStatus, ThreadSummary } from '@/lib/agent/threads';
+import type { QueueItemSummary } from '@/lib/agent/thread-queue';
+import type { ThreadPerson } from '@/lib/agent/thread-presence';
 import { MODEL_CONFIGS, type ModelId } from '@/lib/agent/models';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
 
-export type { ThreadSummary };
+export type { ThreadSummary, QueueItemSummary, ThreadPerson };
 
 /** What the dot on the threads button reports about the OTHER threads. */
 export type ThreadAttention = 'needs_input' | 'error' | 'unread' | 'running';
@@ -47,17 +49,41 @@ export function isBlankThread(t: ThreadSummary): boolean {
 // ============================================================================
 // useThreads — list + live status, polled while the tab is visible
 // ============================================================================
-export function useThreads(projectId: string) {
+interface ThreadsPoll {
+  threads: ThreadSummary[];
+  /** threadId → user ids viewing it right now. */
+  viewers: Record<string, string[]>;
+  people: Record<string, ThreadPerson>;
+  me: string;
+  /** The viewed thread's waiting messages. */
+  queue: QueueItemSummary[];
+}
+
+/** Thread list + live status, presence, and the viewed thread's queue —
+ *  one poll. `viewing` is the thread on screen (recorded as presence). */
+export function useThreads(projectId: string, viewing: string | null) {
   const [threads, setThreads] = useState<ThreadSummary[] | null>(null);
+  const [viewers, setViewers] = useState<Record<string, string[]>>({});
+  const [people, setPeople] = useState<Record<string, ThreadPerson>>({});
+  const [me, setMe] = useState<string | null>(null);
+  const [queue, setQueue] = useState<QueueItemSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const base = `/api/projects/${encodeURIComponent(projectId)}/threads`;
+  const viewingRef = useRef(viewing);
+  viewingRef.current = viewing;
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch(base);
+      const v = viewingRef.current;
+      const res = await fetch(v ? `${base}?viewing=${encodeURIComponent(v)}` : base);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as { threads: ThreadSummary[] };
+      const data = (await res.json()) as ThreadsPoll;
       setThreads(data.threads);
+      setViewers(data.viewers ?? {});
+      setPeople(data.people ?? {});
+      setMe(data.me ?? null);
+      // A response for a thread we've since left must not show its queue.
+      if (viewingRef.current === v) setQueue(data.queue ?? []);
       setError(null);
       return data.threads;
     } catch (err) {
@@ -95,6 +121,12 @@ export function useThreads(projectId: string) {
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [refresh]);
+
+  // Switching threads: drop the old queue and fetch the new thread's state now.
+  useEffect(() => {
+    setQueue([]);
+    if (viewing) void refresh();
+  }, [viewing, refresh]);
 
   const create = useCallback(
     async (model?: ModelId): Promise<ThreadSummary | null> => {
@@ -137,7 +169,49 @@ export function useThreads(projectId: string) {
     [base],
   );
 
-  return { threads, error, refresh, create, update, remove };
+  return { threads, viewers, people, me, queue, error, refresh, create, update, remove };
+}
+
+// ============================================================================
+// Avatars
+// ============================================================================
+/** Small overlapping initials chips for the people in `userIds`. */
+export function PeopleChips({
+  userIds,
+  people,
+  max = 3,
+  size = 'sm',
+}: {
+  userIds: string[];
+  people: Record<string, ThreadPerson>;
+  max?: number;
+  size?: 'sm' | 'xs';
+}) {
+  if (userIds.length === 0) return null;
+  const shown = userIds.slice(0, max);
+  const extra = userIds.length - shown.length;
+  const names = userIds.map((id) => people[id]?.name ?? 'Member').join(', ');
+  const dim = size === 'xs' ? 'size-4 text-[8px]' : 'size-5 text-[9px]';
+  return (
+    <span className="flex shrink-0 items-center -space-x-1.5" title={names} aria-label={`Viewing: ${names}`}>
+      {shown.map((id) => (
+        <span
+          key={id}
+          className={cn(
+            'flex items-center justify-center rounded-full bg-soft font-semibold text-fg ring-2 ring-surface',
+            dim,
+          )}
+        >
+          {people[id]?.initials ?? '?'}
+        </span>
+      ))}
+      {extra > 0 && (
+        <span className={cn('flex items-center justify-center rounded-full bg-soft text-muted ring-2 ring-surface', dim)}>
+          +{extra}
+        </span>
+      )}
+    </span>
+  );
 }
 
 // ============================================================================
@@ -181,6 +255,9 @@ function StatusDot({ thread }: { thread: ThreadSummary }) {
 
 interface ThreadRowProps {
   thread: ThreadSummary;
+  /** Other members looking at this thread right now. */
+  viewerIds: string[];
+  people: Record<string, ThreadPerson>;
   selected: boolean;
   onSelect: () => void;
   onRename: (title: string) => Promise<boolean>;
@@ -188,7 +265,7 @@ interface ThreadRowProps {
   onDelete: () => void;
 }
 
-function ThreadRow({ thread, selected, onSelect, onRename, onArchive, onDelete }: ThreadRowProps) {
+function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, onArchive, onDelete }: ThreadRowProps) {
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(thread.title ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -258,8 +335,19 @@ function ThreadRow({ thread, selected, onSelect, onRename, onArchive, onDelete }
             )}
             <span className="text-muted/50">·</span>
             <span className="shrink-0 tabular-nums">{relativeTime(thread.updatedAt)}</span>
+            {thread.queued > 0 && (
+              <>
+                <span className="text-muted/50">·</span>
+                <span className="shrink-0">{thread.queued} queued</span>
+              </>
+            )}
           </div>
         </button>
+      )}
+      {!renaming && viewerIds.length > 0 && (
+        <span className="shrink-0 group-hover/row:hidden">
+          <PeopleChips userIds={viewerIds} people={people} size="xs" />
+        </span>
       )}
       {!renaming && (
         <div
@@ -317,6 +405,9 @@ export interface ThreadsSheetProps {
   open: boolean;
   onClose: () => void;
   threads: ThreadSummary[] | null;
+  viewers: Record<string, string[]>;
+  people: Record<string, ThreadPerson>;
+  me: string | null;
   error: string | null;
   currentThreadId: string | null;
   onSelect: (threadId: string) => void;
@@ -330,6 +421,9 @@ export function ThreadsSheet({
   open,
   onClose,
   threads,
+  viewers,
+  people,
+  me,
   error,
   currentThreadId,
   onSelect,
@@ -374,6 +468,8 @@ export function ThreadsSheet({
       <ThreadRow
         key={t.id}
         thread={t}
+        viewerIds={(viewers[t.id] ?? []).filter((id) => id !== me)}
+        people={people}
         selected={t.id === currentThreadId}
         onSelect={() => onSelect(t.id)}
         onRename={(title) => onRename(t.id, title)}

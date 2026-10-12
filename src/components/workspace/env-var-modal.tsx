@@ -69,6 +69,7 @@ export function EnvVarModal({
         ok: boolean;
         error?: string;
         agentWaiting?: boolean;
+        threadId?: string | null;
       };
       if (!data.ok) {
         setError(data.error ?? "Failed to save. Please try again.");
@@ -79,7 +80,7 @@ export function EnvVarModal({
       if (data.agentWaiting === false) {
         window.dispatchEvent(
           new CustomEvent("agent-modal-completed", {
-            detail: { projectId, kind: "env-var", subject: envKey },
+            detail: { projectId, kind: "env-var", subject: envKey, threadId: data.threadId ?? null },
           }),
         );
       }

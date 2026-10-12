@@ -103,6 +103,16 @@ export async function cancelQueued(threadId: string, queueId: string): Promise<b
   return rows.length > 0;
 }
 
+/** Remove every waiting message in the thread (Stop clears the queue). */
+export async function cancelAllQueued(threadId: string): Promise<number> {
+  const rows = await getDb()
+    .update(chatThreadQueue)
+    .set({ status: "cancelled", updatedAt: new Date() })
+    .where(and(eq(chatThreadQueue.threadId, threadId), inArray(chatThreadQueue.status, ["queued", "failed"])))
+    .returning({ id: chatThreadQueue.id });
+  return rows.length;
+}
+
 /** Atomically claim the oldest queued message (compare-and-set on status). */
 async function claimNext(threadId: string): Promise<ChatThreadQueueItem | null> {
   const db = getDb();

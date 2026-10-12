@@ -1,6 +1,6 @@
 # Multi-agent threads — plan
 
-Status (2026-10-11): Phase 0 in PR #69 (`feat/retire-botflow-agent`). Phase 1 built on `feat/agent-threads` — see §11.
+Status (2026-10-11): Phase 0 in PR #69 (`feat/retire-botflow-agent`). Phase 1 in PR #70 (`feat/agent-threads`, §11). Phase 2 built on `feat/shared-threads` (§12).
 
 Each project gets a ChatGPT/Claude-style list of agent threads in the agent
 panel. Each thread works like opening a new Claude Code or OpenCode terminal: it
@@ -291,3 +291,53 @@ Claude Code `Task` subagents as nested, read-only sidebar entries with their own
    - Stop one thread while the other keeps going;
    - push the running count to the ceiling and confirm the 429 message;
    - a question in a background thread turns its dot amber and raises a toast.
+
+---
+
+## 12. Phase 2 — what shipped, gaps, deploy runbook
+
+**Shipped** (`feat/shared-threads`):
+- **Turn starters.** The agent routes' bodies moved into `startClaudeCodeTurn` /
+  `startOpenCodeTurn` (`src/lib/agent/turn-start`). Each spawns the bridge and returns
+  `toResponse()` for the live stream, so the server can start turns that nobody is streaming.
+- **One live turn per thread, never killed.** The prepare script refuses (409 `thread_busy`)
+  while the thread's bridge is alive. A short Redis spawn lock covers the moment before a new
+  bridge writes its pidfile. `sharedTurnBlockReason` is gone.
+- **Server-side queue** (`chat_thread_queue`). Messages sent to a busy thread wait server-side
+  and are visible to every member. `drainThreadQueue` claims the oldest one with a
+  compare-and-set and starts it **as its author**, so it bills to them and uses their
+  credentials. Drain triggers: turn end, enqueue, and a viewer backstop. Bridges remove their
+  pidfile before the end-of-turn notify so the drain sees the thread as free. Stop clears the
+  queue first.
+- **Following.** The threads poll reports each thread's live turn id. A viewer who didn't start
+  a turn reloads the saved prompt and reattaches to the live event stream. When a turn ends,
+  every viewer reloads from the database, so everyone converges on the same history.
+  `turn-finished` also saves the agent's session pointer.
+- **Attribution and presence.** Prompts from other members show their name. The header shows
+  who else is viewing the thread; sheet rows show viewers and queued counts. Presence is one
+  Redis hash per project; member identities are Redis-cached.
+- **Needs-input permissions.** Secret client env values are owner-only server-side. A member
+  who can't complete a request sees "Waiting for the project owner" instead of a form;
+  editors can still tell the agent to skip an env var. An env-var request no longer dismisses
+  another chat's pending request; the second agent is told to wait and retry. Late-submit
+  notes go to the chat that asked, through its queue.
+
+**Known gaps:**
+- **Following delay:** a viewer starts following another member's turn within one poll
+  (about 4s), not instantly.
+- **One request per kind:** OAuth and Stripe requests are still one per project, by design;
+  the second chat reuses the existing request.
+- **Codex OAuth refresh race** (from Phase 1) is unchanged.
+- **Queue drain retries:** a turn refused for capacity is retried by the next turn end or the
+  viewer backstop (at most every 15s per viewer).
+
+**Deploy runbook:**
+1. Run `node scripts/migrate-thread-queue.mjs` (after Phase 1's migration), staging then prod.
+2. Bridges are version-bumped (Claude Code 37, OpenCode 13); sandboxes rewrite them on their next turn.
+3. Staging checks, with two accounts on one shared project:
+   - B sees A's turn stream live;
+   - B's message to A's busy thread queues, shows for both, and starts as B when A's turn ends;
+   - Stop clears the queue;
+   - presence chips and author labels appear;
+   - an editor sees the owner-only card for OAuth, Stripe and secret env vars;
+   - a late env-var submit reaches the chat that asked.
