@@ -15,6 +15,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useClampToViewport } from "@/components/ui/use-clamp-to-viewport";
 import type { AgentBackend } from "@/lib/agent/backend-resolution";
 import { describeDerivation, type DerivationReason } from "@/lib/agent/derive-backend";
 
@@ -90,26 +91,36 @@ export function BackendGlyphInfo({
    *  would run off the panel. */
   tooltipPlacement?: "below-start" | "above-end";
 }) {
+  const [hovered, setHovered] = useState(false);
+  const tooltipRef = useClampToViewport<HTMLSpanElement>(hovered);
   return (
-    <span className="group/glyph relative inline-flex items-center">
+    <span
+      className="relative inline-flex items-center"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <BackendGlyph backend={backend} size={14} />
-      {/* Tooltip — anchored to the glyph, just outside the pill.
-          pointer-events-none so it never swallows the pill's click. */}
-      <span
-        role="tooltip"
-        className={cn(
-          "pointer-events-none absolute z-50 hidden w-60 rounded-lg border border-border bg-surface p-2.5 text-left font-normal shadow-xl group-hover/glyph:block",
-          tooltipPlacement === "above-end" ? "right-0 bottom-full mb-2.5" : "left-0 top-full mt-2",
-        )}
-      >
-        <span className="flex items-center gap-1.5">
-          <BackendGlyph backend={backend} size={13} />
-          <span className="text-xs font-medium text-fg leading-none">{backendLabel(backend)}</span>
+      {/* Tooltip — anchored to the glyph, just outside the pill, and kept
+          inside the window. pointer-events-none so it never swallows the
+          pill's click. */}
+      {hovered && (
+        <span
+          ref={tooltipRef}
+          role="tooltip"
+          className={cn(
+            "pointer-events-none absolute z-50 w-60 max-w-[calc(100vw-16px)] rounded-lg border border-border bg-surface p-2.5 text-left font-normal shadow-xl",
+            tooltipPlacement === "above-end" ? "right-0 bottom-full mb-2.5" : "left-0 top-full mt-2",
+          )}
+        >
+          <span className="flex items-center gap-1.5">
+            <BackendGlyph backend={backend} size={13} />
+            <span className="text-xs font-medium text-fg leading-none">{backendLabel(backend)}</span>
+          </span>
+          <span className="mt-1.5 block text-[11px] leading-snug text-muted">
+            {BACKEND_DETAIL[backend]}
+          </span>
         </span>
-        <span className="mt-1.5 block text-[11px] leading-snug text-muted">
-          {BACKEND_DETAIL[backend]}
-        </span>
-      </span>
+      )}
     </span>
   );
 }
@@ -203,8 +214,12 @@ export function BackendChip({ backend, reason, runnable }: BackendChipProps) {
  * ────────────────────────────────────────────────────────────────────── */
 
 function Popover({ title, body, onClose }: { title: string; body: string; onClose: () => void }) {
+  const ref = useClampToViewport<HTMLDivElement>(true);
   return (
-    <div className="absolute left-0 top-full mt-1 z-50 w-80 rounded-xl border border-border bg-surface shadow-lg p-3 text-sm">
+    <div
+      ref={ref}
+      className="absolute left-0 top-full mt-1 z-50 w-80 max-w-[calc(100vw-16px)] rounded-xl border border-border bg-surface shadow-lg p-3 text-sm"
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="font-semibold text-fg">{title}</div>
         <button
