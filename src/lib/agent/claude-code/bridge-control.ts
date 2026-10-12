@@ -104,21 +104,25 @@ function killPidfileLines(pidFile: string): string[] {
 
 /** Printed by the prepare script when the turn may NOT start. */
 export const CAPACITY_FULL_MARKER = "BOTFLOW_CAPACITY_FULL";
+/** Printed when the thread's own bridge is still alive — the new message
+ *  must queue behind it (one live turn per thread; it is never killed). */
+export const THREAD_BUSY_MARKER = "BOTFLOW_THREAD_BUSY";
 
 /**
- * Shell script that kills the THREAD's previous bridge (other threads' bridges
- * keep running), sweeps stale per-turn files, runs the capacity admission
- * check, and pre-creates the new turn's event file so a reattach `tail -f`
- * never races file creation.
+ * Shell script that refuses when the THREAD's bridge is still alive (one live
+ * turn per thread — a new message queues behind it, it never kills it),
+ * clears a stale pidfile, sweeps stale per-turn files, runs the capacity
+ * admission check, and pre-creates the new turn's event file so a reattach
+ * `tail -f` never races file creation. Other threads' bridges are untouched.
  *
  * Admission (both must pass):
  *   - fewer than `maxRunning` other bridges alive in this sandbox;
  *   - available memory ≥ agentReserveMb + floorMb, read from cgroup v2
  *     (memory.max − memory.current) when the sandbox has a limit, else
  *     /proc/meminfo MemAvailable.
- * On refusal it prints `CAPACITY_FULL_MARKER running=<n> availMb=<m>` and
- * exits 0 without creating the event file — the route turns that into a
- * user-facing "too many agents" error.
+ * On refusal it prints `THREAD_BUSY_MARKER` or
+ * `CAPACITY_FULL_MARKER running=<n> availMb=<m>` and exits 0 without creating
+ * the event file — the starter turns that into a 409 / 429.
  *
  * Runs as ONE runCommand so a new turn pays a single sandbox round-trip.
  */
@@ -131,8 +135,12 @@ export function buildPrepareTurnScript(
   const need = limits.agentReserveMb + limits.floorMb;
   return [
     `mkdir -p ${dir}`,
-    // ── Kill this thread's previous bridge, if any ────────────────────────
-    ...killPidfileLines(threadPidFile(threadId)),
+    // ── One live turn per thread: refuse (don't kill) while it runs ───────
+    `if [ -f ${threadPidFile(threadId)} ]; then`,
+    `  PID=$(cat ${threadPidFile(threadId)} 2>/dev/null)`,
+    `  if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then echo "${THREAD_BUSY_MARKER}"; exit 0; fi`,
+    `  rm -f ${threadPidFile(threadId)}`,
+    `fi`,
     // ── Sweep stale turn artifacts (>6h) — configs too ────────────────────
     `find ${BRIDGE_RUN_DIR} -maxdepth 1 -name 'turn-*.ndjson' -mmin +360 -delete 2>/dev/null || true`,
     `find /tmp -maxdepth 1 -name '.botflow-claude-config-*.json' -mmin +360 -delete 2>/dev/null || true`,
@@ -165,7 +173,12 @@ export function buildPrepareTurnScript(
   ].join("\n");
 }
 
-/** Parse the prepare script's stdout. Null = admitted. */
+/** True when the prepare script refused because the thread is mid-turn. */
+export function parseThreadBusy(stdout: string): boolean {
+  return stdout.split("\n").some((l) => l.trim() === THREAD_BUSY_MARKER);
+}
+
+/** Parse the prepare script's stdout. Null = admitted (or busy — check first). */
 export function parseCapacityRefusal(stdout: string): { running: number; availMb: number } | null {
   const line = stdout.split("\n").find((l) => l.startsWith(CAPACITY_FULL_MARKER));
   if (!line) return null;

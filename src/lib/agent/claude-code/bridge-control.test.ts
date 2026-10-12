@@ -1,7 +1,8 @@
 /**
  * Executes the generated bridge-control shell scripts for real (sh + sleep
- * processes standing in for bridges) against a temp run dir: per-thread kill
- * isolation and the running-count admission ceiling.
+ * processes standing in for bridges) against a temp run dir: one live turn
+ * per thread (refuse, never kill), the running-count admission ceiling, and
+ * the stop script.
  *
  * Run: node --import tsx --test src/lib/agent/claude-code/bridge-control.test.ts
  */
@@ -17,6 +18,7 @@ import {
   buildKillBridgeScript,
   buildPrepareTurnScript,
   parseCapacityRefusal,
+  parseThreadBusy,
   threadPidFile,
   turnEventFile,
 } from "./bridge-control";
@@ -62,17 +64,29 @@ const waitExit = (child: ChildProcess) =>
   new Promise<void>((resolve) => (child.exitCode !== null || child.signalCode ? resolve() : child.once("exit", () => resolve())));
 
 describe("bridge-control scripts", () => {
-  test("prepare kills only the same thread's bridge and creates the event file", async () => {
+  test("prepare refuses while the same thread's bridge is alive — and never kills it", async () => {
     const b1 = fakeBridge(T1);
-    const b2 = fakeBridge(T2);
+    const eventFile = turnEventFile("busy1");
+    const out = await run(buildPrepareTurnScript(T1, eventFile, { maxRunning: 6, agentReserveMb: 1, floorMb: 1 }));
+    assert.equal(parseThreadBusy(out), true);
+    assert.equal(alive(b1), true, "the live turn keeps running");
+    assert.ok(!existsSync(relocate(eventFile)), "no event file when busy");
+    await run(buildKillBridgeScript(T1));
+    await waitExit(b1);
+  });
+
+  test("prepare admits after the thread's bridge exited, clearing the stale pidfile", async () => {
+    const b2 = fakeBridge(T2); // another thread keeps running throughout
+    const stale = fakeBridge(T1);
+    stale.kill("SIGKILL");
+    await waitExit(stale);
     const eventFile = turnEventFile("abc123");
     const out = await run(buildPrepareTurnScript(T1, eventFile, { maxRunning: 6, agentReserveMb: 1, floorMb: 1 }));
-    await waitExit(b1);
+    assert.equal(parseThreadBusy(out), false);
     assert.equal(parseCapacityRefusal(out), null);
-    assert.equal(alive(b1), false, "T1's previous bridge was killed");
-    assert.equal(alive(b2), true, "T2's bridge keeps running");
+    assert.equal(alive(b2), true, "T2's bridge is untouched");
     assert.ok(existsSync(relocate(eventFile)), "event file pre-created");
-    assert.ok(!existsSync(relocate(threadPidFile(T1))), "T1 pidfile cleared");
+    assert.ok(!existsSync(relocate(threadPidFile(T1))), "stale T1 pidfile cleared");
   });
 
   test("admission refuses at the running ceiling, counting other threads only", async () => {
@@ -84,9 +98,9 @@ describe("bridge-control scripts", () => {
     assert.deepEqual(refused?.running, 2);
     assert.ok(!existsSync(relocate(eventFile)), "no event file when refused");
 
-    // Restarting T3 itself doesn't count T3's own (killed) bridge.
-    const ok = await run(buildPrepareTurnScript(T3, turnEventFile("t3b"), { maxRunning: 2, agentReserveMb: 1, floorMb: 1 }));
-    assert.equal(parseCapacityRefusal(ok), null);
+    // A thread whose own bridge is alive is busy, not over capacity.
+    const own = await run(buildPrepareTurnScript(T3, turnEventFile("t3b"), { maxRunning: 2, agentReserveMb: 1, floorMb: 1 }));
+    assert.equal(parseThreadBusy(own), true);
   });
 
   test("kill script stops one thread's bridge", async () => {

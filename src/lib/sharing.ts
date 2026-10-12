@@ -9,7 +9,6 @@ import { getDb } from '@/db';
 import { projectMembers, type ProjectMember } from '@/db/schema';
 import { SHARING_ENABLED } from '@/lib/feature-flags';
 import { sendEmail } from '@/lib/email';
-import { getTurnRecord } from '@/lib/agent/claude-code/turn-registry';
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -131,30 +130,4 @@ export async function sendInviteEmail(opts: {
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-// ─── Shared-turn guard (one live turn per THREAD) ───────────────────────────
-
-/** Turns older than this are assumed dead even without an end marker (the
- *  route's maxDuration is 300s; detached bridges rarely outlive a few multiples). */
-const TURN_STALE_MS = 15 * 60 * 1000;
-
-/**
- * Threads run independently, but ONE thread has one live turn: if another
- * user's turn is live in this thread, a new spawn is rejected instead of
- * killing their bridge (the kill-previous behavior stays for one's OWN
- * turns). Collaborators can always start a new thread instead. Returns an
- * error message when blocked, else null.
- */
-export async function sharedTurnBlockReason(
-  projectId: string,
-  threadId: string,
-  userId: string,
-): Promise<string | null> {
-  if (!SHARING_ENABLED) return null;
-  const record = await getTurnRecord(projectId, threadId);
-  if (!record || record.endedNormally || record.dead) return null;
-  if (!record.userId || record.userId === userId) return null;
-  if (Date.now() - record.startedAt > TURN_STALE_MS) return null;
-  return "Another collaborator's agent is working in this thread right now. Wait for it to finish, or start a new chat.";
 }

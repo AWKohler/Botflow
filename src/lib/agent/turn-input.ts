@@ -44,6 +44,18 @@ export function agentUnavailableResponse(reason: AgentUnavailableReason): Respon
   });
 }
 
+/** 409 + `{ error, reason: "thread_busy" }` — this thread's agent is still
+ *  working. The client queues the message on the thread instead. */
+export function threadBusyResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      error: "This chat's agent is still working. Your message will be queued and sent when it finishes.",
+      reason: "thread_busy",
+    }),
+    { status: 409, headers: { "Content-Type": "application/json" } },
+  );
+}
+
 /** 429 + `{ error, reason: "capacity" }` — the sandbox can't take another
  *  agent right now (running-agent ceiling or memory; see bridge-control). */
 export function capacityResponse(running: number): Response {
