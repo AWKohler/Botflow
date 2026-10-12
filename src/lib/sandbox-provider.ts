@@ -55,9 +55,19 @@
  *                                probe; keep in sync with the host's per-token
  *                                `maxSessions` in /etc/sandbox-host/api.json
  *                                (default 25).
+ *   SANDBOX_HOST_FALLBACK_TO_VERCEL
+ *                              — ON unless set to "0". When an EXISTING
+ *                                sandbox-host project is opened and the host is
+ *                                unreachable (network error, or a non-JSON 5xx
+ *                                from the tunnel/proxy in front of it), the
+ *                                project is re-stamped 'vercel' and boots on a
+ *                                fresh, template-seeded Vercel sandbox. Trades
+ *                                the files on the host (no longer reachable
+ *                                anyway) for a working workspace. Sticky, like
+ *                                overflow. Set "0" to get a clean 503 instead.
  */
 import { Sandbox as HostSandbox } from "@sandbox-host/sdk";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
 import { getUserTier, type Tier } from "@/lib/tier";
@@ -91,6 +101,14 @@ export function sandboxHostRoutingEnabled(): boolean {
  */
 export function sandboxHostOverflowEnabled(): boolean {
   return process.env.SANDBOX_HOST_OVERFLOW_TO_VERCEL === "1";
+}
+
+/**
+ * Fallback switch: may an EXISTING sandbox-host project move to Vercel when
+ * the host is unreachable? On by default — see the env contract above.
+ */
+export function sandboxHostFallbackEnabled(): boolean {
+  return process.env.SANDBOX_HOST_FALLBACK_TO_VERCEL !== "0";
 }
 
 function hostMaxSessions(): number {
@@ -215,6 +233,21 @@ export async function getProjectSandboxProvider(
 /** Drop the cached provider after changing projects.sandbox_provider. */
 export function invalidateProviderCache(projectId: string): void {
   providerCache.delete(projectId);
+}
+
+/**
+ * Re-stamp a sandbox-host project as 'vercel' because the host is down.
+ * Compare-and-set on the current value so concurrent instances (or a racing
+ * promotion) agree on one flip. Returns true when THIS call flipped it.
+ */
+export async function demoteProjectToVercel(projectId: string): Promise<boolean> {
+  const flipped = await getDb()
+    .update(projects)
+    .set({ sandboxProvider: "vercel", updatedAt: new Date() })
+    .where(and(eq(projects.id, projectId), eq(projects.sandboxProvider, "sandbox-host")))
+    .returning({ id: projects.id });
+  invalidateProviderCache(projectId);
+  return flipped.length > 0;
 }
 
 /**

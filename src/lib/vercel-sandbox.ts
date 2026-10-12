@@ -15,8 +15,10 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
 import {
+  demoteProjectToVercel,
   getProjectSandboxProvider,
   getSandboxHostCredentials,
+  sandboxHostFallbackEnabled,
   type SandboxProvider,
 } from "@/lib/sandbox-provider";
 
@@ -129,6 +131,16 @@ export class SandboxAtCapacityError extends Error {
   constructor(cause?: unknown) {
     super("Sandbox host is at capacity (concurrent session limit reached)");
     this.name = "SandboxAtCapacityError";
+    if (cause !== undefined) (this as { cause?: unknown }).cause = cause;
+  }
+}
+
+// sandbox-host can't be reached at all (and SANDBOX_HOST_FALLBACK_TO_VERCEL
+// is off). Mapped to a clean 503 instead of leaking the SDK's raw error.
+export class SandboxHostUnavailableError extends Error {
+  constructor(cause?: unknown) {
+    super("Sandbox host is unreachable");
+    this.name = "SandboxHostUnavailableError";
     if (cause !== undefined) (this as { cause?: unknown }).cause = cause;
   }
 }
@@ -397,6 +409,39 @@ async function isSandboxGone(error: unknown): Promise<boolean> {
   return true;
 }
 
+const NETWORK_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+
+// True when the error means the host itself is down, not that it answered.
+// The host API always replies with a JSON body, so a 5xx WITHOUT parsed JSON
+// came from whatever fronts it (Cloudflare 530/1033 when the tunnel has no
+// connector, 502 when the origin is dead) — that's the "Can't parse JSON …
+// <!doctype" failure. A JSON 5xx is the host answering, so it is NOT a
+// reason to abandon the project's files. withSandboxRetry has already spent
+// its 5xx retries by the time this is consulted.
+export function isHostUnreachable(error: unknown): boolean {
+  if (error instanceof HostAPIError) {
+    return error.response.status >= 500 && error.json === undefined;
+  }
+  if (error instanceof APIError) return false;
+  const e = error as { name?: string; code?: string; cause?: { code?: string } } | null;
+  if (!e) return false;
+  if (e.name === "AbortError" || e.name === "TimeoutError") return true;
+  if (e.code && NETWORK_ERROR_CODES.has(e.code)) return true;
+  if (e.cause?.code && NETWORK_ERROR_CODES.has(e.cause.code)) return true;
+  // undici's bare "fetch failed"
+  return error instanceof TypeError && /fetch failed/i.test(error.message);
+}
+
 async function doAcquireSandbox(projectId: string): Promise<Sandbox> {
   let provider = await getProjectSandboxProvider(projectId);
   assertSandboxAuth(provider);
@@ -407,7 +452,27 @@ async function doAcquireSandbox(projectId: string): Promise<Sandbox> {
   try {
     return await getSandboxByName(provider, name);
   } catch (error) {
-    if (!(await isSandboxGone(error))) throw error;
+    if (provider === "sandbox-host" && isHostUnreachable(error)) {
+      if (!sandboxHostFallbackEnabled()) throw new SandboxHostUnavailableError(error);
+      // The host is down. Its files are unreachable either way, so give the
+      // user a working workspace: move the project to Vercel for good and
+      // fall through to the normal get-or-create + template reseed below.
+      const flipped = await demoteProjectToVercel(projectId);
+      console.error(
+        `[vercel-sandbox] sandbox-host unreachable for project ${projectId}; ` +
+          `${flipped ? "re-stamped" : "already re-stamped"} to vercel ` +
+          `(host files stranded under ${name}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+      provider = "vercel";
+      assertSandboxAuth(provider);
+      try {
+        return await getSandboxByName(provider, name);
+      } catch (vercelError) {
+        if (!(await isSandboxGone(vercelError))) throw vercelError;
+      }
+    } else if (!(await isSandboxGone(error))) {
+      throw error;
+    }
   }
 
   // A 404 on sandbox-host is the signature of a just-promoted project whose
