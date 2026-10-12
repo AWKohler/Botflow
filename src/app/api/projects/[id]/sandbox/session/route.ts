@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { maybePromoteSandboxToVercel } from "@/lib/sandbox-promotion";
-import { getOrCreatePersistentSandbox, SandboxAtCapacityError, SandboxRateLimitError } from "@/lib/vercel-sandbox";
+import {
+  getOrCreatePersistentSandbox,
+  SandboxAtCapacityError,
+  SandboxHostUnavailableError,
+  SandboxRateLimitError,
+} from "@/lib/vercel-sandbox";
 import { swiftProjectForbidden } from "@/lib/swift-access";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
@@ -19,6 +24,12 @@ function sandboxErrorResponse(error: unknown, fallback: string): NextResponse {
   if (error instanceof SandboxAtCapacityError) {
     return NextResponse.json(
       { error: "We're temporarily at capacity for free-tier workspaces. Please try again in a few minutes." },
+      { status: 503, headers: { "Retry-After": "60" } },
+    );
+  }
+  if (error instanceof SandboxHostUnavailableError) {
+    return NextResponse.json(
+      { error: "Free-tier workspaces are temporarily unavailable. Please try again in a few minutes." },
       { status: 503, headers: { "Retry-After": "60" } },
     );
   }
