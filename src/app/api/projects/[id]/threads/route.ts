@@ -1,6 +1,8 @@
 /**
- * GET  /api/projects/:id/threads  — every thread with live status (polled by
- *                                   the agent panel; DB + Redis only).
+ * GET  /api/projects/:id/threads?viewing=<threadId>
+ *      — every thread with live status, who's viewing which thread, member
+ *        identities, and the viewed thread's queue. Polled by the agent panel;
+ *        DB + Redis only, never the sandbox. Records the caller's presence.
  * POST /api/projects/:id/threads  — create a thread. Body: { model? }
  *
  * Threads are shared by all project members (docs/features/multi-agent-threads.md).
@@ -8,20 +10,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/server';
 import { requireProjectAccess } from '@/lib/project-access';
-import { createThread, listThreadSummaries, threadModel } from '@/lib/agent/threads';
+import { createThread, getThread, listThreadSummaries, threadModel } from '@/lib/agent/threads';
+import { listQueue } from '@/lib/agent/thread-queue';
+import { getProjectPeople, notePresence, threadViewers } from '@/lib/agent/thread-presence';
 import { isAcceptedModelInput, isModelDisabled, resolveModelId } from '@/lib/agent/models';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const access = await requireProjectAccess(id, userId);
     if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    const threads = await listThreadSummaries(access.project, userId);
-    return NextResponse.json({ threads });
+    const requestedViewing = req.nextUrl.searchParams.get('viewing');
+    const viewing = requestedViewing && (await getThread(id, requestedViewing)) ? requestedViewing : null;
+    await notePresence(id, userId, viewing);
+    const [threads, viewers, people, queue] = await Promise.all([
+      listThreadSummaries(access.project, userId),
+      threadViewers(id),
+      getProjectPeople(access.project),
+      viewing ? listQueue(viewing) : Promise.resolve([]),
+    ]);
+    return NextResponse.json({ threads, viewers, people, me: userId, queue });
   } catch (err) {
     console.error('GET /api/projects/[id]/threads failed:', err);
     return NextResponse.json({ error: 'Failed to load threads' }, { status: 500 });
@@ -52,6 +64,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         createdAt: thread.createdAt.toISOString(),
         updatedAt: thread.updatedAt.toISOString(),
         lastTurnEndedAt: null,
+        liveTurnId: null,
+        queued: 0,
       },
     });
   } catch (err) {

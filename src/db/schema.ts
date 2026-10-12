@@ -325,6 +325,33 @@ export const chatThreadViews = pgTable('chat_thread_views', {
   pk: primaryKey({ columns: [t.threadId, t.userId] }),
 }));
 
+/**
+ * Per-thread message queue (multi-agent threads, Phase 2). A message sent to a
+ * thread whose agent is busy waits here, visible to every project member, and
+ * is started server-side — as its author — when the running turn ends.
+ * Status: queued → claimed → sent | failed; cancelled when a member removes it.
+ */
+export const chatThreadQueue = pgTable('chat_thread_queue', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  threadId: uuid('thread_id').notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  /** Author — the turn runs (and bills) as this user. */
+  userId: text('user_id').notNull(),
+  /** The user UIMessage ({ id, role: 'user', parts }). */
+  message: jsonb('message').notNull(),
+  status: text('status').notNull().default('queued'),
+  /** Why the queued turn couldn't start (status 'failed'). */
+  error: text('error'),
+  /** The turn this message started (status 'sent'). */
+  turnId: text('turn_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  threadStatusIdx: index('chat_thread_queue_thread_status_idx').on(t.threadId, t.status, t.createdAt),
+}));
+
+export type ChatThreadQueueItem = typeof chatThreadQueue.$inferSelect;
+
 // Store all messages as JSON to preserve all parts (tool-calls, data, etc.)
 export const chatMessages = pgTable(
   'chat_messages',

@@ -25,6 +25,8 @@ export function assistantMessageIdForTurn(turnId: string): string {
 export interface AssembledTurn {
   message: UIMessage | null;
   sawEndTurn: boolean;
+  /** The agent's session id (from `session_started`), for the resume pointer. */
+  sessionId: string | null;
   /** Text of a bridge `error` event, if the turn ended in one. */
   errorText: string | null;
 }
@@ -37,6 +39,7 @@ export async function assembleTurnMessage(
 ): Promise<AssembledTurn> {
   let sawEndTurn = false;
   let errorText: string | null = null;
+  let sessionId: string | null = null;
   const messageId = assistantMessageIdForTurn(turnId);
 
   const stream = createUIMessageStream<UIMessage>({
@@ -54,6 +57,7 @@ export async function assembleTurnMessage(
           } catch {
             continue; // torn final line on a killed bridge
           }
+          if (event.type === "session_started") sessionId = event.sessionId;
           (translator.push as (e: BridgeEvent | OpenCodeBridgeEvent) => void)(event);
           if (event.type === "end_turn") {
             sawEndTurn = true;
@@ -74,7 +78,7 @@ export async function assembleTurnMessage(
   for await (const snapshot of readUIMessageStream<UIMessage>({ stream })) {
     message = snapshot;
   }
-  return { message, sawEndTurn, errorText };
+  return { message, sawEndTurn, sessionId, errorText };
 }
 
 /** Upsert the assembled assistant message into the thread. */

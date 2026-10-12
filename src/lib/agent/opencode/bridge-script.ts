@@ -61,7 +61,7 @@
  *   }
  */
 
-export const OPENCODE_SCRIPTS_VERSION = "12";
+export const OPENCODE_SCRIPTS_VERSION = "13";
 
 export const OPENCODE_BRIDGE_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -71,7 +71,7 @@ export const OPENCODE_BRIDGE_SOURCE = `#!/usr/bin/env node
  */
 import { spawn } from "node:child_process";
 import { readFile, writeFile, access, unlink } from "node:fs/promises";
-import { appendFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 
 // Tee every event to BOTFLOW_EVENT_FILE (in addition to stdout) — same
@@ -97,6 +97,12 @@ function fail(message) {
 // browser may be watching this thread. Best-effort and bounded: a failed
 // notify only means the reply is saved when a viewer next opens the thread.
 async function notifyTurnFinished() {
+  // Free the thread first: the platform starts the next queued message from
+  // this notify, and its "is the thread's agent still running?" check reads
+  // this pidfile. The work is done; only the exit is left.
+  if (process.env.BOTFLOW_PID_FILE) {
+    try { unlinkSync(process.env.BOTFLOW_PID_FILE); } catch {}
+  }
   const base = process.env.BOTFLOW_API_BASE;
   const token = process.env.BOTFLOW_TURN_TOKEN;
   if (!base || !token) return;

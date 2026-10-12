@@ -4,8 +4,10 @@
  *
  * Called by an in-sandbox bridge (Claude Code or OpenCode) when its turn ends
  * — normally, with an error, or on SIGTERM. Saves the turn's assistant reply
- * server-side, so threads nobody is watching still keep their history, and
- * records the outcome on the thread (drives its status dot).
+ * and the agent's session pointer server-side (threads nobody is watching
+ * still keep their history and resume correctly), records the outcome on the
+ * thread (drives its status dot), and starts the thread's next queued
+ * message, if any.
  *
  * The token binding names the project, thread, turn, backend and segment;
  * nothing in the body is trusted. Idempotent: the reply is upserted under the
@@ -18,11 +20,15 @@ import { buildReadTurnScript, turnEventFile } from "@/lib/agent/claude-code/brid
 import { getTurnRecord, markTurnDead, markTurnEnded } from "@/lib/agent/claude-code/turn-registry";
 import { assembleTurnMessage, saveAssistantMessage } from "@/lib/agent/turn-persistence";
 import { getThread, noteTurnEnded } from "@/lib/agent/threads";
+import { drainThreadQueue } from "@/lib/agent/thread-queue";
+import { setClaudeCodeSessionId } from "@/lib/agent/claude-code/session-store";
+import { setOpenCodeSessionId } from "@/lib/agent/opencode/session-store";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// Draining the queue can start the next turn (sandbox setup + spawn).
+export const maxDuration = 300;
 
 /** The bridges' SIGTERM message: a user stop or a superseding turn, not a failure. */
 const STOPPED_PREFIX = "Turn stopped";
@@ -59,11 +65,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Could not read turn events" }, { status: 502 });
   }
 
-  const { message, sawEndTurn, errorText } = await assembleTurnMessage(
-    ndjson,
-    binding.backend ?? "claude-code",
-    turnId,
-  );
+  const backend = binding.backend ?? "claude-code";
+  const { message, sawEndTurn, sessionId, errorText } = await assembleTurnMessage(ndjson, backend, turnId);
   if (message && message.parts.length > 0) {
     await saveAssistantMessage(threadId, binding.segmentId ?? thread.currentSegmentId ?? null, message);
   }
@@ -76,7 +79,24 @@ export async function POST(req: Request) {
     else await markTurnDead(projectId, threadId, turnId);
     const failure = errorText && !errorText.startsWith(STOPPED_PREFIX) ? errorText.slice(0, 500) : null;
     await noteTurnEnded(threadId, failure);
+    // The resume pointer — the live route also saves it, but a turn started
+    // by the queue drain (or whose route died early) has no live route.
+    if (sessionId) {
+      const save = backend === "opencode" ? setOpenCodeSessionId : setClaudeCodeSessionId;
+      await save(threadId, sessionId).catch(() => {});
+    }
   }
 
-  return NextResponse.json({ ok: true, saved: Boolean(message) });
+  // Start the next queued message now that this thread's agent is free. A
+  // stopped turn drains too — the queue is the user's explicit intent.
+  const drain = await drainThreadQueue({
+    projectId,
+    threadId,
+    origin: new URL(req.url).origin,
+  }).catch((err) => {
+    console.error("[turn-finished] queue drain failed:", err);
+    return null;
+  });
+
+  return NextResponse.json({ ok: true, saved: Boolean(message), drain });
 }

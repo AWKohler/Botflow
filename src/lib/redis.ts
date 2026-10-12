@@ -13,6 +13,9 @@ import { Redis } from '@upstash/redis';
 const noopRedis = {
   get: async () => null,
   mget: async (...keys: string[]) => keys.map(() => null),
+  // Presence hash (thread viewers) — empty in no-op mode.
+  hset: async () => 0,
+  hgetall: async () => null,
   set: async () => 'OK' as const,
   setex: async () => 'OK' as const,
   del: async () => 0,

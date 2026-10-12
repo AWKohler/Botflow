@@ -6,12 +6,13 @@
  * here takes the projectId alongside the threadId and filters on BOTH, so a
  * thread id from one project can never address another project's thread.
  */
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/db";
 import {
   chatQuestions,
   chatSessions,
+  chatThreadQueue,
   chatThreadViews,
   envVarRequests,
   oauthProviderRequests,
@@ -39,6 +40,10 @@ export interface ThreadSummary {
   createdAt: string;
   updatedAt: string;
   lastTurnEndedAt: string | null;
+  /** The live turn, so viewers who didn't start it can follow it. */
+  liveTurnId: string | null;
+  /** Messages waiting for this thread's agent. */
+  queued: number;
 }
 
 const TITLE_MAX = 80;
@@ -210,7 +215,7 @@ export async function listThreadSummaries(
   const ids = rows.map((r) => r.id);
   const openIds = rows.filter((r) => !r.archivedAt).map((r) => r.id);
 
-  const [records, needsInput, views] = await Promise.all([
+  const [records, needsInput, views, queueCounts] = await Promise.all([
     getTurnRecords(project.id, openIds),
     threadsNeedingInput(project.id, openIds),
     ids.length
@@ -219,11 +224,20 @@ export async function listThreadSummaries(
           .from(chatThreadViews)
           .where(and(eq(chatThreadViews.userId, userId), inArray(chatThreadViews.threadId, ids)))
       : Promise.resolve([]),
+    openIds.length
+      ? db
+          .select({ threadId: chatThreadQueue.threadId, n: count() })
+          .from(chatThreadQueue)
+          .where(and(inArray(chatThreadQueue.threadId, openIds), inArray(chatThreadQueue.status, ["queued", "claimed"])))
+          .groupBy(chatThreadQueue.threadId)
+      : Promise.resolve([]),
   ]);
+  const queued = new Map(queueCounts.map((q) => [q.threadId, Number(q.n)]));
   const viewedAt = new Map(views.map((v) => [v.threadId, v.lastViewedAt.getTime()]));
 
   return rows.map((r) => {
-    const live = isTurnLive(records.get(r.id));
+    const record = records.get(r.id);
+    const live = isTurnLive(record);
     const ended = r.lastTurnEndedAt?.getTime() ?? 0;
     return {
       id: r.id,
@@ -236,6 +250,8 @@ export async function listThreadSummaries(
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),
       lastTurnEndedAt: r.lastTurnEndedAt?.toISOString() ?? null,
+      liveTurnId: live && record ? record.turnId : null,
+      queued: queued.get(r.id) ?? 0,
     };
   });
 }
