@@ -29,6 +29,45 @@ export interface OpenCodeCredFlags {
 export interface OpenCodeModelRef {
   providerID: string;
   modelID: string;
+  /** Explicit model declaration for the generated opencode config, used when
+   *  the pinned binary's bundled catalog doesn't know the model (see
+   *  CATALOG_GAP_DECLARATIONS). Absent → an empty override, and OpenCode takes
+   *  capabilities and limits from its catalog. */
+  declaration?: Record<string, unknown>;
+}
+
+/**
+ * Declarations for models the PINNED OpenCode's bundled catalog lacks.
+ *
+ * The bridge declares every model, but with an empty override — so
+ * `reasoning` (endpoint + request shape), `attachment` (images) and `limit`
+ * (auto-compaction) come from the catalog. A model missing there runs with
+ * all of them off/unknown. Values are copied from the last OpenCode catalog
+ * that had the model. `node --import tsx scripts/check-opencode-catalog.ts`
+ * lists gaps; add an entry here (or bump the pin) for each one it reports.
+ */
+const CATALOG_GAP_DECLARATIONS: Record<string, Record<string, unknown>> = {
+  // Dropped from the catalog in opencode 1.19.0; values from 1.18.30's entry.
+  "fireworks-ai/accounts/fireworks/models/kimi-k2p7-code": {
+    name: "Kimi K2.7 Code",
+    attachment: true,
+    reasoning: true,
+    tool_call: true,
+    temperature: true,
+    interleaved: { field: "reasoning_content" },
+    modalities: { input: ["text", "image"], output: ["text"] },
+    limit: { context: 262000, output: 262000 },
+  },
+};
+
+function withDeclaration(ref: { providerID: string; modelID: string }): OpenCodeModelRef {
+  const declaration = CATALOG_GAP_DECLARATIONS[`${ref.providerID}/${ref.modelID}`];
+  return declaration ? { ...ref, declaration } : ref;
+}
+
+/** True when the model's capabilities are declared explicitly (no catalog needed). */
+export function hasCatalogGapDeclaration(ref: OpenCodeModelRef): boolean {
+  return Boolean(ref.declaration);
 }
 
 /**
@@ -44,18 +83,18 @@ export function resolveOpenCodeModel(
   const config = MODEL_CONFIGS[model];
   switch (config.provider) {
     case "anthropic":
-      return { providerID: "anthropic", modelID: config.apiModelId };
+      return withDeclaration({ providerID: "anthropic", modelID: config.apiModelId });
     case "openai":
-      return { providerID: "openai", modelID: config.apiModelId };
+      return withDeclaration({ providerID: "openai", modelID: config.apiModelId });
     case "google":
-      return { providerID: "google", modelID: config.apiModelId };
+      return withDeclaration({ providerID: "google", modelID: config.apiModelId });
     case "xai":
-      return { providerID: "xai", modelID: config.apiModelId };
+      return withDeclaration({ providerID: "xai", modelID: config.apiModelId });
     case "fireworks":
       if (model === "fireworks-kimi-k2p7" && opts.useTogetherKimi) {
-        return { providerID: "togetherai", modelID: TOGETHER_KIMI_MODEL };
+        return withDeclaration({ providerID: "togetherai", modelID: TOGETHER_KIMI_MODEL });
       }
-      return { providerID: "fireworks-ai", modelID: config.apiModelId };
+      return withDeclaration({ providerID: "fireworks-ai", modelID: config.apiModelId });
   }
 }
 

@@ -61,7 +61,7 @@
  *   }
  */
 
-export const OPENCODE_SCRIPTS_VERSION = "11";
+export const OPENCODE_SCRIPTS_VERSION = "12";
 
 export const OPENCODE_BRIDGE_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -170,8 +170,10 @@ const ocConfig = {
             },
           }
         : {}),
+      // Empty override → capabilities/limits come from the bundled catalog;
+      // models the pinned catalog lacks carry an explicit declaration.
       models: {
-        [model.modelID]: {},
+        [model.modelID]: model.declaration || {},
       },
     },
   },

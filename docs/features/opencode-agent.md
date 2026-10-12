@@ -12,7 +12,19 @@ a turn that can't run returns 422 with a user-facing reason.
 
 Pinned versions (env-overridable; installed locally in the sandbox under
 `~/.botflow/opencode/`, no sudo):
-- `opencode-ai` `1.18.30` (`BOTFLOW_OPENCODE_VERSION`) — bumped from `1.17.18`
+- `opencode-ai` `1.19.0` (`BOTFLOW_OPENCODE_VERSION`) — bumped from `1.18.30`
+  (2026-10-12) because 1.18.30's bundled catalog lacked five models from the
+  October catalog (GPT-6.1 Sol, GPT-6 Luna, Claude Sonnet/Opus 5.5, Grok 4.7),
+  so they ran with `reasoning`/`attachment` off and no context limit. 1.19.0
+  dropped Kimi K2.7 Code from its catalog; that model now carries an explicit
+  declaration (`CATALOG_GAP_DECLARATIONS` in `src/lib/agent/opencode/models.ts`,
+  values from 1.18.30's entry), verified to pass 1.19.0's config validation.
+  **Whenever a model is added or the pin moves, run**
+  `node --import tsx scripts/check-opencode-catalog.ts` — it downloads the
+  pinned binary and reports models it doesn't cover. The compatibility
+  surfaces listed below were re-checked against the 1.19.0 binary (same counts
+  as 1.18.30).
+- Previously `1.18.30` — bumped from `1.17.18`
   (for GPT-6 Astra; the earlier bump `1.17.13 → 1.17.18` was for Grok 4.5).
   Astra shipped 2026-09-04 and only reaches the bundled models.dev catalog from
   `1.18.28` on — `gpt-6-astra` appears 63× in the `1.18.30` linux-x64 binary and
