@@ -150,6 +150,8 @@ export async function POST(
       status: "completed",
       provider: oauthReq.provider,
       agentWaiting,
+      // The chat whose agent asked — the late-submit note goes there.
+      threadId: oauthReq.threadId ?? null,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

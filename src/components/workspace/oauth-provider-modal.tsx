@@ -191,6 +191,7 @@ export function OAuthProviderModal({
         error?: string;
         provider?: string;
         agentWaiting?: boolean;
+        threadId?: string | null;
       };
       if (!data.ok) {
         setError(data.error ?? "Failed to save credentials. Please try again.");
@@ -207,6 +208,7 @@ export function OAuthProviderModal({
               projectId,
               kind: "oauth-provider",
               subject: def.displayName,
+              threadId: data.threadId ?? null,
             },
           }),
         );

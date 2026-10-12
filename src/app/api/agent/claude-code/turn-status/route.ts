@@ -1,5 +1,5 @@
 /**
- * GET /api/agent/claude-code/turn-status?projectId=...
+ * GET /api/agent/claude-code/turn-status?projectId=...&threadId=...
  *
  * Lightweight (Redis-only) check the AgentPanel runs when an in-sandbox
  * agent stream (Claude Code or OpenCode — one shared turn registry) settles
@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { getTurnRecord } from "@/lib/agent/claude-code/turn-registry";
+import { getThread } from "@/lib/agent/threads";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -26,8 +27,9 @@ export async function GET(req: NextRequest) {
   if (blocked) return blocked;
 
   const projectId = req.nextUrl.searchParams.get("projectId");
-  if (!projectId) {
-    return NextResponse.json({ ok: false, error: "projectId required" }, { status: 400 });
+  const threadId = req.nextUrl.searchParams.get("threadId");
+  if (!projectId || !threadId) {
+    return NextResponse.json({ ok: false, error: "projectId and threadId required" }, { status: 400 });
   }
 
   const access = await requireProjectAccess(projectId, userId);
@@ -35,7 +37,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Project not found" }, { status: 404 });
   }
 
-  const record = await getTurnRecord(projectId);
+  if (!(await getThread(projectId, threadId))) {
+    return NextResponse.json({ ok: false, error: "Thread not found" }, { status: 404 });
+  }
+
+  const record = await getTurnRecord(projectId, threadId);
   // "active" = there is a turn worth reattaching to: either the bridge may
   // still be running, or it finished normally and the event file holds the
   // tail of the stream the client never saw. A dead record means the bridge

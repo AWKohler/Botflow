@@ -99,13 +99,14 @@ export async function GET(
   //     if the serving tab dies before dispatching, the claim expires and
   //     the note re-serves. The 60-min window means an idle or hidden
   //     workspace still gets it on its next active poll.
-  let justCompleted: { id: string } | null = null;
+  let justCompleted: { id: string; threadId: string | null } | null = null;
   if (!pending) {
     const [recent] = await db
       .select({
         id: stripeConnectRequests.id,
         status: stripeConnectRequests.status,
         updatedAt: stripeConnectRequests.updatedAt,
+        threadId: stripeConnectRequests.threadId,
       })
       .from(stripeConnectRequests)
       .where(eq(stripeConnectRequests.projectId, projectId))
@@ -120,7 +121,7 @@ export async function GET(
       !(await isAgentWaiting('stripe-connect', recent.id)) &&
       (await claimCompletionNote('stripe-connect', recent.id))
     ) {
-      justCompleted = { id: recent.id };
+      justCompleted = { id: recent.id, threadId: recent.threadId };
     }
   }
 

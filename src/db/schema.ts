@@ -290,13 +290,67 @@ export const projectStars = pgTable('project_stars', {
 export type ProjectStar = typeof projectStars.$inferSelect;
 export type NewProjectStar = typeof projectStars.$inferInsert;
 
-// Chat session per project (one active session per project)
+// Agent threads. Each row is one conversation with its own agent process in
+// the project's sandbox (docs/features/multi-agent-threads.md). The table keeps
+// its historical name; "thread" and "chat session" are the same thing.
 export const chatSessions = pgTable('chat_sessions', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  /** From the first user message; renameable. Null until the first message. */
+  title: text('title'),
+  /** User who created the thread (null on backfilled threads). */
+  createdBy: text('created_by'),
+  /** Per-thread model. Null on legacy rows → falls back to projects.model. */
+  model: text('model'),
+  /** Active conversation segment inside this thread. Minted at creation; a
+   *  Reset (or an agent switch that can't resume) mints a new one. */
+  currentSegmentId: uuid('current_segment_id'),
+  archivedAt: timestamp('archived_at'),
+  lastTurnStartedAt: timestamp('last_turn_started_at'),
+  lastTurnEndedAt: timestamp('last_turn_ended_at'),
+  /** Set when the last turn ended in an error (red status); cleared on the next turn. */
+  lastTurnError: text('last_turn_error'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  projectIdIdx: index('chat_sessions_project_id_idx').on(t.projectId),
+}));
+
+/** Per-user "last looked at this thread" — drives the unread dot. */
+export const chatThreadViews = pgTable('chat_thread_views', {
+  threadId: uuid('thread_id').notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull(),
+  lastViewedAt: timestamp('last_viewed_at').defaultNow().notNull(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.threadId, t.userId] }),
+}));
+
+/**
+ * Per-thread message queue (multi-agent threads, Phase 2). A message sent to a
+ * thread whose agent is busy waits here, visible to every project member, and
+ * is started server-side — as its author — when the running turn ends.
+ * Status: queued → claimed → sent | failed; cancelled when a member removes it.
+ */
+export const chatThreadQueue = pgTable('chat_thread_queue', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  threadId: uuid('thread_id').notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  /** Author — the turn runs (and bills) as this user. */
+  userId: text('user_id').notNull(),
+  /** The user UIMessage ({ id, role: 'user', parts }). */
+  message: jsonb('message').notNull(),
+  status: text('status').notNull().default('queued'),
+  /** Why the queued turn couldn't start (status 'failed'). */
+  error: text('error'),
+  /** The turn this message started (status 'sent'). */
+  turnId: text('turn_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  threadStatusIdx: index('chat_thread_queue_thread_status_idx').on(t.threadId, t.status, t.createdAt),
+}));
+
+export type ChatThreadQueueItem = typeof chatThreadQueue.$inferSelect;
 
 // Store all messages as JSON to preserve all parts (tool-calls, data, etc.)
 export const chatMessages = pgTable(
@@ -312,6 +366,8 @@ export const chatMessages = pgTable(
     // rows but backfilled to projects.current_segment_id. New messages always
     // get stamped with the project's current_segment_id at insert.
     segmentId: uuid('segment_id'),
+    /** Author of a user message (null on assistant messages and legacy rows). */
+    userId: text('user_id'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (t) => ({
@@ -472,6 +528,8 @@ export const oauthProviderRequests = pgTable('oauth_provider_requests', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull(),
+  /** Thread whose agent raised this request (drives its "needs input" status). */
+  threadId: uuid('thread_id'),
   /** Auth.js provider id: 'google' | 'github' | 'microsoft-entra-id' | 'apple'. */
   provider: text('provider').notNull(),
   /** 'pending' → modal is open. 'completed' → credentials saved. 'dismissed' → user cancelled. */
@@ -534,6 +592,8 @@ export const envVarRequests = pgTable('env_var_requests', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull(),
+  /** Thread whose agent raised this request (drives its "needs input" status). */
+  threadId: uuid('thread_id'),
   /** 'client' → frontend Vite .env (project_env_vars). 'server' → Convex deployment env. */
   target: text('target').notNull(),
   /** Variable name chosen by the agent, shown read-only in the modal. */
@@ -568,6 +628,8 @@ export const chatQuestions = pgTable('chat_questions', {
   userId: text('user_id').notNull(),
   /** Identifier of the conversation segment this question belongs to. */
   segmentId: uuid('segment_id'),
+  /** Thread that asked — drives that thread's "needs input" status. */
+  threadId: uuid('thread_id'),
   /** Identifier supplied by the agent's tool call so the bridge can match the answer back. */
   toolCallId: text('tool_call_id').notNull(),
   /** Array of UserInputQuestion objects: { id, header, question, options[], multiSelect? }. */
@@ -713,6 +775,8 @@ export const stripeConnectRequests = pgTable('stripe_connect_requests', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull(),
+  /** Thread whose agent raised this request (drives its "needs input" status). */
+  threadId: uuid('thread_id'),
   mode: text('mode').notNull(), // 'test' | 'live'
   state: text('state').notNull(),
   authorizeUrl: text('authorize_url').notNull(),

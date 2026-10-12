@@ -1,24 +1,24 @@
 /**
- * POST /api/agent/claude-code/stop  { projectId }
+ * POST /api/agent/claude-code/stop  { projectId, threadId, clearQueue? }
  *
- * Kill the project's detached in-sandbox agent bridge — Claude Code or
- * OpenCode; both write the same pidfile and handle SIGTERM (CC interrupts
+ * Kill ONE thread's detached in-sandbox agent bridge — Claude Code or
+ * OpenCode; both write the thread's pidfile and handle SIGTERM (CC interrupts
  * the claude subprocess, OpenCode aborts the session and nukes its server
  * process group). Wired to the Stop button: before this existed, Stop only
  * aborted the client stream — the bridge kept working in the sandbox,
  * editing files the user had just asked it to stop editing.
  *
  * Also revokes the turn's tool-callback token and marks the turn dead so the
- * recovery path won't try to reattach to it.
+ * recovery path won't try to reattach to it. With `clearQueue` (the Stop
+ * button) the thread's waiting messages are removed FIRST — the killed
+ * bridge's end-of-turn notify would otherwise start the next one.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
-import { getOrCreatePersistentSandbox } from "@/lib/vercel-sandbox";
-import { buildKillBridgeScript } from "@/lib/agent/claude-code/bridge-control";
 import { requireProjectAccess } from "@/lib/project-access";
-import { getTurnRecord, markTurnDead } from "@/lib/agent/claude-code/turn-registry";
-import { revokeToolToken } from "@/lib/agent/claude-code/tool-token";
-import { revokeLlmProxyToken } from "@/lib/agent/llm-proxy/token";
+import { getThread } from "@/lib/agent/threads";
+import { stopThreadAgent } from "@/lib/agent/stop-thread";
+import { cancelAllQueued } from "@/lib/agent/thread-queue";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -33,15 +33,15 @@ export async function POST(req: NextRequest) {
   const blocked = await enforce(identifierFor(userId, req), "pollHeavy");
   if (blocked) return blocked;
 
-  let body: { projectId?: string };
+  let body: { projectId?: string; threadId?: string; clearQueue?: boolean };
   try {
-    body = (await req.json()) as { projectId?: string };
+    body = (await req.json()) as { projectId?: string; threadId?: string; clearQueue?: boolean };
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
   }
-  const projectId = body.projectId;
-  if (!projectId) {
-    return NextResponse.json({ ok: false, error: "projectId required" }, { status: 400 });
+  const { projectId, threadId } = body;
+  if (!projectId || !threadId) {
+    return NextResponse.json({ ok: false, error: "projectId and threadId required" }, { status: 400 });
   }
 
   const access = await requireProjectAccess(projectId, userId);
@@ -49,18 +49,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Project not found" }, { status: 404 });
   }
 
-  const record = await getTurnRecord(projectId);
-  try {
-    const sandbox = await getOrCreatePersistentSandbox(projectId);
-    await sandbox.runCommand({ cmd: "sh", args: ["-c", buildKillBridgeScript()] });
-  } catch {
-    // Sandbox unreachable/expired — the bridge is gone with it.
-  }
-  if (record) {
-    if (record.toolToken) revokeToolToken(record.toolToken).catch(() => {});
-    if (record.llmProxyToken) revokeLlmProxyToken(record.llmProxyToken).catch(() => {});
-    await markTurnDead(projectId, record.turnId).catch(() => {});
+  if (!(await getThread(projectId, threadId))) {
+    return NextResponse.json({ ok: false, error: "Thread not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ ok: true });
+  const cleared = body.clearQueue ? await cancelAllQueued(threadId) : 0;
+  await stopThreadAgent(projectId, threadId);
+
+  return NextResponse.json({ ok: true, cleared });
 }
