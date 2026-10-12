@@ -16,7 +16,7 @@ import { MODEL_CONFIGS, DEFAULT_MODEL_ID, modelSupportsImages, resolveModelId, e
 import { ModelSelector } from '@/components/ui/ModelSelector';
 import { LimitModal, parseLimitPayload, type LimitReachedPayload } from '@/components/ui/LimitModal';
 import { CreditGauge } from '@/components/ui/CreditGauge';
-import type { AgentErrorType } from '@/lib/agent/errors';
+import { isProviderOutage, providerOutageMessage, type AgentErrorType } from '@/lib/agent/errors';
 import { processImageForUpload } from '@/lib/image-processing';
 import { ImageLightbox } from '@/components/ui/ImageLightbox';
 import { isSandboxPlatform } from '@/lib/project-platform';
@@ -53,7 +53,17 @@ interface StructuredError {
   message: string;
   type: AgentErrorType;
   retryAfter?: number;
+  /** The raw error text, when `message` is a plain-language rewrite of it. */
+  details?: string;
 }
+
+const PROVIDER_LABELS: Record<string, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  google: 'Google',
+  xai: 'xAI',
+  fireworks: 'Fireworks',
+};
 
 function parseError(raw: string): StructuredError {
   try {
@@ -573,6 +583,15 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   //     backend; the transport (a useRef) sees fresh values without rebuild. ---
   const agentBackendRef = useRef<AgentBackend>(agentBackend);
   agentBackendRef.current = agentBackend;
+  // Who to name when the model provider is down. ChatGPT-plan turns talk to
+  // OpenAI's ChatGPT backend directly (not the API), so say that.
+  const outageProviderLabelRef = useRef('The model provider');
+  outageProviderLabelRef.current =
+    derivedBackend.reason === 'codex_oauth_opencode'
+      ? "OpenAI's ChatGPT service"
+      : model === 'fireworks-kimi-k2p7' && useTogetherKimi
+        ? 'Together AI'
+        : PROVIDER_LABELS[MODEL_CONFIGS[model].provider] ?? 'The model provider';
 
   // --- Stable transport ref (v6) ---
   // Endpoint is chosen per-request from the derived agent backend (see
@@ -724,7 +743,16 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         }
       } catch { /* not JSON, fall through */ }
 
-      const structured = parseError(msg);
+      const parsed = parseError(msg);
+      // Provider gateway outages (e.g. an Envoy 503 page) read as gibberish —
+      // say plainly that it's the provider, keep the raw text as details.
+      const structured: StructuredError = isProviderOutage(parsed.message)
+        ? {
+            type: 'provider_unavailable',
+            message: providerOutageMessage(outageProviderLabelRef.current),
+            details: parsed.message,
+          }
+        : parsed;
       setAgentError(structured);
 
       // Start countdown for rate limit errors
@@ -1792,6 +1820,18 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
               reset the conversation
             </button>.
           </p>
+        );
+        break;
+      case 'provider_unavailable':
+        errorContent = (
+          <div className="flex-1 space-y-1">
+            <p className="text-xs leading-relaxed">{agentError.message}</p>
+            {agentError.details && (
+              <p className="text-[11px] leading-snug text-red-400/60 break-words [overflow-wrap:anywhere]">
+                {agentError.details}
+              </p>
+            )}
+          </div>
         );
         break;
       default:
