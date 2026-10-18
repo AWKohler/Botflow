@@ -842,42 +842,58 @@ function ActiveSwiftSimulatorPreview({
 
     canvas.width = config.width;
     canvas.height = config.height;
-    const decoder = new VideoDecoder({
-      output: (frame: VideoFrame) => {
-        const c = canvasRef.current;
-        if (c) {
-          blitToCanvas(
-            c,
-            frame,
-            frame.displayWidth,
-            frame.displayHeight,
-            displayOrientationRef.current === "landscape",
-          );
-        }
-        frame.close();
-        markFrame();
-        frameCountRef.current++;
-        const now = Date.now();
-        const elapsed = now - fpsTimeRef.current;
-        if (elapsed >= 1000) {
-          setFps(Math.round((frameCountRef.current * 1000) / elapsed));
-          frameCountRef.current = 0;
-          fpsTimeRef.current = now;
-        }
-      },
-      error: (e: Error) => {
-        setPill({ kind: "error", message: `Video decoder error: ${e.message}` });
-      },
-    });
 
-    decoder.configure({
-      codec: "avc1.42E01F",
-      codedWidth: config.width,
-      codedHeight: config.height,
-      optimizeForLatency: true,
-      avc: { format: "annexb" },
-    } as VideoDecoderConfig);
-    videoDecoderRef.current = decoder;
+    // Prefer the software decoder: the platform hardware decoders (VideoToolbox
+    // in Chrome on macOS) hold ~8 frames before emitting one — ~130ms of added
+    // latency at 60fps, on every tap. The software path emits each frame as
+    // soon as it's decoded (~4ms) and keeps up with 60fps at this resolution
+    // on current machines. If a browser can't decode H.264 in software it
+    // reports NotSupportedError and we rebuild the decoder without the hint.
+    const createDecoder = (preferSoftware: boolean): VideoDecoder => {
+      const decoder = new VideoDecoder({
+        output: (frame: VideoFrame) => {
+          const c = canvasRef.current;
+          if (c) {
+            blitToCanvas(
+              c,
+              frame,
+              frame.displayWidth,
+              frame.displayHeight,
+              displayOrientationRef.current === "landscape",
+            );
+          }
+          frame.close();
+          markFrame();
+          frameCountRef.current++;
+          const now = Date.now();
+          const elapsed = now - fpsTimeRef.current;
+          if (elapsed >= 1000) {
+            setFps(Math.round((frameCountRef.current * 1000) / elapsed));
+            frameCountRef.current = 0;
+            fpsTimeRef.current = now;
+          }
+        },
+        error: (e: Error) => {
+          if (preferSoftware && e.name === "NotSupportedError" && videoDecoderRef.current === decoder) {
+            videoDecoderRef.current = createDecoder(false);
+            waitingForVideoKeyframeRef.current = true;
+            return;
+          }
+          setPill({ kind: "error", message: `Video decoder error: ${e.message}` });
+        },
+      });
+      decoder.configure({
+        codec: "avc1.42E01F",
+        codedWidth: config.width,
+        codedHeight: config.height,
+        optimizeForLatency: true,
+        ...(preferSoftware ? { hardwareAcceleration: "prefer-software" } : {}),
+        avc: { format: "annexb" },
+      } as VideoDecoderConfig);
+      return decoder;
+    };
+
+    videoDecoderRef.current = createDecoder(true);
     videoConfiguredRef.current = true;
     waitingForVideoKeyframeRef.current = true;
   }, [markFrame]);
