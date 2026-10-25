@@ -2,9 +2,9 @@
  * Pure thread rules: status precedence, titles, and the cross-agent
  * awareness note.
  *
- * Run: node --import tsx --test src/lib/agent/threads.test.ts
+ * Run: npx vitest run src/lib/agent/threads.test.ts
  */
-import { test, describe } from "node:test";
+import { test, describe } from "vitest";
 import assert from "node:assert/strict";
 import { awarenessNote, computeThreadStatus, deriveThreadTitle } from "./threads";
 

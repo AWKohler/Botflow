@@ -1,7 +1,7 @@
 /**
- * Run: node --import tsx --test src/lib/agent/errors.test.ts
+ * Run: npx vitest run src/lib/agent/errors.test.ts
  */
-import { test, describe } from "node:test";
+import { test, describe } from "vitest";
 import assert from "node:assert/strict";
 import { isProviderOutage, providerOutageMessage } from "./errors";
 

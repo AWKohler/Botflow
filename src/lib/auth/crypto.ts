@@ -28,10 +28,12 @@ export function decryptPrivateData<T>(value: string, context: string): T {
   const [version, iv, tag, data, extra] = value.split(".");
   if (version !== "v1" || !iv || !tag || !data || extra)
     throw new Error("Invalid encrypted record");
+  // Pin the tag length: Node 22 otherwise accepts truncated (4-byte) GCM tags.
   const decipher = createDecipheriv(
     "aes-256-gcm",
     encryptionKey(),
     Buffer.from(iv, "base64"),
+    { authTagLength: 16 },
   );
   decipher.setAAD(Buffer.from(context));
   decipher.setAuthTag(Buffer.from(tag, "base64"));

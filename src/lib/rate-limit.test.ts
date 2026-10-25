@@ -4,13 +4,13 @@
  * missing/broken Redis), and the 429 response shape.
  *
  * Uses Node's built-in test runner (no extra dependency). Run with:
- *   node --import tsx --test src/lib/rate-limit.test.ts
+ *   npx vitest run src/lib/rate-limit.test.ts
  *
  * Note: these tests run with Upstash env UNSET, so the shared `redis` is the
  * no-op stub. That lets us exercise both fail-open branches (unconfigured, and
  * "configured but the limiter throws") without a real Redis.
  */
-import { test, describe, beforeEach, afterEach } from 'node:test';
+import { test, describe, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   getClientIp,

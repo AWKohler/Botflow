@@ -3,7 +3,7 @@
  * opencode 1.17.13 output captured during the integration spike (user-echo
  * parts, accumulated-text part updates, tool state lifecycle).
  */
-import { test, describe } from "node:test";
+import { test, describe } from "vitest";
 import assert from "node:assert/strict";
 import type { UIMessageChunk, UIMessageStreamWriter } from "ai";
 

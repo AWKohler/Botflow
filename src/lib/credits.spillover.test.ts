@@ -12,7 +12,7 @@
  * no-op stub). The monthly key is pre-seeded in every scenario, so
  * ensureMonthlySeeded never reaches for Neon here.
  */
-import { test, describe } from "node:test";
+import { test, describe } from "vitest";
 import assert from "node:assert/strict";
 
 import { redis } from "@/lib/redis";

@@ -5,12 +5,14 @@ import { enforce, identifierFor } from '@/lib/rate-limit';
 import { getDb } from '@/db';
 import { userSettings } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { redirectUrl, verifyOAuthState } from '@/lib/oauth-state';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const CLIENT_ID = process.env.GITHUB_CLIENT_ID!;
 const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET!;
+const STATE_TTL_MS = 15 * 60 * 1000;
 
 export async function GET(req: NextRequest) {
   const origin = new URL(req.url).origin;
@@ -26,17 +28,19 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get('code');
   const stateParam = searchParams.get('state');
 
-  // Decode returnTo from state if present
-  let returnTo = '/projects';
-  if (stateParam) {
-    try {
-      const decoded = JSON.parse(Buffer.from(stateParam, 'base64url').toString('utf-8')) as { returnTo?: string };
-      if (decoded.returnTo) returnTo = decoded.returnTo;
-    } catch { /* use default */ }
+  // CSRF defense: the state must be one we signed for THIS signed-in user in
+  // the last 15 minutes. Otherwise an attacker could send a signed-in victim
+  // here with the attacker's own `code`, linking the attacker's GitHub account
+  // to the victim (whose repos/pushes would then go to the attacker). Checked
+  // before the code is ever exchanged.
+  const verified = verifyOAuthState('github', stateParam, { userId, maxAgeMs: STATE_TTL_MS });
+  if (!verified) {
+    return NextResponse.redirect(redirectUrl(origin, '/projects', { github_error: 'invalid_state' }));
   }
+  const returnTo = verified.returnTo;
 
   if (!code) {
-    return NextResponse.redirect(`${origin}${returnTo}?github_error=no_code`);
+    return NextResponse.redirect(redirectUrl(origin, returnTo, { github_error: 'no_code' }));
   }
 
   try {
@@ -58,7 +62,7 @@ export async function GET(req: NextRequest) {
 
     if (!tokenData.access_token) {
       console.error('GitHub token exchange failed:', tokenData);
-      return NextResponse.redirect(`${origin}${returnTo}?github_error=token_exchange`);
+      return NextResponse.redirect(redirectUrl(origin, returnTo, { github_error: 'token_exchange' }));
     }
 
     // Fetch GitHub user info
@@ -93,9 +97,9 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return NextResponse.redirect(`${origin}${returnTo}?github_connected=1`);
+    return NextResponse.redirect(redirectUrl(origin, returnTo, { github_connected: '1' }));
   } catch (e) {
     console.error('GitHub OAuth callback failed:', e);
-    return NextResponse.redirect(`${origin}${returnTo}?github_error=server`);
+    return NextResponse.redirect(redirectUrl(origin, returnTo, { github_error: 'server' }));
   }
 }

@@ -4,7 +4,7 @@
  * extraction the billing plane depends on. Truncated variants assert that
  * aborted streams settle with partial usage and complete:false.
  */
-import { test, describe } from "node:test";
+import { test, describe } from "vitest";
 import assert from "node:assert/strict";
 
 import {

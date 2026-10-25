@@ -89,6 +89,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!access) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    // Connecting/disconnecting integrations is owner-only (sharing plan §3.3).
+    if (access.role !== "owner") {
+      return NextResponse.json(
+        { error: "Only the project owner can link or unlink a GitHub repository." },
+        { status: 403 },
+      );
+    }
     const { project: proj } = access;
     // Any platform whose files live in the persistent Vercel Sandbox can use
     // the real-git link flow. Legacy 'web' (WebContainer) stays on the
@@ -250,6 +257,13 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const access = await requireProjectAccess(id, userId);
     if (!access) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    // Connecting/disconnecting integrations is owner-only (sharing plan §3.3).
+    if (access.role !== "owner") {
+      return NextResponse.json(
+        { error: "Only the project owner can link or unlink a GitHub repository." },
+        { status: 403 },
+      );
     }
 
     const [updated] = await db
