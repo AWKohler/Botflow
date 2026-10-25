@@ -22,10 +22,10 @@ const MIGRATIONS_DIR = path.resolve(__dirname, '../../drizzle');
  * migration, or change schema.ts to match prod) — then delete it here.
  */
 const KNOWN_DRIFT = [
-  // 0000_baseline has DEFAULT 'fireworks-kimi-k2p7'; schema.ts says gpt-5.6-luna.
+  // 0000_baseline has DEFAULT 'fireworks-kimi-k2p7'; schema.ts says gpt-6-luna.
   // Every insert path passes a model explicitly, so the live default is unused.
   "column projects.model text NOT NULL DEFAULT 'fireworks-kimi-k2p7'::text",
-  "column projects.model text NOT NULL DEFAULT 'gpt-5.6-luna'::text",
+  "column projects.model text NOT NULL DEFAULT 'gpt-6-luna'::text",
 ];
 
 const CATALOG = `

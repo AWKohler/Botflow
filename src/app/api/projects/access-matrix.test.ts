@@ -42,8 +42,6 @@ setupTestDb();
 type Access = 'editor' | 'owner' | 'push' | 'backend' | 'secret';
 
 const POLICY: Record<string, Access> = {
-  'GET agent-backend': 'editor',
-  'POST agent-backend': 'editor',
   'POST app-store-readiness/icon-upload': 'editor',
   'POST app-store-readiness/icon': 'editor',
   'POST app-store-readiness/metadata': 'editor',
@@ -151,6 +149,15 @@ const POLICY: Record<string, Access> = {
   'GET swift-publish/build/[buildId]': 'editor',
   'POST swift-publish/submit': 'editor',
   'POST visual-edit': 'editor',
+  // Threads are fully shared: every member can watch and prompt any thread.
+  'GET threads': 'editor',
+  'POST threads': 'editor',
+  'PATCH threads/[threadId]': 'editor',
+  'DELETE threads/[threadId]': 'editor',
+  'POST threads/[threadId]/viewed': 'editor',
+  'POST threads/[threadId]/queue': 'editor',
+  'POST threads/[threadId]/queue/drain': 'editor',
+  'DELETE threads/[threadId]/queue/[queueId]': 'editor',
 };
 
 /**
