@@ -9,6 +9,7 @@ import { signConvexOAuthState, verifyConvexOAuthState } from './convex-oauth-sta
 import { signAppleClientSecret } from './oauth-providers/server';
 import { decryptSecret, encryptSecret, encryptSecretOrNull, maskSecret } from './secrets';
 import { encryptCookie } from './secure-cookies';
+import { decryptPrivateData, encryptPrivateData } from './auth/crypto';
 
 const KEY_A = 'a'.repeat(40);
 const KEY_B = 'b'.repeat(40);
@@ -178,5 +179,19 @@ describe('ES256 JWTs (Apple Sign In client secret, App Store Connect)', () => {
     expect(payload).toMatchObject({ iss: 'ISS', aud: 'appstoreconnect-v1' });
     // Apple rejects ASC tokens with exp more than 20 minutes after iat.
     expect(payload.exp - payload.iat).toBeLessThanOrEqual(20 * 60);
+  });
+});
+
+describe('identity private metadata (auth/crypto)', () => {
+  test('round-trips and is bound to its context', () => {
+    const ct = encryptPrivateData({ k: 'v' }, 'profile:u1');
+    expect(decryptPrivateData(ct, 'profile:u1')).toEqual({ k: 'v' });
+    expect(() => decryptPrivateData(ct, 'profile:u2')).toThrow();
+  });
+
+  test('truncated auth tag is rejected (Node 22 accepts 4-byte tags unless pinned)', () => {
+    const parts = encryptPrivateData({ k: 'v' }, 'profile:u1').split('.');
+    parts[2] = Buffer.from(parts[2], 'base64').subarray(0, 4).toString('base64');
+    expect(() => decryptPrivateData(parts.join('.'), 'profile:u1')).toThrow();
   });
 });
