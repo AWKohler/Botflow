@@ -41,8 +41,6 @@ from `src/app/api/agent/route.ts` before scripted-model tests can run.
 
 | Where | Gap |
 |---|---|
-| `api/projects/[id]` DELETE | BYOC Convex projects call the managed-backend delete (fix exists as local commit `070ad52`, not yet on main) |
-| `api/projects/[id]` DELETE | The persistent sandbox isn't released, and the reaper only walks existing rows |
 | `api/projects` POST | Project-count limit is count-then-insert; parallel creates can overshoot |
 | `lib/credits.ts adjustPlatformCredits` | A turn straddling the ISO-week boundary settles into the new week |
 | `lib/reaper/policy.ts` | Archive (sandbox teardown) can happen without a prior 90-day warning |

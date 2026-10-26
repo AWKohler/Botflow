@@ -6,6 +6,8 @@ import { auth } from '@/lib/auth/server';
 import { requireProjectAccess, sanitizeProjectForRole } from '@/lib/project-access';
 import { getUserTier } from '@/lib/tier';
 import { deleteConvexBackend } from '@/lib/convex-platform';
+import { deletePersistentSandbox } from '@/lib/vercel-sandbox';
+import { isSandboxPlatform } from '@/lib/project-platform';
 import { isAcceptedModelInput, isModelDisabled, modelDisabledReason, resolveModelId } from '@/lib/agent/models';
 import { UTApi } from 'uploadthing/server';
 
@@ -94,15 +96,41 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const proj = access.project;
 
-    // Delete Convex backend if it exists
-    if (proj.convexProjectId) {
+    // What was torn down, reported back so callers (e.g. the canary) can
+    // detect leaks instead of assuming a clean delete.
+    const cleanup: { sandbox: 'deleted' | 'none' | 'failed'; convex: 'deleted' | 'detached' | 'none' | 'failed' } = {
+      sandbox: 'none',
+      convex: 'none',
+    };
+
+    // Release the persistent sandbox VM + its snapshots. Must run before the
+    // row is deleted (the provider is looked up from it), and nothing else
+    // ever cleans it up afterwards — the reaper only walks existing rows.
+    if (isSandboxPlatform(proj.platform)) {
+      try {
+        await deletePersistentSandbox(resolvedParams.id);
+        cleanup.sandbox = 'deleted';
+      } catch (error) {
+        cleanup.sandbox = 'failed';
+        console.error('Failed to delete persistent sandbox:', error);
+      }
+    }
+
+    // Delete Convex backend if it exists. Platform-managed only: BYOC projects
+    // live in the user's own Convex account (string slug id, wrong token here),
+    // so we detach rather than destroy — same rule as the sandbox reaper.
+    if (proj.convexProjectId && proj.backendType === 'platform') {
       try {
         await deleteConvexBackend(proj.convexProjectId);
+        cleanup.convex = 'deleted';
         console.log(`Convex backend deleted for project ${resolvedParams.id}`);
       } catch (error) {
         // Log error but continue with project deletion
+        cleanup.convex = 'failed';
         console.error('Failed to delete Convex backend:', error);
       }
+    } else if (proj.convexProjectId) {
+      cleanup.convex = 'detached';
     }
 
     // Delete MuhKoo app if it exists (revokes its keys and frees the slug)
@@ -175,7 +203,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     // Delete the project (cascades to chat sessions, messages, and env vars)
     await db.delete(projects).where(eq(projects.id, resolvedParams.id));
 
-    return NextResponse.json({ success: true, message: 'Project deleted' });
+    return NextResponse.json({ success: true, message: 'Project deleted', cleanup });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: 'Failed to delete project' }, { status: 500 });

@@ -14,6 +14,7 @@ const calls = vi.hoisted(() => ({
   convexDeleted: [] as string[],
   convexFails: false,
   sandboxDeleted: [] as string[],
+  sandboxFails: false,
 }));
 
 vi.mock('@/lib/convex-platform', async (orig) => ({
@@ -26,7 +27,10 @@ vi.mock('@/lib/convex-platform', async (orig) => ({
 
 vi.mock('@/lib/vercel-sandbox', async (orig) => ({
   ...(await orig<typeof import('@/lib/vercel-sandbox')>()),
-  deletePersistentSandbox: async (id: string) => void calls.sandboxDeleted.push(id),
+  deletePersistentSandbox: async (id: string) => {
+    calls.sandboxDeleted.push(id);
+    if (calls.sandboxFails) throw new Error('sandbox api down');
+  },
 }));
 
 const { DELETE } = await import('./[id]/route');
@@ -37,6 +41,7 @@ function reset() {
   calls.convexDeleted.length = 0;
   calls.sandboxDeleted.length = 0;
   calls.convexFails = false;
+  calls.sandboxFails = false;
 }
 
 async function del(id: string) {
@@ -57,9 +62,7 @@ describe('DELETE /api/projects/[id]', () => {
     expect(await exists(p.id)).toBe(false);
   });
 
-  // KNOWN GAP on main: fixed by 070ad52 ("only delete platform-managed
-  // backends on project delete"), which is not on main yet.
-  test.fails("BYOC Convex (user's own account) is detached, never deleted", async () => {
+  test("BYOC Convex (user's own account) is detached, never deleted", async () => {
     reset();
     const p = await createProject({ userId: 'owner', backendType: 'user', convexProjectId: 'my-team-slug' });
     await signInAs('owner');
@@ -68,9 +71,7 @@ describe('DELETE /api/projects/[id]', () => {
     expect(await exists(p.id)).toBe(false);
   });
 
-  // KNOWN GAP on main: fixed by 070ad52 ("only delete platform-managed
-  // backends on project delete"), which is not on main yet.
-  test.fails('no backend → no Convex call', async () => {
+  test('no backend → no Convex call', async () => {
     reset();
     const p = await createProject({ userId: 'owner', backendType: 'none', convexProjectId: 'stale' });
     await signInAs('owner');
@@ -114,14 +115,40 @@ describe('DELETE /api/projects/[id]', () => {
     expect(await exists(p.id)).toBe(true);
   });
 
-  // KNOWN GAP: the persistent Vercel Sandbox is not released. The reaper only
-  // walks existing project rows, so a deleted project's VM is orphaned.
-  test.fails('the persistent sandbox is released', async () => {
+  test('the persistent sandbox is released', async () => {
     reset();
     const p = await createProject({ userId: 'owner', platform: 'sandboxed-web' });
     await signInAs('owner');
     await del(p.id);
     expect(calls.sandboxDeleted).toEqual([p.id]);
+  });
+
+  test('reports what was cleaned up', async () => {
+    reset();
+    const p = await createProject({ userId: 'owner', platform: 'sandboxed-web', backendType: 'user', convexProjectId: 'slug' });
+    await signInAs('owner');
+    const body = await (await del(p.id)).json();
+    expect(body.cleanup).toEqual({ sandbox: 'deleted', convex: 'detached' });
+  });
+
+  test('a failed sandbox release is reported, and the project is still deleted', async () => {
+    reset();
+    calls.sandboxFails = true;
+    const p = await createProject({ userId: 'owner', platform: 'swift' });
+    await signInAs('owner');
+    const res = await del(p.id);
+    expect(res.status).toBe(200);
+    expect((await res.json()).cleanup.sandbox).toBe('failed');
+    expect(await exists(p.id)).toBe(false);
+  });
+
+  test('non-sandbox (legacy web) projects make no sandbox call', async () => {
+    reset();
+    const p = await createProject({ userId: 'owner', platform: 'web' });
+    await signInAs('owner');
+    const body = await (await del(p.id)).json();
+    expect(calls.sandboxDeleted).toEqual([]);
+    expect(body.cleanup.sandbox).toBe('none');
   });
 });
 
