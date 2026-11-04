@@ -6,6 +6,7 @@ import { authClient } from "@/lib/auth/client";
 import { ChangePlanModal } from "./change-plan";
 import { PaymentMethodForm } from "./payment-method";
 import { fieldClass, primaryClass } from "@/components/auth/sign-in";
+import { useCaptcha } from "./captcha";
 interface Session {
   id: string;
   token: string;
@@ -23,6 +24,7 @@ export function AccountPanel({
 }) {
   const { data: session, isPending } = authClient.useSession();
   const [tab, setTab] = useState(initialTab);
+  const captcha = useCaptcha(tab === "security");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -619,13 +621,15 @@ export function AccountPanel({
                   </button>
                   <button
                     type="button"
-                    className="text-sm underline"
+                    disabled={!captcha.ready}
+                    className="text-sm underline disabled:opacity-50"
                     onClick={() =>
                       act(
                         () =>
                           authClient.requestPasswordReset({
                             email: session.user.email,
                             redirectTo: "/sign-in",
+                            fetchOptions: captcha.take(),
                           }),
                         "A password reset email has been sent.",
                       )
@@ -633,6 +637,7 @@ export function AccountPanel({
                   >
                     Reset or set a password by email
                   </button>
+                  {captcha.widget}
                 </form>
                 <div className="border-t border-[var(--sand-border)] pt-6">
                   <h3 className="font-medium">Active devices</h3>
