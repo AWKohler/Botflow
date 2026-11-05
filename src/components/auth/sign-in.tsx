@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Github, Eye, EyeOff } from "lucide-react";
 import { authClient } from "@/lib/auth/client";
 import { safeRedirect } from "@/lib/auth/policy";
+import { useCaptcha } from "./captcha";
 
 export const fieldClass =
   "mt-2 w-full rounded-md border border-[var(--sand-border)] bg-[var(--color-elevated)] px-3 py-2 text-sm text-[var(--sand-text)] outline-none focus:ring-2 focus:ring-[var(--sand-text-muted)]";
@@ -43,6 +44,10 @@ export function AuthForm({
     }
   }, []);
   const callbackURL = safeRedirect(redirectUrl);
+  // Password sign-in isn't gated, but its step offers "Use a code instead".
+  const captcha = useCaptcha(step === "credentials" || step === "reset");
+  const awaitingCaptcha =
+    !captcha.ready && ((signUp && step === "credentials") || step === "reset");
   async function perform(
     fn: () => Promise<{ error?: { message?: string } | null }>,
     success?: () => void,
@@ -106,6 +111,7 @@ export function AuthForm({
           authClient.emailOtp.sendVerificationOtp({
             email,
             type: "forget-password",
+            fetchOptions: captcha.take(),
           }),
         () => setStep("reset-code"),
       );
@@ -120,7 +126,14 @@ export function AuthForm({
       );
     if (signUp)
       return perform(
-        () => authClient.signUp.email({ email, password, name, callbackURL }),
+        () =>
+          authClient.signUp.email({
+            email,
+            password,
+            name,
+            callbackURL,
+            fetchOptions: captcha.take(),
+          }),
         () => setStep("verify"),
       );
     return perform(
@@ -282,19 +295,24 @@ export function AuthForm({
             </span>
           </label>
         )}
+        {captcha.widget}
         {message && (
           <p role="status" className="text-sm">
             {message}
           </p>
         )}
-        <button disabled={busy} className={primaryClass}>
-          {busy ? "Please wait…" : "Continue"}
+        <button disabled={busy || awaitingCaptcha} className={primaryClass}>
+          {busy
+            ? "Please wait…"
+            : awaitingCaptcha && !captcha.failed
+              ? "Verifying you’re human…"
+              : "Continue"}
         </button>
       </form>
       {!signUp && step === "credentials" && (
         <div className="mt-4 flex justify-between text-xs">
           <button
-            disabled={busy || !email}
+            disabled={busy || !email || !captcha.ready}
             className="underline disabled:opacity-50"
             onClick={() =>
               perform(
@@ -302,6 +320,7 @@ export function AuthForm({
                   authClient.emailOtp.sendVerificationOtp({
                     email,
                     type: "sign-in",
+                    fetchOptions: captcha.take(),
                   }),
                 () => setStep("code"),
               )

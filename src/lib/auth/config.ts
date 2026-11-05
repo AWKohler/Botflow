@@ -9,6 +9,7 @@ import { ownerIds } from "./policy";
 import { encryptPrivateData } from "./crypto";
 import { sendAuthEmail } from "./email";
 import { emailAliases } from "./email-aliases";
+import { captchaPlugin } from "./captcha";
 
 export function createIdentityAuth(
   deliver: typeof sendAuthEmail = sendAuthEmail,
@@ -137,6 +138,7 @@ export function createIdentityAuth(
       max: 30,
     },
     plugins: [
+      captchaPlugin(),
       emailAliases(),
       username(),
       admin({
