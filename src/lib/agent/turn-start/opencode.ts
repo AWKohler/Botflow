@@ -24,7 +24,8 @@ import {
   setUserCredentials,
 } from "@/lib/user-credentials";
 import {
-  getFreshCodexAccessToken,
+  getFreshCodexCredentials,
+  shouldAdoptSandboxCodexAuth,
 } from "@/lib/codex-oauth";
 import {
   getOrCreatePersistentSandbox,
@@ -223,15 +224,19 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
       const openai = sandboxAuth?.openai as
         | { type?: string; access?: string; refresh?: string; expires?: number }
         | undefined;
+      // Only a NEWER pair (OpenCode rotated mid-turn) — never the older one
+      // left behind after our own refresh or a fresh sign-in, which would
+      // overwrite good tokens with dead ones on every turn.
       if (
         openai?.type === "oauth" &&
-        openai.refresh &&
-        openai.access &&
-        openai.refresh !== creds.codexOAuthRefreshToken
+        shouldAdoptSandboxCodexAuth(openai, {
+          refreshToken: creds.codexOAuthRefreshToken,
+          expiresAt: creds.codexOAuthExpiresAt,
+        })
       ) {
         codexAuth = {
-          codexOAuthAccessToken: openai.access,
-          codexOAuthRefreshToken: openai.refresh,
+          codexOAuthAccessToken: openai.access!,
+          codexOAuthRefreshToken: openai.refresh!,
           codexOAuthExpiresAt: openai.expires ?? null,
         };
         await setUserCredentials(userId, {
@@ -245,16 +250,16 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
     }
   }
 
-  // Proactive refresh: the token is written into the sandbox at turn start
-  // and must survive the whole turn.
-  const codexToken = useCodex
-    ? await getFreshCodexAccessToken(codexAuth, userId)
-    : null;
-  const writtenRefreshToken = useCodex ? (codexAuth.codexOAuthRefreshToken ?? null) : null;
-  if (useCodex && !codexToken) {
-    // Codex creds present but unusable (refresh failed) — tell the user to
-    // reconnect rather than 500.
-    return { ok: false, response: agentUnavailableResponse("no_provider_credentials") };
+  // Proactive refresh: the set is written into the sandbox at turn start and
+  // must survive the whole turn. A refresh ROTATES the refresh token, so the
+  // sandbox must get the whole fresh set (access + refresh + expiry) — never
+  // the new access token with the old, now-dead refresh token.
+  const codex = useCodex ? await getFreshCodexCredentials(codexAuth, userId) : null;
+  const writtenRefreshToken = codex?.refreshToken ?? null;
+  if (useCodex && !codex) {
+    // The refresh failed (expired or revoked sign-in) — ask the user to
+    // reconnect instead of starting a turn that can only 401.
+    return { ok: false, response: agentUnavailableResponse("codex_reconnect") };
   }
 
   const proxyProvider = proxyProviderForOpenCodeId(modelRef.providerID);
@@ -314,14 +319,13 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
   }
 
   await writeOpenCodeAuth(projectId, {
-    codex:
-      useCodex && codexToken
-        ? {
-            accessToken: codexToken,
-            refreshToken: codexAuth.codexOAuthRefreshToken,
-            expiresAt: codexAuth.codexOAuthExpiresAt,
-          }
-        : null,
+    codex: codex
+      ? {
+          accessToken: codex.accessToken,
+          refreshToken: codex.refreshToken,
+          expiresAt: codex.expiresAt,
+        }
+      : null,
     proxy: llmProxyToken
       ? { providerID: modelRef.providerID, token: llmProxyToken }
       : null,
