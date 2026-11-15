@@ -70,6 +70,7 @@ export interface SimVideoConfig {
 }
 
 export type SimInput =
+  | { kind: "hinge"; angle: number }
   | { kind: "tap"; normX: number; normY: number }
   | { kind: "swipe"; startX: number; startY: number; endX: number; endY: number }
   | { kind: "scroll"; normX: number; normY: number; deltaX: number; deltaY: number }

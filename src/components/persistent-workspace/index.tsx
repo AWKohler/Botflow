@@ -942,6 +942,15 @@ function StoppedPreviewPlaceholder({
   screenshots?: { iphone?: string | null; ipad?: string | null };
 }) {
   const [device, setDevice] = useState<DeviceModelUI>(loadDevicePref);
+  const [duoEnabled, setDuoEnabled] = useState(false);
+  useEffect(() => {
+    const abort = new AbortController();
+    void fetch('/api/swift-preview/config', { signal: abort.signal, cache: 'no-store' })
+      .then(res => res.ok ? res.json() : null)
+      .then(config => { if (!abort.signal.aborted) setDuoEnabled(config?.duoEnabled === true && config?.provider === 'cloud'); })
+      .catch(() => undefined);
+    return () => abort.abort();
+  }, []);
   const [orientation, setOrientation] = useState<OrientationUI>(loadOrientationPref);
   const screenshotUrl =
     device === "iPad-Pro" ? screenshots?.ipad : screenshots?.iphone;
@@ -974,6 +983,7 @@ function StoppedPreviewPlaceholder({
             {([
               { id: "iPhone-16-Pro" as DeviceModelUI, label: "iPhone", Icon: Smartphone },
               { id: "iPad-Pro" as DeviceModelUI, label: "iPad", Icon: Tablet },
+              ...(duoEnabled ? [{ id: 'iPhone-Duo' as DeviceModelUI, label: 'iPhone Duo · Beta', Icon: Smartphone }] : []),
             ]).map(({ id, label, Icon }) => (
               <button
                 key={id}

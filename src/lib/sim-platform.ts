@@ -2,7 +2,7 @@
 // Used by the swift-preview API routes to provision sessions and ship build
 // tarballs across the Tailscale Funnel / Cloudflare Tunnel boundary.
 
-export type SimDeviceModel = "iPhone-16-Pro" | "iPad-Pro";
+export type SimDeviceModel = "iPhone-16-Pro" | "iPad-Pro" | "iPhone-Duo";
 export type SimOrientation = "portrait" | "landscape";
 
 export interface CreateSessionInput {

@@ -9,7 +9,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 // server to avoid React's "useLayoutEffect does nothing on the server" warning.
 const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-export type DeviceModelUI = "iPhone-16-Pro" | "iPad-Pro";
+export type DeviceModelUI = "iPhone-16-Pro" | "iPad-Pro" | "iPhone-Duo";
 export type OrientationUI = "portrait" | "landscape";
 
 interface Geometry {
@@ -32,7 +32,7 @@ interface Geometry {
 //   iPhone 17 Pro PNG: 1350×2760, transparent hole at x=72 y=69 w=1206 h=2622.
 //   iPad Pro SVG: 776×595 (landscape); screen centered at 719.06×538.211 with a
 //   ~28px symmetric inset (matches the separated Screen-HERE.svg mockup).
-const GEOMETRY: Record<DeviceModelUI, Geometry> = {
+const GEOMETRY: Record<Exclude<DeviceModelUI, 'iPhone-Duo'>, Geometry> = {
   "iPhone-16-Pro": {
     natural: "portrait",
     box: { w: 1350, h: 2760 },
@@ -61,15 +61,38 @@ interface DeviceFrameProps {
   overlay?: ReactNode;
   /** Optional element pinned to the bottom of the stream area (keyboard hint). */
   footer?: ReactNode;
+  hingeAngle?: number;
 }
 
-export function DeviceFrame({
+export function DeviceFrame(props: DeviceFrameProps): React.JSX.Element {
+  if (props.deviceModel === 'iPhone-Duo') return <DuoDeviceFrame {...props} />;
+  return <StandardDeviceFrame {...props} deviceModel={props.deviceModel} />;
+}
+
+function DuoDeviceFrame({ children, overlay, footer, hingeAngle = 180, orientation }: DeviceFrameProps) {
+  const closed = hingeAngle === 0;
+  const ratio = closed ? 1398 / 2034 : 2007 / 2853;
+  const landscape = orientation === 'landscape';
+  return (
+    <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-8">
+      <div className="relative overflow-hidden rounded-[32px] border-[7px] border-zinc-700 bg-black shadow-2xl"
+        style={{ aspectRatio: landscape ? 1 / ratio : ratio, height: '92%', maxWidth: '94%', maxHeight: '94%' }}>
+        <div className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-[23px]">{children}</div>
+        {!closed && <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-black/15 shadow-[0_0_10px_2px_rgba(0,0,0,0.15)]" />}
+      </div>
+      {overlay && <div className="pointer-events-none absolute inset-0 flex items-center justify-center">{overlay}</div>}
+      {footer && <div className="absolute bottom-2">{footer}</div>}
+    </div>
+  );
+}
+
+function StandardDeviceFrame({
   deviceModel,
   orientation,
   children,
   overlay,
   footer,
-}: DeviceFrameProps): React.JSX.Element {
+}: DeviceFrameProps & { deviceModel: Exclude<DeviceModelUI, 'iPhone-Duo'> }): React.JSX.Element {
   const g = GEOMETRY[deviceModel];
   const rotated = orientation !== g.natural;
 

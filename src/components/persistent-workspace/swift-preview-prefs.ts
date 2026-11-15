@@ -11,7 +11,7 @@ export function loadDevicePref(): DeviceModelUI {
   if (typeof window === "undefined") return "iPhone-16-Pro";
   try {
     const v = window.localStorage.getItem(DEVICE_KEY);
-    if (v === "iPhone-16-Pro" || v === "iPad-Pro") return v;
+    if (v === "iPhone-16-Pro" || v === "iPad-Pro" || v === "iPhone-Duo") return v;
   } catch {
     /* localStorage blocked */
   }

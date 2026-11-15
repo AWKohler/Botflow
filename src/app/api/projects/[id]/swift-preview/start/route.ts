@@ -13,9 +13,10 @@ import { recordSwiftPreviewSession } from "@/lib/swift-preview-store";
 import { canUseSwift, swiftProjectForbidden } from "@/lib/swift-access";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 import type { SimDeviceModel, SimOrientation } from "@/lib/sim-platform";
+import { isBetaUser } from "@/lib/tier";
 import { simulatorProvider } from "@/lib/simulator-provider";
 
-const DEVICE_MODELS: readonly SimDeviceModel[] = ["iPhone-16-Pro", "iPad-Pro"];
+const DEVICE_MODELS: readonly SimDeviceModel[] = ["iPhone-16-Pro", "iPad-Pro", "iPhone-Duo"];
 const ORIENTATIONS: readonly SimOrientation[] = ["portrait", "landscape"];
 
 export const runtime = "nodejs";
@@ -43,6 +44,9 @@ export async function POST(
   const deviceModel = DEVICE_MODELS.includes(body.deviceModel as SimDeviceModel)
     ? (body.deviceModel as SimDeviceModel)
     : "iPhone-16-Pro";
+  if (deviceModel === "iPhone-Duo" && (process.env.SIM_ENABLE_DUO_BETA !== "1" || !(await isBetaUser(userId)))) {
+    return NextResponse.json({ error: "Duo preview is not enabled for this account." }, { status: 403 });
+  }
   const orientation = ORIENTATIONS.includes(body.orientation as SimOrientation)
     ? (body.orientation as SimOrientation)
     : undefined;

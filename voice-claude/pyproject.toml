@@ -1,0 +1,13 @@
+[project]
+name = "voice-claude"
+version = "0.1.0"
+description = "Full-duplex voice front end for Claude Code using Kyutai STT/TTS on MLX"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "moshi_mlx>=0.3.0",
+    "claude-agent-sdk",
+    "pyobjc-framework-avfoundation>=13.0",
+]
+
+[tool.uv]
+package = false

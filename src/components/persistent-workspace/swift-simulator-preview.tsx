@@ -40,6 +40,7 @@ import { LocalSimulatorSetup } from "./local-simulator-setup";
 import { rebuildLocalSession } from "./local-simulator-client";
 import { useToast } from "@/components/ui/toast";
 import { BuildIssuesPanel } from "./build-issues-panel";
+import { DuoStage, duoPointerToRaw, type DuoPanel, type DuoStageHandle } from "./duo-stage";
 import type { SimBuildDiagnostic } from "./swift-stream-client";
 import {
   acquireSession,
@@ -68,18 +69,25 @@ function blitToCanvas(
   source: CanvasImageSource,
   sw: number,
   sh: number,
-  landscape: boolean,
+  rotation: "none" | "ccw" | "cw",
 ): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  if (landscape) {
+  if (rotation !== "none") {
     if (canvas.width !== sh || canvas.height !== sw) {
       canvas.width = sh;
       canvas.height = sw;
     }
     ctx.save();
-    ctx.translate(0, canvas.height); // = sw
-    ctx.rotate(-Math.PI / 2); // 90° counter-clockwise
+    if (rotation === "ccw") {
+      ctx.translate(0, canvas.height); // = sw
+      ctx.rotate(-Math.PI / 2); // 90° counter-clockwise
+    } else {
+      // iPhone Duo inner panel: its framebuffer is portrait but the panel is
+      // physically landscape, so the image arrives turned 90° CCW — undo it.
+      ctx.translate(canvas.width, 0); // = sh
+      ctx.rotate(Math.PI / 2); // 90° clockwise
+    }
     ctx.drawImage(source, 0, 0, sw, sh);
     ctx.restore();
   } else {
@@ -136,6 +144,7 @@ let localSetupConfirmed = false;
 
 export function SwiftSimulatorPreview(props: SwiftSimulatorPreviewProps) {
   const [provider, setProvider] = useState<SimulatorProvider | null>(null);
+  const [duoEnabled, setDuoEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [localReady, setLocalReady] = useState(localSetupConfirmed);
   const [retry, setRetry] = useState(0);
@@ -150,6 +159,7 @@ export function SwiftSimulatorPreview(props: SwiftSimulatorPreviewProps) {
           throw new Error(body.error || "Could not load preview configuration.");
         }
         setProvider(body.provider);
+        setDuoEnabled(body.duoEnabled === true);
       } catch (error) {
         if (!controller.signal.aborted) setError((error as Error).message);
       }
@@ -159,7 +169,7 @@ export function SwiftSimulatorPreview(props: SwiftSimulatorPreviewProps) {
   if (error) return <div className="p-5 text-sm text-muted" role="alert">{error} <button className="text-accent underline" onClick={() => setRetry((r) => r + 1)}>Retry</button></div>;
   if (!provider) return <div className="flex items-center gap-2 p-5 text-sm text-muted"><Loader2 size={16} className="animate-spin" />Checking preview availability…</div>;
   if (provider === "local" && !localReady) return <LocalSimulatorSetup onReady={() => { localSetupConfirmed = true; setLocalReady(true); }} />;
-  return <ActiveSwiftSimulatorPreview {...props} provider={provider} onLocalSetup={() => { localSetupConfirmed = false; setLocalReady(false); }} />;
+  return <ActiveSwiftSimulatorPreview {...props} provider={provider} duoEnabled={duoEnabled} onLocalSetup={() => { localSetupConfirmed = false; setLocalReady(false); }} />;
 }
 
 function ActiveSwiftSimulatorPreview({
@@ -171,8 +181,9 @@ function ActiveSwiftSimulatorPreview({
   onRestartRequested,
   screenshots,
   provider,
+  duoEnabled,
   onLocalSetup,
-}: SwiftSimulatorPreviewProps & { provider: SimulatorProvider; onLocalSetup: () => void }) {
+}: SwiftSimulatorPreviewProps & { provider: SimulatorProvider; duoEnabled: boolean; onLocalSetup: () => void }) {
   const isPip = mode === "pip";
   const { toast } = useToast();
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -196,6 +207,16 @@ function ActiveSwiftSimulatorPreview({
   const [orientation, setOrientation] = useState<OrientationUI>(loadOrientationPref);
   const [liveOrientation, setLiveOrientation] = useState<OrientationUI | null>(null);
   const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
+  // iPhone Duo (beta). `hingeAngle` is the angle last commanded; the stage
+  // animates toward it and sweeps intermediate angles itself.
+  const [hingeAngle, setHingeAngle] = useState(180);
+  const [duoPanel, setDuoPanel] = useState<DuoPanel | null>(null);
+  const duoPanelRef = useRef<DuoPanel | null>(null);
+  const duoStageRef = useRef<DuoStageHandle | null>(null);
+  const changeHinge = useCallback((angle: number, final: boolean) => {
+    if (final) setHingeAngle(angle);
+    clientRef.current?.sendInput({ kind: 'hinge', angle });
+  }, []);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // The orientation currently shown (live takes precedence). Held in a ref so the
@@ -274,6 +295,12 @@ function ActiveSwiftSimulatorPreview({
   const [screenshotOverlayGone, setScreenshotOverlayGone] = useState(false);
   const deviceModelRef = useRef<DeviceModelUI>(loadDevicePref());
   const lastScreenshotAtRef = useRef(0);
+  // How a decoded frame is turned before display. Reads refs only, so the
+  // decoder callbacks (created once per stream) always see current values.
+  const frameRotation = (): "none" | "ccw" | "cw" => {
+    if (deviceModelRef.current === "iPhone-Duo") return duoPanelRef.current === "inner" ? "cw" : "none";
+    return displayOrientationRef.current === "landscape" ? "ccw" : "none";
+  };
 
   const markFrame = useCallback(() => {
     if (!hasFrameRef.current) {
@@ -283,6 +310,7 @@ function ActiveSwiftSimulatorPreview({
   }, []);
 
   const captureScreenshot = useCallback((force = false) => {
+    if (deviceModelRef.current === 'iPhone-Duo') return;
     const canvas = canvasRef.current;
     if (!canvas || !hasFrameRef.current) return;
     if (!force && Date.now() - lastScreenshotAtRef.current < 10_000) return;
@@ -801,13 +829,10 @@ function ActiveSwiftSimulatorPreview({
     if (!canvas) return;
     const img = new Image();
     img.onload = () => {
-      blitToCanvas(
-        canvas,
-        img,
-        img.naturalWidth,
-        img.naturalHeight,
-        displayOrientationRef.current === "landscape",
-      );
+      blitToCanvas(canvas, img, img.naturalWidth, img.naturalHeight, frameRotation());
+      if (deviceModelRef.current === "iPhone-Duo" && duoPanelRef.current) {
+        duoStageRef.current?.paint(canvas, duoPanelRef.current);
+      }
       markFrame();
       frameCountRef.current++;
       const now = Date.now();
@@ -842,6 +867,13 @@ function ActiveSwiftSimulatorPreview({
 
     canvas.width = config.width;
     canvas.height = config.height;
+    if (deviceModelRef.current === "iPhone-Duo") {
+      // The host follows whichever panel iOS has lit; the two stream at
+      // different sizes (inner 2007×2853, cover 1398×2034).
+      const panel: DuoPanel = config.width >= 1800 ? "inner" : "cover";
+      duoPanelRef.current = panel;
+      setDuoPanel(panel);
+    }
 
     // Prefer the software decoder: the platform hardware decoders (VideoToolbox
     // in Chrome on macOS) hold ~8 frames before emitting one — ~130ms of added
@@ -854,13 +886,10 @@ function ActiveSwiftSimulatorPreview({
         output: (frame: VideoFrame) => {
           const c = canvasRef.current;
           if (c) {
-            blitToCanvas(
-              c,
-              frame,
-              frame.displayWidth,
-              frame.displayHeight,
-              displayOrientationRef.current === "landscape",
-            );
+            blitToCanvas(c, frame, frame.displayWidth, frame.displayHeight, frameRotation());
+            if (deviceModelRef.current === "iPhone-Duo" && duoPanelRef.current) {
+              duoStageRef.current?.paint(c, duoPanelRef.current);
+            }
           }
           frame.close();
           markFrame();
@@ -924,8 +953,15 @@ function ActiveSwiftSimulatorPreview({
     if (pill.kind !== "live") return;
     const canvas = canvasRef.current;
     if (!canvas) return;
+    // iPhone Duo: input comes from the 3D stage's screen surfaces, not the
+    // (hidden) decode canvas.
+    const isDuo = deviceModelRef.current === "iPhone-Duo";
+    const el: HTMLElement | null = isDuo ? duoStageRef.current?.root() ?? null : canvas;
+    if (!el) return;
+    let lastDuoPos: { normX: number; normY: number } | null = null;
 
-    const norm = (e: MouseEvent | WheelEvent): { normX: number; normY: number } => {
+    const norm = (e: MouseEvent | WheelEvent): { normX: number; normY: number } | null => {
+      if (isDuo) return duoPointerToRaw(e, duoPanelRef.current);
       const r = canvas.getBoundingClientRect();
       const dnx = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
       const dny = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
@@ -943,14 +979,24 @@ function ActiveSwiftSimulatorPreview({
       // preventDefault() suppresses text-selection during a drag — but it also
       // blocks the canvas from receiving keyboard focus, so focus it explicitly.
       e.preventDefault();
-      canvas.focus();
-      dragRef.current = { pos: norm(e) };
+      el.focus();
+      const pos = norm(e);
+      if (!pos) return; // bezel or an unlit panel
+      lastDuoPos = pos;
+      dragRef.current = { pos };
+    };
+    const onMove = (e: MouseEvent): void => {
+      if (!dragRef.current) return;
+      const pos = norm(e);
+      if (pos) lastDuoPos = pos;
     };
     const onUp = (e: MouseEvent): void => {
       const drag = dragRef.current;
       if (!drag) return;
       dragRef.current = null;
-      const end = norm(e);
+      // A drag released off the screen ends where it last was on it.
+      const end = norm(e) ?? lastDuoPos;
+      if (!end) return;
       const dx = end.normX - drag.pos.normX;
       const dy = end.normY - drag.pos.normY;
       const client = clientRef.current;
@@ -969,13 +1015,17 @@ function ActiveSwiftSimulatorPreview({
     };
     const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
-      const { normX, normY } = norm(e);
+      const pos = norm(e);
+      if (!pos) return;
+      // The Duo's inner panel is shown rotated 90° CW; turn the wheel vector
+      // back into the framebuffer's axes the same way positions are.
+      const innerDuo = isDuo && duoPanelRef.current === "inner";
       clientRef.current?.sendInput({
         kind: "scroll",
-        normX,
-        normY,
-        deltaX: e.deltaX,
-        deltaY: e.deltaY,
+        normX: pos.normX,
+        normY: pos.normY,
+        deltaX: innerDuo ? e.deltaY : e.deltaX,
+        deltaY: innerDuo ? -e.deltaX : e.deltaY,
       });
     };
     const onCtx = (e: MouseEvent): void => e.preventDefault();
@@ -1011,25 +1061,27 @@ function ActiveSwiftSimulatorPreview({
         client.sendInput({ kind: "key", key: e.key });
       }
     };
-    const onFocusChange = (): void => setKbdFocused(document.activeElement === canvas);
+    const onFocusChange = (): void => setKbdFocused(document.activeElement === el);
 
-    canvas.addEventListener("mousedown", onDown);
+    el.addEventListener("mousedown", onDown);
+    el.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-    canvas.addEventListener("wheel", onWheel, { passive: false });
-    canvas.addEventListener("contextmenu", onCtx);
-    canvas.addEventListener("keydown", onKeyDown);
-    canvas.addEventListener("focus", onFocusChange);
-    canvas.addEventListener("blur", onFocusChange);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("contextmenu", onCtx);
+    el.addEventListener("keydown", onKeyDown);
+    el.addEventListener("focus", onFocusChange);
+    el.addEventListener("blur", onFocusChange);
     return () => {
-      canvas.removeEventListener("mousedown", onDown);
+      el.removeEventListener("mousedown", onDown);
+      el.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      canvas.removeEventListener("wheel", onWheel);
-      canvas.removeEventListener("contextmenu", onCtx);
-      canvas.removeEventListener("keydown", onKeyDown);
-      canvas.removeEventListener("focus", onFocusChange);
-      canvas.removeEventListener("blur", onFocusChange);
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("contextmenu", onCtx);
+      el.removeEventListener("keydown", onKeyDown);
+      el.removeEventListener("focus", onFocusChange);
+      el.removeEventListener("blur", onFocusChange);
     };
-  }, [pill.kind]);
+  }, [pill.kind, deviceModel]);
 
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -1128,7 +1180,7 @@ function ActiveSwiftSimulatorPreview({
                 "flex items-center rounded-md border border-border bg-elevated text-muted hover:text-fg",
                 isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px]",
               )}
-              title={deviceModel === "iPad-Pro" ? "iPad Pro" : provider === "local" ? "iPhone" : "iPhone 17 Pro"}
+              title={deviceModel === "iPhone-Duo" ? "iPhone Duo" : deviceModel === "iPad-Pro" ? "iPad Pro" : provider === "local" ? "iPhone" : "iPhone 17 Pro"}
             >
               {deviceModel === "iPad-Pro" ? (
                 <Tablet size={isPip ? 11 : 12} />
@@ -1136,7 +1188,7 @@ function ActiveSwiftSimulatorPreview({
                 <Smartphone size={isPip ? 11 : 12} />
               )}
               {!isPip && (
-                <span>{deviceModel === "iPad-Pro" ? "iPad Pro" : provider === "local" ? "iPhone" : "iPhone 17 Pro"}</span>
+                <span>{deviceModel === "iPhone-Duo" ? "iPhone Duo" : deviceModel === "iPad-Pro" ? "iPad Pro" : provider === "local" ? "iPhone" : "iPhone 17 Pro"}</span>
               )}
               {!isPip && <ChevronDown size={12} />}
             </button>
@@ -1150,6 +1202,7 @@ function ActiveSwiftSimulatorPreview({
                   {([
                     { id: "iPhone-16-Pro" as DeviceModelUI, label: provider === "local" ? "iPhone" : "iPhone 17 Pro", Icon: Smartphone },
                     { id: "iPad-Pro" as DeviceModelUI, label: "iPad Pro", Icon: Tablet },
+                    ...(duoEnabled && provider === 'cloud' ? [{ id: 'iPhone-Duo' as DeviceModelUI, label: 'iPhone Duo · Beta', Icon: Smartphone }] : []),
                   ]).map(({ id, label, Icon }) => (
                     <button
                       key={id}
@@ -1289,8 +1342,28 @@ function ActiveSwiftSimulatorPreview({
           !isPip && "rounded-xl border border-border bg-elevated/60",
         )}
       >
+        {deviceModel === 'iPhone-Duo' && (
+          <DuoStage
+            ref={duoStageRef}
+            hingeAngle={hingeAngle}
+            panel={duoPanel}
+            interactive={pill.kind === "live" && duoEnabled}
+            onHinge={changeHinge}
+            focused={kbdFocused}
+            overlay={pill.kind !== "live" ? <CenterContent pill={pill} hasCalibration={!!calibration} /> : undefined}
+            footer={
+              !isPip && pill.kind === "live" ? (
+                <div className="rounded-md bg-black/55 px-2 py-0.5 text-[10px] text-white/70 backdrop-blur whitespace-nowrap">
+                  {kbdFocused ? "Keyboard connected — typing goes to the device" : "Click a screen to enable keyboard"}
+                </div>
+              ) : undefined
+            }
+          />
+        )}
+        <div className={deviceModel === 'iPhone-Duo' ? "pointer-events-none absolute h-px w-px overflow-hidden opacity-0" : "contents"}>
         <DeviceFrame
           deviceModel={deviceModel}
+          hingeAngle={hingeAngle}
           orientation={liveOrientation ?? orientation}
           overlay={
             pill.kind !== "live" ? (
@@ -1344,6 +1417,7 @@ function ActiveSwiftSimulatorPreview({
             );
           })()}
         </DeviceFrame>
+        </div>
       </div>
 
       {/* Structured build Issues panel — full mode only.

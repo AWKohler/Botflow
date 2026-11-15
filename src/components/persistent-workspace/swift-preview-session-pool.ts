@@ -30,7 +30,7 @@ interface PooledSession {
 
 export interface SessionOptions {
   provider?: SimulatorProvider;
-  deviceModel?: "iPhone-16-Pro" | "iPad-Pro";
+  deviceModel?: "iPhone-16-Pro" | "iPad-Pro" | "iPhone-Duo";
   orientation?: "portrait" | "landscape";
 }
 
