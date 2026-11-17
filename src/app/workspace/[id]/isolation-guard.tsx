@@ -102,7 +102,7 @@ function WebContainerMigrationGate({
           {error && <p className="text-xs text-neutral-400 break-words">{error}</p>}
           <button
             onClick={() => { startedRef.current = true; run(); }}
-            className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 transition"
+            className="inline-flex items-center gap-2 rounded-lg bg-fg px-3.5 h-9 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
           >
             Try again
           </button>

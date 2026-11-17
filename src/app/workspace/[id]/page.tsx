@@ -47,7 +47,7 @@ export default async function WorkspacePage({
           <div className="flex items-center justify-center gap-2">
             <Link
               href="/projects"
-              className="inline-flex items-center rounded-xl bg-black px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 transition"
+              className="inline-flex items-center rounded-lg bg-fg px-3.5 h-9 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
             >
               Go to my projects
             </Link>

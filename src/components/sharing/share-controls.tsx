@@ -393,7 +393,7 @@ function SharePopover({
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
-        className="fixed z-50 w-[380px] max-w-[calc(100vw-1rem)] rounded-2xl border border-border bg-surface shadow-xl p-4"
+        className="fixed z-50 w-[380px] max-w-[calc(100vw-1rem)] rounded-2xl border border-border bg-bg shadow-2xl p-4"
         style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
       >
         <div className="flex items-start justify-between mb-3">

@@ -93,12 +93,12 @@ export function EnvVarModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="relative w-full max-w-lg bg-surface border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+      <div className="relative w-full max-w-lg bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden">
 
         {/* Header */}
         <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-border">
-          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-accent/15 text-accent shrink-0">
+          <div className="flex items-center justify-center w-9 h-9 rounded-lg border border-border bg-elevated text-muted shrink-0">
             <KeyRound size={18} />
           </div>
           <div className="flex-1 min-w-0">
@@ -146,7 +146,7 @@ export function EnvVarModal({
                 value={value}
                 onChange={(e) => { setValue(e.target.value); setError(null); }}
                 placeholder="Paste the value here"
-                className="w-full bg-elevated border border-border rounded-lg pl-3 pr-9 py-2 text-sm text-fg placeholder:text-muted outline-none focus:ring-1 focus:ring-accent/50 focus:border-accent/50 transition-colors font-mono"
+                className="w-full bg-elevated border border-border rounded-lg pl-3 pr-9 py-2 text-sm text-fg placeholder:text-muted outline-none focus:ring-3 focus:ring-accent/15 focus:border-accent transition-colors font-mono"
                 autoComplete="off"
                 spellCheck={false}
                 autoFocus
@@ -187,7 +187,7 @@ export function EnvVarModal({
           <button
             onClick={handleSave}
             disabled={saving || !value.trim()}
-            className="flex items-center gap-2 bg-accent text-accent-foreground text-sm font-medium rounded-lg px-4 py-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 bg-fg text-bg text-sm font-medium rounded-lg px-4 h-9 shadow-xs hover:bg-fg/88 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? (
               <>

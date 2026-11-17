@@ -228,10 +228,10 @@ export function ConflictModal({
   }, [onClose, onResolved, projectId, toast]);
 
   const modal = (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]">
       <div
         className={cn(
-          "rounded-2xl border border-border bg-surface shadow-2xl overflow-hidden flex flex-col",
+          "rounded-2xl border border-border bg-bg shadow-2xl overflow-hidden flex flex-col",
           mode === "manual" ? "w-[92vw] max-w-5xl h-[85vh]" : "w-full max-w-xl max-h-[80vh]",
         )}
       >

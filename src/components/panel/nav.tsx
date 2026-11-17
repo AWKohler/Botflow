@@ -4,10 +4,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@/components/auth';
 import { cn } from '@/lib/utils';
-import { Activity, Boxes, Gauge, Users } from 'lucide-react';
+import { BrandMark } from '@/components/site/SiteHeader';
+import { Badge } from '@/components/ui/badge';
+import { Activity, Boxes, Gauge, UserCog, Users } from 'lucide-react';
 
 const TABS = [
-  { href: '/panel/accounts', label: 'Accounts', icon: Users },
+  { href: '/panel/accounts', label: 'Accounts', icon: UserCog },
   { href: '/panel', label: 'Overview', icon: Gauge },
   { href: '/panel/users', label: 'Users', icon: Users },
   { href: '/panel/infra', label: 'Infrastructure', icon: Boxes },
@@ -17,12 +19,13 @@ const TABS = [
 export function PanelNav() {
   const pathname = usePathname();
   return (
-    <header className="sticky top-0 z-20 border-b border-border bg-bg/90 backdrop-blur">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 flex items-center gap-6 h-14">
-        <Link href="/projects" className="text-sm font-semibold text-fg shrink-0">
-          Botflow <span className="text-muted font-normal">Admin</span>
+    <header className="sticky top-0 z-20 border-b border-border bg-bg/85 backdrop-blur-lg">
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-6 sm:px-10">
+        <Link href="/projects" aria-label="Back to Botflow" className="flex shrink-0 items-center gap-2.5 rounded-md">
+          <BrandMark />
+          <Badge>Admin</Badge>
         </Link>
-        <nav className="flex items-center gap-1 flex-1 overflow-x-auto">
+        <nav aria-label="Admin" className="flex flex-1 items-center gap-1 overflow-x-auto">
           {TABS.map((t) => {
             const active =
               t.href === '/panel' ? pathname === '/panel' : pathname.startsWith(t.href);
@@ -30,14 +33,13 @@ export function PanelNav() {
               <Link
                 key={t.href}
                 href={t.href}
+                aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm whitespace-nowrap transition-colors',
-                  active
-                    ? 'bg-elevated text-fg font-medium'
-                    : 'text-muted hover:text-fg hover:bg-surface',
+                  'flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  active ? 'bg-elevated text-fg' : 'text-muted hover:text-fg',
                 )}
               >
-                <t.icon className="w-3.5 h-3.5" />
+                <t.icon className="h-3.5 w-3.5" strokeWidth={1.75} />
                 {t.label}
               </Link>
             );

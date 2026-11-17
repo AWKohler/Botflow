@@ -253,10 +253,10 @@ export function OAuthProviderModal({
 
   return (
     /* Full-screen overlay */
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
       {/* Modal card */}
       <div
-        className="relative w-full max-w-lg bg-surface border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden max-h-[90vh] flex flex-col"
+        className="relative w-full max-w-lg bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden max-h-[90vh] flex flex-col"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -265,7 +265,7 @@ export function OAuthProviderModal({
 
         {/* Header */}
         <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-border">
-          <span className="flex items-center justify-center w-9 h-9 shrink-0 rounded-lg bg-accent/15 text-accent">
+          <span className="flex items-center justify-center w-9 h-9 shrink-0 rounded-lg border border-border bg-elevated text-muted">
             <KeyRound size={18} />
           </span>
           <div className="flex-1 min-w-0">
@@ -416,7 +416,7 @@ export function OAuthProviderModal({
                       aria-invalid={Boolean(fieldError)}
                       aria-describedby={describedBy}
                       className={cn(
-                        "w-full bg-elevated border rounded-lg px-3 py-2 text-sm text-fg placeholder:text-muted outline-none focus:ring-1 focus:ring-accent/50 focus:border-accent/50 transition-colors",
+                        "w-full bg-elevated border rounded-lg px-3 py-2 text-sm text-fg placeholder:text-muted outline-none focus:ring-3 focus:ring-accent/15 focus:border-accent transition-colors",
                         fieldError ? "border-danger-border" : "border-border",
                       )}
                       autoComplete="off"
@@ -464,7 +464,7 @@ export function OAuthProviderModal({
             onClick={handleSave}
             disabled={saving || missing || hasValidationErrors || !convexSiteUrl}
             aria-describedby={error ? errorId : undefined}
-            className="flex items-center gap-2 bg-accent text-accent-foreground text-sm font-medium rounded-lg px-4 py-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 bg-fg text-bg text-sm font-medium rounded-lg px-4 h-9 shadow-xs hover:bg-fg/88 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? (
               <>

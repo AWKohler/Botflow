@@ -2115,7 +2115,7 @@ function AgentThreadPanel({
 
       {/* Inline backend chip — info-only. Hidden when there's nothing
           meaningful to explain (e.g., non-Anthropic model on free tier). */}
-      <div className="px-3 pb-1">
+      <div className="border-b border-border pb-2.5 empty:hidden">
         <BackendChip
           backend={agentBackend}
           reason={derivedBackend.reason}
@@ -2125,7 +2125,7 @@ function AgentThreadPanel({
 
       {/* Messages — v6 parts-based rendering. Segments from prior agents
           stay visible but visually de-emphasized; a divider marks the boundary. */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden space-y-3 p-3 modern-scrollbar min-w-0">
+      <div ref={scrollRef} className="modern-scrollbar min-w-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-1.5 py-3">
         {messages.map((m, idx) => {
           const mySeg = segmentByMessageIdRef.current.get(m.id) ?? currentSegmentId ?? null;
           const prevSeg = idx > 0

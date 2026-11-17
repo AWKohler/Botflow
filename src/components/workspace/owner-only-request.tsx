@@ -18,10 +18,10 @@ interface OwnerOnlyRequestProps {
  */
 export function OwnerOnlyRequest({ subject, onHide, onSkip }: OwnerOnlyRequestProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="relative mx-4 w-full max-w-md overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+      <div className="relative mx-4 w-full max-w-md overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl">
         <div className="flex items-center gap-3 border-b border-border px-6 pb-4 pt-6">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-elevated text-muted">
             <Lock size={18} />
           </div>
           <div className="min-w-0 flex-1">
@@ -50,7 +50,7 @@ export function OwnerOnlyRequest({ subject, onHide, onSkip }: OwnerOnlyRequestPr
           )}
           <button
             onClick={onHide}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
+            className="rounded-lg bg-fg px-4 h-9 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
           >
             OK
           </button>

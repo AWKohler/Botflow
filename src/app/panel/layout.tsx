@@ -20,7 +20,7 @@ export default async function PanelLayout({
   return (
     <div className="min-h-screen bg-bg">
       <PanelNav />
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6">{children}</main>
+      <main className="mx-auto max-w-7xl px-6 pb-20 pt-10 sm:px-10">{children}</main>
     </div>
   );
 }

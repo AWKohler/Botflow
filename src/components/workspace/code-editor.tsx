@@ -305,7 +305,10 @@ export function CodeEditor({
       onMount={onMount}
       options={{
         minimap: { enabled: false },
-        fontSize: 14,
+        fontSize: 13,
+        lineHeight: 20,
+        // Don't box ordinary typographic characters (en dashes, curly quotes).
+        unicodeHighlight: { ambiguousCharacters: false, invisibleCharacters: false },
         lineNumbers: 'on',
         roundedSelection: false,
         scrollBeyondLastLine: false,

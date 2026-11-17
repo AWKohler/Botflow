@@ -603,7 +603,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                     <div>
                       <div className="flex items-center justify-between mb-3">
                         <div>
-                          <h3 className="text-sm font-semibold text-fg">Convex Account</h3>
+                          <h3 className="text-sm font-semibold text-fg">Convex account</h3>
                           <p className="text-xs text-muted mt-0.5">
                             Connect your Convex account to use your own backend projects.
                             Required for free-plan projects.
@@ -624,12 +624,12 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                         >
                           {convexConnecting ? (
                             <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting&hellip;</>
-                          ) : 'Connect Convex Account'}
+                          ) : 'Connect Convex account'}
                         </button>
                       ) : (
                         <button
                           onClick={disconnectConvexOAuth}
-                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-danger-border px-3.5 text-sm font-medium text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
+                          className="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
                         >
                           Disconnect
                         </button>
@@ -673,7 +673,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                       {hasCodexOAuth && codexOAuthStep === 'idle' && (
                         <button
                           onClick={disconnectCodexOAuth}
-                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-danger-border px-3.5 text-sm font-medium text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
+                          className="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
                         >
                           Disconnect
                         </button>
@@ -771,7 +771,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                       {hasClaudeOAuth && oauthStep === 'idle' && (
                         <button
                           onClick={disconnectOAuth}
-                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-danger-border px-3.5 text-sm font-medium text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
+                          className="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
                         >
                           Disconnect
                         </button>
@@ -846,16 +846,16 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
 
                     {/* ── BYOK API Keys ── */}
                     <div>
-                      <h3 className="text-sm font-semibold text-fg mb-1">API Keys</h3>
+                      <h3 className="text-sm font-semibold text-fg mb-1">API keys</h3>
                       <p className="text-xs text-muted mb-4">
                         Bring your own keys. Each key is saved independently — adding one won&apos;t affect the others.
                         {hasCodexOAuth && (
-                          <span className="ml-1 text-success font-medium">
+                          <span className="ml-1 text-fg">
                             Codex OAuth is active — OpenAI API key is used as fallback only.
                           </span>
                         )}
                         {ANTHROPIC_OAUTH_ENABLED && hasClaudeOAuth && (
-                          <span className="ml-1 text-success font-medium">
+                          <span className="ml-1 text-fg">
                             Claude Code OAuth is active — Anthropic API key is used as fallback only.
                           </span>
                         )}
@@ -941,7 +941,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                           <button
                             onClick={disconnectApple}
                             disabled={appleDisconnecting}
-                            className="ml-auto inline-flex h-9 items-center gap-2 rounded-lg border border-danger-border px-3.5 text-sm font-medium text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
+                            className="ml-auto inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
                           >
                             {appleDisconnecting ? (
                               <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Disconnecting&hellip;</>

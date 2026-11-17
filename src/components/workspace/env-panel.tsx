@@ -178,7 +178,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
             setNewKey((p) => ({ ...p, [scope]: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') }))
           }
           placeholder="KEY_NAME"
-          className="flex-1 bg-surface border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+          className="flex-1 bg-bg border border-border rounded-md px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-accent focus:ring-3 focus:ring-accent/15"
         />
       </div>
       <div className="flex gap-2">
@@ -187,7 +187,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
           onChange={(e) => setNewValue((p) => ({ ...p, [scope]: e.target.value }))}
           placeholder="value"
           type={scope === 'frontend' && newSecret ? 'password' : 'text'}
-          className="flex-1 bg-surface border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+          className="flex-1 bg-bg border border-border rounded-md px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-accent focus:ring-3 focus:ring-accent/15"
           onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(scope); }}
         />
       </div>

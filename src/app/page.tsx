@@ -2792,7 +2792,7 @@ export default function LandingV2() {
     <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} defaultTab={settingsDefaultTab} />
 
     {showAuthDialog && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] px-4">
         <div className="w-full max-w-md rounded-2xl border border-border bg-bg p-6 shadow-xl">
           <h2 className="text-xl font-semibold text-foreground">Sign in to start building</h2>
           <p className="mt-2 text-sm text-muted">
@@ -2816,7 +2816,7 @@ export default function LandingV2() {
     )}
 
     {projectStep !== null && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] px-4">
         <div className="w-full max-w-md rounded-2xl border border-border bg-bg shadow-xl overflow-hidden">
           {projectStep === 'convex' && (() => {
             const cloudForAll = process.env.NEXT_PUBLIC_ALLOW_CLOUD_CONVEX_FOR_ALL === 'true';

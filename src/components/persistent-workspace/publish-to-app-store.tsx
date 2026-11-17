@@ -747,7 +747,7 @@ export function PublishToAppStore({
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center px-4">
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
         onClick={() => {
           // Don't let an accidental click-outside dismiss the wizard while a
           // paid readiness op is in flight (it would discard a charged result).
@@ -1016,7 +1016,7 @@ function Step1AppInfo({
           maxLength={APP_NAME_MAX}
           onChange={(e) => setAppName(e.target.value)}
           placeholder="My App"
-          className="w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-fg outline-none focus:ring-2 focus:ring-border"
+          className="w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-3 focus:ring-accent/15"
         />
       </div>
 
@@ -1031,7 +1031,7 @@ function Step1AppInfo({
           onChange={(e) => setMarketingVersion(e.target.value)}
           placeholder="1.0.0"
           className={cn(
-            "w-full rounded-lg border bg-elevated px-3 py-2 font-mono text-sm text-fg outline-none focus:ring-2 focus:ring-border",
+            "w-full rounded-lg border bg-elevated px-3 py-2 font-mono text-sm text-fg outline-none focus:border-accent focus:ring-3 focus:ring-accent/15",
             marketingVersion && !versionValid ? "border-danger-border" : "border-border",
           )}
         />
@@ -1052,7 +1052,7 @@ function Step1AppInfo({
           placeholder="io.botflow.my-app"
           spellCheck={false}
           className={cn(
-            "w-full rounded-lg border bg-elevated px-3 py-2 font-mono text-sm text-fg outline-none focus:ring-2 focus:ring-border",
+            "w-full rounded-lg border bg-elevated px-3 py-2 font-mono text-sm text-fg outline-none focus:border-accent focus:ring-3 focus:ring-accent/15",
             bundleId && !bundleValid ? "border-danger-border" : "border-border",
           )}
         />
@@ -1252,7 +1252,7 @@ function Step2AppleDeveloper({
               placeholder="e.g. 2X9R4HXF34"
               value={keyIdInput}
               onChange={(e) => onKeyId(e.target.value)}
-              className="w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-fg outline-none focus:ring-2 focus:ring-border"
+              className="w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-3 focus:ring-accent/15"
             />
           </div>
           <div>
@@ -1265,7 +1265,7 @@ function Step2AppleDeveloper({
               placeholder="69a6de7e-…"
               value={issuerIdInput}
               onChange={(e) => onIssuerId(e.target.value)}
-              className="w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-fg outline-none focus:ring-2 focus:ring-border"
+              className="w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-3 focus:ring-accent/15"
             />
           </div>
         </div>
@@ -1281,7 +1281,7 @@ function Step2AppleDeveloper({
             placeholder="e.g. A1B2C3D4E5"
             value={teamIdInput}
             onChange={(e) => onTeamId(e.target.value)}
-            className="w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-fg outline-none focus:ring-2 focus:ring-border"
+            className="w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-3 focus:ring-accent/15"
           />
           <p className="mt-1 text-[11px] leading-4 text-muted">
             We auto-detect it if you leave this blank. To set it manually:{" "}

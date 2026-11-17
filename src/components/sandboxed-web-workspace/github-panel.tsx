@@ -473,7 +473,7 @@ export function SandboxGitHubPanel({
               value={newRepoName}
               onChange={(e) => setNewRepoName(e.target.value)}
               placeholder="my-project"
-              className="w-full px-2 py-1.5 text-sm rounded-md bg-surface border border-border focus:outline-none focus:ring-1 focus:ring-accent"
+              className="w-full px-2 py-1.5 text-sm rounded-md bg-bg border border-border focus:outline-none focus:border-accent focus:ring-3 focus:ring-accent/15"
             />
             <div className="flex items-center gap-2 text-xs">
               <button
@@ -640,7 +640,7 @@ export function SandboxGitHubPanel({
           onChange={(e) => setCommitMessage(e.target.value)}
           placeholder="What did you change?"
           rows={2}
-          className="w-full px-2 py-1.5 text-xs rounded-md bg-surface border border-border focus:outline-none focus:ring-1 focus:ring-accent resize-none"
+          className="w-full px-2 py-1.5 text-xs rounded-md bg-bg border border-border focus:outline-none focus:border-accent focus:ring-3 focus:ring-accent/15 resize-none"
           disabled={saving || pulling || Boolean(status?.hasMerging)}
         />
         <div className="flex items-center gap-1.5">

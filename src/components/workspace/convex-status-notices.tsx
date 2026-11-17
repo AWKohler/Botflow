@@ -94,7 +94,7 @@ export function ConvexPausedModal({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-[2px] flex items-center justify-center p-4">
       <div className="w-[min(480px,calc(100vw-2rem))] rounded-xl border border-border bg-surface text-fg shadow-2xl">
         <div className="px-5 py-4 border-b border-border flex items-center gap-2.5">
           <PauseCircle className="h-5 w-5 text-danger shrink-0" />

@@ -280,7 +280,7 @@ export function PublicWorkspace({ data, isSignedIn }: PublicWorkspaceProps) {
               {hasSource && (
                 <button
                   onClick={handleUseAsTemplate}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-fg px-3.5 py-1.5 text-sm font-medium text-bg shadow-md hover:opacity-90 transition"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-fg px-3.5 h-8 text-[13px] font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
                 >
                   <Sparkles className="h-4 w-4" />
                   Use as template

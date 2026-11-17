@@ -159,7 +159,7 @@ export default function PanelUsersPage() {
             placeholder="Search email, name, id…"
             className={cn(
               'rounded-lg border border-border bg-surface pl-8 pr-3 py-1.5 text-sm text-fg',
-              'placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent w-64',
+              'placeholder:text-muted focus:outline-none focus:border-accent focus:ring-3 focus:ring-accent/15 w-64',
             )}
           />
         </div>

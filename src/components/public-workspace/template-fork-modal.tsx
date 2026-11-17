@@ -101,8 +101,8 @@ export function TemplateForkModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md rounded-2xl border border-border bg-surface shadow-2xl">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative w-full max-w-md rounded-2xl border border-border bg-bg shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-accent" />
@@ -122,7 +122,7 @@ export function TemplateForkModal({
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
               maxLength={100}
-              className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:ring-2 focus:ring-border"
+              className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-3 focus:ring-accent/15"
               placeholder="My project"
             />
           </div>
@@ -211,7 +211,7 @@ export function TemplateForkModal({
           <button
             onClick={submit}
             disabled={!canSubmit}
-            className="inline-flex items-center gap-2 rounded-lg bg-fg px-3.5 py-2 text-sm font-medium text-bg shadow hover:opacity-90 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg bg-fg px-3.5 h-9 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {needsConnect ? "Connect Convex first" : "Create project"}

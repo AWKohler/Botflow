@@ -7,12 +7,13 @@ import {
   ChevronRight,
   Loader2,
   ArrowUp,
-  Cog,
   Monitor,
   RefreshCw,
   ArrowUpRight,
-  Square,
   PanelLeft,
+  Plus,
+  RotateCw,
+  Settings2,
   Github,
   Download,
   FileText,
@@ -72,20 +73,20 @@ export interface WorkspaceMockupProps {
 
 function MockCreditGauge({ pct }: { pct: number }) {
   const clamped = Math.max(0, Math.min(100, pct));
-  const diameter = 40;
-  const strokeWidth = 4;
+  const diameter = 30;
+  const strokeWidth = 3;
   const radius = (diameter - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (clamped / 100) * circumference;
-  const color = clamped >= 80 ? '#ef4444' : clamped >= 60 ? '#f59e0b' : '#22c55e';
+  const color = clamped >= 80 ? 'var(--danger-solid)' : clamped >= 60 ? 'var(--warning-solid)' : 'var(--success-solid)';
 
   return (
     <div className="relative inline-flex items-center justify-center">
       <svg width={diameter} height={diameter} viewBox={`0 0 ${diameter} ${diameter}`} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={diameter / 2} cy={diameter / 2} r={radius} fill="none" stroke="currentColor" strokeWidth={strokeWidth} className="text-border opacity-40" />
+        <circle cx={diameter / 2} cy={diameter / 2} r={radius} fill="none" stroke="currentColor" strokeWidth={strokeWidth} className="text-soft" />
         <circle cx={diameter / 2} cy={diameter / 2} r={radius} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset 0.4s ease, stroke 0.4s ease' }} />
       </svg>
-      <span className="absolute font-semibold tabular-nums" style={{ fontSize: 10, color, lineHeight: 1 }}>{clamped}%</span>
+      <span className="absolute font-medium tabular-nums text-muted" style={{ fontSize: 9, lineHeight: 1 }}>{clamped}%</span>
     </div>
   );
 }
@@ -96,14 +97,14 @@ function MockCreditGauge({ pct }: { pct: number }) {
 
 function MockTabs({ options, selected, onSelect }: { options: { value: string; text: string }[]; selected: string; onSelect: (v: string) => void }) {
   return (
-    <div className="flex rounded-lg p-1 border border-border">
+    <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5">
       {options.map((o) => (
         <button
           key={o.value}
           onClick={() => onSelect(o.value)}
           className={cn(
-            'px-4 py-1 text-sm font-medium rounded-md transition-all duration-200',
-            selected === o.value ? 'bg-accent text-white shadow-sm font-bold' : 'text-muted hover:text-fg hover:bg-elevated/60',
+            'h-7 rounded-md px-3 text-[13px] font-medium transition-[background-color,color,box-shadow] duration-150',
+            selected === o.value ? 'bg-bg text-fg shadow-sm' : 'text-muted hover:text-fg',
           )}
         >
           {o.text}
@@ -351,7 +352,7 @@ export default function App() {
   return (
     <div
       className={cn(
-        'flex bolt-bg text-fg rounded-xl border border-border overflow-hidden shadow-2xl',
+        'flex overflow-hidden rounded-xl border border-border bg-surface text-fg shadow-2xl',
         className,
       )}
       style={{ height: 600 }}
@@ -360,24 +361,26 @@ export default function App() {
       {/* Agent Sidebar                                                    */}
       {/* ================================================================ */}
       {!hideAgentPanel && (
-      <div className="w-80 flex flex-col bg-elevated/70 backdrop-blur-sm border-border shrink-0">
+      <div className="flex w-80 shrink-0 flex-col bg-surface">
         {/* Agent header */}
-        <div className="flex items-center justify-between px-3 py-2 bg-surface text-sm">
-          <div className="flex items-center gap-2">
-            <Cog size={16} className="text-muted" />
-            <MockCreditGauge pct={creditPct} />
+        <div className="flex h-12 items-center justify-between px-3.5 text-sm">
+          <div className="flex items-center gap-1 text-xs font-medium text-muted">
+            <PanelLeft size={16} className="mr-1.5" />
+            <Plus size={14} />
+            New chat
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted bg-elevated border border-border rounded-md px-2 py-0.5">{modelName}</span>
+          <div className="flex items-center gap-2.5">
+            <MockCreditGauge pct={creditPct} />
+            <Settings2 size={16} strokeWidth={1.75} className="text-muted" />
           </div>
         </div>
 
         {/* Messages */}
-        <div ref={scrollRef} className="flex-1 overflow-auto space-y-3 p-3 modern-scrollbar text-sm">
+        <div ref={scrollRef} className="modern-scrollbar flex-1 space-y-3 overflow-auto px-3.5 py-3 text-sm">
           {messages.map((m, mi) => {
             if (m.role === 'user') {
               return (
-                <div key={mi} className="rounded-xl px-2 py-3 bg-elevated text-[0.95rem]">
+                <div key={mi} className="rounded-xl border border-border bg-elevated px-3.5 py-2.5 text-[15px] leading-[1.6]">
                   <p>{m.content}</p>
                 </div>
               );
@@ -386,7 +389,7 @@ export default function App() {
             // Assistant message
             const hasTools = m.toolCalls && m.toolCalls.length > 0;
             return (
-              <div key={mi} className="rounded-xl px-2 py-3 text-[0.95rem]">
+              <div key={mi} className="px-1 py-1 text-[15px] leading-[1.6]">
                 {/* Text before tools */}
                 {m.content && <p className="mb-2">{m.content}</p>}
 
@@ -405,33 +408,30 @@ export default function App() {
 
           {/* Working indicator */}
           {agentWorking && (
-            <div className="flex items-center gap-2 py-2">
-              <Loader2 size={14} className="animate-spin text-accent" />
-              <span className="text-xs text-muted">
-                Agent is working<span className="animate-pulse">...</span>
-              </span>
+            <div className="flex items-center gap-2 px-1 py-2">
+              <Loader2 size={14} className="animate-spin text-muted" />
+              <span className="text-[13px] text-muted">Working…</span>
             </div>
           )}
         </div>
 
         {/* Input area */}
         <div className="mt-2 mx-2.5 mb-2.5">
-          <div className="flex flex-col rounded-2xl border border-border bg-elevated">
-            <div className="px-4 pt-3">
+          <div className="flex flex-col rounded-xl border border-border bg-bg shadow-sm">
+            <div className="px-3 pt-2.5">
               <div className="relative flex flex-1 items-center">
                 <div
-                  className="flex w-full text-[14px] leading-snug text-muted m-1 p-0 select-none"
+                  className="m-1 flex w-full select-none p-0 text-[15px] leading-snug text-subtle"
                   style={{ minHeight: 40 }}
                 >
-                  Ask Botflow...
+                  Ask Botflow…
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-1 px-4 pb-2">
-              <div className="ml-auto">
-                <div className="flex size-6 items-center justify-center rounded-full bg-accent text-accent-foreground opacity-50">
-                  <ArrowUp size={20} />
-                </div>
+            <div className="flex items-center gap-1.5 px-3 pb-2.5">
+              <span className="ml-auto text-xs font-medium text-muted">{modelName}</span>
+              <div className="flex size-7 items-center justify-center rounded-full bg-fg text-bg opacity-30">
+                <ArrowUp size={16} />
               </div>
             </div>
           </div>
@@ -444,7 +444,7 @@ export default function App() {
       {/* ================================================================ */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="h-12 flex items-center px-2.5 gap-4 bg-surface backdrop-blur-sm shrink-0">
+        <div className="flex h-12 shrink-0 items-center gap-2 pr-2.5">
           {/* Tabs */}
           <MockTabs
             options={[
@@ -457,16 +457,16 @@ export default function App() {
           />
 
           {/* Stop button (dev server is "running" in mockup) */}
-          <button className="flex items-center gap-2 font-bold text-md text-red-400 px-2 py-1 rounded-md hover:bg-red-400/10 transition-colors">
-            <Square size={16} fill="currentColor" />
-            <span>Stop</span>
+          <button className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium text-muted transition-colors hover:bg-elevated hover:text-fg">
+            <RotateCw size={14} />
+            <span>Restart</span>
           </button>
 
           {/* File explorer toggle (code view) */}
           {currentView === 'code' && (
             <button
               onClick={() => setShowSidebar(!showSidebar)}
-              className="text-muted hover:text-fg bolt-hover p-1 rounded"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-fg"
             >
               <PanelLeft size={16} />
             </button>
@@ -474,47 +474,43 @@ export default function App() {
 
           {/* Selected file (code view) */}
           {currentView === 'code' && selectedFile && (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted">/</span>
-              <span className="text-fg font-medium bg-elevated/70 px-2 py-1 rounded">{selectedFile}</span>
-            </div>
+            <span className="rounded-md border border-border bg-elevated px-2 py-1 font-mono text-xs text-fg">{selectedFile}</span>
           )}
 
           {/* Right-side controls */}
           <div className="ml-auto flex items-center gap-2">
             {/* Cloud sync indicator */}
-            <div className="text-xs text-muted flex items-center gap-1.5 px-2 py-1 rounded-md bg-elevated">
-              <div className="w-2 h-2 rounded-full bg-green-500" />
+            <div className="flex items-center gap-1.5 px-1 text-xs text-muted">
+              <div className="h-1.5 w-1.5 rounded-full bg-success-solid" />
               <span>Synced 2m ago</span>
             </div>
 
             {/* Preview URL bar (preview view) */}
             {currentView === 'preview' && (
-              <div className="flex items-center gap-2 border border-border rounded-full px-3 py-1 min-w-[180px]">
-                <Monitor size={16} className="text-muted" />
-                <span className="text-muted text-sm select-none">/</span>
-                <span className="flex-1 text-sm text-fg"></span>
-                <ArrowUpRight size={16} className="text-muted" />
-                <RefreshCw size={16} className="text-muted" />
+              <div className="flex h-8 min-w-[180px] items-center gap-2 rounded-lg border border-border bg-bg px-2.5 shadow-xs">
+                <Monitor size={15} className="text-muted" />
+                <span className="select-none font-mono text-xs text-fg">/</span>
+                <span className="flex-1" />
+                <ArrowUpRight size={15} className="text-muted" />
+                <RefreshCw size={14} className="text-muted" />
               </div>
             )}
 
             {/* Avatar placeholder */}
-            <div className="w-8 h-8 rounded-full bg-accent/20 border border-border" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-elevated text-[13px] font-medium text-fg">A</div>
 
             {/* Action buttons */}
             {currentView === 'code' && (
-              <button className="w-8 h-8 flex items-center justify-center border border-border rounded-md text-muted hover:text-fg">
-                <Download size={16} />
+              <button className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-bg text-muted shadow-xs hover:text-fg">
+                <Download size={15} />
               </button>
             )}
-            <button className="w-8 h-8 flex items-center justify-center border border-border rounded-md text-muted hover:text-fg border-green-500/50 text-green-600 dark:text-green-400 relative">
-              <Github size={16} />
-              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500 border-2 border-surface" />
+            <button className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-bg text-muted shadow-xs hover:text-fg">
+              <Github size={15} />
             </button>
-            <button className="px-3 py-1 text-sm font-bold rounded-md bg-green-600 hover:bg-green-700 text-white relative">
+            <button className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs">
+              <span className="h-1.5 w-1.5 rounded-full bg-success-solid" />
               Published
-              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500 border-2 border-surface" />
             </button>
           </div>
         </div>
@@ -547,13 +543,13 @@ export default function App() {
               {showSidebar && (
                 <div className="w-64 border-r border-border flex flex-col backdrop-blur-sm shrink-0">
                   <div className="p-2 border-b border-border">
-                    <div className="flex rounded-lg p-1 border border-border w-full">
+                    <div className="flex w-full items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5">
                       {['Files', 'Search', 'ENV'].map((t) => (
                         <button
                           key={t}
                           className={cn(
-                            'flex-1 px-3 py-1 text-sm font-medium rounded-md transition-all duration-200',
-                            t === 'Files' ? 'bg-accent text-white shadow-sm font-bold' : 'text-muted',
+                            'h-7 flex-1 rounded-md px-3 text-[13px] font-medium',
+                            t === 'Files' ? 'bg-bg text-fg shadow-sm' : 'text-muted',
                           )}
                         >
                           {t}
