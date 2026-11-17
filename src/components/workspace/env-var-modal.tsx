@@ -131,7 +131,7 @@ export function EnvVarModal({
               <code className="flex-1 bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-fg font-mono break-all">
                 {envKey}
               </code>
-              <span className="shrink-0 text-[10px] uppercase tracking-wider text-muted bg-elevated border border-border rounded-md px-2 py-1.5">
+              <span className="shrink-0 rounded-md border border-border bg-elevated px-2 py-1.5 text-[11px] font-medium text-muted">
                 {targetLabel}
               </span>
             </div>
@@ -146,7 +146,7 @@ export function EnvVarModal({
                 value={value}
                 onChange={(e) => { setValue(e.target.value); setError(null); }}
                 placeholder="Paste the value here"
-                className="w-full bg-elevated border border-border rounded-lg pl-3 pr-9 py-2 text-sm text-fg placeholder:text-muted outline-none focus:ring-3 focus:ring-accent/15 focus:border-accent transition-colors font-mono"
+                className="h-9 w-full rounded-lg border border-border bg-bg pl-3 pr-9 font-mono text-[13px] text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:font-sans placeholder:text-subtle hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
                 autoComplete="off"
                 spellCheck={false}
                 autoFocus
@@ -182,7 +182,7 @@ export function EnvVarModal({
             onClick={handleDismiss}
             className="text-sm text-muted hover:text-fg transition-colors"
           >
-            Cancel — do this later
+            Do this later
           </button>
           <button
             onClick={handleSave}
@@ -195,7 +195,7 @@ export function EnvVarModal({
                 Saving…
               </>
             ) : (
-              "Save Variable"
+              "Save variable"
             )}
           </button>
         </div>

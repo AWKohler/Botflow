@@ -269,7 +269,7 @@ export function OAuthProviderModal({
             <KeyRound size={18} />
           </span>
           <div className="flex-1 min-w-0">
-            <h2 id={titleId} className="text-base font-semibold text-fg">Connect {def.displayName} Sign-In</h2>
+            <h2 id={titleId} className="text-base font-semibold text-fg">Connect {def.displayName} sign-in</h2>
             <p id={descriptionId} className="text-xs text-muted mt-0.5">{def.blurb}</p>
           </div>
           <button
@@ -288,7 +288,7 @@ export function OAuthProviderModal({
           {/* Step 1 — register the app */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="flex items-center justify-center w-5 h-5 rounded-full bg-accent/20 text-accent text-xs font-bold">1</span>
+              <span className="flex items-center justify-center w-5 h-5 rounded-full border border-border bg-elevated text-[11px] font-medium text-muted">1</span>
               <span className="text-sm font-medium text-fg">Register your app in {def.consoleName}</span>
             </div>
             <div className="pl-7 space-y-2">
@@ -322,7 +322,7 @@ export function OAuthProviderModal({
           {/* Step 2 — credentials */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="flex items-center justify-center w-5 h-5 rounded-full bg-accent/20 text-accent text-xs font-bold">2</span>
+              <span className="flex items-center justify-center w-5 h-5 rounded-full border border-border bg-elevated text-[11px] font-medium text-muted">2</span>
               <span className="text-sm font-medium text-fg">Enter your credentials</span>
             </div>
             <div className="pl-7 space-y-3">
@@ -370,7 +370,7 @@ export function OAuthProviderModal({
                   return (
                     <div key={field.key} className="space-y-1.5">
                       <label htmlFor={inputId} className="block text-xs font-medium text-muted">
-                        {field.label}{isRequired && <span className="text-accent"> *</span>}
+                        {field.label}{isRequired && <span className="text-danger"> *</span>}
                       </label>
                       <label
                         htmlFor={inputId}
@@ -402,7 +402,7 @@ export function OAuthProviderModal({
                 return (
                   <div key={field.key} className="space-y-1.5">
                     <label htmlFor={inputId} className="block text-xs font-medium text-muted">
-                      {field.label}{isRequired && <span className="text-accent"> *</span>}
+                      {field.label}{isRequired && <span className="text-danger"> *</span>}
                     </label>
                     <Input
                       id={inputId}
@@ -457,7 +457,7 @@ export function OAuthProviderModal({
             onClick={handleDismiss}
             className="text-sm text-muted hover:text-fg transition-colors"
           >
-            Cancel — do this later
+            Do this later
           </button>
           <button
             type="button"
@@ -472,7 +472,7 @@ export function OAuthProviderModal({
                 Saving…
               </>
             ) : (
-              "Save Credentials"
+              "Save credentials"
             )}
           </button>
         </div>
