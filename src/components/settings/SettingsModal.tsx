@@ -31,14 +31,14 @@ const PROVIDERS: Array<{
   field: string;
   placeholder: string;
 }> = [
-  { provider: 'openai', label: 'OpenAI API Key', field: 'openaiApiKey', placeholder: 'sk-...' },
-  { provider: 'anthropic', label: 'Anthropic API Key', field: 'anthropicApiKey', placeholder: 'sk-ant-...' },
-  { provider: 'google', label: 'Google AI Studio API Key', field: 'googleApiKey', placeholder: 'AIza...' },
-  { provider: 'xai', label: 'xAI (Grok) API Key', field: 'xaiApiKey', placeholder: 'xai-...' },
-  { provider: 'moonshot', label: 'Moonshot API Key', field: 'moonshotApiKey', placeholder: 'moonshot-...' },
-  { provider: 'fireworks', label: 'Fireworks AI API Key', field: 'fireworksApiKey', placeholder: 'fw-...' },
+  { provider: 'openai', label: 'OpenAI', field: 'openaiApiKey', placeholder: 'sk-...' },
+  { provider: 'anthropic', label: 'Anthropic', field: 'anthropicApiKey', placeholder: 'sk-ant-...' },
+  { provider: 'google', label: 'Google AI Studio', field: 'googleApiKey', placeholder: 'AIza...' },
+  { provider: 'xai', label: 'xAI (Grok)', field: 'xaiApiKey', placeholder: 'xai-...' },
+  { provider: 'moonshot', label: 'Moonshot', field: 'moonshotApiKey', placeholder: 'moonshot-...' },
+  { provider: 'fireworks', label: 'Fireworks AI', field: 'fireworksApiKey', placeholder: 'fw-...' },
   // Only rendered when the USE_TOGETHER_KIMI flag is on (Kimi routed to Together AI).
-  { provider: 'together', label: 'Together AI API Key', field: 'togetherApiKey', placeholder: 'together-...' },
+  { provider: 'together', label: 'Together AI', field: 'togetherApiKey', placeholder: 'together-...' },
 ];
 
 export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceContext = false, variant = 'modal' }: SettingsModalProps) {
@@ -237,7 +237,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
           xai: Boolean(data?.hasXaiKey),
         });
         setKeys(prev => ({ ...prev, [provider]: '' }));
-        toast({ title: 'Key saved', description: `${config.label} has been updated.` });
+        toast({ title: 'Key saved', description: `Your ${config.label} key has been updated.` });
       } else {
         toast({ title: 'Save failed', description: 'Could not save key.' });
       }
@@ -260,7 +260,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
       if (res.ok) {
         setHasKey(prev => ({ ...prev, [provider]: false }));
         setKeys(prev => ({ ...prev, [provider]: '' }));
-        toast({ title: 'Key removed', description: `${config.label} has been removed.` });
+        toast({ title: 'Key removed', description: `Your ${config.label} key has been removed.` });
       } else {
         toast({ title: 'Remove failed', description: 'Could not remove key.' });
       }

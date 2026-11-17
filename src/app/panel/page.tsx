@@ -147,13 +147,13 @@ export default function PanelOverviewPage() {
           }`}
         >
           <StatGrid>
-            <StatTile label="MRR (actual)" value={fmtUsd(stripe.mrrUsd, { cents: true })} accent
+            <StatTile label="MRR (actual)" value={fmtUsd(stripe.mrrUsd)} accent
               sub={`${stripe.subscriptions.linkedToClerk} platform subscription${
                 stripe.subscriptions.linkedToClerk === 1 ? '' : 's'
               }`} />
-            <StatTile label="Lifetime revenue" value={fmtUsd(stripe.revenue.lifetimeNetUsd, { cents: true })}
+            <StatTile label="Lifetime revenue" value={fmtUsd(stripe.revenue.lifetimeNetUsd)}
               sub="net of refunds" />
-            <StatTile label="Revenue, last 30d" value={fmtUsd(stripe.revenue.last30dNetUsd, { cents: true })} />
+            <StatTile label="Revenue, last 30d" value={fmtUsd(stripe.revenue.last30dNetUsd)} />
             <StatTile label="Paying customers" value={String(stripe.revenue.payingCustomers)}
               sub={`${stripe.attributedUsers} mapped to a Clerk user`} />
             <StatTile label="Past due" value={String(stripe.subscriptions.pastDue)}
@@ -163,13 +163,13 @@ export default function PanelOverviewPage() {
           </StatGrid>
           {(stripe.legacy.lifetimeNetUsd > 0 || stripe.legacy.mrrUsd > 0) && (
             <p className="text-xs text-muted mt-3">
-              Excluded from the figures above: {fmtUsd(stripe.legacy.mrrUsd, { cents: true })}/mo and{' '}
-              {fmtUsd(stripe.legacy.lifetimeNetUsd, { cents: true })} lifetime from{' '}
+              Excluded from the figures above: {fmtUsd(stripe.legacy.mrrUsd)}/mo and{' '}
+              {fmtUsd(stripe.legacy.lifetimeNetUsd)} lifetime from{' '}
               {stripe.legacy.payingCustomers} customer
               {stripe.legacy.payingCustomers === 1 ? '' : 's'} on unrelated older products
               {stripe.legacy.productNames.length > 0 && ` (${stripe.legacy.productNames.join(', ')})`}{' '}
               that share this Stripe account. Whole-account lifetime net is{' '}
-              {fmtUsd(stripe.accountTotals.lifetimeNetUsd, { cents: true })}.
+              {fmtUsd(stripe.accountTotals.lifetimeNetUsd)}.
             </p>
           )}
         </Section>
@@ -207,7 +207,7 @@ export default function PanelOverviewPage() {
           <StatTile
             label="Users by plan"
             value={
-              <span className="flex items-baseline gap-4 text-xl">
+              <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-lg">
                 {(
                   [
                     ['Free', users.free],
