@@ -74,6 +74,24 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
+/** Plain-language kinds of shell command, matched on the first recognisable verb. */
+const COMMAND_KINDS: Array<[RegExp, string]> = [
+  [/\b(pnpm|npm|yarn|bun)\s+(install|add|i|ci)\b/, 'Install packages'],
+  [/\b(pnpm|npm|yarn|bun)\s+(run\s+)?build\b|\b(vite|next)\s+build\b/, 'Build the project'],
+  [/\b(pnpm|npm|yarn|bun)\s+(run\s+)?(test|lint|typecheck|check)\b|\b(tsc|eslint|vitest|jest)\b/, 'Check the code'],
+  [/\bnpx\s+convex\b|\bconvex\s+(dev|deploy)\b/, 'Update the backend'],
+  [/^\s*git\b/, 'Use git'],
+  [/^\s*(curl|wget)\b/, 'Fetch a URL'],
+  [/^\s*(ls|cat|head|tail|find|grep|rg|wc|tree|stat|file|pwd)\b/, 'Inspect project files'],
+  [/^\s*(mkdir|cp|mv|rm|touch|chmod)\b/, 'Organise files'],
+  [/^\s*(python3?|node|tsx|deno|bash|sh)\b/, 'Run a script'],
+];
+
+function describeCommand(command: string): string | null {
+  for (const [pattern, label] of COMMAND_KINDS) if (pattern.test(command)) return label;
+  return null;
+}
+
 /**
  * How a step reads in the list. When the agent said what a command was for,
  * that sentence is the title; otherwise the title is the tool's name followed
@@ -85,6 +103,10 @@ function actionSummary(action: ToolCallData): { title: string; detail: string | 
   const command = str(args.command);
   const description = str(args.description);
   if (command && description) return { title: description, detail: null, command };
+  // No description from the agent: say what kind of command it was in plain
+  // words. The command itself is one click away in the expanded row.
+  const kind = command ? describeCommand(command) : null;
+  if (command && kind) return { title: kind, detail: null, command };
   let detail: string | null = command ? command.split('\n')[0] : null;
   for (const key of ['file_path', 'filePath', 'path', 'pattern', 'query', 'url']) {
     if (detail) break;

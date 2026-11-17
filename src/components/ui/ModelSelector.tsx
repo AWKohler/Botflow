@@ -328,7 +328,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
           })}
           </div>
           {/* Says what the multiplier is relative to. */}
-          <p className="shrink-0 border-t border-border px-3.5 py-2 text-[11px] leading-snug text-muted">
+          <p className="shrink-0 border-t border-border px-3.5 py-2.5 text-xs leading-relaxed text-muted">
             Rates compare models for the same token use: a 6× model costs six times the credits of a 1× model.
           </p>
         </div>
