@@ -7,6 +7,8 @@ import {
 } from "@/lib/billing/plans";
 import { useUser } from "./index";
 import { CheckoutModal } from "./checkout";
+import { Button } from "@/components/ui/button";
+import { Tabs } from "@/components/ui/tabs";
 export function PricingTable(_props: {
   newSubscriptionRedirectUrl?: string;
   ctaPosition?: string;
@@ -45,48 +47,43 @@ export function PricingTable(_props: {
     }
   }
   return (
-    <div className="text-[var(--sand-text)]">
+    <div className="text-fg">
       <div className="mb-7 flex justify-center">
-        <div className="inline-flex rounded-lg border border-[var(--sand-border)] p-1">
-          {(["month", "year"] as const).map((value) => (
-            <button
-              key={value}
-              aria-pressed={interval === value}
-              onClick={() => setInterval(value)}
-              className={`rounded-md px-4 py-2 text-sm ${interval === value ? "bg-[var(--sand-elevated)] font-medium" : "text-[var(--sand-text-muted)]"}`}
-            >
-              {value === "month" ? "Monthly" : "Annually"}
-            </button>
-          ))}
-        </div>
+        <Tabs
+          options={[
+            { value: "month", text: "Monthly" },
+            { value: "year", text: "Annually" },
+          ]}
+          selected={interval}
+          onSelect={setInterval}
+        />
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         {Object.entries(BILLING_PLANS).map(([id, plan]) => (
           <section
             key={id}
-            className="flex flex-col rounded-xl border border-[var(--sand-border)] bg-[var(--color-surface)] p-6"
+            className="flex flex-col rounded-xl border border-border bg-surface p-6"
           >
-            <h2 className="text-xl font-semibold">{plan.name}</h2>
-            <p className="mt-3 min-h-16 text-sm text-[var(--sand-text-muted)]">
+            <h2 className="text-lg font-semibold">{plan.name}</h2>
+            <p className="mt-2 min-h-16 text-sm leading-relaxed text-muted">
               {plan.description}
             </p>
             <div className="my-6">
-              <span className="text-4xl font-semibold tracking-tight">
+              <span className="text-4xl font-semibold tracking-tight tabular-nums">
                 ${(interval === "year" ? plan.annual / 12 : plan.monthly) / 100}
               </span>
-              <span className="text-sm text-[var(--sand-text-muted)]">
-                {" "}
-                / month
-              </span>
+              <span className="text-sm text-muted"> / month</span>
               {interval === "year" && plan.annual > 0 && (
-                <p className="mt-2 text-xs text-[var(--sand-text-muted)]">
+                <p className="mt-2 text-xs text-muted">
                   ${plan.annual / 100} billed annually
                 </p>
               )}
             </div>
-            <button
+            <Button
+              // Paid plans carry the primary action; the free plan is the quiet one.
+              variant={id === "free" ? "secondary" : "primary"}
               disabled={busy !== null}
-              className="mt-auto w-full rounded-md bg-[var(--sand-text)] px-4 py-2.5 text-sm font-medium text-[var(--sand-bg)] disabled:opacity-50"
+              className="mt-auto h-10 w-full"
               onClick={() =>
                 id === "free"
                   ? location.assign(isSignedIn ? "/projects" : "/sign-up")
@@ -98,7 +95,7 @@ export function PricingTable(_props: {
                 : id === "free"
                   ? "Get started"
                   : `Subscribe to ${plan.name}`}
-            </button>
+            </Button>
           </section>
         ))}
       </div>
@@ -109,7 +106,7 @@ export function PricingTable(_props: {
         />
       )}
       {error && (
-        <p role="alert" className="mt-4 text-center text-sm">
+        <p role="alert" className="mx-auto mt-4 max-w-md rounded-lg border border-danger-border bg-danger-soft px-3 py-2.5 text-center text-[13px] text-danger">
           {error}
         </p>
       )}

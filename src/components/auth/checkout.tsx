@@ -22,7 +22,7 @@ function CheckoutForm() {
     return <p className="text-sm">Loading secure checkout…</p>;
   if (state.type === "error")
     return (
-      <p role="alert" className="text-sm">
+      <p role="alert" className="rounded-lg border border-danger-border bg-danger-soft px-3 py-2.5 text-[13px] text-danger">
         {state.error.message}
       </p>
     );
@@ -46,19 +46,19 @@ function CheckoutForm() {
       }}
     >
       <PaymentElement options={{ layout: "tabs" }} />
-      <div className="flex justify-between border-t border-[var(--sand-border)] pt-4 text-sm">
+      <div className="flex justify-between border-t border-border pt-4 text-sm">
         <span>Due today</span>
         <strong>{checkout.total.total.amount}</strong>
       </div>
       {message && (
-        <p role="alert" className="text-sm">
+        <p role="alert" className="rounded-lg border border-danger-border bg-danger-soft px-3 py-2.5 text-[13px] text-danger">
           {message}
         </p>
       )}
       <button disabled={busy} className={primaryClass}>
         {busy ? "Processing…" : "Subscribe"}
       </button>
-      <p className="text-xs text-[var(--sand-text-muted)]">
+      <p className="text-xs text-muted">
         Your subscription renews automatically. You can cancel from your
         account.
       </p>
@@ -112,19 +112,19 @@ export function CheckoutModal({
     <dialog
       ref={ref}
       onClose={onClose}
-      className="fixed inset-0 m-auto max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--sand-border)] bg-[var(--color-surface)] p-7 text-[var(--sand-text)] shadow-xl backdrop:bg-black/40"
+      className="fixed inset-0 m-auto max-h-[90vh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-2xl border border-border bg-bg p-6 text-fg shadow-2xl backdrop:bg-black/40 backdrop:backdrop-blur-[2px]"
     >
       <button
-        className="absolute right-4 top-3 text-xl"
+        className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg text-lg leading-none text-muted transition-colors hover:bg-elevated hover:text-fg"
         aria-label="Close checkout"
         onClick={() => ref.current?.close()}
       >
         ×
       </button>
-      <h2 className="text-xl font-semibold">
+      <h2 className="text-base font-semibold">
         Subscribe to {BILLING_PLANS[plan].name}
       </h2>
-      <p className="mb-6 mt-2 text-sm text-[var(--sand-text-muted)]">
+      <p className="mb-6 mt-2 text-sm text-muted">
         $
         {(interval === "month"
           ? BILLING_PLANS[plan].monthly

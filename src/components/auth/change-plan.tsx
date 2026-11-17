@@ -89,18 +89,18 @@ export function ChangePlanModal({
     <dialog
       ref={ref}
       onClose={onClose}
-      className="fixed inset-0 m-auto w-full max-w-md rounded-xl border border-[var(--sand-border)] bg-[var(--color-surface)] p-7 text-[var(--sand-text)] shadow-xl backdrop:bg-black/40"
+      className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-border bg-bg p-6 text-fg shadow-2xl backdrop:bg-black/40 backdrop:backdrop-blur-[2px]"
     >
       <button
         aria-label="Close plan change"
         disabled={busy}
-        className="absolute right-4 top-3 text-xl"
+        className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg text-lg leading-none text-muted transition-colors hover:bg-elevated hover:text-fg"
         onClick={() => ref.current?.close()}
       >
         ×
       </button>
-      <h2 className="text-xl font-semibold">Change plan</h2>
-      <p className="mt-2 text-sm text-[var(--sand-text-muted)]">
+      <h2 className="text-base font-semibold">Change plan</h2>
+      <p className="mt-2 text-sm text-muted">
         Upgrades start immediately. Downgrades start when your current billing
         period ends.
       </p>
@@ -111,7 +111,7 @@ export function ChangePlanModal({
           submit();
         }}
       >
-        <label className="block text-sm">
+        <label className="block text-[13px] font-medium">
           Plan
           <select
             className={fieldClass}
@@ -129,7 +129,7 @@ export function ChangePlanModal({
             ))}
           </select>
         </label>
-        <label className="block text-sm">
+        <label className="block text-[13px] font-medium">
           Billing period
           <select
             className={fieldClass}
@@ -145,7 +145,7 @@ export function ChangePlanModal({
           </select>
         </label>
         {quote && (
-          <div className="rounded-md border border-[var(--sand-border)] p-4 text-sm">
+          <div className="rounded-lg border border-border bg-surface p-4 text-sm">
             <p>
               {money(quote.recurringAmount, quote.currency)} / {quote.interval}
             </p>
@@ -161,7 +161,7 @@ export function ChangePlanModal({
           </div>
         )}
         {error && (
-          <p role="alert" className="text-sm">
+          <p role="alert" className="rounded-lg border border-danger-border bg-danger-soft px-3 py-2.5 text-[13px] text-danger">
             {error}
           </p>
         )}

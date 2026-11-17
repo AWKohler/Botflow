@@ -1,4 +1,7 @@
 import Link from 'next/link';
+import { Database, Lock } from 'lucide-react';
+import { buttonClass } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { auth } from '@/lib/auth/server';
 import { eq } from 'drizzle-orm';
 import { ConvexDashboard } from '@/components/convex/ConvexDashboard';
@@ -23,21 +26,17 @@ export default async function DatabasePage({
 
   if (!project) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-elevated text-[var(--sand-text)]">
-        <div className="max-w-md text-center space-y-4 p-8 rounded-2xl border border-border bg-white shadow-sm">
-          <h1 className="text-2xl font-semibold">No access to this project</h1>
-          <p className="text-sm text-neutral-600">
-            You don&apos;t have permission to view this database.
-          </p>
-          <div className="flex items-center justify-center gap-2">
-            <Link
-              href="/projects"
-              className="inline-flex items-center rounded-lg bg-fg px-3.5 h-9 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
-            >
+      <div className="flex min-h-screen items-center justify-center bg-bg px-6 text-fg">
+        <EmptyState
+          icon={Lock}
+          title="You don’t have access to this database"
+          description="Ask the project owner to share the project with you."
+          action={
+            <Link href="/projects" className={buttonClass({ variant: 'primary' })}>
               Go to my projects
             </Link>
-          </div>
-        </div>
+          }
+        />
       </div>
     );
   }
@@ -47,21 +46,17 @@ export default async function DatabasePage({
   // database-session endpoint.
   if (project.backendType === 'none') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-elevated text-[var(--sand-text)]">
-        <div className="max-w-md text-center space-y-4 p-8 rounded-2xl border border-border bg-white shadow-sm">
-          <h1 className="text-2xl font-semibold">No backend connected</h1>
-          <p className="text-sm text-neutral-600">
-            This project was created without a backend, so there is no database to manage.
-          </p>
-          <div className="flex items-center justify-center gap-2">
-            <Link
-              href={`/workspace/${id}`}
-              className="inline-flex items-center rounded-lg bg-fg px-3.5 h-9 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
-            >
-              Back to workspace
+      <div className="flex min-h-screen items-center justify-center bg-bg px-6 text-fg">
+        <EmptyState
+          icon={Database}
+          title="This project has no backend"
+          description="It was created without one, so there’s no database to manage."
+          action={
+            <Link href={`/workspace/${id}`} className={buttonClass({ variant: 'primary' })}>
+              Back to the workspace
             </Link>
-          </div>
-        </div>
+          }
+        />
       </div>
     );
   }
