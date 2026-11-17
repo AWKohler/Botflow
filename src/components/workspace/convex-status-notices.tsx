@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useModal } from "@/components/ui/use-modal";
 import { AlertTriangle, PauseCircle, X } from "lucide-react";
 
 /**
@@ -93,9 +94,17 @@ export function ConvexPausedModal({
   isOwner: boolean;
   onClose: () => void;
 }) {
+  const modalRef = useModal<HTMLDivElement>(true, onClose);
   return (
     <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-[2px] flex items-center justify-center p-4">
-      <div className="w-[min(480px,calc(100vw-2rem))] rounded-2xl border border-border bg-bg text-fg shadow-2xl">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Your backend is paused"
+        tabIndex={-1}
+        className="w-[min(480px,calc(100vw-2rem))] rounded-2xl border border-border bg-bg text-fg shadow-2xl outline-none"
+      >
         <div className="px-5 py-4 border-b border-border flex items-center gap-2.5">
           <PauseCircle className="h-5 w-5 text-danger shrink-0" />
           <h2 className="flex-1 text-base font-semibold">Your backend is paused</h2>

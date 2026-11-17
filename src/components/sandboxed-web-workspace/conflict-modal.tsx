@@ -19,6 +19,7 @@
  * naming the file(s) and the gitResolveConflict tool. The user clicks send.
  */
 import { useCallback, useMemo, useState } from "react";
+import { useModal } from "@/components/ui/use-modal";
 import { createPortal } from "react-dom";
 import {
   AlertCircle,
@@ -227,11 +228,19 @@ export function ConflictModal({
     }
   }, [onClose, onResolved, projectId, toast]);
 
+  // No Escape-to-close here: closing by accident would throw away choices.
+  const modalRef = useModal<HTMLDivElement>(true);
+
   const modal = (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]">
       <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Resolve changes from GitHub"
+        tabIndex={-1}
         className={cn(
-          "rounded-2xl border border-border bg-bg shadow-2xl overflow-hidden flex flex-col",
+          "rounded-2xl border border-border bg-bg shadow-2xl overflow-hidden flex flex-col outline-none",
           mode === "manual" ? "w-[92vw] max-w-5xl h-[85vh]" : "w-full max-w-xl max-h-[80vh]",
         )}
       >

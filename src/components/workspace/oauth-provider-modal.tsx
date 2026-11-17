@@ -1,6 +1,7 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
+import { useModal } from "@/components/ui/use-modal";
 import { useId, useMemo, useState } from "react";
 import { Check, Copy, ExternalLink, X, Loader2, KeyRound, FileUp } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -40,6 +41,7 @@ export function OAuthProviderModal({
     ? oauthCallbackUrl(convexSiteUrl, provider)
     : "Convex site URL not available — deploy your Convex functions first";
 
+  const modalRef = useModal<HTMLDivElement>(true);
   const [values, setValues] = useState<Record<string, string>>({});
   const [fileNames, setFileNames] = useState<Record<string, string>>({});
   const [fileErrors, setFileErrors] = useState<Record<string, string>>({});
@@ -256,7 +258,9 @@ export function OAuthProviderModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
       {/* Modal card */}
       <div
-        className="relative w-full max-w-lg bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden max-h-[90vh] flex flex-col"
+        ref={modalRef}
+        tabIndex={-1}
+        className="relative w-full max-w-lg bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden max-h-[90vh] flex flex-col outline-none"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

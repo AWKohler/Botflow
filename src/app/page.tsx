@@ -1010,6 +1010,7 @@ import {
 } from 'lucide-react';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { useToast } from '@/components/ui/toast';
+import { useModal } from '@/components/ui/use-modal';
 import { ModelSelector } from '@/components/ui/ModelSelector';
 import { DEFAULT_MODEL_ID, modelSupportsImages, resolveModelId, type ModelId } from '@/lib/agent/models';
 import { processImageForUpload } from '@/lib/image-processing';
@@ -1335,6 +1336,9 @@ export default function LandingV2() {
   }, [isSignedIn, router]);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [projectStep, setProjectStep] = useState<null | 'convex' | 'name'>(null);
+  // Modal behaviour (focus in and contained, page inert, focus restored) for the two dialogs below.
+  const authDialogRef = useModal<HTMLDivElement>(showAuthDialog, () => setShowAuthDialog(false));
+  const projectDialogRef = useModal<HTMLDivElement>(projectStep !== null);
   const [projectQuotaLeft, setProjectQuotaLeft] = useState<number | null>(null);
   const [pendingImages, setPendingImages] = useState<LandingPendingImage[]>([]);
   const [showPlusPopover, setShowPlusPopover] = useState(false);
@@ -2739,7 +2743,14 @@ export default function LandingV2() {
 
     {showAuthDialog && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] px-4">
-        <div className="w-full max-w-md rounded-2xl border border-border bg-bg p-6 shadow-2xl">
+        <div
+          ref={authDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Sign in to start building"
+          tabIndex={-1}
+          className="w-full max-w-md rounded-2xl border border-border bg-bg p-6 shadow-2xl outline-none"
+        >
           <h2 className="text-base font-semibold text-fg">Sign in to start building</h2>
           <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
             Sign in or sign up to create your project workspace. You&apos;ll be able to name it on the next step.
@@ -2763,7 +2774,14 @@ export default function LandingV2() {
 
     {projectStep !== null && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] px-4">
-        <div className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl">
+        <div
+          ref={projectDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Set up your project"
+          tabIndex={-1}
+          className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl outline-none"
+        >
           {projectStep === 'convex' && (() => {
             const cloudForAll = process.env.NEXT_PUBLIC_ALLOW_CLOUD_CONVEX_FOR_ALL === 'true';
             const isPaid = userTier === 'pro' || userTier === 'max' || cloudForAll;
@@ -2924,6 +2942,7 @@ export default function LandingV2() {
                   placeholder="My new project"
                   className="h-10 w-full rounded-lg border border-control bg-bg px-3 text-sm text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                   autoFocus
+                  data-autofocus
                 />
               </div>
               <div className="mt-6 flex flex-row-reverse gap-2.5">

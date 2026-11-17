@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 type Toast = { id: number; title?: string; description?: string };
 
@@ -25,13 +26,19 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(() => ({ toast }), [toast]);
+  // The viewport lives directly under <body> and is marked so an open modal
+  // (which makes the rest of the page inert) still lets toasts be announced.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   return (
     <ToastCtx.Provider value={value}>
       {children}
+      {mounted && createPortal(
       <div
         aria-live="polite"
-        className="pointer-events-none fixed bottom-4 right-4 z-[100] flex flex-col gap-2"
+        data-modal-keep
+        className="pointer-events-none fixed bottom-4 right-4 z-[300] flex flex-col gap-2"
       >
         {toasts.map((t) => {
           const isError = ERROR_RE.test(`${t.title ?? ''} ${t.description ?? ''}`);
@@ -52,7 +59,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             </div>
           );
         })}
-      </div>
+      </div>,
+      document.body,
+      )}
     </ToastCtx.Provider>
   );
 }

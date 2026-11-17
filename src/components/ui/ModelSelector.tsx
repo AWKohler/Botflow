@@ -237,7 +237,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
           ref={dropdownRef}
           className={cn(
             // A column: the list scrolls if it must, the note below it never does.
-            'absolute z-50 flex max-h-[min(34rem,calc(100dvh-8rem))] min-w-[min(288px,calc(100vw-16px))] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-xl border border-border bg-bg shadow-lg dark:border-border-strong dark:bg-elevated',
+            'absolute z-50 flex max-h-[calc(100dvh-7rem)] min-w-[min(288px,calc(100vw-16px))] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-xl border border-border bg-bg shadow-lg dark:border-border-strong dark:bg-elevated',
             // 'up' opens above the trigger (bottom toolbars like the landing
             // prompt box, where a downward menu is clipped by the hero's
             // overflow-hidden); 'down' opens below (top toolbars like the agent
@@ -329,7 +329,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
           </div>
           {/* Says what the multiplier is relative to. */}
           <p className="shrink-0 border-t border-border px-3.5 py-2 text-[11px] leading-snug text-muted">
-            Credit rates are relative to a 1× model: a 6× model uses credits six times as fast.
+            Rates compare models for the same token use: a 6× model costs six times the credits of a 1× model.
           </p>
         </div>
       )}

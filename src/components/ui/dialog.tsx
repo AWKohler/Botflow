@@ -2,8 +2,10 @@
 
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { buttonClass } from "./button";
+import { useModal } from "./use-modal";
 
 const SIZES = {
   sm: "max-w-md",
@@ -20,7 +22,9 @@ export const dialogPanelClass =
 /**
  * Standard modal: dimmed backdrop, one panel style, a title row with a close
  * button, a scrollable body and an optional right-aligned footer for actions.
- * Closes on Escape and on backdrop click.
+ * Rendered at the end of <body>. Focus moves in and stays in, the rest of the
+ * page is inert, Escape and a backdrop click close it, and focus returns to
+ * the control that opened it. The title and description name the dialog.
  */
 export function Dialog({
   open,
@@ -45,18 +49,13 @@ export function Dialog({
   zIndex?: number;
   dismissable?: boolean;
 }) {
-  useEffect(() => {
-    if (!open || !dismissable) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, dismissable, onClose]);
+  const panelRef = useModal<HTMLDivElement>(open, dismissable ? onClose : undefined);
+  const titleId = useId();
+  const descriptionId = useId();
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div
       className={overlayClass}
       style={{ zIndex }}
@@ -65,15 +64,19 @@ export function Dialog({
       }}
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className={cn(dialogPanelClass, "flex max-h-[calc(100vh-2rem)] flex-col", SIZES[size], className)}
+        aria-labelledby={title ? titleId : undefined}
+        aria-describedby={description ? descriptionId : undefined}
+        tabIndex={-1}
+        className={cn(dialogPanelClass, "flex max-h-[calc(100vh-2rem)] flex-col outline-none", SIZES[size], className)}
       >
         {(title || dismissable) && (
           <div className="flex items-start justify-between gap-4 px-6 pb-1 pt-5">
             <div className="min-w-0">
-              {title && <h2 className="text-base font-semibold leading-6 text-fg">{title}</h2>}
-              {description && <p className="mt-1 text-[13px] leading-relaxed text-muted">{description}</p>}
+              {title && <h2 id={titleId} className="text-base font-semibold leading-6 text-fg">{title}</h2>}
+              {description && <p id={descriptionId} className="mt-1 text-[13px] leading-relaxed text-muted">{description}</p>}
             </div>
             {dismissable && (
               <button
@@ -92,6 +95,7 @@ export function Dialog({
           <div className="flex items-center justify-end gap-2 border-t border-border px-6 py-3.5">{footer}</div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

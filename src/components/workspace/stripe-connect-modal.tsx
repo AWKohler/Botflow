@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useModal } from "@/components/ui/use-modal";
 import { ExternalLink, Loader2, X } from "lucide-react";
 
 interface StripeConnectModalProps {
@@ -21,6 +22,8 @@ export function StripeConnectModal({
   const [opening, setOpening] = useState(false);
   const [popupOpen, setPopupOpen] = useState(false);
   const popupRef = useRef<Window | null>(null);
+
+  const modalRef = useModal<HTMLDivElement>(true);
 
   // Detect when the user closes the Stripe popup without authorizing — we
   // don't auto-dismiss the modal (the agent is still polling and they may
@@ -75,7 +78,14 @@ export function StripeConnectModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
-      <div className="relative w-full max-w-md bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Connect Stripe"
+        tabIndex={-1}
+        className="relative w-full max-w-md bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden outline-none"
+      >
         {/* Header */}
         <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-border">
           {/* Stripe wordmark "S" */}

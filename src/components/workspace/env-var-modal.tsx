@@ -1,6 +1,7 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
+import { useModal } from "@/components/ui/use-modal";
 import { useState } from "react";
 import { Eye, EyeOff, KeyRound, Loader2, X } from "lucide-react";
 
@@ -41,6 +42,8 @@ export function EnvVarModal({
 
   const targetLabel =
     target === "server" ? "Backend · Convex deployment" : "Frontend · Vite .env";
+
+  const modalRef = useModal<HTMLDivElement>(true);
 
   const handleDismiss = () => {
     // Fire-and-forget — the agent's poll sees status='dismissed' within ~2.5s.
@@ -94,7 +97,14 @@ export function EnvVarModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
-      <div className="relative w-full max-w-lg bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Set an environment variable"
+        tabIndex={-1}
+        className="relative w-full max-w-lg bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden outline-none"
+      >
 
         {/* Header */}
         <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-border">

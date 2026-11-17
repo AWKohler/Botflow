@@ -147,6 +147,7 @@ function AddDomainModal({
         <TextInput
           id="apex-domain"
           autoFocus
+          data-autofocus
           type="text"
           value={apex}
           onChange={(e) => setApex(e.target.value)}

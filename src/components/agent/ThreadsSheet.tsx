@@ -316,7 +316,8 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
           className="min-w-0 flex-1 text-left"
           aria-current={selected ? 'true' : undefined}
         >
-          <div className={cn('truncate text-sm', thread.unread || selected ? 'font-medium text-fg' : 'text-fg/90')}>
+          {/* Up to two lines, so the end of a long title (often the telling part) is not lost. */}
+          <div className={cn('line-clamp-2 text-sm leading-snug', thread.unread || selected ? 'font-medium text-fg' : 'text-fg/90')}>
             {label}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-muted">

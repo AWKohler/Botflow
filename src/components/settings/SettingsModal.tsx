@@ -1,7 +1,9 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useModal } from '@/components/ui/use-modal';
 import { SignedIn, SignedOut, SignInButton } from '@/components/auth';
 import { useToast } from '@/components/ui/toast';
 import { X, ExternalLink, AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
@@ -506,8 +508,6 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
     }
   };
 
-  if (!open) return null;
-
   const handleClose = () => {
     onClose();
     // Notify listeners (AgentPanel, landing page) to refresh provider access
@@ -515,6 +515,12 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
       window.dispatchEvent(new CustomEvent('settings-closed'));
     }
   };
+  // Modal behaviour for the dialog form: focus in and contained, page inert,
+  // Escape closes, focus returns to the opener.
+  const panelRef = useModal<HTMLDivElement>(open && variant === 'modal', handleClose);
+  const titleId = useId();
+
+  if (!open) return null;
 
   const body = (
     <>
@@ -963,8 +969,10 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
   );
 
   if (variant === 'section') return body;
+  if (typeof document === 'undefined') return null;
 
-  return (
+  // Rendered at the end of <body>, so nothing behind it can sit above it.
+  return createPortal(
     // Anchored to the top, so the header and tabs stay exactly where they are
     // when you switch tabs; the dialog only grows downward, up to a limit.
     <div className="fixed inset-0 z-[200] flex items-start justify-center px-4 pt-[max(1rem,8vh)]">
@@ -972,15 +980,17 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
           backdrop-filter never becomes the containing block for fixed children. */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={handleClose} />
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Settings"
-        className="relative flex max-h-[min(42rem,calc(100dvh-2rem-8vh))] min-h-[min(30rem,calc(100dvh-2rem-8vh))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="relative flex max-h-[min(42rem,calc(100dvh-2rem-8vh))] min-h-[min(30rem,calc(100dvh-2rem-8vh))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3 sm:gap-5">
-            <h2 className="shrink-0 text-base font-semibold text-fg">Settings</h2>
+            <h2 id={titleId} className="shrink-0 text-base font-semibold text-fg">Settings</h2>
             <div role="tablist" className="flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5 dark:bg-bg">
               {(
                 [
@@ -1029,6 +1039,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
           <div aria-hidden="true" className="pointer-events-none sticky -bottom-5 -mb-5 h-10 bg-gradient-to-t from-bg to-transparent" />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
