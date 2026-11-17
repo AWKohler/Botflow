@@ -147,6 +147,7 @@ export function SandboxedWebWorkspace({
   const [githubRepoOwner, setGithubRepoOwner] = useState<string | null>(null);
   const [githubRepoName, setGithubRepoName] = useState<string | null>(null);
   const [githubDefaultBranch, setGithubDefaultBranch] = useState<string | null>(null);
+  const [mobilePane, setMobilePane] = useState<"chat" | "app">("chat");
   const [currentView, setCurrentView] = useState<WorkspaceView>("preview");
 
   // ── Preview / dev server ─────────────────────────────────────────────
@@ -1075,7 +1076,18 @@ export function SandboxedWebWorkspace({
 
   // ── Render ───────────────────────────────────────────────────────────
   return (
-    <div className="flex h-screen bg-surface text-fg">
+    <div className="flex h-[100dvh] flex-col bg-surface text-fg md:flex-row">
+      {/* Small screens show one pane at a time; this bar switches between them. */}
+      <div className="flex h-11 shrink-0 items-center justify-center border-b border-border md:hidden">
+        <Tabs
+          options={[
+            { value: "chat", text: "Chat" },
+            { value: "app", text: "App" },
+          ]}
+          selected={mobilePane}
+          onSelect={setMobilePane}
+        />
+      </div>
       {/* Convex paused modal — once per workspace-open while paused. Render
           re-gated on managed+paused so a mid-session BYOC transfer or unpause
           closes it rather than stranding stale managed-hosting copy. */}
@@ -1213,7 +1225,12 @@ export function SandboxedWebWorkspace({
       {/* Agent sidebar. Hold the initial prompt until the sandbox is ready —
           otherwise the agent fires its first turn against an empty filesystem
           while the seed is still cloning, and tools fail. */}
-      <div className="relative z-30 flex w-96 shrink-0 flex-col">
+      <div
+        className={cn(
+          "relative z-30 min-h-0 w-full flex-1 flex-col md:flex md:w-96 md:flex-none md:shrink-0",
+          mobilePane === "chat" ? "flex" : "hidden",
+        )}
+      >
         <AgentPanel
           className="h-full"
           projectId={projectId}
@@ -1223,7 +1240,12 @@ export function SandboxedWebWorkspace({
       </div>
 
       {/* Main column */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div
+        className={cn(
+          "min-h-0 min-w-0 flex-1 flex-col md:flex",
+          mobilePane === "app" ? "flex" : "hidden",
+        )}
+      >
         {bootError && (
           <div className="mr-2.5 mt-2 flex items-center gap-3 rounded-lg border border-danger-border bg-danger-soft px-3 py-2 text-[13px] text-danger">
             <span className="font-medium">The sandbox didn’t start</span>
@@ -1243,7 +1265,7 @@ export function SandboxedWebWorkspace({
         )}
 
         {/* Header */}
-        <div className="flex h-12 shrink-0 items-center gap-2 pr-2.5">
+        <div className="flex h-12 shrink-0 items-center gap-2 overflow-x-auto pl-2.5 pr-2.5 [scrollbar-width:none] md:overflow-visible md:pl-0">
           <Tabs
             options={
               [
@@ -1474,7 +1496,7 @@ export function SandboxedWebWorkspace({
               header (top) and agent sidebar (left). */}
           <div
             className={cn(
-              "absolute top-0 left-0 right-2.5 bottom-2.5",
+              "absolute bottom-2.5 left-2.5 right-2.5 top-0 md:left-0",
               currentView === "code" ? "flex flex-col" : "hidden",
               "overflow-hidden rounded-xl border border-border bg-bg",
             )}
@@ -1622,7 +1644,7 @@ export function SandboxedWebWorkspace({
           {/* Preview view */}
           <div
             className={cn(
-              "absolute inset-0 pb-2.5 pr-2.5",
+              "absolute inset-0 pb-2.5 pl-2.5 pr-2.5 md:pl-0",
               currentView === "preview" ? "block" : "hidden",
             )}
           >

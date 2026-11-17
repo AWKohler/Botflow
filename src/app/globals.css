@@ -169,14 +169,20 @@ body {
 }
 
 /* One focus treatment everywhere. `:where` keeps specificity at zero so any
-   component that draws its own ring (or opts out) still wins. */
-:where(a, button, [role="button"], [role="tab"], [role="menuitem"], summary, [tabindex]):focus-visible {
+   component that draws its own ring (or opts out) still wins. Containers that
+   are only focused programmatically (tabindex="-1") never show it. */
+:where(a, button, [role="button"], [role="tab"], [role="menuitem"], summary, [tabindex]:not([tabindex="-1"])):focus-visible {
     outline: 2px solid color-mix(in oklab, var(--sand-accent) 70%, transparent);
     outline-offset: 2px;
 }
 
 :where(button, [role="button"], summary, label[for], select):not(:disabled) {
     cursor: pointer;
+}
+
+/* Programmatic focus targets (sheets, dialogs) should not draw a ring. */
+:where([tabindex="-1"]):focus {
+    outline: none;
 }
 
 /* Quiet scrollbars by default — a thin thumb with no track. */
