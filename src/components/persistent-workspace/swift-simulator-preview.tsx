@@ -23,6 +23,7 @@ import {
   type SimVideoConfig,
 } from "./swift-stream-client";
 import { SwiftCameraCapture, type CameraCaptureState } from "./swift-camera-capture";
+import { SimVideoDecoder } from "./sim-video-decoder";
 import {
   DeviceFrame,
   type DeviceModelUI,
@@ -210,9 +211,7 @@ function ActiveSwiftSimulatorPreview({
   const buildStartedAtRef = useRef<number | null>(null);
   const frameCountRef = useRef(0);
   const fpsTimeRef = useRef(Date.now());
-  const videoDecoderRef = useRef<VideoDecoder | null>(null);
-  const videoConfiguredRef = useRef(false);
-  const waitingForVideoKeyframeRef = useRef(true);
+  const videoDecoderRef = useRef<SimVideoDecoder | null>(null);
   const cameraRef = useRef<SwiftCameraCapture | null>(null);
   // Orientation the user just asked for via the toggle; compared against what
   // the host reports back so we can tell the user when a rotate didn't apply.
@@ -411,15 +410,8 @@ function ActiveSwiftSimulatorPreview({
         clientRef.current.close();
         clientRef.current = null;
       }
-      if (videoDecoderRef.current) {
-        try {
-          videoDecoderRef.current.close();
-        } catch {
-          /* ignore */
-        }
-        videoDecoderRef.current = null;
-        videoConfiguredRef.current = false;
-      }
+      videoDecoderRef.current?.close();
+      videoDecoderRef.current = null;
       // Refcounted: the pool may defer the actual DELETE in case a strict-
       // mode remount re-claims within the grace window. Keyed by deviceModel so
       // switching device tears down the old simulator and starts a new one.
@@ -832,89 +824,46 @@ function ActiveSwiftSimulatorPreview({
       return;
     }
 
-    if (videoDecoderRef.current) {
-      try {
-        videoDecoderRef.current.close();
-      } catch {
-        /* ignore */
-      }
-    }
+    videoDecoderRef.current?.close();
 
     canvas.width = config.width;
     canvas.height = config.height;
 
-    // Prefer the software decoder: the platform hardware decoders (VideoToolbox
-    // in Chrome on macOS) hold ~8 frames before emitting one — ~130ms of added
-    // latency at 60fps, on every tap. The software path emits each frame as
-    // soon as it's decoded (~4ms) and keeps up with 60fps at this resolution
-    // on current machines. If a browser can't decode H.264 in software it
-    // reports NotSupportedError and we rebuild the decoder without the hint.
-    const createDecoder = (preferSoftware: boolean): VideoDecoder => {
-      const decoder = new VideoDecoder({
-        output: (frame: VideoFrame) => {
-          const c = canvasRef.current;
-          if (c) {
-            blitToCanvas(
-              c,
-              frame,
-              frame.displayWidth,
-              frame.displayHeight,
-              displayOrientationRef.current === "landscape",
-            );
-          }
-          frame.close();
-          markFrame();
-          frameCountRef.current++;
-          const now = Date.now();
-          const elapsed = now - fpsTimeRef.current;
-          if (elapsed >= 1000) {
-            setFps(Math.round((frameCountRef.current * 1000) / elapsed));
-            frameCountRef.current = 0;
-            fpsTimeRef.current = now;
-          }
-        },
-        error: (e: Error) => {
-          if (preferSoftware && e.name === "NotSupportedError" && videoDecoderRef.current === decoder) {
-            videoDecoderRef.current = createDecoder(false);
-            waitingForVideoKeyframeRef.current = true;
-            return;
-          }
-          setPill({ kind: "error", message: `Video decoder error: ${e.message}` });
-        },
-      });
-      decoder.configure({
-        codec: "avc1.42E01F",
-        codedWidth: config.width,
-        codedHeight: config.height,
-        optimizeForLatency: true,
-        ...(preferSoftware ? { hardwareAcceleration: "prefer-software" } : {}),
-        avc: { format: "annexb" },
-      } as VideoDecoderConfig);
-      return decoder;
-    };
-
-    videoDecoderRef.current = createDecoder(true);
-    videoConfiguredRef.current = true;
-    waitingForVideoKeyframeRef.current = true;
+    // SimVideoDecoder rebuilds itself after a decoder error (falling back from
+    // the software decoder to the browser's default); onFatal only fires once
+    // that recovery is exhausted, with the decoder's own error.
+    videoDecoderRef.current = new SimVideoDecoder({
+      width: config.width,
+      height: config.height,
+      onFrame: (frame) => {
+        const c = canvasRef.current;
+        if (c) {
+          blitToCanvas(
+            c,
+            frame,
+            frame.displayWidth,
+            frame.displayHeight,
+            displayOrientationRef.current === "landscape",
+          );
+        }
+        markFrame();
+        frameCountRef.current++;
+        const now = Date.now();
+        const elapsed = now - fpsTimeRef.current;
+        if (elapsed >= 1000) {
+          setFps(Math.round((frameCountRef.current * 1000) / elapsed));
+          frameCountRef.current = 0;
+          fpsTimeRef.current = now;
+        }
+      },
+      onFatal: (message) => {
+        setPill({ kind: "error", message: `Video decoder error: ${message}` });
+      },
+    });
   }, [markFrame]);
 
   const handleVideoChunk = useCallback((chunk: Uint8Array, timestampMs: number, keyframe: boolean) => {
-    const decoder = videoDecoderRef.current;
-    if (!decoder || !videoConfiguredRef.current) return;
-    if (waitingForVideoKeyframeRef.current && !keyframe) return;
-    if (keyframe) waitingForVideoKeyframeRef.current = false;
-    try {
-      if (typeof EncodedVideoChunk === "undefined") return;
-      decoder.decode(
-        new EncodedVideoChunk({
-          type: keyframe ? "key" : "delta",
-          timestamp: timestampMs * 1000,
-          data: chunk,
-        }),
-      );
-    } catch (e) {
-      setPill({ kind: "error", message: `Video decode failed: ${(e as Error).message}` });
-    }
+    videoDecoderRef.current?.decode(chunk, timestampMs, keyframe);
   }, []);
 
   // ────────────────────────────────────────────────────────────────────────────
