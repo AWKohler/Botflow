@@ -16,8 +16,9 @@ const TABS = [
   { href: '/panel/providers', label: 'Providers', icon: Activity },
 ];
 
-export function PanelNav() {
-  const pathname = usePathname();
+export function PanelNav({ activePath }: { activePath?: string } = {}) {
+  const current = usePathname();
+  const pathname = activePath ?? current;
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-bg/85 backdrop-blur-lg">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-6 sm:px-10">

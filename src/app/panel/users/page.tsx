@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { ArrowDown, ArrowUp, Search } from 'lucide-react';
+import { TextInput } from '@/components/ui/field';
+import { Tabs } from '@/components/ui/tabs';
 import {
   ErrorState,
   fmtNum,
@@ -150,42 +152,37 @@ export default function PanelUsersPage() {
         generatedAt={data.generatedAt}
       />
 
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative">
-          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-          <input
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
+          <TextInput
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search email, name, id…"
-            className={cn(
-              'rounded-lg border border-border bg-surface pl-8 pr-3 py-1.5 text-sm text-fg',
-              'placeholder:text-muted focus:outline-none focus:border-accent focus:ring-3 focus:ring-accent/15 w-64',
-            )}
+            placeholder="Search by email, name or ID"
+            aria-label="Search users"
+            className="w-64 pl-9"
           />
         </div>
-        {(['all', 'free', 'pro', 'max', 'live'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTierFilter(t)}
-            className={cn(
-              'rounded-lg px-3 py-1.5 text-sm capitalize transition-colors',
-              tierFilter === t
-                ? 'bg-elevated text-fg font-medium border border-border'
-                : 'text-muted hover:text-fg',
-            )}
-          >
-            {t === 'live' ? 'Live now' : t}
-          </button>
-        ))}
+        <Tabs
+          options={[
+            { value: 'all', text: 'All' },
+            { value: 'free', text: 'Free' },
+            { value: 'pro', text: 'Pro' },
+            { value: 'max', text: 'Max' },
+            { value: 'live', text: 'Live now' },
+          ]}
+          selected={tierFilter}
+          onSelect={setTierFilter}
+        />
       </div>
 
       <div className="rounded-xl border border-border bg-surface overflow-x-auto modern-scrollbar">
-        <table className="w-full text-sm min-w-[1000px]">
+        <table className="w-full min-w-[1000px] text-[13px]">
           <thead>
-            <tr className="border-b border-border text-left">
-              <th className="px-3 py-2.5 font-medium text-muted">User</th>
+            <tr className="border-b border-border bg-elevated/60 text-left text-xs">
+              <th className="py-2.5 pl-4 pr-2 font-medium text-muted">User</th>
               {COLUMNS.map((c) => (
-                <th key={c.key} className="px-3 py-2.5 font-medium text-muted whitespace-nowrap">
+                <th key={c.key} className="whitespace-nowrap px-2 py-2.5 font-medium text-muted last:pr-4">
                   <button
                     onClick={() => toggleSort(c.key)}
                     className="flex items-center gap-1 hover:text-fg"
@@ -246,8 +243,8 @@ function UserTableRow({
         onClick={onToggle}
         className="border-b border-border/60 last:border-0 hover:bg-elevated/50 cursor-pointer"
       >
-        <td className="px-3 py-2.5">
-          <div className="flex items-center gap-2 min-w-[220px]">
+        <td className="py-2.5 pl-4 pr-2">
+          <div className="flex min-w-[200px] items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {row.imageUrl && (
               <img src={row.imageUrl} alt="" className="w-6 h-6 rounded-full shrink-0" />
@@ -272,7 +269,7 @@ function UserTableRow({
           marginNegative ? 'text-danger' : 'text-fg')}>
           {fmtUsd(row.monthMarginUsd)}
         </td>
-        <td className="px-3 py-2.5 tabular-nums text-fg whitespace-nowrap">
+        <td className="px-2 py-2.5 tabular-nums text-fg whitespace-nowrap">
           {fmtUsd(row.monthRevenueUsd)}
           {row.revenueBasis === 'stripe' && (
             <span className="text-xs text-muted ml-1" title="from a live Stripe subscription">
@@ -280,14 +277,14 @@ function UserTableRow({
             </span>
           )}
         </td>
-        <td className="px-3 py-2.5 tabular-nums text-fg">{fmtUsd(row.monthCostUsd)}</td>
+        <td className="px-2 py-2.5 tabular-nums text-fg">{fmtUsd(row.monthCostUsd)}</td>
         <td className={cn('px-3 py-2.5 tabular-nums', row.lifetimeRevenueUsd > 0 ? 'text-fg font-medium' : 'text-muted')}>
           {fmtUsd(row.lifetimeRevenueUsd)}
         </td>
-        <td className="px-3 py-2.5 tabular-nums text-fg">{fmtUsd(row.lifetimeCostUsd)}</td>
-        <td className="px-3 py-2.5"><Meter pct={row.budgetUtilPct} /></td>
-        <td className="px-3 py-2.5 tabular-nums text-fg">{row.projectCount}</td>
-        <td className="px-3 py-2.5 tabular-nums text-fg">
+        <td className="px-2 py-2.5 tabular-nums text-fg">{fmtUsd(row.lifetimeCostUsd)}</td>
+        <td className="px-2 py-2.5"><Meter pct={row.budgetUtilPct} /></td>
+        <td className="px-2 py-2.5 tabular-nums text-fg">{row.projectCount}</td>
+        <td className="px-2 py-2.5 tabular-nums text-fg">
           {row.convexInstances}
           {row.convexPaused > 0 && (
             <span className="text-warning text-xs ml-1">
@@ -295,8 +292,8 @@ function UserTableRow({
             </span>
           )}
         </td>
-        <td className="px-3 py-2.5 text-muted whitespace-nowrap">{timeAgo(row.lastActiveAt)}</td>
-        <td className="px-3 py-2.5 text-muted whitespace-nowrap">{timeAgo(row.joinedAt)}</td>
+        <td className="px-2 py-2.5 text-muted whitespace-nowrap">{timeAgo(row.lastActiveAt)}</td>
+        <td className="px-2 py-2.5 text-muted whitespace-nowrap">{timeAgo(row.joinedAt)}</td>
       </tr>
       {expanded && (
         <tr className="border-b border-border/60 bg-elevated/30">
