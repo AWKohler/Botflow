@@ -2793,20 +2793,20 @@ export default function LandingV2() {
 
     {showAuthDialog && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] px-4">
-        <div className="w-full max-w-md rounded-2xl border border-border bg-bg p-6 shadow-xl">
-          <h2 className="text-xl font-semibold text-foreground">Sign in to start building</h2>
-          <p className="mt-2 text-sm text-muted">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-bg p-6 shadow-2xl">
+          <h2 className="text-base font-semibold text-fg">Sign in to start building</h2>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
             Sign in or sign up to create your project workspace. You&apos;ll be able to name it on the next step.
           </p>
-          <div className="mt-6 flex flex-col sm:flex-row gap-3">
+          <div className="mt-6 flex flex-col gap-2.5 sm:flex-row-reverse">
             <SignInButton mode="modal" appearance={landingSignInModalAppearance}>
-              <button className="inline-flex flex-1 items-center justify-center rounded-xl bg-foreground px-4 py-2.5 text-sm font-medium text-bg shadow hover:opacity-90 transition">
+              <button className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50">
                 Sign in / Sign up
               </button>
             </SignInButton>
             <button
               onClick={closeAuthDialog}
-              className="inline-flex flex-1 items-center justify-center rounded-xl border border-border bg-elevated px-4 py-2.5 text-sm font-medium text-muted shadow-sm hover:bg-surface transition"
+              className="flex-1 inline-flex h-10 items-center justify-center rounded-lg border border-border bg-bg px-4 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated"
             >
               Cancel
             </button>
@@ -2817,7 +2817,7 @@ export default function LandingV2() {
 
     {projectStep !== null && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] px-4">
-        <div className="w-full max-w-md rounded-2xl border border-border bg-bg shadow-xl overflow-hidden">
+        <div className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl">
           {projectStep === 'convex' && (() => {
             const cloudForAll = process.env.NEXT_PUBLIC_ALLOW_CLOUD_CONVEX_FOR_ALL === 'true';
             const isPaid = userTier === 'pro' || userTier === 'max' || cloudForAll;
@@ -2825,9 +2825,9 @@ export default function LandingV2() {
             const managedQuotaHit = isPaid && projectQuotaLeft !== null && projectQuotaLeft <= 0;
             return (
               <>
-                <div className="px-6 pt-6 pb-3">
-                  <h2 className="text-xl font-semibold text-foreground">Connect your backend</h2>
-                  <p className="mt-1.5 text-sm text-muted">
+                <div className="px-6 pb-4 pt-6">
+                  <h2 className="text-base font-semibold text-fg">Connect your backend</h2>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
                     {isPaid && offerManaged
                       ? 'Choose how to host the Convex backend for this project.'
                       : 'Botflow uses Convex for your backend. Connect your free Convex account to continue.'}
@@ -2835,18 +2835,18 @@ export default function LandingV2() {
                 </div>
                 <div className="px-6 pb-6 space-y-3">
                   <div className={cn(
-                    'relative rounded-xl border-2 p-4 transition-all',
-                    hasConvexOAuth ? 'border-success-border bg-success-soft' : 'border-foreground/20 bg-soft',
+                    'relative rounded-xl border p-4 transition-colors',
+                    hasConvexOAuth ? 'border-success-border bg-success-soft' : 'border-border bg-surface',
                   )}>
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-foreground">
-                        <KeyRound className="h-4 w-4 text-bg" />
+                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-elevated">
+                        <KeyRound className="h-4 w-4 text-muted" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground">Your Convex Account</span>
+                          <span className="text-sm font-medium text-fg">Your Convex account</span>
                           {hasConvexOAuth && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-success border border-success-border">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
                               <Check className="h-3 w-3" /> Connected
                             </span>
                           )}
@@ -2871,7 +2871,7 @@ export default function LandingV2() {
                       <button
                         onClick={handleConnectConvex}
                         disabled={convexConnecting}
-                        className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-bg shadow hover:opacity-90 disabled:opacity-60 transition"
+                        className="mt-3 w-full inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                       >
                         {convexConnecting ? (
                           <><div className="h-4 w-4 animate-spin rounded-full border-2 border-bg/30 border-t-bg" /> Connecting&hellip;</>
@@ -2892,18 +2892,18 @@ export default function LandingV2() {
                       className={cn(
                         'relative w-full rounded-xl border p-4 text-left transition-all',
                         managedQuotaHit
-                          ? 'border-border bg-soft opacity-50 cursor-not-allowed'
-                          : 'border-border bg-soft hover:border-foreground/30 hover:bg-elevated cursor-pointer',
+                          ? 'cursor-not-allowed border-border bg-surface opacity-50'
+                          : 'cursor-pointer border-border bg-surface hover:border-border-strong hover:bg-elevated',
                       )}
                     >
                       <div className="flex items-start gap-3">
-                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-elevated">
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-elevated">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src="/convex-color.svg" className="h-4 w-4" alt="" />
                         </div>
                         <div>
-                          <span className="text-sm font-semibold text-foreground">Botflow Managed</span>
-                          <span className="ml-1.5 text-xs text-muted font-normal">(Recommended)</span>
+                          <span className="text-sm font-medium text-fg">Managed by Botflow</span>
+                          <span className="ml-1.5 text-xs font-normal text-muted">Recommended</span>
                           <p className="mt-0.5 text-xs text-muted">
                             We handle the infrastructure, backups, and scaling. Instant setup.
                           </p>
@@ -2916,18 +2916,18 @@ export default function LandingV2() {
                       </div>
                     </button>
                   ) : (
-                    <div className="relative rounded-xl border border-border bg-soft p-4 opacity-50 cursor-not-allowed">
+                    <div className="relative cursor-not-allowed rounded-xl border border-border bg-surface p-4 opacity-60">
                       <div className="absolute -top-2.5 right-3">
-                        <span className="inline-flex items-center rounded-full bg-foreground px-2.5 py-0.5 text-xs font-semibold text-bg">
-                          Upgrade to Pro
+                        <span className="inline-flex items-center rounded-full border border-border bg-bg px-2 py-0.5 text-[11px] font-medium text-fg">
+                          Pro plan
                         </span>
                       </div>
                       <div className="flex items-start gap-3">
-                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-elevated">
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-elevated">
                           <Database className="h-4 w-4 text-muted" />
                         </div>
                         <div>
-                          <span className="text-sm font-semibold text-muted">Botflow Managed (Recommended)</span>
+                          <span className="text-sm font-medium text-muted">Managed by Botflow</span>
                           <p className="mt-0.5 text-xs text-muted">
                             We handle the infrastructure, backups, and scaling. Instant setup.
                           </p>
@@ -2935,14 +2935,14 @@ export default function LandingV2() {
                       </div>
                     </div>
                   )}
-                  <div className="flex gap-3 pt-1">
+                  <div className="flex flex-row-reverse gap-2.5 pt-1">
                     {hasConvexOAuth && (
                       <button
                         onClick={() => {
                           void saveBackendPreference('user');
                           setProjectStep('name');
                         }}
-                        className="flex-1 inline-flex items-center justify-center rounded-xl bg-foreground px-4 py-2.5 text-sm font-medium text-bg shadow hover:opacity-90 transition"
+                        className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                       >
                         Continue
                         <ArrowRight className="ml-1.5 h-4 w-4" />
@@ -2951,7 +2951,7 @@ export default function LandingV2() {
                     <button
                       onClick={closeProjectModal}
                       className={cn(
-                        'inline-flex items-center justify-center rounded-xl border border-border bg-elevated px-4 py-2.5 text-sm font-medium text-muted shadow-sm hover:bg-surface transition',
+                        'inline-flex h-10 items-center justify-center rounded-lg border border-border bg-bg px-4 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated',
                         hasConvexOAuth ? '' : 'flex-1',
                       )}
                     >
@@ -2964,8 +2964,8 @@ export default function LandingV2() {
           })()}
           {projectStep === 'name' && (
             <div className="p-6">
-              <h2 className="text-xl font-semibold text-foreground">Name your project</h2>
-              <p className="mt-2 text-sm text-muted">
+              <h2 className="text-base font-semibold text-fg">Name your project</h2>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
                 Give your project a short name so it&apos;s easy to find later.
               </p>
               <div className="mt-4">
@@ -2976,20 +2976,20 @@ export default function LandingV2() {
                     if (e.key === 'Enter') handleCreateProject();
                   }}
                   placeholder="My new project"
-                  className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-sm text-foreground shadow-sm outline-none focus:ring-2 focus:ring-foreground/10"
+                  className="h-10 w-full rounded-lg border border-border bg-bg px-3 text-sm text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
                   autoFocus
                 />
               </div>
-              <div className="mt-6 flex gap-3">
+              <div className="mt-6 flex flex-row-reverse gap-2.5">
                 <button
                   onClick={handleCreateProject}
-                  className="flex-1 inline-flex items-center justify-center rounded-xl bg-foreground px-4 py-2.5 text-sm font-medium text-bg shadow hover:opacity-90 transition"
+                  className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                 >
-                  Continue to workspace
+                  Create project
                 </button>
                 <button
                   onClick={closeProjectModal}
-                  className="inline-flex items-center justify-center rounded-xl border border-border bg-elevated px-4 py-2.5 text-sm font-medium text-muted shadow-sm hover:bg-surface transition"
+                  className="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-bg px-4 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated"
                 >
                   Cancel
                 </button>

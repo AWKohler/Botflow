@@ -269,7 +269,7 @@ export function AccountPanel({
         />
       )}
 
-      <div className={cn("grid gap-8 md:grid-cols-[200px_1fr] md:gap-10", embedded && "p-6 sm:p-8")}>
+      <div className={cn("grid gap-8 md:grid-cols-[200px_minmax(0,760px)] md:gap-12", embedded && "p-6 sm:p-8")}>
         <aside>
           <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
           <p className="mt-1.5 text-sm text-muted">Your profile, sign-in and billing.</p>
@@ -990,7 +990,7 @@ export function AccountPanel({
 /** The /account page gets the shared app shell; the in-app dialog does not. */
 function Frame({ embedded, children }: { embedded: boolean; children: React.ReactNode }) {
   if (embedded) return <div className="bg-bg text-fg">{children}</div>;
-  return <AppShell width="default">{children}</AppShell>;
+  return <AppShell>{children}</AppShell>;
 }
 
 /** Turn a raw user-agent string into something a person would recognize. */

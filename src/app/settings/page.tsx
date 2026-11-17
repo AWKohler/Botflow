@@ -98,13 +98,13 @@ export default function SettingsPage() {
   const dirty = keys.some((k) => k.value.trim());
 
   return (
-    <AppShell width="narrow">
+    <AppShell>
       <PageHeader
         title="API keys"
         description="Bring your own model keys. Add as many providers as you like — keys are stored on the server and never shown again."
       />
 
-      <div className="mt-8">
+      <div className="mt-8 max-w-3xl">
         <SignedOut>
           <EmptyState
             className="rounded-xl border border-dashed border-border-strong bg-surface"

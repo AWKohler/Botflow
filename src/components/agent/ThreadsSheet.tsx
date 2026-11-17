@@ -286,7 +286,7 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
   return (
     <div
       className={cn(
-        'group/row relative flex items-center gap-2 rounded-xl px-2 py-2 transition-colors',
+        'group/row relative flex items-center gap-2 rounded-lg px-2 py-2 transition-colors',
         selected ? 'bg-elevated' : 'hover:bg-elevated/60',
       )}
     >
@@ -506,7 +506,7 @@ export function ThreadsSheet({
             type="button"
             onClick={onClose}
             aria-label="Close chats"
-            className="flex size-7 items-center justify-center rounded-full text-muted transition-colors hover:bg-soft hover:text-fg"
+            className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg"
           >
             <IconX size={15} />
           </button>
@@ -516,7 +516,7 @@ export function ThreadsSheet({
           <button
             type="button"
             onClick={onNewChat}
-            className="flex w-full items-center justify-center gap-1.5 rounded-full border border-border bg-elevated py-2 text-sm font-medium text-fg transition-colors hover:bg-soft"
+            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-bg text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated"
           >
             <Plus size={15} />
             New chat
@@ -528,7 +528,7 @@ export function ThreadsSheet({
           {!threads && !error && (
             <div className="space-y-2 px-2 py-2">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="h-10 animate-pulse rounded-xl bg-elevated/70" />
+                <div key={i} className="h-10 animate-pulse rounded-lg bg-elevated" />
               ))}
             </div>
           )}
@@ -552,7 +552,7 @@ export function ThreadsSheet({
               <button
                 type="button"
                 onClick={() => setShowArchived((v) => !v)}
-                className="flex w-full items-center gap-1 px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted hover:text-fg"
+                className="flex w-full items-center gap-1 px-2 pb-1 pt-2 text-[11px] font-medium text-muted hover:text-fg"
               >
                 Archived ({archived.length})
                 <ChevronDown size={12} className={cn('transition-transform', showArchived && 'rotate-180')} />
@@ -568,7 +568,7 @@ export function ThreadsSheet({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted">{children}</div>
+    <div className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted">{children}</div>
   );
 }
 

@@ -196,7 +196,7 @@ export default function ProjectsPage() {
               title="No projects yet"
               description="Describe an app and Botflow builds it. Your projects will show up here."
               action={
-                <Link href="/" className={buttonClass({ variant: 'primary' })}>
+                <Link href="/" className={buttonClass({ variant: 'secondary' })}>
                   <Plus className="h-4 w-4" />
                   Create your first project
                 </Link>

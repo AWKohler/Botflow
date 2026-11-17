@@ -368,7 +368,7 @@ function DomainDetail({
       />
 
       {domain.status !== "active" && (
-        <Card className="mt-8 p-6">
+        <Card className="mt-8 max-w-3xl p-6">
           <SectionHeader
             title="Point your nameservers to Botflow"
             description={
@@ -522,7 +522,7 @@ export default function DomainsClient() {
   );
 
   return (
-    <AppShell width="default">
+    <AppShell>
       {!selectedDomain && (
         <>
           <PageHeader
@@ -572,8 +572,8 @@ export default function DomainsClient() {
             )}
 
             {domains === null ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {[0, 1].map((i) => (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {[0, 1, 2].map((i) => (
                   <div key={i} className="h-[104px] animate-pulse rounded-xl border border-border bg-surface" />
                 ))}
               </div>
@@ -584,13 +584,13 @@ export default function DomainsClient() {
                 title="No domains yet"
                 description="Add a domain to give your projects a real home on the web."
                 action={
-                  <Button variant="primary" onClick={() => setAddOpen(true)}>
+                  <Button variant="secondary" onClick={() => setAddOpen(true)}>
                     <Plus size={15} /> Add your first domain
                   </Button>
                 }
               />
             ) : (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {domains?.map((d) => (
                   <button
                     key={d.id}
