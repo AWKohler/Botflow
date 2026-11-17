@@ -257,12 +257,12 @@ export function FeatureBento({
             style={{
               position: "relative",
               width: "95%",
-              height: "100px",
+              height: "72px",
               margin: "0 auto",
             }}
           >
             <Image
-              src="/botflow_black.svg"
+              src="/brand/botflow_logo_black.png"
               alt="Botflow"
               fill
               style={{ objectFit: "contain" }}
@@ -271,7 +271,7 @@ export function FeatureBento({
             />
 
             <Image
-              src="/botflow_white.svg"
+              src="/brand/botflow_logo_white.png"
               alt="Botflow"
               fill
               style={{ objectFit: "contain" }}
@@ -317,6 +317,7 @@ export function FeatureBento({
               alt="Swift"
               width={500}
               height={313}
+              loading="eager"
               className="relative w-[72%] max-w-[190px] dark:hidden"
             />
             <Image
@@ -324,6 +325,7 @@ export function FeatureBento({
               alt="Swift"
               width={500}
               height={313}
+              loading="eager"
               className="relative hidden w-[72%] max-w-[190px] dark:block"
             />
           </div>
@@ -341,7 +343,7 @@ export function FeatureBento({
         <div className="flex h-full flex-col p-6">
           {/*<Eyebrow>Simulator superpowers</Eyebrow>*/}
           <Title className="text-[17px]">
-            iPhone simulator, piped into your&nbsp;Browser.
+            iPhone simulator, piped into your&nbsp;browser.
           </Title>
           <div className="relative flex flex-1 items-center justify-center py-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -458,7 +460,7 @@ export function FeatureBento({
         </div>
         <div className="relative z-10 p-6">
           {/*<Eyebrow>Not just iOS</Eyebrow>*/}
-          <Title className="text-[17px]">Full-stack, Backend included.</Title>
+          <Title className="text-[17px]">Full-stack, backend included.</Title>
         </div>
       </Tile>
     </div>

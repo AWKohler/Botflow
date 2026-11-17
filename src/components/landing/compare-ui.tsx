@@ -175,8 +175,6 @@ export function GlanceCards({
               />
               <div className="relative z-10">
                 <span className="flex items-center gap-2.5">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/brand/botflow-glyph.svg" alt="" className="h-6 w-6" />
                   <span className={cn(serif.className, 'text-2xl sm:text-3xl tracking-tight')}>
                     Botflow
                   </span>
@@ -245,8 +243,6 @@ export function CompareTable({ themName, groups }: { themName: string; groups: C
               </div>
               <div className="px-2 sm:px-4 py-5 text-center">
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text)]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/brand/botflow-glyph.svg" alt="" className="h-4 w-4" />
                   Botflow
                 </span>
               </div>
@@ -866,7 +862,14 @@ export function AltQuickTable({ profiles }: { profiles: AltProfile[] }) {
 
         <Reveal delay={100}>
           <div className="rounded-2xl border border-[var(--sand-border)] bg-[var(--sand-bg)] overflow-hidden overflow-x-auto modern-scrollbar">
-            <table className="w-full min-w-[640px] border-collapse text-left">
+            <table className="w-full min-w-[760px] table-fixed border-collapse text-left">
+              <colgroup>
+                <col className="w-[19%]" />
+                <col className="w-[19%]" />
+                <col className="w-[22%]" />
+                <col className="w-[22%]" />
+                <col className="w-[18%]" />
+              </colgroup>
               <thead>
                 <tr className="border-b border-[var(--sand-border)]">
                   <th className="px-5 sm:px-7 py-4 text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]">
@@ -875,7 +878,7 @@ export function AltQuickTable({ profiles }: { profiles: AltProfile[] }) {
                   {cols.map((c) => (
                     <th
                       key={c.key}
-                      className="px-4 py-4 text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]"
+                      className="px-5 py-4 align-bottom text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]"
                     >
                       {c.label}
                     </th>
@@ -891,19 +894,15 @@ export function AltQuickTable({ profiles }: { profiles: AltProfile[] }) {
                       p.isBotflow && 'bg-[var(--sand-accent)]/[0.04]',
                     )}
                   >
-                    <td className="px-5 sm:px-7 py-4 text-sm font-medium text-[var(--sand-text)] whitespace-nowrap">
+                    <td className="px-5 py-4 align-top text-sm font-medium text-[var(--sand-text)] sm:px-7">
                       <span className="inline-flex items-center gap-2">
-                        {p.isBotflow && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src="/brand/botflow-glyph.svg" alt="" className="h-4 w-4" />
-                        )}
                         {p.name}
                       </span>
                     </td>
                     {cols.map((c) => (
                       <td
                         key={c.key}
-                        className="px-4 py-4 text-sm text-[var(--sand-text-muted)] leading-snug"
+                        className="px-5 py-4 align-top text-sm leading-snug text-[var(--sand-text-muted)]"
                       >
                         {p.facts[c.key]}
                       </td>

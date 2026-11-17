@@ -229,9 +229,6 @@ export function AuthForm({
             Email address
             {!signUp && step === "identifier" ? " or username" : ""}
             <input
-              placeholder={
-                !signUp ? "Enter email or username" : "Enter your email address"
-              }
               type={signUp || step.startsWith("reset") ? "email" : "text"}
               autoComplete="username"
               required

@@ -151,14 +151,14 @@ function CodeBlock({
   );
 }
 
-// Color tokens for the code examples — warm editor-ish palette that matches sand theme
+// Color tokens for the code examples — theme-aware (see --code-* in globals.css)
 const C = {
-  kw: '#d86a4e',     // keyword (import, export, const, default)
-  fn: '#1d52f1',     // function name / call
-  str: '#5a8a3b',    // string literal
+  kw: 'var(--code-keyword)', // keyword (import, export, const, default)
+  fn: 'var(--code-function)', // function name / call
+  str: 'var(--code-string)', // string literal
   id: 'var(--sand-text)', // identifier
-  type: '#b4783e',   // type / class
-  prop: '#7a5ab1',   // property
+  type: 'var(--code-type)', // type / class
+  prop: 'var(--code-property)', // property
   muted: 'var(--sand-text-muted)', // comment
   punct: 'var(--sand-text-muted)', // punctuation
 };

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, Lock } from 'lucide-react';
+import { Check, ChevronDown, Lock } from 'lucide-react';
 import { MODEL_CONFIGS, isModelDisabled, modelDisabledReason, type ModelId } from '@/lib/agent/models';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
@@ -81,8 +81,9 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
 ]);
 
 /** Per-model cost hint ("x6", "x0.3") — derived from pricing; see ModelConfig.costMultiplier. */
+/** How fast a model spends credits relative to the baseline, e.g. "6× credits". */
 function costLabel(modelId: ModelId): string {
-  return `x${MODEL_CONFIGS[modelId].costMultiplier}`;
+  return `${MODEL_CONFIGS[modelId].costMultiplier}× credits`;
 }
 
 const TIER_RANK: Record<string, number> = { free: 0, pro: 1, max: 2 };
@@ -286,9 +287,8 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                     {tierBadge && (
                       <span className={cn(
                         'inline-flex items-center rounded-full border px-1.5 py-px text-[10px] font-medium',
-                        requiredTier === 'max'
-                          ? 'border-accent/25 bg-accent-soft text-accent'
-                          : 'border-border bg-bg text-fg'
+                        // Plan tags are tinted so they never read as a provider tag.
+                        'border-accent/25 bg-accent-soft text-accent'
                       )}>
                         {tierBadge}
                       </span>
@@ -303,6 +303,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                     <div className="text-[11px] text-muted mt-0.5">{disabledReason}</div>
                   )}
                 </div>
+                {isSelected && !isDisabled && <Check className="h-4 w-4 shrink-0 text-fg" aria-label="Selected" />}
                 {isDisabled && (
                   <div className="flex items-center gap-1 text-muted">
                     <Lock className="h-3 w-3" />

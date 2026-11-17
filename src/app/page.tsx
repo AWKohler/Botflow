@@ -2108,7 +2108,7 @@ export default function LandingV2() {
                                   ? 'Your Convex'
                                   : convexBackendType === 'muhkoo'
                                   ? 'MuhKoo'
-                                  : 'No Backend'}
+                                  : 'No backend'}
                               </span>
                               <ChevronDown className="h-3 w-3 opacity-60" />
                             </button>
@@ -2454,7 +2454,7 @@ export default function LandingV2() {
                       serif.className,
                       'relative z-10 block text-7xl sm:text-8xl font-normal leading-none select-none',
                     )}
-                    style={{ color: 'var(--sand-accent)', opacity: 0.32 }}
+                    style={{ color: 'var(--sand-text-subtle)' }}
                   >
                     {s.num}
                   </span>
