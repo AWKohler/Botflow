@@ -87,7 +87,7 @@ export function StripeConnectModal({
               Connect Stripe
               <span
                 className={
-                  "text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded " +
+                  "text-[11px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded " +
                   (mode === "live"
                     ? "bg-danger-soft text-danger"
                     : "bg-warning-soft text-warning")

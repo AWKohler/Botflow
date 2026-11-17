@@ -137,7 +137,7 @@ function LiveActionStep({ action, isLast }: { action: ToolCallData; isLast: bool
             {isEdit ? (
               <FileChange before={action.fileChange!.before} after={action.fileChange!.after} />
             ) : (
-              <pre className="text-[10px] overflow-auto bg-soft p-1.5 rounded border border-border whitespace-pre-wrap break-words max-h-24">
+              <pre className="text-[11px] overflow-auto bg-soft p-1.5 rounded border border-border whitespace-pre-wrap break-words max-h-24">
                 {action.resultPreview ?? ''}
               </pre>
             )}
@@ -152,12 +152,12 @@ function FileChange({ before, after }: { before: string; after: string }) {
   return (
     <div className="grid grid-cols-2 gap-2">
       <div>
-        <div className="text-[10px] mb-1 text-muted">Before</div>
-        <pre className="text-[10px] overflow-auto bg-soft p-1.5 rounded border border-border whitespace-pre max-h-24">{before}</pre>
+        <div className="text-[11px] mb-1 text-muted">Before</div>
+        <pre className="text-[11px] overflow-auto bg-soft p-1.5 rounded border border-border whitespace-pre max-h-24">{before}</pre>
       </div>
       <div>
-        <div className="text-[10px] mb-1 text-muted">After</div>
-        <pre className="text-[10px] overflow-auto bg-soft p-1.5 rounded border border-border whitespace-pre max-h-24">{after}</pre>
+        <div className="text-[11px] mb-1 text-muted">After</div>
+        <pre className="text-[11px] overflow-auto bg-soft p-1.5 rounded border border-border whitespace-pre max-h-24">{after}</pre>
       </div>
     </div>
   );

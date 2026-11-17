@@ -1,22 +1,13 @@
 'use client';
 
-import Link from 'next/link';
 import { useState } from 'react';
 import { PricingTable } from '@/components/auth';
 import { formatCredits, type PlanCredits } from '@/components/auth/pricing-table';
-import {
-  Bot,
-  Check,
-  Database,
-  Globe,
-  Layers,
-  Plus,
-  Sparkles,
-  Minus,
-} from 'lucide-react';
+import { Check, Plus, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   EditorialGrid,
+  ClosingCta,
   LandingFooter,
   LandingNav,
   LineDivider,
@@ -79,7 +70,11 @@ const buildComparison = (
       },
       {
         feature: 'Model credits each month',
-        values: { free: 'Small starter allowance', pro: formatCredits(credits.pro), max: formatCredits(credits.max) },
+        values: {
+          free: credits.free > 0 ? formatCredits(credits.free) : false,
+          pro: formatCredits(credits.pro),
+          max: formatCredits(credits.max),
+        },
       },
       {
         feature: 'Sharing projects with collaborators',
@@ -482,38 +477,12 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
       {/* CTA                                                              */}
       {/* ================================================================ */}
       <LineDivider />
-      <section className="relative">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32 text-center">
-          <Reveal>
-            <Bot
-              aria-hidden
-              className="mx-auto mb-6 h-10 w-10 text-[var(--sand-accent)]"
-              strokeWidth={1.5}
-            />
-            <h2
-              className={cn(
-                serif.className,
-                'text-4xl sm:text-5xl md:text-6xl tracking-tight max-w-2xl mx-auto',
-              )}
-            >
-              Start building.{' '}
-              <em className={serif.className}>Upgrade later.</em>
-            </h2>
-            <p className="mt-5 text-lg text-[var(--sand-text-muted)] max-w-xl mx-auto leading-relaxed">
-              No credit card. No setup. Describe an app and watch it run.
-            </p>
-            <div className="mt-9 flex items-center justify-center">
-              <Link
-                href="/sign-up"
-                className="group inline-flex items-center gap-2 rounded-xl bg-[var(--sand-text)] text-[var(--sand-bg)] px-6 py-3 text-base font-medium shadow-md hover:opacity-90 transition"
-              >
-                <Layers className="h-4 w-4" />
-                Create your first project
-              </Link>
-            </div>
-          </Reveal>
-        </div>
-      </section>
+      <ClosingCta
+        heading="Start building."
+        em="Upgrade later."
+        sub="No credit card. No setup. Describe an app and watch it run."
+        secondary={null}
+      />
 
       <LandingFooter />
     </div>

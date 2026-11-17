@@ -13,8 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Tabs } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
-/** Monthly model-credit allowance of the paid plans, read on the server. */
+/** Monthly model-credit allowance of each plan, read on the server. */
 export interface PlanCredits {
+  free: number;
   pro: number;
   max: number;
 }
@@ -37,7 +38,9 @@ function planDetails(credits?: PlanCredits): Record<string, { tagline: string; i
       highlights: [
         "3 active projects",
         "Bring your own model sign-in or keys",
-        "A small monthly credit allowance",
+        credits && credits.free > 0
+          ? `${formatCredits(credits.free)} model credits a month`
+          : "A small monthly credit allowance",
         "One-click deploy and GitHub sync",
       ],
     },
@@ -153,10 +156,12 @@ export function PricingTable(props: {
             <section
               key={id}
               className={cn(
-                "flex flex-col rounded-xl border bg-surface p-6",
+                "relative flex flex-col overflow-hidden rounded-xl border bg-surface p-6",
                 isCurrent ? "border-border-strong" : "border-border",
               )}
             >
+              {/* Pro is the plan we point people to: one accent rule, one primary button. */}
+              {id === "pro" && <div aria-hidden="true" className="absolute inset-x-0 top-0 h-[2px] bg-accent" />}
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">{plan.name}</h2>
                 {isCurrent && <Badge>Current plan</Badge>}
@@ -174,8 +179,8 @@ export function PricingTable(props: {
               </div>
               {planKnown ? (
                 <Button
-                  // Paid plans carry the primary action; the free plan is the quiet one.
-                  variant={id === "free" || isCurrent ? "secondary" : "primary"}
+                  // One primary action across the three cards: Pro.
+                  variant={id === "pro" && !isCurrent ? "primary" : "secondary"}
                   disabled={busy !== null || isCurrent}
                   className="mt-4 h-10 w-full"
                   onClick={() =>

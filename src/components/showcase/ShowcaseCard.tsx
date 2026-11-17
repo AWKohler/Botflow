@@ -88,7 +88,7 @@ export function ShowcaseCard({ project, compact = false }: { project: ShowcasePr
           ) : (
             <div
               aria-hidden="true"
-              className="flex h-5 w-5 items-center justify-center rounded-full border border-border bg-elevated text-[10px] font-medium uppercase text-muted"
+              className="flex h-5 w-5 items-center justify-center rounded-full border border-border bg-elevated text-[11px] font-medium uppercase text-muted"
             >
               {project.author.name.trim().charAt(0)}
             </div>

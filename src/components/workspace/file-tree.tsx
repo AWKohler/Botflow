@@ -103,8 +103,8 @@ export function FileTree({ files, selectedFile, onFileSelect, onFileDrop }: File
           className={cn(
             'flex h-7 cursor-pointer items-center rounded-md px-2 text-[13px] transition-colors duration-100',
             'hover:bg-elevated',
-            // Selected file: a stronger fill plus an accent edge, not just a shade.
-            isSelected && !isFolder && 'relative bg-soft font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-accent',
+            // Selected file: a clearly stronger fill than hover, plus weight.
+            isSelected && !isFolder && 'bg-soft font-medium',
             isDragTarget && isFolder && 'bg-accent-soft ring-1 ring-accent',
           )}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}

@@ -93,8 +93,9 @@ function lineItemName(raw: string): string {
 }
 
 function fmtBytes(b: number): string {
-  if (b >= 1e9) return `${(b / 1e9).toFixed(2)} GB`;
-  if (b >= 1e6) return `${(b / 1e6).toFixed(1)} MB`;
+  const trim = (n: number, digits: number) => n.toFixed(digits).replace(/\.0+$/, '');
+  if (b >= 1e9) return `${trim(b / 1e9, 2)} GB`;
+  if (b >= 1e6) return `${trim(b / 1e6, 1)} MB`;
   return `${(b / 1e3).toFixed(0)} KB`;
 }
 
@@ -171,7 +172,7 @@ export default function PanelProvidersPage() {
       </Section>
 
       <Section title="Provider accounts">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
           {/* Stripe — live revenue */}
           <ProviderCard
             name="Stripe"

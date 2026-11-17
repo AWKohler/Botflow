@@ -11,7 +11,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { buttonClass } from '@/components/ui/button';
 import { MODEL_CONFIGS } from '@/lib/agent/models';
-import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2, MinusCircle, RefreshCw, XCircle } from 'lucide-react';
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 
@@ -71,7 +71,8 @@ export function modelName(id: string): string {
 }
 
 export function fmtPct(v: number): string {
-  return `${v.toFixed(v >= 10 ? 0 : 1)}%`;
+  // One decimal below 10%, and never a trailing ".0" ("9%", "8.4%", "0%").
+  return `${v.toFixed(v >= 10 ? 0 : 1).replace(/\.0$/, '')}%`;
 }
 
 export function timeAgo(iso: string | null): string {
@@ -400,8 +401,9 @@ export function HBarList({
 export type StatusKind = 'good' | 'warning' | 'serious' | 'neutral';
 
 export function StatusPill({ kind, label }: { kind: StatusKind; label: string }) {
+  // A tick means "good" and nothing else; neutral states get a neutral mark.
   const Icon =
-    kind === 'good' ? CheckCircle2 : kind === 'neutral' ? CheckCircle2 : kind === 'warning' ? AlertTriangle : XCircle;
+    kind === 'good' ? CheckCircle2 : kind === 'neutral' ? MinusCircle : kind === 'warning' ? AlertTriangle : XCircle;
   return (
     <span
       className={cn(

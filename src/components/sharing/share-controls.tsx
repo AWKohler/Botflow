@@ -154,7 +154,7 @@ function AvatarDisc({
         <img src={imageUrl} alt={name} className="w-full h-full rounded-full object-cover" />
       ) : (
         <span
-          className="w-full h-full rounded-full flex items-center justify-center text-[10px] font-semibold text-white"
+          className="w-full h-full rounded-full flex items-center justify-center text-[11px] font-semibold text-white"
           style={{ backgroundColor: ring }}
         >
           {initials}
@@ -189,7 +189,7 @@ function OverflowChip({ hidden }: { hidden: ActiveCollaborator[] }) {
         onMouseEnter={hold}
         onMouseLeave={release}
         onClick={() => (open ? setOpen(false) : hold())}
-        className="w-7 h-7 -ml-2.5 rounded-full bg-elevated border border-border ring-2 ring-[var(--sand-surface)] text-[10px] font-semibold text-muted flex items-center justify-center hover:bg-soft transition-colors relative z-10"
+        className="w-7 h-7 -ml-2.5 rounded-full bg-elevated border border-border ring-2 ring-[var(--sand-surface)] text-[11px] font-semibold text-muted flex items-center justify-center hover:bg-soft transition-colors relative z-10"
         aria-label={`${hidden.length} more collaborators`}
       >
         +{hidden.length}
@@ -496,7 +496,7 @@ function SharePopover({
               <span className="text-sm text-fg truncate flex-1">
                 {isOwner ? (user?.fullName ?? "You") : "Project owner"}
               </span>
-              <span className="text-[10px] font-medium text-muted border border-border rounded-full px-2 py-0.5 flex items-center gap-1">
+              <span className="text-[11px] font-medium text-muted border border-border rounded-full px-2 py-0.5 flex items-center gap-1">
                 <Crown size={10} /> Owner
               </span>
             </div>
@@ -510,7 +510,7 @@ function SharePopover({
               </span>
               <span
                 className={cn(
-                  "text-[10px] font-medium rounded-full px-2 py-0.5 border",
+                  "text-[11px] font-medium rounded-full px-2 py-0.5 border",
                   m.status === "pending" ? "text-warning border-warning-border bg-warning-soft" : "text-muted border-border",
                 )}
               >
@@ -522,7 +522,7 @@ function SharePopover({
                   if (confirmingId === m.id) {
                     return (
                       <span className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-[10px] text-muted">
+                        <span className="text-[11px] text-muted">
                           {selfLeave ? "Leave?" : "Remove?"}
                         </span>
                         <button
@@ -587,7 +587,7 @@ function SharePopover({
                 void patchSettings({ shareOwnerCredits: v, ...(v ? {} : { shareOwnerOauth: false }) })
               }
               label="Collaborators use my credits"
-              hint="Their agent turns bill your plan's credits, and they get access to your tier's models."
+              hint="Their agent turns bill your plan's credits (capped per collaborator), and they get access to your plan's models."
             />
             {state.shareOwnerCredits && (
               <Toggle
@@ -600,11 +600,7 @@ function SharePopover({
           </div>
         )}
 
-        {isOwner && planAllowsSharing && (
-          <p className="mt-3 border-t border-border pt-3 text-xs leading-relaxed text-muted">
-            Collaborators&apos; use of Botflow credits bills your plan, capped per collaborator.
-          </p>
-        )}
+
         </div>
       </div>
     </>,

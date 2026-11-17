@@ -27,7 +27,7 @@ interface CreditsData {
 function fmt(n: number): string {
   const trim = (v: number) => v.toFixed(1).replace(/\.0$/, '');
   if (n >= 1_000_000) return `${trim(n / 1_000_000)}M`;
-  if (n >= 1_000) return `${trim(n / 1_000)}k`;
+  if (n >= 1_000) return `${trim(n / 1_000)}K`;
   return String(n);
 }
 

@@ -948,8 +948,8 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
   if (variant === 'section') return body;
 
   return (
-    // Anchored to the top with one fixed height, so the header and tabs stay
-    // exactly where they are when you switch tabs.
+    // Anchored to the top, so the header and tabs stay exactly where they are
+    // when you switch tabs; the dialog only grows downward, up to a limit.
     <div className="fixed inset-0 z-[200] flex items-start justify-center px-4 pt-[max(1rem,8vh)]">
       {/* Blur backdrop as a sibling — NOT an ancestor of the dialog content, so
           backdrop-filter never becomes the containing block for fixed children. */}
@@ -958,7 +958,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
-        className="relative flex h-[min(42rem,calc(100dvh-2rem-8vh))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl"
+        className="relative flex max-h-[min(42rem,calc(100dvh-2rem-8vh))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-6">

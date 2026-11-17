@@ -298,7 +298,7 @@ export function StripeTab({ projectId, mode, onOpenFullDashboard, onDisconnected
         </div>
         <div className="flex items-center gap-3">
           {accountId && (
-            <span className="text-[10px] text-muted font-mono">
+            <span className="text-[11px] text-muted font-mono">
               {accountId.slice(0, 14)}…
             </span>
           )}

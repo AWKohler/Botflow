@@ -7,5 +7,5 @@ import PricingClient from './pricing-client';
  * drift from what the app actually grants.
  */
 export default function PricingPage() {
-  return <PricingClient credits={{ pro: getMonthlyLimit('pro'), max: getMonthlyLimit('max') }} />;
+  return <PricingClient credits={{ free: getMonthlyLimit('free'), pro: getMonthlyLimit('pro'), max: getMonthlyLimit('max') }} />;
 }

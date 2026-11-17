@@ -154,6 +154,7 @@ export function SandboxedWebWorkspace({
   const [githubDefaultBranch, setGithubDefaultBranch] = useState<string | null>(null);
   const [mobilePane, setMobilePane] = useState<"chat" | "app">("chat");
   const [terminalOpen, setTerminalOpen] = useState(true);
+  const [projectName, setProjectName] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>("preview");
 
@@ -251,6 +252,7 @@ export function SandboxedWebWorkspace({
         if (!initialBackendType && typeof proj?.backendType === "string") {
           setBackendType(normalizeBackendType(proj.backendType));
         }
+        if (typeof proj?.name === "string") setProjectName(proj.name);
         if (proj?.authConfigured === true) setHasAuth(true);
         if (proj?.viewerRole === "editor") setViewerIsOwner(false);
         if (proj?.editorsManageBackend === true) setEditorsManageBackend(true);
@@ -1088,14 +1090,16 @@ export function SandboxedWebWorkspace({
   return (
     <div className="flex h-[100dvh] flex-col bg-surface text-fg md:flex-row">
       {/* Small screens show one pane at a time; this bar switches between them. */}
-      <div className="relative flex h-14 shrink-0 items-center justify-center border-b border-border md:hidden">
+      {/* One row of chrome on phones: where you are (and the way back), the
+          pane switch, and the chat's actions. */}
+      <div className="flex h-14 shrink-0 items-center gap-1 border-b border-border px-1.5 md:hidden">
         <Link
           href="/projects"
-          aria-label="Back to projects"
-          className="absolute left-1.5 flex h-11 items-center gap-0.5 rounded-lg pl-1.5 pr-2.5 text-sm font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
+          aria-label="Back to all projects"
+          className="flex h-11 min-w-0 flex-1 items-center gap-0.5 rounded-lg pl-1.5 pr-2 text-sm font-medium text-fg transition-colors hover:bg-elevated"
         >
-          <ChevronLeft size={16} />
-          Projects
+          <ChevronLeft size={16} className="shrink-0 text-muted" />
+          <span className="truncate">{projectName ?? "Projects"}</span>
         </Link>
         <Tabs
           options={[
@@ -1105,6 +1109,11 @@ export function SandboxedWebWorkspace({
           selected={mobilePane}
           onSelect={setMobilePane}
           size="lg"
+        />
+        {/* The chat panel renders its "More" menu into this slot on phones. */}
+        <div
+          id="workspace-chat-actions"
+          className={cn("flex w-11 shrink-0 justify-center", mobilePane !== "chat" && "invisible")}
         />
       </div>
       {/* Convex paused modal — once per workspace-open while paused. Render

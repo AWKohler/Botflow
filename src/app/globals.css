@@ -263,6 +263,13 @@ body {
     pointer-events: none;
 }
 
+/* Headings never leave a single word alone on the last line. */
+h1,
+h2,
+h3 {
+    text-wrap: balance;
+}
+
 /* Touch screens: grow a control's hit area to 44px without changing how it
    looks. For controls that are not themselves absolutely positioned. */
 @media (pointer: coarse) {

@@ -176,7 +176,7 @@ function SubagentStepRow({ step }: { step: SubagentStep }) {
         {open ? <ChevronDown size={10} className="ml-auto shrink-0" /> : <ChevronRight size={10} className="ml-auto shrink-0" />}
       </button>
       {open && (
-        <pre className="mt-1 text-[10px] overflow-auto bg-surface p-1.5 rounded border border-border whitespace-pre-wrap break-words max-h-40">
+        <pre className="mt-1 text-[11px] overflow-auto bg-surface p-1.5 rounded border border-border whitespace-pre-wrap break-words max-h-40">
           {JSON.stringify(step.input, null, 2)}
           {step.output ? `\n\n— output —\n${step.output}` : ''}
         </pre>
@@ -197,7 +197,7 @@ function SubagentCard({ steps, label }: { steps: SubagentStep[]; label?: string 
         onClick={() => setOpen(v => !v)}
       >
         <span className="font-medium text-accent/80">Subagent{label ? ` · ${label}` : ''}</span>
-        <span className="text-[10px] text-muted tabular-nums">{toolCount} action{toolCount !== 1 ? 's' : ''}</span>
+        <span className="text-[11px] text-muted tabular-nums">{toolCount} action{toolCount !== 1 ? 's' : ''}</span>
         {open ? <ChevronDown size={10} className="ml-auto shrink-0 text-muted" /> : <ChevronRight size={10} className="ml-auto shrink-0 text-muted" />}
       </button>
       {open && (
@@ -253,7 +253,7 @@ function GaugeWithTooltip({
 function formatTokenCount(tokens: number): string {
   const trim = (n: number) => n.toFixed(1).replace(/\.0$/, '');
   if (tokens >= 1_000_000) return `${trim(tokens / 1_000_000)}M`;
-  if (tokens >= 1000) return `${trim(tokens / 1000)}k`;
+  if (tokens >= 1000) return `${trim(tokens / 1000)}K`;
   return String(tokens);
 }
 
@@ -352,6 +352,12 @@ function AgentThreadPanel({
   const [useTogetherKimi, setUseTogetherKimi] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // Slot in the workspace's phone top bar (absent in workspaces without one).
+  const [mobileSlot, setMobileSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setMobileSlot(document.getElementById('workspace-chat-actions'));
+  }, []);
   const [projectName, setProjectName] = useState<string | null>(null);
   const [agentError, setAgentError] = useState<StructuredError | null>(null);
   const [retryCountdown, setRetryCountdown] = useState<number | null>(null);
@@ -2044,7 +2050,13 @@ function AgentThreadPanel({
     <div className={cn('flex h-full flex-col text-sm bg-surface text-fg p-2.5', className)}>
       {/* Header: where you are (project, with a way back) on the left; the
           three chat actions on the right. Touch targets are 44px on phones. */}
-      <div className="flex h-11 items-center justify-between gap-2 px-1 pb-2 pt-0.5 md:h-9">
+      <div
+        className={cn(
+          'items-center justify-between gap-2 border-b border-border px-1 pb-2 pt-0.5',
+          // Where the workspace has a phone top bar, the actions live there instead.
+          mobileSlot ? 'hidden md:flex' : 'flex',
+        )}
+      >
         <div className="flex min-w-0 items-center gap-0.5">
           <Link
             href="/projects"
@@ -2130,15 +2142,68 @@ function AgentThreadPanel({
         </div>
       </div>
 
-      {/* Inline backend chip — info-only. Hidden when there's nothing
-          meaningful to explain (e.g., non-Anthropic model on free tier). */}
-      <div className="border-b border-border pb-2.5 empty:hidden">
-        <BackendChip
-          backend={agentBackend}
-          reason={derivedBackend.reason}
-          runnable={derivedBackend.runnable}
-        />
-      </div>
+      {/* Phone: the chat's actions, rendered into the workspace top bar. */}
+      {mobileSlot &&
+        createPortal(
+          <div className="relative md:hidden">
+            <button
+              type="button"
+              title="Chat actions"
+              aria-label="Chat actions"
+              aria-haspopup="menu"
+              aria-expanded={mobileMenuOpen}
+              onClick={() => setMobileMenuOpen((v) => !v)}
+              className={headerIconButton}
+            >
+              <MoreHorizontal size={18} />
+              {threadsAttention && (
+                <span
+                  aria-hidden
+                  className={cn('absolute right-2.5 top-2.5 size-2 rounded-full ring-2 ring-surface', ATTENTION_DOT_CLASS[threadsAttention])}
+                />
+              )}
+            </button>
+            {mobileMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMobileMenuOpen(false)} />
+                <Menu className="absolute right-0 top-full z-50 mt-1 w-56">
+                  <MenuItem className="min-h-11" onClick={() => { setMobileMenuOpen(false); onNewChat(); }}>
+                    <SquarePen size={16} strokeWidth={1.75} className="text-muted" />
+                    New chat
+                  </MenuItem>
+                  <MenuItem className="min-h-11" onClick={() => { setMobileMenuOpen(false); onOpenThreads(); }}>
+                    <PanelLeft size={16} className="text-muted" />
+                    All chats
+                  </MenuItem>
+                  <MenuItem className="min-h-11" onClick={() => { setMobileMenuOpen(false); setShowSettings(true); }}>
+                    <Settings2 size={16} strokeWidth={1.75} className="text-muted" />
+                    Usage and settings
+                  </MenuItem>
+                  <MenuSeparator />
+                  <MenuItem tone="danger" className="min-h-11" onClick={() => { setMobileMenuOpen(false); void clearChat(); }}>
+                    <Trash2 size={16} strokeWidth={1.75} />
+                    Clear this chat
+                  </MenuItem>
+                </Menu>
+              </>
+            )}
+          </div>,
+          mobileSlot,
+        )}
+
+      {/* The backend banner appears only when something needs attention
+          (missing credentials, a plan that can't run this model). When all is
+          well, the same explanation sits behind the usage figure in the
+          composer footer, so it is not said three times. */}
+      {!derivedBackend.runnable && (
+        <div className="border-b border-border py-2.5 empty:hidden">
+          <BackendChip
+            backend={agentBackend}
+            reason={derivedBackend.reason}
+            runnable={derivedBackend.runnable}
+          />
+        </div>
+      )}
 
       {/* Messages — v6 parts-based rendering. Segments from prior agents
           stay visible but visually de-emphasized; a divider marks the boundary. */}
@@ -2151,7 +2216,7 @@ function AgentThreadPanel({
           const showSegmentDivider = idx > 0 && mySeg && prevSeg && mySeg !== prevSeg;
           const isOlderSegment = Boolean(currentSegmentId && mySeg && mySeg !== currentSegmentId);
           const dividerEl = showSegmentDivider ? (
-            <div key={`seg-${idx}`} className="flex items-center gap-2 px-2 py-1 text-[10px] uppercase tracking-wider text-muted">
+            <div key={`seg-${idx}`} className="flex items-center gap-2 px-2 py-1 text-[11px] uppercase tracking-wider text-muted">
               <div className="flex-1 h-px bg-border" />
               <span>{mySeg === currentSegmentId ? 'New conversation' : 'Previous conversation'}</span>
               <div className="flex-1 h-px bg-border" />
@@ -2209,7 +2274,7 @@ function AgentThreadPanel({
                 {dividerEl}
                 {otherAuthor && (
                   <div className={cn('-mb-1.5 flex items-center gap-1.5 px-1 text-[11px] text-muted', olderClass)}>
-                    <span className="flex size-4 items-center justify-center rounded-full bg-soft text-[8px] font-semibold text-fg">
+                    <span className="flex size-4 items-center justify-center rounded-full bg-soft text-[11px] font-semibold text-fg">
                       {otherAuthor.initials}
                     </span>
                     {otherAuthor.name}
@@ -2490,7 +2555,7 @@ function AgentThreadPanel({
               return (
                 <div key={q.id} className="flex items-center gap-2 text-xs">
                   <span
-                    className="flex size-4 shrink-0 items-center justify-center rounded-full bg-soft text-[8px] font-semibold text-fg"
+                    className="flex size-4 shrink-0 items-center justify-center rounded-full bg-soft text-[11px] font-semibold text-fg"
                     title={mine ? 'You' : author?.name}
                   >
                     {mine ? <ListPlus size={9} /> : author?.initials ?? '?'}
@@ -2797,7 +2862,7 @@ function AgentThreadPanel({
               )}
               {usage && (
                 <GaugeWithTooltip
-                  label={showClaudePlan ? 'Usage — your Claude plan' : 'Usage — Botflow credits'}
+                  label={showClaudePlan ? 'Running on your Claude subscription' : 'Usage — Botflow credits'}
                   lines={[
                     ...(showClaudePlan
                       ? [

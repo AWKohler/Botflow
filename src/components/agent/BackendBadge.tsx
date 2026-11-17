@@ -192,7 +192,7 @@ export function BackendChip({ backend, reason, runnable }: BackendChipProps) {
       >
         <BackendGlyph backend={backend} size={12} />
         <span className="leading-snug">{copy.chipTitle}</span>
-        <span className={cn("text-[10px] leading-snug", errorStyle ? "text-danger/70" : "text-subtle")}>·</span>
+        <span className={cn("text-[11px] leading-snug", errorStyle ? "text-danger/70" : "text-subtle")}>·</span>
         <span
           className={cn(
             "text-[11px] leading-snug underline decoration-border-strong underline-offset-2",

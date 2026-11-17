@@ -91,7 +91,7 @@ const TIER_LABELS: Record<string, string> = { pro: 'Pro', max: 'Max' };
 
 function formatContextSize(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(0)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}k`;
+  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}K`;
   return String(tokens);
 }
 
@@ -281,12 +281,12 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                     <span className="text-[13px] font-medium text-fg">
                       {config.displayName}
                     </span>
-                    <span className="inline-flex items-center rounded-full border border-border bg-elevated px-1.5 py-px text-[10px] font-medium text-muted">
+                    <span className="inline-flex items-center rounded-full border border-border bg-elevated px-1.5 py-px text-[11px] font-medium text-muted">
                       {providerLabel(modelId)}
                     </span>
                     {tierBadge && (
                       <span className={cn(
-                        'inline-flex items-center rounded-full border px-1.5 py-px text-[10px] font-medium',
+                        'inline-flex items-center rounded-full border px-1.5 py-px text-[11px] font-medium',
                         // Plan tags are tinted so they never read as a provider tag.
                         'border-accent/25 bg-accent-soft text-accent'
                       )}>
@@ -307,19 +307,19 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                 {isDisabled && (
                   <div className="flex items-center gap-1 text-muted">
                     <Lock className="h-3 w-3" />
-                    <span className="text-[10px]">Unavailable</span>
+                    <span className="text-[11px]">Unavailable</span>
                   </div>
                 )}
                 {(!isDisabled && isCredentialMissing && !isTierLocked && !SERVER_KEY_MODELS.has(modelId)) && (
                   <div className="flex items-center gap-1 text-muted">
                     <Lock className="h-3 w-3" />
-                    <span className="text-[10px]">no key</span>
+                    <span className="text-[11px]">no key</span>
                   </div>
                 )}
                 {!isDisabled && isTierLocked && (
                   <div className="flex items-center gap-1 text-muted">
                     <Lock className="h-3 w-3" />
-                    <span className="text-[10px]">{tierBadge}</span>
+                    <span className="text-[11px]">{tierBadge}</span>
                   </div>
                 )}
               </button>

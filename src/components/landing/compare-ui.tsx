@@ -79,7 +79,7 @@ export function CompareHero({
 
           <Reveal delay={300}>
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
-              <StaggerButton text="Try Botflow free" href="/sign-up" />
+              <StaggerButton text="Start building free" href="/sign-up" />
               <Link
                 href="/compare"
                 className="inline-flex items-center gap-2 rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-6 py-3 text-base font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
@@ -241,7 +241,7 @@ export function CompareTable({ themName, groups }: { themName: string; groups: C
               <div className="px-4 sm:px-7 py-5 text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]">
                 Feature
               </div>
-              <div className="px-2 sm:px-4 py-5 text-center text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text)] bg-[var(--sand-accent)]/[0.03]">
+              <div className="px-2 sm:px-4 py-5 text-center text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text)] bg-[var(--sand-soft)]/40">
                 Botflow
               </div>
               <div className="px-2 sm:px-4 py-5 text-center text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]">
@@ -273,7 +273,7 @@ export function CompareTable({ themName, groups }: { themName: string; groups: C
                     <div className="px-4 sm:px-7 py-4 text-sm text-[var(--sand-text)]">
                       {row.feature}
                     </div>
-                    <div className="px-2 sm:px-4 py-4 text-center bg-[var(--sand-accent)]/[0.03]">
+                    <div className="px-2 sm:px-4 py-4 text-center bg-[var(--sand-soft)]/40">
                       <CompareCell value={row.us} highlight />
                     </div>
                     <div className="px-2 sm:px-4 py-4 text-center">
@@ -386,7 +386,7 @@ export function DeepDives({ dives }: { dives: DeepDive[] }) {
                     serif.className,
                     'block text-7xl sm:text-8xl font-normal leading-none select-none',
                   )}
-                  style={{ color: 'var(--sand-accent)', opacity: 0.32 }}
+                  style={{ color: 'var(--sand-text-subtle)' }}
                 >
                   {String(i + 1).padStart(2, '0')}
                 </span>
@@ -599,38 +599,8 @@ export function RelatedStrip({
   );
 }
 
-// ============================================================================
-// Closing CTA
-// ============================================================================
-
-export function ClosingCta({ heading, em, sub }: { heading: string; em: string; sub: string }) {
-  return (
-    <section className="relative">
-      <MarginHatch />
-      <div className="pointer-events-none absolute inset-0 -z-10 landing-gradient opacity-60" />
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
-        <Reveal>
-          <div className="text-center max-w-2xl mx-auto">
-            <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>
-              {heading}{' '}
-              <em className={serif.className}>{em}</em>
-            </h2>
-            <p className="mt-4 text-lg text-[var(--sand-text-muted)]">{sub}</p>
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
-              <StaggerButton text="Start building free" href="/sign-up" />
-              <Link
-                href="/pricing"
-                className="inline-flex items-center gap-2 rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-6 py-3 text-base font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
-              >
-                View pricing
-              </Link>
-            </div>
-          </div>
-        </Reveal>
-      </div>
-    </section>
-  );
-}
+// The closing band lives in shared.tsx so every marketing page ends the same way.
+export { ClosingCta } from '@/components/landing/shared';
 
 // ============================================================================
 // Alternatives page — why-people-switch cards
@@ -717,7 +687,7 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
                       serif.className,
                       'block text-6xl sm:text-8xl font-normal leading-none select-none -mt-1',
                     )}
-                    style={{ color: 'var(--sand-accent)', opacity: 0.32 }}
+                    style={{ color: 'var(--sand-text-subtle)' }}
                   >
                     {i + 1}
                   </span>
@@ -801,7 +771,7 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
                             href="/sign-up"
                             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--sand-text)] px-4 text-sm font-medium text-[var(--sand-bg)] shadow-xs transition-opacity hover:opacity-90"
                           >
-                            Try it free
+                            Start building free
                             <ArrowRight className="h-3.5 w-3.5" />
                           </Link>
                         ) : (
@@ -865,7 +835,7 @@ export function AltQuickTable({ profiles }: { profiles: AltProfile[] }) {
               </colgroup>
               <thead>
                 <tr className="border-b border-[var(--sand-border)]">
-                  <th className="px-5 sm:px-7 py-4 text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]">
+                  <th className="px-5 sm:px-7 py-4 align-bottom text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]">
                     Product
                   </th>
                   {cols.map((c) => (

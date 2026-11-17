@@ -988,7 +988,6 @@
 
 import { Input } from "@/components/ui/input";
 import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { SignedIn, SignedOut, SignInButton, useUser } from '@/components/auth';
 import {
@@ -1022,7 +1021,7 @@ import { ModelCloud } from '@/components/landing/ModelCloud';
 import { AuthProviderArc } from '@/components/landing/AuthProviderArc';
 import { FeatureBento } from '@/components/landing/FeatureBento';
 import { MobileFeatureGrid } from '@/components/landing/MobileFeatureGrid';
-import { LandingFooter, LandingNav, MarginHatch, MarginBg } from '@/components/landing/shared';
+import { ClosingCta, LandingFooter, LandingNav, MarginHatch, MarginBg } from '@/components/landing/shared';
 import { LandingShowcase } from '@/components/showcase/LandingShowcase';
 import { Convex } from '@/components/icons/convex';
 import { Anthropic } from '@/components/icons/anthropic';
@@ -1136,52 +1135,6 @@ function SectionLabel({ children }: { children: ReactNode }) {
     >
       {children}
     </span>
-  );
-}
-
-// ============================================================================
-// Character-stagger button — text slides up on hover, shadow reveals copy
-// ============================================================================
-
-function StaggerButton({
-  text,
-  href,
-  className,
-}: {
-  text: string;
-  href: string;
-  className?: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        // Ink, like every other primary button — the accent is kept for links and emphasis.
-        'group relative inline-flex h-12 items-center gap-2 overflow-hidden rounded-xl bg-[var(--sand-text)] px-6 text-base font-medium shadow-sm transition-opacity hover:opacity-90',
-        className,
-      )}
-    >
-      <span className="relative flex overflow-hidden">
-        {text.split('').map((char, i) => (
-          <span
-            key={i}
-            className="inline-block transition-transform duration-300 group-hover:-translate-y-[1.5em]"
-            style={{
-              transitionDelay: `${i * 12}ms`,
-              transitionTimingFunction: 'ease',
-              textShadow: '0 1.5em 0 currentColor',
-              color: 'var(--sand-bg)',
-            }}
-          >
-            {char === ' ' ? '\u00A0' : char}
-          </span>
-        ))}
-      </span>
-      <ArrowRight
-        className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5"
-        style={{ color: 'var(--sand-bg)' }}
-      />
-    </Link>
   );
 }
 
@@ -1959,7 +1912,8 @@ export default function LandingV2() {
                       platform === 'swift'
                         ? 'bg-[var(--sand-elevated)]'
                         : 'bg-[var(--sand-surface)]',
-                      platform !== 'swift' && !hasSwiftAccess && 'text-[var(--sand-text-muted)]',
+                      // Unselected, it is as quiet as the Web tab; only the Swift mark keeps its colour.
+                      platform !== 'swift' && 'text-[var(--sand-text-muted)] hover:text-[var(--sand-text)]',
                     )}
                     style={
                       platform === 'swift'
@@ -1974,11 +1928,10 @@ export default function LandingV2() {
                         : {
                             borderColor: promptFrameColor,
                             borderBottomWidth: promptFrameWidth,
-                            ...(hasSwiftAccess ? { color: SWIFT_ORANGE } : {}),
                           }
                     }
                   >
-                    <Swift className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    <Swift className="h-3.5 w-3.5 sm:h-4 sm:w-4" style={{ color: SWIFT_ORANGE }} />
                     Swift
                     {!hasSwiftAccess && (
                       <Lock className="h-3 w-3 sm:h-3.5 sm:w-3.5 opacity-90" />
@@ -2095,7 +2048,8 @@ export default function LandingV2() {
                                 <img src="/convex-color.svg" className="h-3.5 w-3.5" alt="" />
                               ) : convexBackendType === 'user' ? (
                                 // eslint-disable-next-line @next/next/no-img-element
-                                <img src="/convex-white.svg" className="h-3.5 w-3.5" alt="" />
+                                // White mark: flipped to ink in light mode so it is not washed out.
+                                <img src="/convex-white.svg" className="h-3.5 w-3.5 invert dark:invert-0" alt="" />
                               ) : convexBackendType === 'muhkoo' ? (
                                 <KeyRound className="h-3.5 w-3.5" />
                               ) : (
@@ -2256,7 +2210,8 @@ export default function LandingV2() {
                       className="inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
                     >
                       <Anthropic className="h-4 w-4 shrink-0" />
-                      Sign in with Claude
+                      {/* Signed-in people connect a subscription; they don't sign in again. */}
+                      {!isSignedIn ? 'Sign in with Claude' : hasClaudeOAuth ? 'Claude connected' : 'Connect Claude'}
                     </button>
                   )}
                   <button
@@ -2265,7 +2220,7 @@ export default function LandingV2() {
                     className="inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
                   >
                     <OpenAI className="h-4 w-4 shrink-0" />
-                    Sign in with ChatGPT
+                    {!isSignedIn ? 'Sign in with ChatGPT' : hasCodexOAuth ? 'ChatGPT connected' : 'Connect ChatGPT'}
                   </button>
                 </div>
 
@@ -2305,10 +2260,10 @@ export default function LandingV2() {
                   content:
                     "I'll build the Flowsync landing page: a Three.js hero, USD/EUR account cards, a live transactions feed, and an AI forecasting panel.",
                   toolCalls: [
-                    { name: 'writeFile', done: true },
-                    { name: 'writeFile', done: true },
-                    { name: 'writeFile', done: true },
-                    { name: 'writeFile', done: true },
+                    { name: 'writeFile', detail: 'src/App.tsx', done: true },
+                    { name: 'writeFile', detail: 'src/components/Hero.tsx', done: true },
+                    { name: 'writeFile', detail: 'src/components/Accounts.tsx', done: true },
+                    { name: 'writeFile', detail: 'convex/schema.ts', done: true },
                     { name: 'convexDeploy', done: true },
                     { name: 'startDevServer', done: true },
                   ],
@@ -2326,9 +2281,9 @@ export default function LandingV2() {
                   role: 'assistant',
                   content: "Adding a ‘Loved by finance teams’ testimonials grid and a Book a Free Demo call-to-action.",
                   toolCalls: [
-                    { name: 'readFile', done: true },
-                    { name: 'writeFile', done: true },
-                    { name: 'writeFile', done: false },
+                    { name: 'readFile', detail: 'src/App.tsx', done: true },
+                    { name: 'writeFile', detail: 'src/components/Activity.tsx', done: true },
+                    { name: 'writeFile', detail: 'src/components/Forecast.tsx', done: false },
                   ],
                 },
               ]}
@@ -2523,9 +2478,9 @@ export default function LandingV2() {
                     content:
                       'Done! Added a theme toggle with smooth transitions and system preference detection.',
                     toolCalls: [
-                      { name: 'readFile', done: true },
-                      { name: 'writeFile', done: true },
-                      { name: 'writeFile', done: true },
+                      { name: 'readFile', detail: 'src/components/Nav.tsx', done: true },
+                      { name: 'writeFile', detail: 'src/components/ThemeToggle.tsx', done: true },
+                      { name: 'writeFile', detail: 'src/components/Nav.tsx', done: true },
                     ],
                   },
                 ]}
@@ -2754,35 +2709,7 @@ export default function LandingV2() {
       {/* CTA                                                              */}
       {/* ================================================================ */}
       <LineDivider />
-      <section className="relative">
-        <div className="pointer-events-none absolute inset-0 -z-10 landing-gradient opacity-60" />
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-28">
-          <Reveal>
-            <div className="text-center max-w-2xl mx-auto">
-              <h2
-                className={cn(
-                  serif.className,
-                  'text-4xl sm:text-5xl md:text-6xl tracking-tight',
-                )}
-              >
-                Ready to build?
-              </h2>
-              <p className="mt-4 text-lg text-[var(--sand-text-muted)]">
-                Start for free. No credit card required.
-              </p>
-              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
-                <StaggerButton text="Get started free" href="/sign-up" />
-                <Link
-                  href="/pricing"
-                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-6 py-3 text-base font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
-                >
-                  View pricing
-                </Link>
-              </div>
-            </div>
-          </Reveal>
-        </div>
-      </section>
+      <ClosingCta heading="Ready to" em="build?" sub="Free to start. No credit card required." />
 
       {/* ================================================================ */}
       {/* FOOTER                                                           */}

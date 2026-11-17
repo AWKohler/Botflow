@@ -11,7 +11,7 @@ import {
   AlertCircle,
   Trash2,
   Lock,
-  Rocket,
+  Globe,
   Wand2,
   X,
   RefreshCw,
@@ -428,7 +428,7 @@ export function SandboxPublishPanel({
                 onClick={startBuild}
                 className={buttonClass({ variant: "primary", className: "h-10 w-full" })}
               >
-                <Rocket size={15} /> Build &amp; publish
+                <Globe size={15} /> Build &amp; publish
               </button>
             </div>
           )}
@@ -519,7 +519,7 @@ export function SandboxPublishPanel({
                 <div className="mb-2 flex items-center justify-between">
                   <div className="text-[11px] font-medium text-muted">Domain</div>
                   {canUseCustomDomain && (
-                    <div className="inline-flex rounded-lg border border-border bg-bg p-0.5 text-[10px]">
+                    <div className="inline-flex rounded-lg border border-border bg-bg p-0.5 text-[11px]">
                       <button
                         onClick={() => setDomainTab("managed")}
                         className={cn("rounded-md px-2 py-1 transition", domainTab === "managed" ? "bg-soft text-fg" : "text-muted hover:text-fg")}
@@ -640,7 +640,7 @@ export function SandboxPublishPanel({
                           <div className="flex items-center gap-1">
                             {customDomainStatus === "active"
                               ? <span className="inline-flex items-center gap-1 rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success"><Check size={10} /> Active</span>
-                              : <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-medium text-warning border border-warning-border"><Loader2 size={10} className="animate-spin" /> Pending</span>
+                              : <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-medium text-warning border border-warning-border"><Loader2 size={10} className="animate-spin" /> Pending</span>
                             }
                             <button onClick={removeCname} className="rounded-md p-1 text-danger hover:bg-danger-soft" title="Remove">
                               <Trash2 size={12} />

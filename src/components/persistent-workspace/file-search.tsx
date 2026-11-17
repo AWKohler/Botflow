@@ -102,7 +102,7 @@ export function FileSearch({ projectId, onOpenFile }: FileSearchProps) {
           >
             <div className="text-muted text-xs truncate">{r.file}</div>
             <div className="text-fg truncate font-mono text-xs">{r.text}</div>
-            <div className="text-muted text-[10px]">line {r.line}</div>
+            <div className="text-muted text-[11px]">line {r.line}</div>
           </button>
         ))}
       </div>

@@ -394,7 +394,7 @@ function ConflictFileCard({
       <div className="flex items-center justify-between gap-2">
         <div className="font-mono text-xs text-fg truncate">{path}</div>
         {choice && (
-          <span className="inline-flex items-center gap-1 text-[10px] text-accent">
+          <span className="inline-flex items-center gap-1 text-[11px] text-accent">
             <Check size={10} />
             {labelForChoice(choice)}
           </span>
@@ -402,7 +402,7 @@ function ConflictFileCard({
       </div>
 
       {previewLines && (
-        <pre className="mt-2 text-[10px] text-muted bg-surface border border-border rounded p-2 max-h-24 overflow-hidden whitespace-pre-wrap">
+        <pre className="mt-2 text-[11px] text-muted bg-surface border border-border rounded p-2 max-h-24 overflow-hidden whitespace-pre-wrap">
           {previewLines}
           {(blob?.marked.split("\n").length ?? 0) > 8 ? "\n…" : ""}
         </pre>
@@ -476,7 +476,7 @@ function ManualModeBody({
     <div className="flex flex-1 min-h-0">
       {/* File sidebar */}
       <div className="w-56 border-r border-border flex flex-col shrink-0 overflow-y-auto modern-scrollbar">
-        <div className="px-3 py-2 text-[10px] font-medium text-muted uppercase tracking-wider border-b border-border/60">
+        <div className="px-3 py-2 text-[11px] font-medium text-muted uppercase tracking-wider border-b border-border/60">
           Conflicted files
         </div>
         {conflicts.map((p, i) => {
@@ -512,7 +512,7 @@ function ManualModeBody({
                 <span className="block text-xs font-medium truncate">
                   {filename(p)}
                 </span>
-                <span className="block text-[10px] opacity-60 truncate">
+                <span className="block text-[11px] opacity-60 truncate">
                   {dirname(p)}
                 </span>
               </span>
@@ -539,7 +539,7 @@ function ManualModeBody({
           {/* Resolution editor */}
           <div className="flex flex-col shrink-0" style={{ height: "35%" }}>
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/40 bg-elevated/30 shrink-0">
-              <span className="text-[10px] font-medium text-muted uppercase tracking-wider">
+              <span className="text-[11px] font-medium text-muted uppercase tracking-wider">
                 Resolved content
               </span>
               <div className="flex items-center gap-1 ml-auto">
@@ -552,7 +552,7 @@ function ManualModeBody({
                     setChoice(path, { kind: "theirs" });
                   }}
                   className={cn(
-                    "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+                    "px-2 py-0.5 rounded text-[11px] font-medium transition-colors",
                     choice?.kind === "theirs"
                       ? "bg-info-soft text-info"
                       : "hover:bg-soft/60 text-muted",
@@ -569,7 +569,7 @@ function ManualModeBody({
                     setChoice(path, { kind: "ours" });
                   }}
                   className={cn(
-                    "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+                    "px-2 py-0.5 rounded text-[11px] font-medium transition-colors",
                     choice?.kind === "ours"
                       ? "bg-success-soft text-success"
                       : "hover:bg-soft/60 text-muted",
@@ -626,7 +626,7 @@ function DiffPane({
           color === "blue" ? "bg-info-solid" : "bg-success-solid",
         )} />
         <span className={cn(
-          "text-[10px] font-medium uppercase tracking-wider",
+          "text-[11px] font-medium uppercase tracking-wider",
           color === "blue" ? "text-info" : "text-success",
         )}>
           {label}

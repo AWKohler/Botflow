@@ -432,8 +432,8 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
                     <span
                       className={
                         item.environment === "PRODUCTION"
-                          ? "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-success-soft text-success"
-                          : "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-warning-soft text-warning"
+                          ? "shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold bg-success-soft text-success"
+                          : "shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold bg-warning-soft text-warning"
                       }
                     >
                       {item.environment === "PRODUCTION" ? "LIVE" : "TEST"}

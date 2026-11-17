@@ -31,7 +31,7 @@ import { formatToolName } from '@/lib/agent/tool-labels';
 export interface MockMessage {
   role: 'user' | 'assistant';
   content: string;
-  toolCalls?: { name: string; done: boolean }[];
+  toolCalls?: { name: string; detail?: string; done: boolean }[];
 }
 
 export interface MockFileEntry {
@@ -98,7 +98,7 @@ function MockTabs({ options, selected, onSelect }: { options: { value: string; t
 // ToolStep (mockup version)
 // ============================================================================
 
-function MockToolStep({ name, done }: { name: string; done: boolean }) {
+function MockToolStep({ name, detail, done }: { name: string; detail?: string; done: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <div>
@@ -106,9 +106,10 @@ function MockToolStep({ name, done }: { name: string; done: boolean }) {
         <div className="shrink-0 z-10 size-[14px] rounded-full border-[1.5px] border-border bg-surface flex items-center justify-center">
           {done ? <Check size={8} className="text-muted" /> : <Loader2 size={8} className="animate-spin text-muted" />}
         </div>
-        <button type="button" className="flex items-center gap-1 p-0 text-sm text-muted hover:text-fg transition-colors" onClick={() => setOpen((v) => !v)}>
-          <span className="font-medium">{name}</span>
-          {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        <button type="button" className="flex min-w-0 items-center gap-1.5 p-0 text-[13px] text-muted hover:text-fg transition-colors" onClick={() => setOpen((v) => !v)}>
+          <span className="shrink-0">{name}</span>
+          {detail && <code className="min-w-0 truncate font-mono text-[11px] text-subtle">{detail}</code>}
+          {open ? <ChevronDown size={11} className="shrink-0" /> : <ChevronRight size={11} className="shrink-0" />}
         </button>
       </div>
       {open && (
@@ -357,7 +358,9 @@ export default function App() {
           </div>
         </div>
 
-        {/* Messages */}
+        {/* Messages — a soft fade under the header, so a scrolled line is never cut off flush. */}
+        <div className="relative flex min-h-0 flex-1 flex-col border-t border-border">
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 h-5 bg-gradient-to-b from-surface to-transparent" />
         <div ref={scrollRef} className="modern-scrollbar flex-1 space-y-3 overflow-auto px-3.5 py-3 text-sm">
           {messages.map((m, mi) => {
             if (m.role === 'user') {
@@ -380,7 +383,7 @@ export default function App() {
                   <div className="relative">
                     <div className="absolute left-[6px] top-[14px] bottom-0 w-px bg-border" />
                     {m.toolCalls!.map((tc, ti) => (
-                      <MockToolStep key={ti} name={formatToolName(tc.name)} done={tc.done} />
+                      <MockToolStep key={ti} name={formatToolName(tc.name)} detail={tc.detail} done={tc.done} />
                     ))}
                   </div>
                 )}
@@ -395,6 +398,7 @@ export default function App() {
               <span className="text-[13px] text-muted">Working…</span>
             </div>
           )}
+        </div>
         </div>
 
         {/* Input area */}
@@ -416,8 +420,13 @@ export default function App() {
                 <ArrowUp size={16} />
               </div>
             </div>
-            <div className="flex items-center justify-end border-t border-border px-3.5 py-2 text-[11px] tabular-nums text-muted">
-              Weekly credits {creditPct}% used
+            {/* Mirrors the real composer footer: context on the left, allowance on the right. */}
+            <div className="flex items-center gap-2.5 border-t border-border px-3.5 py-2 text-[11px] tabular-nums text-muted">
+              <div className="h-1 min-w-6 flex-1 overflow-hidden rounded-full bg-soft">
+                <div className="h-full w-[12%] rounded-full bg-fg/30" />
+              </div>
+              <span className="whitespace-nowrap">Context 24K / 1M</span>
+              <span className="whitespace-nowrap border-l border-border pl-2.5">Weekly credits {creditPct}% used</span>
             </div>
           </div>
         </div>

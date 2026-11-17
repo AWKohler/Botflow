@@ -165,7 +165,7 @@ export default function PanelInfraPage() {
           {convex.byStatus.map((s) => (
             <span key={s.status} className="flex items-center gap-1.5 text-sm text-fg">
               <StatusPill kind={convexStatusKind(s.status)} label={s.status} />
-              <span className="tabular-nums">{s.count}</span>
+              <span className="tabular-nums">{fmtNum(s.count)}</span>
             </span>
           ))}
         </div>

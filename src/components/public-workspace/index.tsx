@@ -405,7 +405,7 @@ function CodePane({
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface">
           <div className="text-sm text-muted">{selectedFile ?? "No file selected"}</div>
-          <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-elevated px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+          <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-elevated px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted">
             Read-only
           </span>
         </div>

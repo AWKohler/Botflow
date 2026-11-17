@@ -191,7 +191,7 @@ export function PeopleChips({
   const shown = userIds.slice(0, max);
   const extra = userIds.length - shown.length;
   const names = userIds.map((id) => people[id]?.name ?? 'Member').join(', ');
-  const dim = size === 'xs' ? 'size-4 text-[8px]' : 'size-5 text-[9px]';
+  const dim = size === 'xs' ? 'size-4 text-[11px]' : 'size-5 text-[11px]';
   return (
     <span className="flex shrink-0 items-center -space-x-1.5" title={names} aria-label={`Viewing: ${names}`}>
       {shown.map((id) => (

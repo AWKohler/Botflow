@@ -836,7 +836,7 @@ function RepoList({
             )}
             <span className="text-xs truncate">{r.fullName}</span>
           </div>
-          <span className="text-[10px] text-muted shrink-0">{r.defaultBranch}</span>
+          <span className="text-[11px] text-muted shrink-0">{r.defaultBranch}</span>
         </button>
       ))}
     </div>

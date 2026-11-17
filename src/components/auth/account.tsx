@@ -265,6 +265,9 @@ export function AccountPanel() {
   const thisDevice = session.session as unknown as Session;
   const deviceRows: Session[] = sessions.length ? sessions : [thisDevice];
   const initial = (session.user.name?.[0] ?? session.user.email?.[0] ?? "U").toUpperCase();
+  const profileDirty =
+    name.trim() !== (session.user.name ?? "") ||
+    username.trim() !== ((session.user as { username?: string | null }).username ?? "");
 
   return (
     <AppShell>
@@ -405,7 +408,8 @@ export function AccountPanel() {
                     </Field>
                   </div>
                   <div className="mt-5 flex justify-end">
-                    <Button type="submit" variant="primary" disabled={busy}>
+                    {/* Quiet until something has changed, like every other form here. */}
+                    <Button type="submit" variant={profileDirty ? "primary" : "secondary"} disabled={busy || !profileDirty}>
                       Save changes
                     </Button>
                   </div>
@@ -531,90 +535,6 @@ export function AccountPanel() {
                   </div>
                 </form>
               </Card>
-
-              <Card className="p-6">
-                <SectionHeader title="Connected accounts" description="Sign in faster with a provider you already use." />
-                <ul className="mt-4 divide-y divide-border">
-                  {(["google", "github"] as const).map((provider) => {
-                    const linked = socialAccounts.find((a) => a.providerId === provider);
-                    return (
-                      <li key={provider} className="flex items-center justify-between gap-3 py-3">
-                        <span className="flex items-center gap-2 text-sm">
-                          {provider === "google" ? "Google" : "GitHub"}
-                          {linked && <Badge tone="success">Connected</Badge>}
-                        </span>
-                        {linked ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() =>
-                              act(async () => {
-                                const result = await authClient.unlinkAccount({
-                                  accountId: linked.id,
-                                });
-                                if (!result.error) {
-                                  const updated = await authClient.listAccounts();
-                                  if (updated.data) setAccounts(updated.data);
-                                }
-                                return result;
-                              })
-                            }
-                          >
-                            Disconnect
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() =>
-                              act(() =>
-                                authClient.linkSocial({
-                                  provider,
-                                  callbackURL: "/account",
-                                  errorCallbackURL: "/account",
-                                }),
-                              )
-                            }
-                          >
-                            Connect
-                          </Button>
-                        )}
-                      </li>
-                    );
-                  })}
-                  {socialAccounts
-                    .filter((a) => a.providerId !== "google" && a.providerId !== "github")
-                    .map((a) => (
-                      <li key={a.id} className="flex items-center justify-between gap-3 py-3">
-                        <span className="flex items-center gap-2 text-sm capitalize">
-                          {a.providerId}
-                          <Badge tone="success">Connected</Badge>
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() =>
-                            act(async () => {
-                              const result = await authClient.unlinkAccount({
-                                accountId: a.id,
-                              });
-                              if (!result.error) {
-                                const updated = await authClient.listAccounts();
-                                if (updated.data) setAccounts(updated.data);
-                              }
-                              return result;
-                            })
-                          }
-                        >
-                          Disconnect
-                        </Button>
-                      </li>
-                    ))}
-                </ul>
-              </Card>
             </>
           )}
 
@@ -698,7 +618,7 @@ export function AccountPanel() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="-ml-3"
+                      className="-ml-3 underline decoration-border-strong underline-offset-4"
                       onClick={() =>
                         act(
                           () =>
@@ -712,11 +632,99 @@ export function AccountPanel() {
                     >
                       Email me a reset link instead
                     </Button>
-                    <Button type="submit" variant="primary" disabled={busy}>
+                    <Button
+                      type="submit"
+                      variant={currentPassword && newPassword ? "primary" : "secondary"}
+                      disabled={busy || !currentPassword || !newPassword}
+                    >
                       Update password
                     </Button>
                   </div>
                 </form>
+              </Card>
+
+              <Card className="p-6">
+                <SectionHeader title="Sign-in methods" description="Other ways to sign in to this account, besides your password." />
+                <ul className="mt-4 divide-y divide-border">
+                  {(["google", "github"] as const).map((provider) => {
+                    const linked = socialAccounts.find((a) => a.providerId === provider);
+                    return (
+                      <li key={provider} className="flex items-center justify-between gap-3 py-3">
+                        <span className="flex items-center gap-2 text-sm">
+                          {provider === "google" ? "Google" : "GitHub"}
+                          {linked && <Badge tone="success">Connected</Badge>}
+                        </span>
+                        {linked ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() =>
+                              act(async () => {
+                                const result = await authClient.unlinkAccount({
+                                  accountId: linked.id,
+                                });
+                                if (!result.error) {
+                                  const updated = await authClient.listAccounts();
+                                  if (updated.data) setAccounts(updated.data);
+                                }
+                                return result;
+                              })
+                            }
+                          >
+                            Disconnect
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() =>
+                              act(() =>
+                                authClient.linkSocial({
+                                  provider,
+                                  callbackURL: "/account?tab=security",
+                                  errorCallbackURL: "/account?tab=security",
+                                }),
+                              )
+                            }
+                          >
+                            Connect
+                          </Button>
+                        )}
+                      </li>
+                    );
+                  })}
+                  {socialAccounts
+                    .filter((a) => a.providerId !== "google" && a.providerId !== "github")
+                    .map((a) => (
+                      <li key={a.id} className="flex items-center justify-between gap-3 py-3">
+                        <span className="flex items-center gap-2 text-sm capitalize">
+                          {a.providerId}
+                          <Badge tone="success">Connected</Badge>
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() =>
+                            act(async () => {
+                              const result = await authClient.unlinkAccount({
+                                accountId: a.id,
+                              });
+                              if (!result.error) {
+                                const updated = await authClient.listAccounts();
+                                if (updated.data) setAccounts(updated.data);
+                              }
+                              return result;
+                            })
+                          }
+                        >
+                          Disconnect
+                        </Button>
+                      </li>
+                    ))}
+                </ul>
               </Card>
 
               <Card className="p-6">

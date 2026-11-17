@@ -346,13 +346,13 @@ function DiagnosticRow({
         </button>
       </div>
       {snippetOpen && diag.snippet && (
-        <pre className="ml-7 mt-1 select-text whitespace-pre overflow-x-auto rounded-md bg-elevated/60 px-2 py-1 font-mono text-[10.5px] leading-tight text-fg/80">
+        <pre className="ml-7 mt-1 select-text whitespace-pre overflow-x-auto rounded-md bg-elevated/60 px-2 py-1 font-mono text-[11px] leading-tight text-fg/80">
           {diag.snippet.join("\n")}
         </pre>
       )}
       {/* If we can't jump but we have a file name (no line), still show it for context. */}
       {!diag.line && diag.file && (
-        <div className="ml-7 mt-0.5 font-mono text-[10.5px] text-muted">{diag.file}</div>
+        <div className="ml-7 mt-0.5 font-mono text-[11px] text-muted">{diag.file}</div>
       )}
       {/* Used for stable React keys; suppress unused. */}
       <span className="hidden">{rowKey}</span>
@@ -366,7 +366,7 @@ function RawLogView({
   lines: { line: string; stream: "stdout" | "stderr" }[];
 }) {
   return (
-    <div className="max-h-48 overflow-y-auto font-mono text-[10.5px] leading-snug">
+    <div className="max-h-48 overflow-y-auto font-mono text-[11px] leading-snug">
       {lines.length === 0 ? (
         <div className="text-muted">No build output yet.</div>
       ) : (

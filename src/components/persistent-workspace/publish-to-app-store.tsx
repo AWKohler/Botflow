@@ -1002,7 +1002,7 @@ function Step1AppInfo({
           </label>
           <span
             className={cn(
-              "text-[10px] tabular-nums",
+              "text-[11px] tabular-nums",
               appName.length >= APP_NAME_MAX ? "text-warning" : "text-muted",
             )}
           >
@@ -1896,10 +1896,10 @@ function BuildProgress({
           >
             {logOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
             Build log
-            <span className="ml-auto font-mono text-[10px]">{logs.length} lines</span>
+            <span className="ml-auto font-mono text-[11px]">{logs.length} lines</span>
           </button>
           {logOpen && (
-            <div className="max-h-48 overflow-y-auto border-t border-border bg-elevated/60 px-3 py-2 font-mono text-[10.5px] leading-snug">
+            <div className="max-h-48 overflow-y-auto border-t border-border bg-elevated/60 px-3 py-2 font-mono text-[11px] leading-snug">
               {tail.map((l, i) => (
                 <div key={i} className={l.stream === "stderr" ? "text-danger" : "text-fg/80"}>
                   {l.line}

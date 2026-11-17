@@ -515,7 +515,7 @@ export function AppStoreReadinessStep({
             </label>
             <span
               className={cn(
-                "text-[10px] tabular-nums",
+                "text-[11px] tabular-nums",
                 iconPrompt.length >= ICON_PROMPT_MAX ? "text-warning" : "text-muted",
               )}
             >
@@ -624,7 +624,7 @@ export function AppStoreReadinessStep({
           <Sparkles size={14} className="shrink-0 text-accent" />
           <h3 className="text-sm font-semibold text-fg">Store listing</h3>
           {metaCredits != null && (
-            <span className="ml-auto text-[10px] text-muted">{metaCredits} credits</span>
+            <span className="ml-auto text-[11px] text-muted">{metaCredits} credits</span>
           )}
           {metaReady && (
             <button
@@ -705,7 +705,7 @@ export function AppStoreReadinessStep({
                 </label>
                 <span
                   className={cn(
-                    "text-[10px] tabular-nums",
+                    "text-[11px] tabular-nums",
                     metadata.description.length >= META_MAX.description
                       ? "text-warning"
                       : "text-muted",
@@ -917,7 +917,7 @@ function MetaField({
         </label>
         <span
           className={cn(
-            "text-[10px] tabular-nums",
+            "text-[11px] tabular-nums",
             value.length >= max ? "text-warning" : "text-muted",
           )}
         >

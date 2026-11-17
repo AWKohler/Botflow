@@ -242,7 +242,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
           {masked ? '••••••••' : value || <span className="italic text-muted">(empty)</span>}
         </span>
         {opts.locked && opts.lockLabel && (
-          <span className="text-[10px] text-muted bg-soft/60 rounded px-1.5 py-0.5 flex-shrink-0">
+          <span className="text-[11px] text-muted bg-soft/60 rounded px-1.5 py-0.5 flex-shrink-0">
             {opts.lockLabel}
           </span>
         )}

@@ -237,6 +237,57 @@ export function MarginBg() {
 }
 
 // ============================================================================
+// Closing band — the one way every marketing page ends
+// ============================================================================
+
+export function ClosingCta({
+  heading,
+  em,
+  sub,
+  secondary = { href: '/pricing', text: 'View pricing' },
+}: {
+  heading: string;
+  em?: string;
+  sub: string;
+  /** Pass null where the secondary link would point at the page you are on. */
+  secondary?: { href: string; text: string } | null;
+}) {
+  return (
+    <section className="relative">
+      <MarginHatch />
+      <div className="pointer-events-none absolute inset-0 -z-10 landing-gradient opacity-60" />
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
+        <Reveal>
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>
+              {heading}
+              {em && (
+                <>
+                  {' '}
+                  <em className={serif.className}>{em}</em>
+                </>
+              )}
+            </h2>
+            <p className="mt-4 text-lg text-[var(--sand-text-muted)]">{sub}</p>
+            <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <StaggerButton text="Start building free" href="/sign-up" />
+              {secondary && (
+                <Link
+                  href={secondary.href}
+                  className="inline-flex h-12 items-center gap-2 rounded-xl border border-[var(--sand-border-strong)] bg-[var(--sand-bg)] px-6 text-base font-medium shadow-xs transition-colors hover:bg-[var(--sand-elevated)]"
+                >
+                  {secondary.text}
+                </Link>
+              )}
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+// ============================================================================
 // Shared nav — the site-wide header (see components/site/SiteHeader)
 // ============================================================================
 
