@@ -27,9 +27,9 @@ const DARK = {
   border:   '#35302a',
   text:     '#ede6db',
   muted:    '#b5ab9f',
-  subtle:   '#857c72',
-  accent:   '#d8826a',
-  accentDim:'#c07a4c',
+  subtle:   '#9a9186',
+  accent:   '#8aa6ff',
+  accentDim:'#6f8ef0',
 };
 const LIGHT = {
   bg:       '#fefefe',
@@ -38,7 +38,7 @@ const LIGHT = {
   border:   '#e9e6df',
   text:     '#27272a',
   muted:    '#5f5e5a',
-  subtle:   '#8b8984',
+  subtle:   '#737169',
   accent:   '#1d52f1',
   accentDim:'#1740c8',
 };
@@ -305,8 +305,8 @@ export function CodeEditor({
       onMount={onMount}
       options={{
         minimap: { enabled: false },
-        fontSize: 13,
-        lineHeight: 20,
+        fontSize: 14,
+        lineHeight: 21,
         // Don't box ordinary typographic characters (en dashes, curly quotes).
         unicodeHighlight: { ambiguousCharacters: false, invisibleCharacters: false },
         lineNumbers: 'on',

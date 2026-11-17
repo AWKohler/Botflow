@@ -120,7 +120,8 @@ export function StaggerButton({
     <Link
       href={href}
       className={cn(
-        'group relative inline-flex items-center gap-2 overflow-hidden rounded-xl bg-[var(--sand-accent)] px-6 py-3 text-base font-medium shadow-lg',
+        // Ink, like every other primary button — the accent is kept for links and emphasis.
+        'group relative inline-flex h-12 items-center gap-2 overflow-hidden rounded-xl bg-[var(--sand-text)] px-6 text-base font-medium shadow-sm transition-opacity hover:opacity-90',
         className,
       )}
     >
@@ -133,7 +134,7 @@ export function StaggerButton({
               transitionDelay: `${i * 12}ms`,
               transitionTimingFunction: 'ease',
               textShadow: '0 1.5em 0 currentColor',
-              color: 'var(--sand-accent-contrast)',
+              color: 'var(--sand-bg)',
             }}
           >
             {char === ' ' ? '\u00A0' : char}
@@ -142,7 +143,7 @@ export function StaggerButton({
       </span>
       <ArrowRight
         className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5"
-        style={{ color: 'var(--sand-accent-contrast)' }}
+        style={{ color: 'var(--sand-bg)' }}
       />
     </Link>
   );

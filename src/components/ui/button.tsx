@@ -22,8 +22,9 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 /**
  * The one button style for the app. Pick the variant by intent:
  *   default        the main action of a view (ink). `primary` is an alias.
- *   accent         the brand accent — reserved for one hero action per
- *                  surface (Publish in the workspace)
+ *   accent         the brand accent fill. Not used for actions today — every
+ *                  primary action is ink so buttons read the same everywhere;
+ *                  the accent is kept for links, selection and focus.
  *   secondary      a peer action next to a primary one
  *   outline/ghost  low-emphasis and toolbar actions
  *   danger*        destructive actions

@@ -15,9 +15,9 @@ import { Input } from "./input";
  * every text input, select and textarea in the app.
  */
 export const fieldClass =
-  "w-full rounded-lg border border-border bg-bg px-3 text-sm text-fg shadow-xs outline-none " +
+  "w-full rounded-lg border border-border-strong bg-bg px-3 text-sm text-fg shadow-xs outline-none " +
   "placeholder:text-subtle transition-[border-color,box-shadow] duration-150 " +
-  "hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15 " +
+  "hover:border-subtle/60 focus:border-accent focus:ring-3 focus:ring-accent/20 " +
   "disabled:cursor-not-allowed disabled:opacity-60";
 
 export const TextInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(

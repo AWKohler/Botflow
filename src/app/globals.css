@@ -11,10 +11,12 @@
     --sand-elevated: #f6f3ec;
     --sand-soft: #ebe6dc;
     --sand-border: #e9e6df;
-    --sand-border-strong: #d8d4ca;
+    --sand-border-strong: #cfcac0;
     --sand-text: #27272a;
     --sand-text-muted: #5f5e5a;
-    --sand-text-subtle: #8b8984;
+    /* Subtle text still carries meaning (placeholders, metadata), so it keeps
+       a 4.5:1 contrast on every surface. */
+    --sand-text-subtle: #737169;
     --sand-accent: #1d52f1;
     --sand-accent-contrast: #ffffff;
     --sand-accent-contrast-two: #1b1713;
@@ -118,9 +120,10 @@
         --sand-border-strong: #4a433a;
         --sand-text: #ede6db;
         --sand-text-muted: #b5ab9f;
-        --sand-text-subtle: #857c72;
-        --sand-accent: #d8826a;
-        --sand-accent-contrast: #1b1713;
+        --sand-text-subtle: #9a9186;
+        /* One brand hue in both themes: the same cobalt, lifted for dark. */
+        --sand-accent: #8aa6ff;
+        --sand-accent-contrast: #101728;
         /*--sand-accent-contrast-two: #ffffff;*/
         --sand-overlay: rgba(237, 230, 219, 0.07);
 
@@ -131,10 +134,10 @@
         --success-solid: #2f9e58;
         --warning: #ecb866;
         --warning-solid: #d0892a;
-        --danger: #f0948a;
-        --danger-solid: #d5493f;
-        --info: #93b0ff;
-        --info-solid: #4f77f5;
+        --danger: #ff7a6e;
+        --danger-solid: #e0463b;
+        --info: #8aa6ff;
+        --info-solid: #5f82f7;
         --status-tint: 14%;
         --status-line: 34%;
 

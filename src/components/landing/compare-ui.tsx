@@ -810,7 +810,7 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
                         {p.isBotflow ? (
                           <Link
                             href="/sign-up"
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--sand-accent)] px-4 py-2 text-sm font-medium text-[var(--sand-accent-contrast)] shadow-sm hover:opacity-90 transition"
+                            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--sand-text)] px-4 text-sm font-medium text-[var(--sand-bg)] shadow-xs transition-opacity hover:opacity-90"
                           >
                             Try it free
                             <ArrowRight className="h-3.5 w-3.5" />

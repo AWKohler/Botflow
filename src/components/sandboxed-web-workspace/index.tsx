@@ -1474,7 +1474,7 @@ export function SandboxedWebWorkspace({
             <UserButton />
             <Button
               ref={publishBtnRef}
-              variant={cloudflareProjectName ? "secondary" : "accent"}
+              variant={cloudflareProjectName ? "secondary" : "primary"}
               size="sm"
               onClick={() => setPublishOpen((v) => !v)}
               title={cloudflareProjectName ? "Manage deployment" : "Publish to Cloudflare Pages"}
