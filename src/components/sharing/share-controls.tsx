@@ -628,7 +628,7 @@ export function ShareControls({ projectId }: { projectId: string }) {
         ref={triggerRef}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "flex h-8 w-8 items-center justify-center rounded-lg border border-border shadow-xs transition-colors",
+          "tap-44 flex h-8 w-8 items-center justify-center rounded-lg border border-border shadow-xs transition-colors",
           open ? "bg-elevated text-fg" : "bg-bg text-muted hover:border-border-strong hover:text-fg",
         )}
         title="Share this project"

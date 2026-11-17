@@ -233,9 +233,9 @@ body {
 
 /* Landing page gradient */
 .landing-gradient {
-    /* Accent blobs only — no solid base so hero-grid shows through */
+    /* A faint accent wash for closing bands — quiet, like the rest of the palette. */
     background:
-        radial-gradient(ellipse 90% 60% at 50% 0%, color-mix(in oklab, var(--sand-accent) 70%, transparent), transparent),
+        radial-gradient(ellipse 90% 60% at 50% 0%, color-mix(in oklab, var(--sand-accent) 14%, transparent), transparent),
         radial-gradient(ellipse 70% 55% at 85% 5%, color-mix(in oklab, var(--sand-soft) 85%, transparent), transparent),
         radial-gradient(ellipse 60% 70% at 50% 100%, color-mix(in oklab, var(--sand-elevated) 95%, transparent), transparent);
 }
@@ -261,6 +261,23 @@ body {
     background-size: 200px 200px;
     opacity: 0.3;
     pointer-events: none;
+}
+
+/* Touch screens: grow a control's hit area to 44px without changing how it
+   looks. For controls that are not themselves absolutely positioned. */
+@media (pointer: coarse) {
+    .tap-44 {
+        position: relative;
+    }
+    .tap-44::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: max(100%, 44px);
+        height: max(100%, 44px);
+        transform: translate(-50%, -50%);
+    }
 }
 
 /* Entrance animation for transient surfaces (toasts). */

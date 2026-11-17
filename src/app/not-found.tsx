@@ -92,11 +92,11 @@ export default function NotFound() {
               </Reveal>
 
               <Reveal delay={360}>
-                <div className="mt-8 flex flex-wrap items-center gap-5">
+                <div className="mt-8 flex flex-wrap items-center gap-3">
                   <StaggerButton text="Back to home" href="/" />
                   <Link
                     href="/projects"
-                    className="text-sm font-medium text-[var(--sand-text-muted)] hover:text-[var(--sand-accent)] transition"
+                    className="inline-flex h-12 items-center rounded-xl border border-[var(--sand-border-strong)] bg-[var(--sand-bg)] px-6 text-base font-medium text-[var(--sand-text)] shadow-xs transition-colors hover:bg-[var(--sand-elevated)]"
                   >
                     Go to my projects
                   </Link>

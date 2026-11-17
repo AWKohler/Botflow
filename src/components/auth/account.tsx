@@ -756,7 +756,7 @@ export function AccountPanel() {
                       </div>
                       {s.id !== session.session.id && (
                         <Button
-                          variant="ghost"
+                          variant="secondary"
                           size="sm"
                           disabled={busy}
                           onClick={() =>

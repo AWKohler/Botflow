@@ -109,7 +109,7 @@ export default function CompareHubPage() {
                   <Link
                     href={compareHref(slug)}
                     className={cn(
-                      'group relative block h-full p-6 sm:p-8 transition-colors duration-300 hover:bg-[var(--sand-surface)]',
+                      'group relative flex h-full flex-col p-6 sm:p-8 transition-colors duration-300 hover:bg-[var(--sand-surface)]',
                       i % 3 !== 2 && 'lg:border-r lg:border-[var(--sand-border)]',
                       i % 2 === 0 && 'md:max-lg:border-r md:max-lg:border-[var(--sand-border)]',
                       i < 3 && 'lg:border-b lg:border-[var(--sand-border)]',
@@ -127,15 +127,14 @@ export default function CompareHubPage() {
                     />
                     <h3 className={cn(serif.className, 'relative z-10 text-2xl sm:text-3xl tracking-tight')}>
                       Botflow{' '}
-                      <em className={serif.className} style={{ color: 'var(--sand-accent)' }}>
-                        vs
-                      </em>{' '}
+                      <em className={serif.className}>vs</em>{' '}
                       {COMPETITORS[slug].name}
                     </h3>
                     <p className="relative z-10 mt-3 text-sm text-[var(--sand-text-muted)] leading-relaxed">
                       {HUB_BLURBS[slug]}
                     </p>
-                    <span className="relative z-10 mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--sand-accent)]">
+                    {/* Pinned to the bottom, so the links line up across a row. */}
+                    <span className="relative z-10 mt-auto inline-flex items-center gap-1.5 pt-5 text-sm font-medium text-[var(--sand-accent)]">
                       Read the comparison
                       <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
                     </span>

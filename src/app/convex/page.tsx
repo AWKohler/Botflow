@@ -408,7 +408,7 @@ export default function ConvexPage() {
                   <CardSpotlight />
                   <p.icon
                     aria-hidden
-                    className="relative z-10 mb-6 h-8 w-8 text-[var(--sand-accent)]"
+                    className="relative z-10 mb-6 h-8 w-8 text-[var(--sand-text-muted)]"
                     strokeWidth={1.5}
                   />
                   <h3 className="relative z-10 text-xl font-semibold mb-2">
@@ -725,7 +725,7 @@ export default function ConvexPage() {
                     className="relative rounded-xl border border-[var(--sand-border)] bg-[var(--sand-bg)] p-5"
                   >
                     <b.icon
-                      className="mb-3 h-5 w-5 text-[var(--sand-accent)]"
+                      className="mb-3 h-5 w-5 text-[var(--sand-text-muted)]"
                       strokeWidth={1.6}
                     />
                     <p className="font-semibold text-[0.95rem] mb-1">{b.title}</p>
@@ -756,7 +756,7 @@ export default function ConvexPage() {
                 )}
               >
                 Build with a{' '}
-                <span style={{ color: 'var(--sand-accent)' }}>real backend</span>
+                <em className={serif.className}>real backend</em>
               </h2>
               <p className="mt-4 text-lg text-[var(--sand-text-muted)]">
                 Start a new project and your Convex deployment is waiting.

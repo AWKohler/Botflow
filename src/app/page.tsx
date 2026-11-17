@@ -2334,6 +2334,7 @@ export default function LandingV2() {
               ]}
               previewSrc="https://bf-28ba0c04.pages.dev"
               creditPct={47}
+              projectName="Flowsync"
               agentWorking={true}
               defaultView="preview"
               modelName="Claude Opus 5.5"
@@ -2629,7 +2630,7 @@ export default function LandingV2() {
               {
                 logo: (
                   <div className="h-8 w-8 rounded-lg bg-[var(--sand-elevated)] border border-[var(--sand-border)] flex items-center justify-center">
-                    <Globe className="h-5 w-5 text-[var(--sand-accent)]" />
+                    <Globe className="h-5 w-5 text-[var(--sand-text-muted)]" />
                   </div>
                 ),
                 name: 'Cloudflare',
@@ -2676,7 +2677,7 @@ export default function LandingV2() {
                   )}
                 >
                   Pick your{' '}
-                  <span style={{ color: 'var(--sand-accent)' }}>engine</span>
+                  <em className={serif.className}>engine</em>
                 </h2>
                 <p className="mt-6 text-lg text-[var(--sand-text-muted)] leading-relaxed">
                   Different tasks, different models. Use a lightweight model for quick iterations, or bring in the heavyweights for complex features. Switch models mid-conversation — no restart needed.

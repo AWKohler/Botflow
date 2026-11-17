@@ -11,9 +11,10 @@ import {
   RefreshCw,
   ArrowUpRight,
   PanelLeft,
-  Plus,
+  ChevronLeft,
+  SquarePen,
+  MoreHorizontal,
   RotateCw,
-  Settings2,
   Github,
   Download,
   FileText,
@@ -21,6 +22,7 @@ import {
   FolderOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatToolName } from '@/lib/agent/tool-labels';
 
 // ============================================================================
 // Types
@@ -49,6 +51,8 @@ export interface WorkspaceMockupProps {
   previewVirtualWidth?: number;
   /** Credit gauge percentage (0–100) */
   creditPct?: number;
+  /** Name shown in the chat header. */
+  projectName?: string;
   /** Fake file tree */
   files?: MockFileEntry[];
   /** Currently "selected" file name (shown in code tab header) */
@@ -65,30 +69,6 @@ export interface WorkspaceMockupProps {
   className?: string;
   /** Hide the left-side agent panel entirely — useful when the chrome around the chat would distract from the main surface. */
   hideAgentPanel?: boolean;
-}
-
-// ============================================================================
-// CreditGauge (inlined for mockup independence)
-// ============================================================================
-
-function MockCreditGauge({ pct }: { pct: number }) {
-  const clamped = Math.max(0, Math.min(100, pct));
-  const diameter = 30;
-  const strokeWidth = 3;
-  const radius = (diameter - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (clamped / 100) * circumference;
-  const color = clamped >= 80 ? 'var(--danger-solid)' : clamped >= 60 ? 'var(--warning-solid)' : 'var(--success-solid)';
-
-  return (
-    <div className="relative inline-flex items-center justify-center">
-      <svg width={diameter} height={diameter} viewBox={`0 0 ${diameter} ${diameter}`} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={diameter / 2} cy={diameter / 2} r={radius} fill="none" stroke="currentColor" strokeWidth={strokeWidth} className="text-soft" />
-        <circle cx={diameter / 2} cy={diameter / 2} r={radius} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset 0.4s ease, stroke 0.4s ease' }} />
-      </svg>
-      <span className="absolute font-medium tabular-nums text-muted" style={{ fontSize: 9, lineHeight: 1 }}>{clamped}%</span>
-    </div>
-  );
 }
 
 // ============================================================================
@@ -283,6 +263,7 @@ export function WorkspaceMockup({
   previewSrc,
   previewVirtualWidth = 1440,
   creditPct = 32,
+  projectName = 'Task tracker',
   files,
   selectedFile = 'App.tsx',
   codeContent,
@@ -364,14 +345,15 @@ export default function App() {
       <div className="flex w-80 shrink-0 flex-col bg-surface">
         {/* Agent header */}
         <div className="flex h-12 items-center justify-between px-3.5 text-sm">
-          <div className="flex items-center gap-1 text-xs font-medium text-muted">
-            <PanelLeft size={16} className="mr-1.5" />
-            <Plus size={14} />
-            New chat
+          {/* Mirrors the real chat header: project on the left, three actions on the right. */}
+          <div className="flex min-w-0 items-center gap-1.5">
+            <ChevronLeft size={16} className="shrink-0 text-muted" />
+            <span className="truncate text-[13px] font-medium text-fg">{projectName}</span>
           </div>
-          <div className="flex items-center gap-2.5">
-            <MockCreditGauge pct={creditPct} />
-            <Settings2 size={16} strokeWidth={1.75} className="text-muted" />
+          <div className="flex shrink-0 items-center gap-3 text-muted">
+            <PanelLeft size={16} />
+            <SquarePen size={16} strokeWidth={1.75} />
+            <MoreHorizontal size={16} />
           </div>
         </div>
 
@@ -398,7 +380,7 @@ export default function App() {
                   <div className="relative">
                     <div className="absolute left-[6px] top-[14px] bottom-0 w-px bg-border" />
                     {m.toolCalls!.map((tc, ti) => (
-                      <MockToolStep key={ti} name={tc.name} done={tc.done} />
+                      <MockToolStep key={ti} name={formatToolName(tc.name)} done={tc.done} />
                     ))}
                   </div>
                 )}
@@ -433,6 +415,9 @@ export default function App() {
               <div className="flex size-7 items-center justify-center rounded-full bg-fg text-bg opacity-30">
                 <ArrowUp size={16} />
               </div>
+            </div>
+            <div className="flex items-center justify-end border-t border-border px-3.5 py-2 text-[11px] tabular-nums text-muted">
+              Weekly credits {creditPct}% used
             </div>
           </div>
         </div>

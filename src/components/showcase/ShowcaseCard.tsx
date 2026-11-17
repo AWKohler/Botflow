@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Star, Laptop } from "lucide-react";
+import { Star, Laptop, Smartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -30,7 +30,7 @@ export function ShowcaseCard({ project, compact = false }: { project: ShowcasePr
   const thumb = project.thumbnailUrl;
   // Swift keeps its own label; everything else (web/sandboxed-web and legacy
   // mobile/multiplatform rows) is surfaced as "Web".
-  const Icon = Laptop;
+  const Icon = project.platform === "swift" ? Smartphone : Laptop;
 
   return (
     <Link
@@ -80,7 +80,8 @@ export function ShowcaseCard({ project, compact = false }: { project: ShowcasePr
         {project.publicDescription && !compact && (
           <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-muted">{project.publicDescription}</p>
         )}
-        <div className="mt-3 flex items-center gap-2 text-[13px] text-muted">
+        {/* Pinned to the bottom, so author rows line up across a row of cards. */}
+        <div className="mt-auto flex items-center gap-2 pt-3 text-[13px] text-muted">
           {project.author.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={project.author.imageUrl} alt="" className="h-5 w-5 rounded-full border border-border" />

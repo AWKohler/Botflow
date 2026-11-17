@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import {
   Plus,
   Laptop,
+  Smartphone,
   Layers,
   MoreHorizontal,
   Trash2,
@@ -234,7 +235,11 @@ export default function ProjectsPage() {
                         />
                       ) : (
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-subtle">
-                          <Laptop className="h-7 w-7" strokeWidth={1.5} />
+                          {project.platform === 'swift' ? (
+                            <Smartphone className="h-7 w-7" strokeWidth={1.5} />
+                          ) : (
+                            <Laptop className="h-7 w-7" strokeWidth={1.5} />
+                          )}
                           <span className="text-xs">No preview yet</span>
                         </div>
                       )}

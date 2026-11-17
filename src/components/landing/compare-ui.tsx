@@ -241,10 +241,8 @@ export function CompareTable({ themName, groups }: { themName: string; groups: C
               <div className="px-4 sm:px-7 py-5 text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]">
                 Feature
               </div>
-              <div className="px-2 sm:px-4 py-5 text-center">
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text)]">
-                  Botflow
-                </span>
+              <div className="px-2 sm:px-4 py-5 text-center text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text)] bg-[var(--sand-accent)]/[0.03]">
+                Botflow
               </div>
               <div className="px-2 sm:px-4 py-5 text-center text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]">
                 {themName}
@@ -381,7 +379,8 @@ export function DeepDives({ dives }: { dives: DeepDive[] }) {
         <div className="space-y-16 sm:space-y-20">
           {dives.map((dive, i) => (
             <Reveal key={dive.title} delay={60}>
-              <div className="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-6 md:gap-12 items-start max-w-4xl mx-auto">
+              {/* Fixed numeral column, so every section's text starts on the same line. */}
+              <div className="grid grid-cols-1 md:grid-cols-[7rem_1fr] gap-6 md:gap-12 items-start max-w-4xl mx-auto">
                 <span
                   className={cn(
                     serif.className,
@@ -394,9 +393,7 @@ export function DeepDives({ dives }: { dives: DeepDive[] }) {
                 <div>
                   <h3 className={cn(serif.className, 'text-3xl sm:text-4xl tracking-tight mb-5')}>
                     {dive.title}{' '}
-                    <em className={serif.className} style={{ color: 'var(--sand-accent)' }}>
-                      {dive.em}
-                    </em>
+                    <em className={serif.className}>{dive.em}</em>
                   </h3>
                   <div className="space-y-4">
                     {dive.paragraphs.map((p, pi) => (
@@ -474,9 +471,7 @@ export function VerdictCards({
               />
               <h3 className={cn(serif.className, 'text-2xl sm:text-3xl tracking-tight mb-6')}>
                 Choose{' '}
-                <em className={serif.className} style={{ color: 'var(--sand-accent)' }}>
-                  Botflow
-                </em>{' '}
+                <em className={serif.className}>Botflow</em>{' '}
                 if…
               </h3>
               <ul className="space-y-3.5">
@@ -618,9 +613,7 @@ export function ClosingCta({ heading, em, sub }: { heading: string; em: string; 
           <div className="text-center max-w-2xl mx-auto">
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>
               {heading}{' '}
-              <em className={serif.className} style={{ color: 'var(--sand-accent)' }}>
-                {em}
-              </em>
+              <em className={serif.className}>{em}</em>
             </h2>
             <p className="mt-4 text-lg text-[var(--sand-text-muted)]">{sub}</p>
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -718,7 +711,7 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
                   />
                 )}
 
-                <div className="grid grid-cols-[auto_1fr] gap-5 sm:gap-8 items-start">
+                <div className="grid grid-cols-[2.5rem_1fr] sm:grid-cols-[3.75rem_1fr] gap-5 sm:gap-8 items-start">
                   <span
                     className={cn(
                       serif.className,

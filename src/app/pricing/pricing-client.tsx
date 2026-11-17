@@ -497,12 +497,7 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
               )}
             >
               Start building.{' '}
-              <em
-                className={serif.className}
-                style={{ color: 'var(--sand-accent)' }}
-              >
-                Upgrade later.
-              </em>
+              <em className={serif.className}>Upgrade later.</em>
             </h2>
             <p className="mt-5 text-lg text-[var(--sand-text-muted)] max-w-xl mx-auto leading-relaxed">
               No credit card. No setup. Describe an app and watch it run.

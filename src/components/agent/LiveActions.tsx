@@ -72,10 +72,24 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
   );
 }
 
+/** What the step acted on (the command, file or search), so two "Run command" rows don't read the same. */
+function actionDetail(action: ToolCallData): string | null {
+  const args = action.args ?? {};
+  for (const key of ['command', 'file_path', 'filePath', 'path', 'pattern', 'query', 'url']) {
+    const value = args[key];
+    if (typeof value === 'string' && value.trim()) {
+      const firstLine = value.trim().split('\n')[0];
+      return firstLine.length > 64 ? `${firstLine.slice(0, 63)}…` : firstLine;
+    }
+  }
+  return null;
+}
+
 function LiveActionStep({ action, isLast }: { action: ToolCallData; isLast: boolean }) {
   const [open, setOpen] = useState(false);
   const isDone = action.status !== 'invoked';
   const isEdit = Boolean(action.fileChange);
+  const detail = isEdit ? null : actionDetail(action);
 
   return (
     <div className="relative flex gap-2.5">
@@ -102,9 +116,14 @@ function LiveActionStep({ action, isLast }: { action: ToolCallData; isLast: bool
           className="flex w-full items-center gap-1.5 rounded-sm text-left text-xs transition-colors"
           onClick={() => setOpen(v => !v)}
         >
-          <span className={cn('truncate text-[13px]', isEdit && 'font-mono text-xs', isDone ? 'text-muted' : 'text-fg')}>
+          <span className={cn('shrink-0 truncate text-[13px]', isEdit && 'min-w-0 shrink font-mono text-xs', isDone ? 'text-muted' : 'text-fg')}>
             {isEdit ? action.fileChange!.filePath : formatToolName(action.toolName)}
           </span>
+          {detail && (
+            <code className="min-w-0 truncate font-mono text-[11px] text-subtle" title={detail}>
+              {detail}
+            </code>
+          )}
           {isEdit && (
             <span className="shrink-0 text-[11px] tabular-nums">
               <span className="text-success">+{action.fileChange!.additions}</span>

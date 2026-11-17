@@ -11,7 +11,7 @@ interface TabsProps<T extends string> {
   onSelect: (value: T) => void;
   className?: string;
   stretch?: boolean;
-  size?: "sm" | "default";
+  size?: "sm" | "default" | "lg";
 }
 
 /**
@@ -41,11 +41,11 @@ export function Tabs<T extends string>({ options, selected, onSelect, className,
             aria-selected={active}
             onClick={() => onSelect(option.value)}
             className={cn(
-              "rounded-md font-medium transition-[background-color,color,box-shadow] duration-150",
-              size === "sm" ? "h-6 px-2.5 text-xs" : "h-7 px-3 text-[13px]",
+              "tap-44 rounded-md font-medium transition-[background-color,color,box-shadow] duration-150",
+              size === "sm" ? "h-6 px-2.5 text-xs" : size === "lg" ? "h-9 px-5 text-sm" : "h-7 px-3 text-[13px]",
               expand && "flex-1",
               active
-                ? "bg-bg text-fg shadow-sm"
+                ? "bg-bg text-fg shadow-sm ring-1 ring-border-strong/50"
                 : "text-muted hover:text-fg",
             )}
           >

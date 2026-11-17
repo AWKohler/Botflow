@@ -56,6 +56,7 @@ import {
   Frame,
   ArrowUpRight,
   ChevronLeft,
+  ChevronRight,
   ExternalLink,
   Globe,
   MoreHorizontal,
@@ -152,6 +153,7 @@ export function SandboxedWebWorkspace({
   const [githubRepoName, setGithubRepoName] = useState<string | null>(null);
   const [githubDefaultBranch, setGithubDefaultBranch] = useState<string | null>(null);
   const [mobilePane, setMobilePane] = useState<"chat" | "app">("chat");
+  const [terminalOpen, setTerminalOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>("preview");
 
@@ -1083,11 +1085,11 @@ export function SandboxedWebWorkspace({
   return (
     <div className="flex h-[100dvh] flex-col bg-surface text-fg md:flex-row">
       {/* Small screens show one pane at a time; this bar switches between them. */}
-      <div className="relative flex h-11 shrink-0 items-center justify-center border-b border-border md:hidden">
+      <div className="relative flex h-14 shrink-0 items-center justify-center border-b border-border md:hidden">
         <Link
           href="/projects"
           aria-label="Back to projects"
-          className="absolute left-2 flex h-8 items-center gap-0.5 rounded-lg pl-1 pr-2 text-[13px] font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
+          className="absolute left-1.5 flex h-11 items-center gap-0.5 rounded-lg pl-1.5 pr-2.5 text-sm font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
         >
           <ChevronLeft size={16} />
           Projects
@@ -1099,6 +1101,7 @@ export function SandboxedWebWorkspace({
           ]}
           selected={mobilePane}
           onSelect={setMobilePane}
+          size="lg"
         />
       </div>
       {/* Convex paused modal — once per workspace-open while paused. Render
@@ -1491,6 +1494,7 @@ export function SandboxedWebWorkspace({
                 variant="ghost"
                 size="icon-sm"
                 aria-label="More actions"
+                className="tap-44"
                 aria-haspopup="menu"
                 aria-expanded={mobileMenuOpen}
                 onClick={() => setMobileMenuOpen((v) => !v)}
@@ -1557,6 +1561,7 @@ export function SandboxedWebWorkspace({
               ref={publishBtnRef}
               variant={cloudflareProjectName ? "secondary" : "primary"}
               size="sm"
+              className="tap-44"
               onClick={() => setPublishOpen((v) => !v)}
               title={cloudflareProjectName ? "Manage deployment" : "Publish to Cloudflare Pages"}
             >
@@ -1660,8 +1665,20 @@ export function SandboxedWebWorkspace({
 
             {/* Terminal — always mounted, persists across tab switches.
                 Wired to the sandbox via /api/projects/:id/sandbox/exec. */}
-            <div className="h-44 border-t border-border bg-surface">
-              <PersistentTerminal projectId={projectId} ready={sandboxStatus === "ready"} />
+            <div className="border-t border-border bg-surface">
+              <button
+                type="button"
+                onClick={() => setTerminalOpen((v) => !v)}
+                aria-expanded={terminalOpen}
+                className="flex h-7 w-full items-center gap-1.5 px-3 text-[11px] font-medium text-muted transition-colors hover:text-fg"
+              >
+                <ChevronRight size={12} className={cn("transition-transform", terminalOpen && "rotate-90")} />
+                Terminal
+              </button>
+              {/* Collapsed with a class, not unmounted, so the session survives. */}
+              <div className={cn("h-40", !terminalOpen && "hidden")}>
+                <PersistentTerminal projectId={projectId} ready={sandboxStatus === "ready"} />
+              </div>
             </div>
           </div>
 

@@ -108,7 +108,7 @@ function Title({
   return (
     <h3
       className={cn(
-        "mt-1.5 text-[19px] font-semibold leading-snug tracking-[-0.01em] text-[var(--sand-text)]",
+        "mt-1.5 text-balance text-[19px] font-semibold leading-snug tracking-[-0.01em] text-[var(--sand-text)]",
         className,
       )}
     >
@@ -330,7 +330,7 @@ export function FeatureBento({
             />
           </div>
           <div className="pt-4">
-            <Eyebrow className="text-[#f46a13]">Under the hood</Eyebrow>
+            <Eyebrow>Under the hood</Eyebrow>
             <Title className="text-[17px]">
               SwiftUI, compiled for&nbsp;real.
             </Title>
