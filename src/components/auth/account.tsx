@@ -62,6 +62,7 @@ export function AccountPanel({
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionsState, setSessionsState] = useState<"loading" | "ready" | "error">("loading");
   const [accounts, setAccounts] = useState<
     { id: string; providerId: string; accountId: string }[]
   >([]);
@@ -198,9 +199,13 @@ export function AccountPanel({
     refreshEmails();
     setName(session.user.name);
     setUsername(session.user.username ?? "");
-    authClient.listSessions().then((r) => {
-      if (r.data) setSessions(r.data as Session[]);
-    });
+    authClient
+      .listSessions()
+      .then((r) => {
+        if (r.data) setSessions(r.data as Session[]);
+        setSessionsState(r.data ? "ready" : "error");
+      })
+      .catch(() => setSessionsState("error"));
     authClient.listAccounts().then((r) => {
       if (r.data) setAccounts(r.data);
     });
@@ -247,6 +252,8 @@ export function AccountPanel({
     { id: "billing", label: "Billing", icon: CreditCard },
   ] as const;
   const socialAccounts = accounts.filter((a) => a.providerId !== "credential");
+  const thisDevice = session.session as unknown as Session;
+  const deviceRows: Session[] = sessions.length ? sessions : [thisDevice];
   const initial = (session.user.name?.[0] ?? session.user.email?.[0] ?? "U").toUpperCase();
 
   return (
@@ -409,7 +416,7 @@ export function AccountPanel({
                           {address.verified && (
                             <Button
                               variant="ghost"
-                              size="xs"
+                              size="sm"
                               disabled={busy}
                               onClick={() =>
                                 act(
@@ -423,7 +430,7 @@ export function AccountPanel({
                           )}
                           <Button
                             variant="ghost"
-                            size="xs"
+                            size="sm"
                             disabled={busy}
                             onClick={() =>
                               act(
@@ -526,7 +533,7 @@ export function AccountPanel({
                         {linked ? (
                           <Button
                             variant="ghost"
-                            size="xs"
+                            size="sm"
                             disabled={busy}
                             onClick={() =>
                               act(async () => {
@@ -546,7 +553,7 @@ export function AccountPanel({
                         ) : (
                           <Button
                             variant="secondary"
-                            size="xs"
+                            size="sm"
                             disabled={busy}
                             onClick={() =>
                               act(() =>
@@ -574,7 +581,7 @@ export function AccountPanel({
                         </span>
                         <Button
                           variant="ghost"
-                          size="xs"
+                          size="sm"
                           disabled={busy}
                           onClick={() =>
                             act(async () => {
@@ -721,11 +728,10 @@ export function AccountPanel({
                     ) : undefined
                   }
                 />
-                {sessions.length === 0 && (
-                  <p className="mt-4 text-sm text-muted">Loading your devices…</p>
-                )}
-                <ul className="mt-4 divide-y divide-border empty:hidden">
-                  {sessions.map((s) => (
+                <ul className="mt-4 divide-y divide-border">
+                  {/* This device is always known from the session itself, so the
+                      list is never empty while the others load (or fail to). */}
+                  {deviceRows.map((s) => (
                     <li key={s.id} className="flex items-center justify-between gap-4 py-3">
                       <div className="min-w-0">
                         <p className="flex items-center gap-2 text-sm">
@@ -740,7 +746,7 @@ export function AccountPanel({
                       {s.id !== session.session.id && (
                         <Button
                           variant="ghost"
-                          size="xs"
+                          size="sm"
                           disabled={busy}
                           onClick={() =>
                             act(async () => {
@@ -761,6 +767,17 @@ export function AccountPanel({
                     </li>
                   ))}
                 </ul>
+                {sessionsState === "loading" && (
+                  <p className="mt-2 text-xs text-muted">Checking for other devices…</p>
+                )}
+                {sessionsState === "error" && (
+                  <p className="mt-2 text-xs text-muted">
+                    Other devices couldn’t be loaded. Reload the page to try again.
+                  </p>
+                )}
+                {sessionsState === "ready" && sessions.length <= 1 && (
+                  <p className="mt-2 text-xs text-muted">You’re not signed in anywhere else.</p>
+                )}
               </Card>
 
               <Card className="p-6">
@@ -792,7 +809,7 @@ export function AccountPanel({
               <Card className="p-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-[0.08em] text-subtle">Current plan</p>
+                    <p className="text-[13px] text-muted">Current plan</p>
                     <h3 className="mt-1.5 text-xl font-semibold capitalize tracking-tight">
                       {subscription?.plan ?? "free"}
                     </h3>
@@ -809,6 +826,9 @@ export function AccountPanel({
                   </div>
                   {!subscription?.migrationPending && (
                     <div className="flex flex-wrap gap-2">
+                      <Link href="/pricing" className={buttonClass({ variant: "ghost", size: "sm" })}>
+                        Compare plans
+                      </Link>
                       {subscription && subscription.amount > 0 && (
                         <Button
                           variant="ghost"
@@ -855,7 +875,7 @@ export function AccountPanel({
                     </span>
                     <Button
                       variant="secondary"
-                      size="xs"
+                      size="sm"
                       disabled={busy}
                       onClick={() => billingAction("cancel-plan-change")}
                     >
@@ -904,7 +924,7 @@ export function AccountPanel({
                               {!card.isDefault && (
                                 <Button
                                   variant="ghost"
-                                  size="xs"
+                                  size="sm"
                                   disabled={busy}
                                   onClick={() =>
                                     billingAction("set-default-payment", card.id)
@@ -915,7 +935,7 @@ export function AccountPanel({
                               )}
                               <Button
                                 variant="ghost"
-                                size="xs"
+                                size="sm"
                                 disabled={busy}
                                 onClick={() =>
                                   billingAction("remove-payment", card.id)
@@ -945,14 +965,7 @@ export function AccountPanel({
                   </Card>
 
                   <Card className="p-6">
-                    <SectionHeader
-                      title="Billing history"
-                      action={
-                        <Link href="/pricing" className={buttonClass({ variant: "ghost", size: "sm" })}>
-                          Compare plans
-                        </Link>
-                      }
-                    />
+                    <SectionHeader title="Billing history" />
                     {billingDetails.invoices.length > 0 ? (
                       <ul className="mt-4 divide-y divide-border">
                         {billingDetails.invoices.map((invoice) => (
@@ -968,7 +981,7 @@ export function AccountPanel({
                               href={invoice.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className={buttonClass({ variant: "ghost", size: "xs" })}
+                              className={buttonClass({ variant: "ghost", size: "sm" })}
                             >
                               {invoice.kind === "receipt" ? "Receipt" : "Invoice"}
                               <ExternalLink className="h-3 w-3" />

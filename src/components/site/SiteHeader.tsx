@@ -3,9 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Menu, Settings2, X } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { SignedIn, SignedOut, UserButton, useUser } from '@/components/auth';
-import { SettingsModal } from '@/components/settings/SettingsModal';
 import { buttonClass } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -67,7 +66,6 @@ export function BrandMark({ className }: { className?: string }) {
 export function SiteHeader() {
   const pathname = usePathname() ?? '/';
   const { isSignedIn, isLoaded } = useUser();
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => setMenuOpen(false), [pathname]);
@@ -122,15 +120,6 @@ export function SiteHeader() {
               </Link>
             </SignedOut>
             <SignedIn>
-              <button
-                type="button"
-                onClick={() => setSettingsOpen(true)}
-                className={buttonClass({ variant: 'ghost', size: 'icon-sm' })}
-                title="Settings"
-                aria-label="Settings"
-              >
-                <Settings2 className="h-4 w-4" strokeWidth={1.75} />
-              </button>
               <UserButton />
             </SignedIn>
             <button
@@ -174,7 +163,6 @@ export function SiteHeader() {
         )}
       </header>
 
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} defaultTab="usage" />
     </>
   );
 }

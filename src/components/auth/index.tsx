@@ -5,10 +5,18 @@ import { authClient } from "@/lib/auth/client";
 import { safeRedirect } from "@/lib/auth/policy";
 import { AuthForm } from "./sign-in";
 import { AccountPanel } from "./account";
-import { CreditCard, LogOut, UserRound, X } from "lucide-react";
+import dynamic from "next/dynamic";
+import { CreditCard, LogOut, Settings2, UserRound, X } from "lucide-react";
 import { buttonClass } from "@/components/ui/button";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 export { PricingTable } from "./pricing-table";
+
+// Loaded on demand: the settings dialog imports from this module, so a static
+// import here would be circular.
+const SettingsModal = dynamic(
+  () => import("@/components/settings/SettingsModal").then((m) => m.SettingsModal),
+  { ssr: false },
+);
 
 interface User {
   id: string;
@@ -167,6 +175,7 @@ export function UserButton(_props: {
   const { user } = useUser();
   const [open, setOpen] = useState(false);
   const [accountTab, setAccountTab] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const accountDialog = React.useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (accountTab) accountDialog.current?.showModal();
@@ -212,11 +221,20 @@ export function UserButton(_props: {
             <MenuItem
               onClick={() => {
                 setOpen(false);
+                setSettingsOpen(true);
+              }}
+            >
+              <Settings2 className="h-4 w-4 text-muted" strokeWidth={1.75} />
+              Settings
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setOpen(false);
                 setAccountTab("profile");
               }}
             >
               <UserRound className="h-4 w-4 text-muted" strokeWidth={1.75} />
-              Manage account
+              Account
             </MenuItem>
             <MenuItem
               onClick={() => {
@@ -240,6 +258,7 @@ export function UserButton(_props: {
           </Menu>
         </>
       )}
+      {settingsOpen && <SettingsModal open onClose={() => setSettingsOpen(false)} />}
       {accountTab && (
         <dialog
           ref={accountDialog}

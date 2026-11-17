@@ -16,6 +16,9 @@ interface SettingsModalProps {
   /** Pass true when rendering inside the workspace — COEP headers prevent Stripe iframes
    *  from loading, so the subscription tab opens /pricing in a new tab instead. */
   workspaceContext?: boolean;
+  /** 'page' renders the same tabs and content inline (no backdrop, no close
+   *  button) so the /settings page and the dialog are one implementation. */
+  variant?: 'modal' | 'page';
 }
 
 type Tab = 'usage' | 'connections' | 'subscription';
@@ -38,7 +41,7 @@ const PROVIDERS: Array<{
   { provider: 'together', label: 'Together AI API Key', field: 'togetherApiKey', placeholder: 'together-...' },
 ];
 
-export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceContext = false }: SettingsModalProps) {
+export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceContext = false, variant = 'modal' }: SettingsModalProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>(defaultTab);
   const [loading, setLoading] = useState(true);
@@ -469,28 +472,31 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
     }
   };
 
-  const isSubscriptionTab = activeTab === 'subscription';
+  const isPage = variant === 'page';
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center px-4">
-      {/* Blur backdrop as a sibling — NOT an ancestor of the modal content.
-          This prevents backdrop-filter from creating a containing block that
-          traps Clerk's checkout panel (position:fixed) inside our modal. */}
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
-        onClick={handleClose}
-      />
+    <div className={isPage ? undefined : 'fixed inset-0 z-[200] flex items-center justify-center px-4'}>
+      {/* Blur backdrop as a sibling — NOT an ancestor of the modal content, so
+          backdrop-filter never becomes the containing block for fixed-position
+          children (the Stripe payment form). */}
+      {!isPage && (
+        <div
+          className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+          onClick={handleClose}
+        />
+      )}
       <div
         className={cn(
-          'relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl transition-[max-width] duration-200',
-          isSubscriptionTab ? 'max-w-5xl' : activeTab === 'usage' ? 'max-w-xl' : 'max-w-lg'
+          // One width for every tab, so switching tabs never resizes the dialog.
+          'relative flex w-full flex-col overflow-hidden border border-border bg-bg',
+          isPage ? 'rounded-xl' : 'max-h-[90vh] max-w-3xl rounded-2xl shadow-2xl',
         )}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3 sm:gap-5">
-            <h2 className="shrink-0 text-base font-semibold text-fg">Settings</h2>
+            {!isPage && <h2 className="shrink-0 text-base font-semibold text-fg">Settings</h2>}
             <div role="tablist" className="flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5">
               <button
                 onClick={() => setActiveTab('usage')}
@@ -506,7 +512,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
               <button
                 onClick={() => setActiveTab('connections')}
                 className={cn(
-                  'hidden h-7 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-[background-color,color,box-shadow] sm:block sm:px-3',
+                  'h-7 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-[background-color,color,box-shadow] sm:px-3',
                   activeTab === 'connections'
                     ? 'bg-bg text-fg shadow-sm'
                     : 'text-muted hover:text-fg'
@@ -527,6 +533,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
               </button>
             </div>
           </div>
+{!isPage && (
           <button
             onClick={handleClose}
             aria-label="Close settings"
@@ -534,10 +541,11 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
           >
             <X className="h-4 w-4" />
           </button>
+          )}
         </div>
 
         {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+        <div className={cn("px-4 py-5 sm:px-6", !isPage && "flex-1 overflow-y-auto")}>
           <SignedOut>
             <div className="rounded-xl border border-border p-6">
               <p className="mb-4 text-sm text-muted">You need to sign in to manage settings.</p>
@@ -556,9 +564,8 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
             {/* ── Subscription tab ── */}
             {activeTab === 'subscription' && (
               <div>
-                <p className="text-xs text-muted mb-5">
-                  Free is the default plan — no action needed to get started.
-                  Upgrade anytime to unlock more capabilities.
+                <p className="mb-5 text-[13px] text-muted">
+                  Everyone starts on Free. Upgrade when you want more projects and included model credits.
                 </p>
                 {workspaceContext ? (
                   /* Stripe iframes can't run inside COEP-isolated workspace pages.
@@ -578,15 +585,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                     </a>
                   </div>
                 ) : (
-                  <PricingTable
-                    newSubscriptionRedirectUrl="/projects"
-                    ctaPosition="bottom"
-
-                  
-                    // appearance={
-
-                    // }
-                  />
+                  <PricingTable newSubscriptionRedirectUrl="/projects" compact />
                 )}
               </div>
             )}

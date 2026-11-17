@@ -376,8 +376,8 @@ export default function PricingPage() {
 
           <Reveal delay={120}>
             <p className="mt-8 text-center text-xs text-[var(--sand-text-muted)]">
-              All plans include unlimited collaborators, encrypted secrets, and
-              the full IDE. Prices in USD.
+              All plans include encrypted secrets and the full IDE. Sharing a
+              project with collaborators needs Pro or Max. Prices in USD.
             </p>
           </Reveal>
         </div>
