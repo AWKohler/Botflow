@@ -82,6 +82,9 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>(defaultTab);
   const [loading, setLoading] = useState(true);
+  // A failed load must never read as "nothing is connected".
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [savingKey, setSavingKey] = useState<Provider | null>(null);
   const [removingKey, setRemovingKey] = useState<Provider | null>(null);
   const [keys, setKeys] = useState<Record<Provider, string>>({
@@ -146,6 +149,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
     if (!open) return;
     let cancelled = false;
     setLoading(true);
+    setLoadFailed(false);
     setKeys({ openai: '', anthropic: '', moonshot: '', fireworks: '', together: '', google: '', xai: '' });
     setOauthStep('idle');
     setOauthCode('');
@@ -175,15 +179,17 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
             setHasCodexOAuth(Boolean(data?.hasCodexOAuth));
             setHasConvexOAuth(Boolean(data?.hasConvexOAuth));
           }
+        } else if (!cancelled) {
+          setLoadFailed(true);
         }
       } catch {
-        // ignore
+        if (!cancelled) setLoadFailed(true);
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [open]);
+  }, [open, reloadKey]);
 
   // Apple Developer connection status (separate route — masked, never the .p8)
   useEffect(() => {
@@ -532,6 +538,13 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
               <>
                 {loading ? (
                   <div className="flex items-center justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted" /></div>
+                ) : loadFailed ? (
+                  <div className="flex flex-col items-center gap-3 py-10 text-center">
+                    <p className="text-sm text-muted">Your connections couldn&apos;t be loaded.</p>
+                    <button onClick={() => setReloadKey((k) => k + 1)} className={connectionButtonClass}>
+                      Try again
+                    </button>
+                  </div>
                 ) : (
                   <div className="divide-y divide-border [&>div]:py-5 [&>div:first-child]:pt-0 [&>div:last-child]:pb-0">
 
