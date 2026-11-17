@@ -5,8 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@/components/auth";
 import {
-  Eye,
-  Code2,
   Star,
   Loader2,
   Sparkles,
@@ -20,6 +18,7 @@ import { CodeEditor } from "@/components/workspace/code-editor";
 import { FileTree } from "@/components/workspace/file-tree";
 import { TemplateForkModal } from "./template-fork-modal";
 import { useToast } from "@/components/ui/toast";
+import { Tabs } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import {
   getProjectPlatformLabel,
@@ -200,10 +199,10 @@ export function PublicWorkspace({ data, isSignedIn }: PublicWorkspaceProps) {
 
   return (
     <div className="antialiased text-fg bg-bg min-h-screen flex flex-col">
-      <header className="relative z-30 border-b border-border bg-surface/80 backdrop-blur-sm">
+      <header className="relative z-30 border-b border-border bg-bg/85 backdrop-blur-lg">
         <div className="mx-auto max-w-[1600px] px-4 sm:px-6 py-3">
           <div className="flex items-center gap-3">
-            <Link href="/explore" className="hidden md:inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-muted hover:text-fg hover:bg-elevated transition">
+            <Link href="/explore" className="hidden h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-muted transition-colors hover:bg-elevated hover:text-fg md:inline-flex">
               <ArrowLeft className="h-4 w-4" />
               Explore
             </Link>
@@ -217,8 +216,8 @@ export function PublicWorkspace({ data, isSignedIn }: PublicWorkspaceProps) {
               )}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 min-w-0">
-                  <h1 className="font-semibold text-fg truncate" title={project.name}>{project.name}</h1>
-                  <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-elevated px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted shrink-0">
+                  <h1 className="truncate text-[15px] font-semibold text-fg" title={project.name}>{project.name}</h1>
+                  <span className="hidden shrink-0 items-center gap-1 rounded-full border border-border bg-elevated px-2 py-0.5 text-[11px] font-medium text-muted sm:inline-flex">
                     {getProjectPlatformLabel(project.platform)}
                   </span>
                 </div>
@@ -227,40 +226,24 @@ export function PublicWorkspace({ data, isSignedIn }: PublicWorkspaceProps) {
             </div>
 
             {/* Tab switcher — Code only when a source bundle exists */}
-            <div className="inline-flex items-center rounded-xl border border-border bg-bg p-0.5 shadow-sm">
-              <button
-                onClick={() => setTab("preview")}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition",
-                  tab === "preview" ? "bg-surface text-fg shadow-sm" : "text-muted hover:text-fg"
-                )}
-              >
-                <Eye className="h-4 w-4" />
-                Preview
-              </button>
-              {hasSource && (
-                <button
-                  onClick={() => setTab("code")}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition",
-                    tab === "code" ? "bg-surface text-fg shadow-sm" : "text-muted hover:text-fg"
-                  )}
-                >
-                  <Code2 className="h-4 w-4" />
-                  Code
-                </button>
-              )}
-            </div>
+            <Tabs
+              options={[
+                { value: "preview", text: "Preview" },
+                ...(hasSource ? [{ value: "code" as const, text: "Code" }] : []),
+              ]}
+              selected={tab}
+              onSelect={setTab}
+            />
 
             <div className="flex items-center gap-2">
               <button
                 onClick={handleStar}
                 disabled={starring}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm font-medium transition",
+                  "inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium shadow-xs transition-colors",
                   hasStarred
-                    ? "border-accent/40 bg-accent/10 text-accent"
-                    : "border-border bg-elevated text-fg hover:bg-soft"
+                    ? "border-accent/40 bg-accent-soft text-accent"
+                    : "border-border bg-bg text-fg hover:border-border-strong hover:bg-elevated"
                 )}
                 title={hasStarred ? "Unstar" : "Star"}
               >
@@ -270,11 +253,11 @@ export function PublicWorkspace({ data, isSignedIn }: PublicWorkspaceProps) {
 
               <button
                 onClick={handleCopyLink}
-                className="hidden sm:inline-flex items-center justify-center rounded-xl border border-border bg-elevated h-[34px] w-[34px] text-fg hover:bg-soft transition"
+                className="hidden h-8 w-8 items-center justify-center rounded-lg border border-border bg-bg text-muted shadow-xs transition-colors hover:border-border-strong hover:text-fg sm:inline-flex"
                 title="Copy share link"
                 aria-label="Copy share link"
               >
-                {copied ? <Check className="h-4 w-4 text-accent" /> : <Copy className="h-4 w-4" />}
+                {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
               </button>
 
               {hasSource && (
@@ -289,7 +272,7 @@ export function PublicWorkspace({ data, isSignedIn }: PublicWorkspaceProps) {
 
               <SignedOut>
                 <SignInButton>
-                  <button className="hidden md:inline-flex items-center rounded-xl border border-border bg-elevated px-3 py-1.5 text-sm font-medium text-fg hover:bg-soft transition">
+                  <button className="hidden h-8 items-center gap-1.5 rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated md:inline-flex">
                     Log in
                   </button>
                 </SignInButton>
@@ -358,7 +341,7 @@ function PreviewPane({
         >
           <RefreshCw className="h-3.5 w-3.5" />
         </button>
-        <div className="flex-1 mx-1 flex items-center rounded-md bg-elevated border border-border px-3 py-1 text-xs">
+        <div className="mx-1 flex h-7 flex-1 items-center rounded-md border border-border bg-bg px-3 font-mono text-xs">
           <span className="text-muted truncate">{deployedUrl}</span>
         </div>
         <a
