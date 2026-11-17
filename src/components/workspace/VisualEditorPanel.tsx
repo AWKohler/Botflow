@@ -337,7 +337,7 @@ export function VisualEditorPanel({
               }}
               onBlur={commitAddInput}
               placeholder="Add classes…"
-              className="mt-2 w-full rounded-md border border-border bg-bg px-2 py-1 text-xs text-fg outline-none transition-[border-color,box-shadow] focus:border-accent focus:ring-3 focus:ring-accent/15"
+              className="mt-2 w-full rounded-md border border-control bg-bg px-2 py-1 text-xs text-fg outline-none transition-[border-color,box-shadow] focus:border-accent focus:ring-3 focus:ring-accent/15"
             />
           </Section>
 
@@ -455,7 +455,7 @@ function Select({
     <select
       value={value}
       onChange={(e) => e.target.value && onChange(e.target.value)}
-      className="w-full rounded-md border border-border bg-bg px-2 py-1 text-xs text-fg outline-none transition-[border-color,box-shadow] focus:border-accent focus:ring-3 focus:ring-accent/15"
+      className="w-full rounded-md border border-control bg-bg px-2 py-1 text-xs text-fg outline-none transition-[border-color,box-shadow] focus:border-accent focus:ring-3 focus:ring-accent/15"
     >
       <option value="">—</option>
       {group.map((g) => (

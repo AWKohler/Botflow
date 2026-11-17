@@ -205,7 +205,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
           'inline-flex items-center gap-1.5 transition min-w-0',
           isComposer
             ? cn(
-                'h-7 max-w-[200px] rounded-md pl-1.5 pr-2 text-xs font-medium text-muted hover:bg-elevated hover:text-fg',
+                'h-11 max-w-[200px] rounded-md pl-1.5 pr-2 text-[13px] font-medium text-muted hover:bg-elevated hover:text-fg md:h-7 md:text-xs',
                 open && 'bg-elevated text-fg',
               )
             : isSm
@@ -294,13 +294,13 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 text-[11px] text-muted mt-0.5">
+                  <div className="mt-0.5 flex items-center gap-2 text-xs text-muted">
                     <span>{formatContextSize(config.maxContextTokens)} context</span>
                     <span className="text-subtle">·</span>
                     <span>{modelCostLabel}</span>
                   </div>
                   {isDisabled && (
-                    <div className="text-[11px] text-muted mt-0.5">{disabledReason}</div>
+                    <div className="mt-0.5 text-xs text-muted">{disabledReason}</div>
                   )}
                 </div>
                 {isSelected && !isDisabled && <Check className="h-4 w-4 shrink-0 text-fg" aria-label="Selected" />}

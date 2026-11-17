@@ -72,24 +72,33 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
   );
 }
 
-/** What the step acted on (the command, file or search), so two "Run command" rows don't read the same. */
-function actionDetail(action: ToolCallData): string | null {
+const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
+
+/**
+ * How a step reads in the list. When the agent said what a command was for,
+ * that sentence is the title; otherwise the title is the tool's name followed
+ * by what it acted on (file, search, command). Nothing is cut here — the row
+ * truncates visually and the expanded view shows everything.
+ */
+function actionSummary(action: ToolCallData): { title: string; detail: string | null; command: string | null } {
   const args = action.args ?? {};
-  for (const key of ['command', 'file_path', 'filePath', 'path', 'pattern', 'query', 'url']) {
-    const value = args[key];
-    if (typeof value === 'string' && value.trim()) {
-      const firstLine = value.trim().split('\n')[0];
-      return firstLine.length > 64 ? `${firstLine.slice(0, 63)}…` : firstLine;
-    }
+  const command = str(args.command);
+  const description = str(args.description);
+  if (command && description) return { title: description, detail: null, command };
+  let detail: string | null = command ? command.split('\n')[0] : null;
+  for (const key of ['file_path', 'filePath', 'path', 'pattern', 'query', 'url']) {
+    if (detail) break;
+    detail = str(args[key]);
   }
-  return null;
+  return { title: formatToolName(action.toolName), detail, command };
 }
 
 function LiveActionStep({ action, isLast }: { action: ToolCallData; isLast: boolean }) {
   const [open, setOpen] = useState(false);
   const isDone = action.status !== 'invoked';
   const isEdit = Boolean(action.fileChange);
-  const detail = isEdit ? null : actionDetail(action);
+  const summary = actionSummary(action);
+  const detail = isEdit ? null : summary.detail;
 
   return (
     <div className="relative flex gap-2.5">
@@ -116,11 +125,11 @@ function LiveActionStep({ action, isLast }: { action: ToolCallData; isLast: bool
           className="flex w-full items-center gap-1.5 rounded-sm text-left text-xs transition-colors"
           onClick={() => setOpen(v => !v)}
         >
-          <span className={cn('shrink-0 truncate text-[13px]', isEdit && 'min-w-0 shrink font-mono text-xs', isDone ? 'text-muted' : 'text-fg')}>
-            {isEdit ? action.fileChange!.filePath : formatToolName(action.toolName)}
+          <span className={cn('truncate text-[13px]', detail ? 'shrink-0' : 'min-w-0', isEdit && 'min-w-0 shrink font-mono text-xs', isDone ? 'text-muted' : 'text-fg')}>
+            {isEdit ? action.fileChange!.filePath : summary.title}
           </span>
           {detail && (
-            <code className="min-w-0 truncate font-mono text-[11px] text-subtle" title={detail}>
+            <code className="min-w-0 truncate font-mono text-xs text-subtle" title={detail}>
               {detail}
             </code>
           )}
@@ -137,9 +146,16 @@ function LiveActionStep({ action, isLast }: { action: ToolCallData; isLast: bool
             {isEdit ? (
               <FileChange before={action.fileChange!.before} after={action.fileChange!.after} />
             ) : (
+              <>
+                {summary.command && (
+                  <pre className="mb-1 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-soft p-1.5 font-mono text-[11px] text-fg">
+                    {summary.command}
+                  </pre>
+                )}
               <pre className="text-[11px] overflow-auto bg-soft p-1.5 rounded border border-border whitespace-pre-wrap break-words max-h-24">
                 {action.resultPreview ?? ''}
               </pre>
+              </>
             )}
           </div>
         )}

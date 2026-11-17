@@ -122,7 +122,7 @@ export function TemplateForkModal({
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
               maxLength={100}
-              className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-3 focus:ring-accent/15"
+              className="w-full rounded-lg border border-control bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-3 focus:ring-accent/15"
               placeholder="My project"
             />
           </div>

@@ -146,7 +146,7 @@ export function EnvVarModal({
                 value={value}
                 onChange={(e) => { setValue(e.target.value); setError(null); }}
                 placeholder="Paste the value here"
-                className="h-9 w-full rounded-lg border border-border bg-bg pl-3 pr-9 font-mono text-[13px] text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:font-sans placeholder:text-subtle hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
+                className="h-9 w-full rounded-lg border border-control bg-bg pl-3 pr-9 font-mono text-[13px] text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:font-sans placeholder:text-subtle hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                 autoComplete="off"
                 spellCheck={false}
                 autoFocus

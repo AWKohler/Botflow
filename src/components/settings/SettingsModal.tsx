@@ -693,7 +693,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               value={oauthCode}
                               onChange={e => setOauthCode(e.target.value)}
                               onKeyDown={e => { if (e.key === 'Enter') exchangeCode(); }}
-                              className="flex-1 rounded-lg border border-border bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
+                              className="flex-1 rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               disabled={oauthStep === 'exchanging'}
                             />
                             <button
@@ -761,7 +761,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                 value={keys[provider]}
                                 onChange={e => setKeys(prev => ({ ...prev, [provider]: e.target.value }))}
                                 onKeyDown={e => { if (e.key === 'Enter') saveKey(provider); }}
-                                className="flex-1 rounded-lg border border-border bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
+                                className="flex-1 rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               />
                               {hasKey[provider] && (
                                 <button
@@ -880,7 +880,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                 placeholder="e.g. 2X9R4HXF34"
                                 value={appleKeyIdInput}
                                 onChange={e => setAppleKeyIdInput(e.target.value)}
-                                className="w-full rounded-lg border border-border bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
+                                className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               />
                             </div>
                             <div>
@@ -890,7 +890,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                 placeholder="69a6de7e-…"
                                 value={appleIssuerIdInput}
                                 onChange={e => setAppleIssuerIdInput(e.target.value)}
-                                className="w-full rounded-lg border border-border bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
+                                className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               />
                             </div>
                           </div>
@@ -903,7 +903,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               placeholder="e.g. A1B2C3D4E5"
                               value={appleTeamIdInput}
                               onChange={e => setAppleTeamIdInput(e.target.value)}
-                              className="w-full rounded-lg border border-border bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
+                              className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                             />
                             <p className="mt-1 text-[11px] leading-4 text-muted">
                               To set it manually:{' '}
@@ -1006,7 +1006,11 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
             </button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">{body}</div>
+        <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+          {body}
+          {/* A soft fade at the bottom edge signals that the list continues. */}
+          <div aria-hidden="true" className="pointer-events-none sticky -bottom-5 -mb-5 h-10 bg-gradient-to-t from-bg to-transparent" />
+        </div>
       </div>
     </div>
   );

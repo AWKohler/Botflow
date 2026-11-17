@@ -2280,7 +2280,7 @@ function AgentThreadPanel({
                     {otherAuthor.name}
                   </div>
                 )}
-                <div className={cn('min-w-0 max-w-full overflow-hidden break-words text-[15px] leading-[1.6] [overflow-wrap:anywhere]', m.role === 'user' ? 'rounded-xl border border-border bg-elevated px-3.5 py-2.5' : 'px-1 py-1', olderClass)}>
+                <div className={cn('min-w-0 max-w-full overflow-hidden break-words text-base leading-[1.6] [overflow-wrap:anywhere]', m.role === 'user' ? 'rounded-xl border border-border bg-elevated px-3.5 py-2.5' : 'px-1 py-1', olderClass)}>
                 {filteredParts.map((part, i) => {
                   if (part.type === 'text') return <Markdown key={i} content={part.text} />;
                   if (part.type === 'reasoning') {
@@ -2342,7 +2342,7 @@ function AgentThreadPanel({
           return (
             <Fragment key={m.id}>
               {dividerEl}
-              <div className={cn('min-w-0 max-w-full overflow-hidden break-words px-1 py-1 text-[15px] leading-[1.6] [overflow-wrap:anywhere]', olderClass)}>
+              <div className={cn('min-w-0 max-w-full overflow-hidden break-words px-1 py-1 text-base leading-[1.6] [overflow-wrap:anywhere]', olderClass)}>
               {/* Content before the first tool call */}
               {preTimeline.map((group, gi) => (
                 <div key={`pre-${gi}`}>{renderContentGroup(group, `pre-${gi}`)}</div>
@@ -2660,7 +2660,7 @@ function AgentThreadPanel({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg"
+              className="flex size-11 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg md:size-7"
               title="Attach image"
               aria-label="Attach image"
             >
@@ -2740,7 +2740,7 @@ function AgentThreadPanel({
                 <button
                   id="chatinput-queue-button"
                   type="submit"
-                  className="flex size-7 items-center justify-center rounded-full bg-fg text-bg transition-opacity duration-150 ease-out hover:opacity-85"
+                  className="flex size-11 items-center justify-center rounded-full bg-fg text-bg md:size-7 transition-opacity duration-150 ease-out hover:opacity-85"
                   title="Queue message"
                   aria-label="Queue message"
                 >
@@ -2752,7 +2752,7 @@ function AgentThreadPanel({
                   id="chatinput-stop-button"
                   type="button"
                   className={cn(
-                    'flex size-7 items-center justify-center rounded-full bg-fg text-bg transition-opacity duration-150 ease-out hover:opacity-85'
+                    'flex size-11 items-center justify-center rounded-full bg-fg text-bg md:size-7 transition-opacity duration-150 ease-out hover:opacity-85'
                   )}
                   onClick={() => {
                     // Explicit user stop — auto-continue must not undo it.
@@ -2799,7 +2799,7 @@ function AgentThreadPanel({
                   id="chatinput-send-message-button"
                   type="submit"
                   className={cn(
-                    'flex size-7 items-center justify-center rounded-full bg-fg text-bg transition-opacity duration-150 ease-out hover:opacity-85',
+                    'flex size-11 items-center justify-center rounded-full bg-fg text-bg md:size-7 transition-opacity duration-150 ease-out hover:opacity-85',
                     !input.trim() && pendingImages.length === 0 ? 'opacity-30 disabled:cursor-not-allowed' : ''
                   )}
                   disabled={!input.trim() && pendingImages.length === 0}
@@ -2831,7 +2831,7 @@ function AgentThreadPanel({
               : null;
           if (!showContext && !usage) return null;
           return (
-            <div className="flex items-center gap-3 border-t border-border px-3.5 py-2 text-[11px] tabular-nums">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-3.5 py-2 text-xs tabular-nums">
               {showContext ? (
                 <div
                   className="flex min-w-0 flex-1 cursor-help items-center gap-2.5"
@@ -2876,7 +2876,7 @@ function AgentThreadPanel({
                   <span
                     className={cn(
                       'cursor-help whitespace-nowrap',
-                      showContext && 'border-l border-border pl-3',
+                      showContext && 'md:border-l md:border-border md:pl-3',
                       usage.pct >= 80 ? 'text-danger' : usage.pct >= 60 ? 'text-warning' : 'text-muted',
                     )}
                   >

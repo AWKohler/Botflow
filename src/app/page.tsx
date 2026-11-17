@@ -2904,7 +2904,7 @@ export default function LandingV2() {
                     if (e.key === 'Enter') handleCreateProject();
                   }}
                   placeholder="My new project"
-                  className="h-10 w-full rounded-lg border border-border bg-bg px-3 text-sm text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
+                  className="h-10 w-full rounded-lg border border-control bg-bg px-3 text-sm text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                   autoFocus
                 />
               </div>

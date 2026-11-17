@@ -529,7 +529,7 @@ export function AppStoreReadinessStep({
             maxLength={ICON_PROMPT_MAX}
             onChange={(e) => setIconPrompt(e.target.value.slice(0, ICON_PROMPT_MAX))}
             placeholder="A minimal teal compass on a dark gradient, rounded, flat"
-            className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
+            className="w-full rounded-lg border border-control bg-bg px-3 py-2 text-sm text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
           />
         </div>
 
@@ -721,7 +721,7 @@ export function AppStoreReadinessStep({
                 onChange={(e) => setMetaField("description", e.target.value)}
                 rows={6}
                 placeholder="What your app does, who it's for, why it's great…"
-                className="modern-scrollbar w-full resize-y rounded-lg border border-border bg-bg px-3 py-2 text-sm leading-5 text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
+                className="modern-scrollbar w-full resize-y rounded-lg border border-control bg-bg px-3 py-2 text-sm leading-5 text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
               />
             </div>
 
@@ -933,7 +933,7 @@ function MetaField({
         placeholder={placeholder}
         spellCheck={!mono}
         className={cn(
-          "w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15",
+          "w-full rounded-lg border border-control bg-bg px-3 py-2 text-sm text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15",
           mono && "font-mono",
         )}
       />

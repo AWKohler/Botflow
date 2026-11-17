@@ -12,6 +12,8 @@
     --sand-soft: #ebe6dc;
     --sand-border: #e9e6df;
     --sand-border-strong: #cfcac0;
+    /* Edges of form controls: at least 3:1 against every surface (WCAG 1.4.11). */
+    --sand-control-border: #8f8a80;
     --sand-text: #27272a;
     --sand-text-muted: #5f5e5a;
     /* Subtle text still carries meaning (placeholders, metadata), so it keeps
@@ -75,6 +77,7 @@
     --color-soft: var(--sand-soft);
     --color-border: var(--sand-border);
     --color-border-strong: var(--sand-border-strong);
+    --color-control: var(--sand-control-border);
     --color-accent: var(--sand-accent);
     --color-accent-foreground: var(--sand-accent-contrast);
     --color-accent-soft: color-mix(in oklab, var(--sand-accent) 9%, var(--sand-bg));
@@ -125,6 +128,7 @@
         --sand-soft: #36302a;
         --sand-border: #35302a;
         --sand-border-strong: #4a433a;
+        --sand-control-border: #7a7368;
         --sand-text: #ede6db;
         --sand-text-muted: #b5ab9f;
         --sand-text-subtle: #9a9186;

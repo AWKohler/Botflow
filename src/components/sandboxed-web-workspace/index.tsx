@@ -1682,7 +1682,7 @@ export function SandboxedWebWorkspace({
                 type="button"
                 onClick={() => setTerminalOpen((v) => !v)}
                 aria-expanded={terminalOpen}
-                className="flex h-7 w-full items-center gap-1.5 px-3 text-[11px] font-medium text-muted transition-colors hover:text-fg"
+                className="flex h-8 w-full items-center gap-1.5 px-3 text-xs font-medium text-muted transition-colors hover:text-fg"
               >
                 <ChevronRight size={12} className={cn("transition-transform", terminalOpen && "rotate-90")} />
                 Terminal

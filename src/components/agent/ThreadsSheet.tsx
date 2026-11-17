@@ -307,7 +307,7 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
             }
           }}
           aria-label="Chat title"
-          className="min-w-0 flex-1 rounded-md border border-border-strong bg-bg px-2 py-1 text-sm text-fg outline-none focus:border-accent focus:ring-3 focus:ring-accent/20"
+          className="min-w-0 flex-1 rounded-md border border-control bg-bg px-2 py-1 text-sm text-fg outline-none focus:border-accent focus:ring-3 focus:ring-accent/20"
         />
       ) : (
         <button

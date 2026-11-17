@@ -235,7 +235,7 @@ export function QuestionPrompt({
               onChange={(e) => handleCustomChange(e.target.value)}
               placeholder={active.customPlaceholder ?? "Type your answer"}
               disabled={disabled}
-              className="h-7 flex-1 rounded-md border border-border bg-bg px-2 text-[13px] text-fg outline-none transition-[border-color,box-shadow] placeholder:text-subtle focus:border-accent focus:ring-3 focus:ring-accent/15 disabled:opacity-50"
+              className="h-7 flex-1 rounded-md border border-control bg-bg px-2 text-[13px] text-fg outline-none transition-[border-color,box-shadow] placeholder:text-subtle focus:border-accent focus:ring-3 focus:ring-accent/15 disabled:opacity-50"
             />
           </div>
         )}
