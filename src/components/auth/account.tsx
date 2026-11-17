@@ -721,7 +721,10 @@ export function AccountPanel({
                     ) : undefined
                   }
                 />
-                <ul className="mt-4 divide-y divide-border">
+                {sessions.length === 0 && (
+                  <p className="mt-4 text-sm text-muted">Loading your devices…</p>
+                )}
+                <ul className="mt-4 divide-y divide-border empty:hidden">
                   {sessions.map((s) => (
                     <li key={s.id} className="flex items-center justify-between gap-4 py-3">
                       <div className="min-w-0">

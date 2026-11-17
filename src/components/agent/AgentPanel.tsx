@@ -14,6 +14,7 @@ import type { ToolCallData } from '@/lib/agent/ui-types';
 import { MODEL_CONFIGS, DEFAULT_MODEL_ID, modelSupportsImages, resolveModelId, effectiveContextTokens, type ModelId } from '@/lib/agent/models';
 import { ModelSelector } from '@/components/ui/ModelSelector';
 import { useClampToViewport } from '@/components/ui/use-clamp-to-viewport';
+import { formatToolName } from '@/lib/agent/tool-labels';
 import { LimitModal, parseLimitPayload, type LimitReachedPayload } from '@/components/ui/LimitModal';
 import { CreditGauge } from '@/components/ui/CreditGauge';
 import type { AgentErrorType } from '@/lib/agent/errors';
@@ -127,10 +128,10 @@ function ToolStep({ toolName, state, content }: { toolName: string; state: strin
         {/* Clickable label */}
         <button
           type="button"
-          className="flex items-center gap-1 p-0 text-sm text-muted hover:text-fg transition-colors"
+          className="flex items-center gap-1 rounded-sm p-0 text-[13px] text-muted transition-colors hover:text-fg"
           onClick={() => setOpen(v => !v)}
         >
-          <span className="font-medium">{toolName}</span>
+          <span className="font-medium" title={toolName}>{formatToolName(toolName)}</span>
           {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
         </button>
       </div>
@@ -246,7 +247,9 @@ function GaugeWithTooltip({
 }
 
 function formatTokenCount(tokens: number): string {
-  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`;
+  const trim = (n: number) => n.toFixed(1).replace(/\.0$/, '');
+  if (tokens >= 1_000_000) return `${trim(tokens / 1_000_000)}M`;
+  if (tokens >= 1000) return `${trim(tokens / 1000)}k`;
   return String(tokens);
 }
 
@@ -1740,7 +1743,7 @@ function AgentThreadPanel({
     ? claudeCodeUsage.tokens
     : tokenEstimate;
   const tokenRatio = maxTokens > 0 ? displayedTokens / maxTokens : 0;
-  const tokenBarColor = tokenRatio >= 0.9 ? 'bg-danger-solid' : tokenRatio >= 0.7 ? 'bg-warning-solid' : 'bg-accent';
+  const tokenBarColor = tokenRatio >= 0.9 ? 'bg-danger-solid' : tokenRatio >= 0.7 ? 'bg-warning-solid' : 'bg-fg/40';
 
   const placeholder = useMemo(() => 'Ask Botflow...', []);
 
@@ -2735,21 +2738,21 @@ function AgentThreadPanel({
             available; falls back to our char/4 estimate before the first report. */}
         {(displayedTokens > 0 || isCompacting) && (
           <div
-            className="flex items-center gap-2 px-4 py-2 border-t border-border cursor-help"
+            className="flex cursor-help items-center gap-2.5 border-t border-border px-3.5 py-2"
             title="Context window used vs. total — how much of the model's memory this conversation is using. Older messages are auto-summarized as it fills up."
           >
             <div className="flex-1 h-1 rounded-full bg-soft overflow-hidden">
               <div
                 className={cn(
                   'h-full rounded-full transition-all duration-300',
-                  isCompacting ? 'bg-accent animate-pulse' : tokenBarColor,
+                  isCompacting ? 'animate-pulse bg-fg/40' : tokenBarColor,
                 )}
                 style={{ width: `${Math.min(tokenRatio * 100, 100)}%` }}
               />
             </div>
             <span className={cn(
               'text-[10px] tabular-nums',
-              isCompacting ? 'text-accent' :
+              isCompacting ? 'text-muted' :
               tokenRatio >= 0.9 ? 'text-danger' : tokenRatio >= 0.7 ? 'text-warning' : 'text-muted'
             )}>
               {isCompacting

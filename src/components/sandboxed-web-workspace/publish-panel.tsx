@@ -366,11 +366,11 @@ export function SandboxPublishPanel({
           type="checkbox"
           checked={listPublic}
           onChange={(e) => setListPublic(e.target.checked)}
-          className="mt-0.5 rounded border-border"
+          className="mt-0.5 h-4 w-4 rounded border-border-strong accent-[var(--sand-accent)]"
         />
-        <span className="text-xs text-fg">
+        <span className="text-[13px] font-medium text-fg">
           List publicly in Explore
-          <span className="block text-[10px] text-muted mt-0.5">
+          <span className="mt-0.5 block text-xs font-normal leading-relaxed text-muted">
             Saves a read-only snapshot of your code. Anyone can view the live site and source, or use it as a template. Applied when you deploy.
           </span>
         </span>
@@ -597,7 +597,7 @@ export function SandboxPublishPanel({
                           />
                           <span className="text-sm text-muted">.{managedOptions.find(d => d.id === selectedDomainId)?.apexDomain ?? "…"}</span>
                         </div>
-                        <p className="text-[10px] text-muted">Use <code>@</code> for the apex domain ({managedOptions.find(d => d.id === selectedDomainId)?.apexDomain}).</p>
+                        <p className="text-[11px] text-muted">Use <code>@</code> for the apex domain ({managedOptions.find(d => d.id === selectedDomainId)?.apexDomain}).</p>
                         {(() => {
                           const apex = managedOptions.find(d => d.id === selectedDomainId)?.apexDomain;
                           if (!apex) return null;
@@ -610,11 +610,11 @@ export function SandboxPublishPanel({
                                 type="checkbox"
                                 checked={mirrorToOther}
                                 onChange={(e) => setMirrorToOther(e.target.checked)}
-                                className="mt-0.5 rounded border-border"
+                                className="mt-0.5 h-4 w-4 rounded border-border-strong accent-[var(--sand-accent)]"
                               />
                               <span>
                                 Also serve at <span className="font-mono text-fg">{otherLabel}</span>
-                                <span className="block text-[10px] text-muted mt-0.5">Both hostnames will load the same site.</span>
+                                <span className="block text-[11px] text-muted mt-0.5">Both hostnames will load the same site.</span>
                               </span>
                             </label>
                           );
@@ -652,7 +652,7 @@ export function SandboxPublishPanel({
                             </button>
                           </div>
                         </div>
-                        <div className="rounded-md bg-soft/50 p-2 text-[10px] text-muted">
+                        <div className="rounded-md bg-soft/50 p-2 text-[11px] text-muted">
                           Add this CNAME at your registrar:
                           <div className="mt-1 font-mono text-fg">{customDomain} → {cloudflareProjectName}.pages.dev</div>
                         </div>
@@ -666,7 +666,7 @@ export function SandboxPublishPanel({
                           placeholder="www.myapp.com"
                           className={cn(fieldClass, "h-9 font-mono text-[13px]")}
                         />
-                        <p className="text-[10px] text-muted">Keep your nameservers at your registrar; just point a CNAME at <span className="font-mono">{cloudflareProjectName}.pages.dev</span>.</p>
+                        <p className="text-[11px] text-muted">Keep your nameservers at your registrar; just point a CNAME at <span className="font-mono">{cloudflareProjectName}.pages.dev</span>.</p>
                         {cnameErr && <div className="rounded-lg border border-danger-border bg-danger-soft p-2 text-xs text-danger">{cnameErr}</div>}
                         <button
                           onClick={attachCname}

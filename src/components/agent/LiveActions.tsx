@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { formatToolName } from '@/lib/agent/tool-labels';
 import type { ToolCallData } from '@/lib/agent/ui-types';
 import { ChevronDown, ChevronRight, Loader2, Check } from 'lucide-react';
 
@@ -101,8 +102,8 @@ function LiveActionStep({ action, isLast }: { action: ToolCallData; isLast: bool
           className="flex w-full items-center gap-1.5 rounded-sm text-left text-xs transition-colors"
           onClick={() => setOpen(v => !v)}
         >
-          <span className={cn('truncate font-mono text-[11px]', isDone ? 'text-muted' : 'text-fg')}>
-            {isEdit ? action.fileChange!.filePath : action.toolName}
+          <span className={cn('truncate text-xs', isEdit && 'font-mono text-[11px]', isDone ? 'text-muted' : 'text-fg')}>
+            {isEdit ? action.fileChange!.filePath : formatToolName(action.toolName)}
           </span>
           {isEdit && (
             <span className="shrink-0 text-[10px] tabular-nums">
