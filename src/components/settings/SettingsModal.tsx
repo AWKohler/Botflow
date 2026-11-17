@@ -41,6 +41,42 @@ const PROVIDERS: Array<{
   { provider: 'together', label: 'Together AI', field: 'togetherApiKey', placeholder: 'together-...' },
 ];
 
+const connectionButtonClass =
+  'inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50';
+
+/**
+ * One connection row: what it is on the left, its state and its single action
+ * on the right, so every connection reads the same way at a glance.
+ */
+function ConnectionHeader({
+  title,
+  description,
+  connected,
+  children,
+}: {
+  title: string;
+  description: React.ReactNode;
+  connected: boolean;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <h3 className="text-sm font-semibold text-fg">{title}</h3>
+        <p className="mt-0.5 max-w-prose text-xs leading-5 text-muted">{description}</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2.5">
+        {connected && (
+          <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-success">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Connected
+          </span>
+        )}
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceContext = false, variant = 'modal' }: SettingsModalProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>(defaultTab);
@@ -200,7 +236,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
         if (data.status === 'success') {
           setCodexOAuthStep('success');
           setHasCodexOAuth(true);
-          toast({ title: 'ChatGPT Codex connected', description: 'OAuth token saved. GPT-5.3 Codex will use it automatically.' });
+          toast({ title: 'ChatGPT connected', description: 'GPT-5.3 Codex will now use your ChatGPT subscription.' });
         } else if (data.status === 'failed') {
           setCodexOAuthStep('idle');
           toast({ title: 'Auth failed', description: 'Device authorization failed. Please try again.' });
@@ -321,7 +357,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
       }
       setHasClaudeOAuth(true);
       setOauthStep('success');
-      toast({ title: 'Claude Code connected', description: 'OAuth token saved. Anthropic models will use it automatically.' });
+      toast({ title: 'Claude connected', description: 'Claude models will now use your Claude subscription.' });
     } catch {
       setOauthError('Unexpected error exchanging token.');
       setOauthStep('connecting');
@@ -333,7 +369,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
       await fetch('/api/oauth/claude/disconnect', { method: 'POST' });
       setHasClaudeOAuth(false);
       setOauthStep('idle');
-      toast({ title: 'Disconnected', description: 'Claude Code OAuth token removed.' });
+      toast({ title: 'Disconnected', description: 'Your Claude subscription is no longer connected.' });
     } catch {
       toast({ title: 'Error', description: 'Failed to disconnect.' });
     }
@@ -362,7 +398,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
       await fetch('/api/oauth/codex/disconnect', { method: 'POST' });
       setHasCodexOAuth(false);
       setCodexOAuthStep('idle');
-      toast({ title: 'Disconnected', description: 'ChatGPT Codex OAuth removed.' });
+      toast({ title: 'Disconnected', description: 'Your ChatGPT subscription is no longer connected.' });
     } catch {
       toast({ title: 'Error', description: 'Failed to disconnect.' });
     }
@@ -600,88 +636,48 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
 
                     {/* ── Convex OAuth section ── */}
                     <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-fg">Convex account</h3>
-                          <p className="text-xs text-muted mt-0.5">
-                            Connect your Convex account to use your own backend projects.
-                            Required for free-plan projects.
-                          </p>
-                        </div>
-                        {hasConvexOAuth && (
-                          <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
-                            <CheckCircle2 className="h-3 w-3" /> Connected
-                          </span>
+                      <ConnectionHeader
+                        title="Convex account"
+                        description="Use your own Convex account for your projects' backends. Required on the Free plan."
+                        connected={hasConvexOAuth}
+                      >
+                        {!hasConvexOAuth ? (
+                          <button onClick={startConvexOAuth} disabled={convexConnecting} className={connectionButtonClass}>
+                            {convexConnecting ? (
+                              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting&hellip;</>
+                            ) : 'Connect'}
+                          </button>
+                        ) : (
+                          <button onClick={disconnectConvexOAuth} className={connectionButtonClass}>
+                            Disconnect
+                          </button>
                         )}
-                      </div>
-
-                      {!hasConvexOAuth ? (
-                        <button
-                          onClick={startConvexOAuth}
-                          disabled={convexConnecting}
-                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-bg px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
-                        >
-                          {convexConnecting ? (
-                            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting&hellip;</>
-                          ) : 'Connect Convex account'}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={disconnectConvexOAuth}
-                          className="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
-                        >
-                          Disconnect
-                        </button>
-                      )}
+                      </ConnectionHeader>
                     </div>
 
                     {/* ── ChatGPT Codex OAuth section ── */}
                     <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-fg">ChatGPT Codex</h3>
-                          <p className="text-xs text-muted mt-0.5">
-                            Use your ChatGPT subscription for GPT-5.3 Codex.
-                            Takes priority over the OpenAI API key below.
-                          </p>
-                        </div>
-                        {hasCodexOAuth && codexOAuthStep === 'idle' ? (
-                          <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
-                            <CheckCircle2 className="h-3 w-3" /> Connected
-                          </span>
-                        ) : null}
-                      </div>
-
-                      {/* TODO: remove this warning once resolved */}
-                      {/* <div className="flex items-start gap-2 rounded-lg border border-warning-border bg-warning-soft px-3 py-2.5 mb-3">
-                        <AlertTriangle className="h-3.5 w-3.5 text-warning mt-0.5 flex-shrink-0" />
-                        <p className="text-xs text-warning">
-                          Currently facing issues when using models with OpenAI OAuth.
-                        </p>
-                      </div> */}
-
-                      {!hasCodexOAuth && codexOAuthStep === 'idle' && (
-                        <button
-                          onClick={startCodexOAuth}
-                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-bg px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
-                        >
-                          Sign in with ChatGPT Codex
-                        </button>
-                      )}
-
-                      {hasCodexOAuth && codexOAuthStep === 'idle' && (
-                        <button
-                          onClick={disconnectCodexOAuth}
-                          className="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
-                        >
-                          Disconnect
-                        </button>
-                      )}
+                      <ConnectionHeader
+                        title="ChatGPT subscription"
+                        description="Use your ChatGPT plan for GPT-5.3 Codex. Takes priority over the OpenAI API key below."
+                        connected={hasCodexOAuth && codexOAuthStep === 'idle'}
+                      >
+                        {!hasCodexOAuth && codexOAuthStep === 'idle' && (
+                          <button onClick={startCodexOAuth} className={connectionButtonClass}>
+                            Connect
+                          </button>
+                        )}
+                        {hasCodexOAuth && codexOAuthStep === 'idle' && (
+                          <button onClick={disconnectCodexOAuth} className={connectionButtonClass}>
+                            Disconnect
+                          </button>
+                        )}
+                      </ConnectionHeader>
 
                       {codexOAuthStep === 'success' && (
-                        <div className="flex items-center gap-2 text-sm text-success">
+                        <div className="mt-3 flex items-center gap-2 text-sm text-success">
                           <CheckCircle2 className="h-4 w-4" />
-                          Connected successfully!
+                          Connected.
                           <button
                             onClick={() => setCodexOAuthStep('idle')}
                             className="ml-auto text-muted hover:text-fg text-xs underline"
@@ -692,7 +688,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                       )}
 
                       {codexOAuthStep === 'polling' && (
-                        <div className="rounded-xl border border-border bg-surface p-4 space-y-3">
+                        <div className="mt-3 rounded-xl border border-border bg-surface p-4 space-y-3">
                           <p className="text-sm text-fg">
                             Go to{' '}
                             <a
@@ -743,43 +739,27 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
 
                     {/* ── Claude Code OAuth section ── */}
                     {ANTHROPIC_OAUTH_ENABLED && <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-fg">Claude Code OAuth</h3>
-                          <p className="text-xs text-muted mt-0.5">
-                            Use your Claude Pro/Max subscription instead of an API key.
-                            Takes priority over the Anthropic API key below.
-                          </p>
-                        </div>
-                        {hasClaudeOAuth && oauthStep !== 'idle' && oauthStep !== 'success' ? null : hasClaudeOAuth ? (
-                          <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
-                            <CheckCircle2 className="h-3 w-3" /> Connected
-                          </span>
-                        ) : null}
-                      </div>
-
-                      {!hasClaudeOAuth && oauthStep === 'idle' && (
-                        <button
-                          onClick={startOAuthFlow}
-                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-bg px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
-                        >
-                          Connect with Claude Code
-                        </button>
-                      )}
-
-                      {hasClaudeOAuth && oauthStep === 'idle' && (
-                        <button
-                          onClick={disconnectOAuth}
-                          className="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
-                        >
-                          Disconnect
-                        </button>
-                      )}
+                      <ConnectionHeader
+                        title="Claude subscription"
+                        description="Use your Claude Pro or Max plan instead of an API key. Takes priority over the Anthropic API key below."
+                        connected={hasClaudeOAuth && (oauthStep === 'idle' || oauthStep === 'success')}
+                      >
+                        {!hasClaudeOAuth && oauthStep === 'idle' && (
+                          <button onClick={startOAuthFlow} className={connectionButtonClass}>
+                            Connect
+                          </button>
+                        )}
+                        {hasClaudeOAuth && oauthStep === 'idle' && (
+                          <button onClick={disconnectOAuth} className={connectionButtonClass}>
+                            Disconnect
+                          </button>
+                        )}
+                      </ConnectionHeader>
 
                       {oauthStep === 'success' && (
-                        <div className="flex items-center gap-2 text-sm text-success">
+                        <div className="mt-3 flex items-center gap-2 text-sm text-success">
                           <CheckCircle2 className="h-4 w-4" />
-                          Connected successfully!
+                          Connected.
                           <button
                             onClick={() => setOauthStep('idle')}
                             className="ml-auto text-muted hover:text-fg text-xs underline"
@@ -790,7 +770,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                       )}
 
                       {(oauthStep === 'connecting' || oauthStep === 'exchanging') && (
-                        <div className="rounded-xl border border-border bg-surface p-4 space-y-3">
+                        <div className="mt-3 rounded-xl border border-border bg-surface p-4 space-y-3">
                           <ol className="text-xs text-muted space-y-1 list-decimal list-inside">
                             <li>Complete authorization in the tab that opened.</li>
                             <li>After redirecting, copy the full URL from your browser&apos;s address bar.</li>
@@ -847,16 +827,9 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                     <div>
                       <h3 className="text-sm font-semibold text-fg mb-1">API keys</h3>
                       <p className="text-xs text-muted mb-4">
-                        Bring your own keys. Each key is saved independently — adding one won&apos;t affect the others.
-                        {hasCodexOAuth && (
-                          <span className="ml-1 text-fg">
-                            Codex OAuth is active — OpenAI API key is used as fallback only.
-                          </span>
-                        )}
-                        {ANTHROPIC_OAUTH_ENABLED && hasClaudeOAuth && (
-                          <span className="ml-1 text-fg">
-                            Claude Code OAuth is active — Anthropic API key is used as fallback only.
-                          </span>
+                        Use your own model keys. Each one is saved separately.
+                        {(hasCodexOAuth || (ANTHROPIC_OAUTH_ENABLED && hasClaudeOAuth)) && (
+                          <> A key marked Fallback is only used if its subscription above is unavailable.</>
                         )}
                       </p>
                       <div className="space-y-4">
@@ -871,12 +844,12 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               )}
                               {provider === 'openai' && hasCodexOAuth && (
                                 <span className="inline-flex items-center rounded-full border border-border bg-elevated px-2 py-0.5 text-[11px] font-medium text-muted">
-                                  fallback
+                                  Fallback
                                 </span>
                               )}
                               {ANTHROPIC_OAUTH_ENABLED && provider === 'anthropic' && hasClaudeOAuth && (
                                 <span className="inline-flex items-center rounded-full border border-border bg-elevated px-2 py-0.5 text-[11px] font-medium text-muted">
-                                  fallback
+                                  Fallback
                                 </span>
                               )}
                             </label>
@@ -916,39 +889,26 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
 
                     {/* ── Apple Developer (App Store Connect) section ── */}
                     <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-fg">Apple Developer</h3>
-                          <p className="text-xs text-muted mt-0.5">
-                            Connect an App Store Connect API key to publish Swift apps
-                            to TestFlight and the App Store.
-                          </p>
-                        </div>
+                      <ConnectionHeader
+                        title="Apple Developer"
+                        description={
+                          appleConnected
+                            ? <>Key {appleKeyIdMasked}{appleTeamId ? <> · Team {appleTeamId}</> : null}. Used to publish Swift apps to TestFlight and the App Store.</>
+                            : 'Add an App Store Connect API key to publish Swift apps to TestFlight and the App Store.'
+                        }
+                        connected={appleConnected}
+                      >
                         {appleConnected && (
-                          <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
-                            <CheckCircle2 className="h-3 w-3" /> Connected
-                          </span>
-                        )}
-                      </div>
-
-                      {appleConnected ? (
-                        <div className="flex items-center gap-3">
-                          <div className="text-xs text-muted">
-                            <span className="font-medium text-fg">Key {appleKeyIdMasked}</span>
-                            {appleTeamId && <span className="ml-2">Team {appleTeamId}</span>}
-                          </div>
-                          <button
-                            onClick={disconnectApple}
-                            disabled={appleDisconnecting}
-                            className="ml-auto inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
-                          >
+                          <button onClick={disconnectApple} disabled={appleDisconnecting} className={connectionButtonClass}>
                             {appleDisconnecting ? (
                               <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Disconnecting&hellip;</>
                             ) : 'Disconnect'}
                           </button>
-                        </div>
-                      ) : (
-                        <div className="rounded-xl border border-border bg-surface p-4 space-y-3">
+                        )}
+                      </ConnectionHeader>
+
+                      {appleConnected ? null : (
+                        <div className="mt-3 rounded-xl border border-border bg-surface p-4 space-y-3">
                           {/* Free Apple IDs never see the Integrations page — lead
                               with the paid-membership requirement or the link below
                               dead-ends for anyone not enrolled. */}
