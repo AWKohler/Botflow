@@ -1034,6 +1034,7 @@ function describeDevice(userAgent?: string | null): string {
           : /Linux/.test(userAgent)
             ? "Linux"
             : null;
-  if (!browser && !os) return userAgent.length > 48 ? `${userAgent.slice(0, 48)}…` : userAgent;
+  // Scripts and API clients send bare tokens like "node" or "curl/8.4".
+  if (!browser && !os) return "Another app or script";
   return [browser, os].filter(Boolean).join(" on ");
 }

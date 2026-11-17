@@ -1,6 +1,7 @@
 "use client";
 import Image from "next/image";
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { authClient } from "@/lib/auth/client";
 import { safeRedirect } from "@/lib/auth/policy";
 import { AuthForm } from "./sign-in";
@@ -258,7 +259,11 @@ export function UserButton(_props: {
           </Menu>
         </>
       )}
-      {settingsOpen && <SettingsModal open onClose={() => setSettingsOpen(false)} />}
+      {/* Portalled to <body>: the header uses backdrop-filter, which would
+          otherwise become the containing block for the dialog's fixed overlay. */}
+      {settingsOpen &&
+        typeof document !== "undefined" &&
+        createPortal(<SettingsModal open onClose={() => setSettingsOpen(false)} />, document.body)}
       {accountTab && (
         <dialog
           ref={accountDialog}

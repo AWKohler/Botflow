@@ -119,8 +119,8 @@ export function PricingTable(props: {
                 <h2 className="text-lg font-semibold">{plan.name}</h2>
                 {isCurrent && <Badge>Current plan</Badge>}
               </div>
-              {/* Fixed two-line slot so prices and buttons line up across cards. */}
-              <p className="mt-2 min-h-[2.75rem] text-sm leading-snug text-muted">
+              {/* Fixed-height slot so prices and buttons line up across cards. */}
+              <p className={cn("mt-2 text-sm leading-snug text-muted", compact ? "min-h-[3.9rem]" : "min-h-[2.75rem]")}>
                 {details?.tagline ?? plan.description}
               </p>
               <div className={compact ? "mt-4" : "mt-5"}>
