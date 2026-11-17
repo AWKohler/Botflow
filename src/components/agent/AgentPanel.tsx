@@ -13,6 +13,7 @@ import { useToast } from '@/components/ui/toast';
 import type { ToolCallData } from '@/lib/agent/ui-types';
 import { MODEL_CONFIGS, DEFAULT_MODEL_ID, modelSupportsImages, resolveModelId, effectiveContextTokens, type ModelId } from '@/lib/agent/models';
 import { ModelSelector } from '@/components/ui/ModelSelector';
+import { useClampToViewport } from '@/components/ui/use-clamp-to-viewport';
 import { LimitModal, parseLimitPayload, type LimitReachedPayload } from '@/components/ui/LimitModal';
 import { CreditGauge } from '@/components/ui/CreditGauge';
 import { isProviderOutage, providerOutageMessage, type AgentErrorType } from '@/lib/agent/errors';
@@ -230,15 +231,26 @@ function GaugeWithTooltip({
   lines: string[];
   children: React.ReactNode;
 }) {
+  const [hovered, setHovered] = useState(false);
+  const tooltipRef = useClampToViewport<HTMLDivElement>(hovered);
   return (
-    <div className="relative group inline-flex">
+    <div
+      className="relative inline-flex"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       {children}
-      <div className="pointer-events-none absolute right-0 top-full mt-1.5 z-50 hidden group-hover:block w-max max-w-[240px] rounded-lg border border-border bg-elevated px-3 py-2 shadow-xl">
-        <div className="text-[11px] font-medium text-fg">{label}</div>
-        {lines.map((line, i) => (
-          <div key={i} className="text-[11px] text-muted leading-relaxed">{line}</div>
-        ))}
-      </div>
+      {hovered && (
+        <div
+          ref={tooltipRef}
+          className="pointer-events-none absolute right-0 top-full mt-1.5 z-50 w-max max-w-[min(240px,calc(100vw-16px))] rounded-lg border border-border bg-elevated px-3 py-2 shadow-xl"
+        >
+          <div className="text-[11px] font-medium text-fg">{label}</div>
+          {lines.map((line, i) => (
+            <div key={i} className="text-[11px] text-muted leading-relaxed">{line}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { MODEL_CONFIGS, isModelDisabled, modelDisabledReason, type ModelId } fro
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
 import type { LimitReachedPayload } from '@/components/ui/LimitModal';
+import { useClampToViewport } from '@/components/ui/use-clamp-to-viewport';
 
 export interface ModelSelectorProps {
   value: ModelId;
@@ -100,6 +101,8 @@ const MODEL_ORDER: ModelId[] = (Object.keys(MODEL_CONFIGS) as ModelId[])
 export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', variant = 'default', className, useTogetherKimi = false, leading, openDirection = 'down', align }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Keep the menu inside the window (it's right- or left-aligned to the trigger).
+  const dropdownRef = useClampToViewport<HTMLDivElement>(open);
   const { toast } = useToast();
 
   /** Provider label for the dropdown badge — reflects the live Kimi→Together redirect. */
@@ -230,8 +233,9 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
       {/* Dropdown */}
       {open && (
         <div
+          ref={dropdownRef}
           className={cn(
-            'absolute z-50 min-w-[280px] max-h-[320px] overflow-y-auto modern-scrollbar rounded-xl border border-border bg-surface shadow-lg',
+            'absolute z-50 min-w-[min(280px,calc(100vw-16px))] max-w-[calc(100vw-16px)] max-h-[320px] overflow-y-auto modern-scrollbar rounded-xl border border-border bg-surface shadow-lg',
             // 'up' opens above the trigger (bottom toolbars like the landing
             // prompt box, where a downward menu is clipped by the hero's
             // overflow-hidden); 'down' opens below (top toolbars like the agent
