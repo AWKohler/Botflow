@@ -892,9 +892,9 @@ export function PublishToAppStore({
         <div className="flex shrink-0 items-center justify-between border-t border-border bg-surface/60 px-5 py-3">
           <div className="min-w-0 text-[11px] text-muted">
             {step === 4 && buildPhase === "valid" ? (
-              <span className="text-green-500">In TestFlight</span>
+              <span className="text-success">In TestFlight</span>
             ) : step === 4 && (buildPhase === "rejected" || buildPhase === "failed") ? (
-              <span className="text-red-400">Publish failed</span>
+              <span className="text-danger">Publish failed</span>
             ) : step === 4 && buildPhase === "processing" ? (
               <span className="flex items-center gap-1.5">
                 <Loader2 size={11} className="animate-spin" />
@@ -1003,7 +1003,7 @@ function Step1AppInfo({
           <span
             className={cn(
               "text-[10px] tabular-nums",
-              appName.length >= APP_NAME_MAX ? "text-amber-400" : "text-muted",
+              appName.length >= APP_NAME_MAX ? "text-warning" : "text-muted",
             )}
           >
             {appName.length}/{APP_NAME_MAX}
@@ -1032,11 +1032,11 @@ function Step1AppInfo({
           placeholder="1.0.0"
           className={cn(
             "w-full rounded-lg border bg-elevated px-3 py-2 font-mono text-sm text-fg outline-none focus:ring-2 focus:ring-border",
-            marketingVersion && !versionValid ? "border-red-500/50" : "border-border",
+            marketingVersion && !versionValid ? "border-danger-border" : "border-border",
           )}
         />
         {marketingVersion && !versionValid && (
-          <p className="mt-1 text-[11px] text-red-400">Use a version like 1.0 or 1.0.0.</p>
+          <p className="mt-1 text-[11px] text-danger">Use a version like 1.0 or 1.0.0.</p>
         )}
       </div>
 
@@ -1053,7 +1053,7 @@ function Step1AppInfo({
           spellCheck={false}
           className={cn(
             "w-full rounded-lg border bg-elevated px-3 py-2 font-mono text-sm text-fg outline-none focus:ring-2 focus:ring-border",
-            bundleId && !bundleValid ? "border-red-500/50" : "border-border",
+            bundleId && !bundleValid ? "border-danger-border" : "border-border",
           )}
         />
         <p className="mt-1 text-[11px] leading-4 text-muted">
@@ -1063,7 +1063,7 @@ function Step1AppInfo({
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] leading-snug text-red-400">
+        <div className="flex items-start gap-2 rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-[11px] leading-snug text-danger">
           <AlertTriangle size={13} className="mt-0.5 shrink-0" />
           {error}
         </div>
@@ -1115,8 +1115,8 @@ function Step2AppleDeveloper({
   if (creds.connected) {
     return (
       <div className="space-y-3">
-        <div className="flex items-start gap-2.5 rounded-md border border-green-500/30 bg-green-500/10 p-3">
-          <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-green-500" />
+        <div className="flex items-start gap-2.5 rounded-md border border-success-border bg-success-soft p-3">
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" />
           <div className="min-w-0">
             <div className="text-sm font-medium text-fg">
               Connected ✓{creds.teamId ? ` ${creds.teamId}` : ""}
@@ -1140,8 +1140,8 @@ function Step2AppleDeveloper({
       {/* Requirement first: a free Apple ID never sees the Integrations page,
           so users unfamiliar with Apple's flow must hit this BEFORE the
           key-creation instructions, not in a footnote after them. */}
-      <div className="flex items-start gap-2.5 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
-        <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-400" />
+      <div className="flex items-start gap-2.5 rounded-md border border-warning-border bg-warning-soft p-3">
+        <AlertTriangle size={15} className="mt-0.5 shrink-0 text-warning" />
         <div className="min-w-0 text-xs leading-5">
           <div className="text-sm font-semibold text-fg">
             Paid Apple Developer account required — US$99/year
@@ -1159,7 +1159,7 @@ function Step2AppleDeveloper({
             href="https://developer.apple.com/programs/enroll/"
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-2 inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-fg transition hover:bg-amber-500/25"
+            className="mt-2 inline-flex items-center gap-1 rounded-md border border-warning-border bg-warning-soft px-2.5 py-1 text-[11px] font-semibold text-fg transition hover:bg-warning-border/60"
           >
             Enroll in the Apple Developer Program <ExternalLink size={11} />
           </a>
@@ -1237,7 +1237,7 @@ function Step2AppleDeveloper({
             ) : (
               <span>Choose your AuthKey_XXXXXXXXXX.p8 file…</span>
             )}
-            {hasP8 && <CheckCircle2 size={14} className="ml-auto shrink-0 text-green-500" />}
+            {hasP8 && <CheckCircle2 size={14} className="ml-auto shrink-0 text-success" />}
           </label>
         </div>
 
@@ -1299,7 +1299,7 @@ function Step2AppleDeveloper({
         </div>
 
         {error && (
-          <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] leading-snug text-red-400">
+          <div className="flex items-start gap-2 rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-[11px] leading-snug text-danger">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
             {error}
           </div>
@@ -1391,8 +1391,8 @@ function Step3Submit({
   return (
     <div className="space-y-3">
       {appStatus.found ? (
-        <div className="flex items-start gap-2.5 rounded-md border border-green-500/30 bg-green-500/10 p-3">
-          <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-green-500" />
+        <div className="flex items-start gap-2.5 rounded-md border border-success-border bg-success-soft p-3">
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" />
           <div className="min-w-0">
             <div className="text-sm font-medium text-fg">
               {isUpdate ? `Ready to publish ${displayName}` : `App record found: ${displayName}`}
@@ -1418,7 +1418,7 @@ function Step3Submit({
       )}
 
       {submitError && (
-        <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] leading-snug text-red-400">
+        <div className="flex items-start gap-2 rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-[11px] leading-snug text-danger">
           <AlertTriangle size={13} className="mt-0.5 shrink-0" />
           {submitError}
         </div>
@@ -1557,7 +1557,7 @@ function AppRecordGuide({
       </div>
 
       <div className="flex items-center gap-2 rounded-md border border-border bg-elevated/60 px-3 py-2 text-xs text-muted">
-        <Loader2 size={13} className="shrink-0 animate-spin text-blue-500" />
+        <Loader2 size={13} className="shrink-0 animate-spin text-info" />
         {checked
           ? "Waiting for your app record… checking every 5s"
           : "Checking App Store Connect for the app record…"}
@@ -1670,9 +1670,9 @@ function BuildProgress({
                     className={cn(
                       "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border",
                       isFailedHere
-                        ? "border-red-500/60 bg-red-500/15 text-red-400"
+                        ? "border-danger-border bg-danger-soft text-danger"
                         : isDone
-                          ? "border-green-500/60 bg-green-500/15 text-green-500"
+                          ? "border-success-border bg-success-soft text-success"
                           : isCurrent || isStalled
                             ? "border-accent bg-accent/15 text-accent"
                             : "border-border bg-elevated text-muted",
@@ -1704,7 +1704,7 @@ function BuildProgress({
                     className={cn(
                       "text-xs font-medium leading-6",
                       isFailedHere
-                        ? "text-red-400"
+                        ? "text-danger"
                         : isDone
                           ? "text-fg/80"
                           : isCurrent || isStalled
@@ -1730,9 +1730,9 @@ function BuildProgress({
 
       {/* ── Final SUCCESS panel: Apple processing finished VALID → TestFlight ── */}
       {phase === "valid" && (
-        <div className="rounded-md border border-green-500/30 bg-green-500/10 p-3">
+        <div className="rounded-md border border-success-border bg-success-soft p-3">
           <div className="flex items-start gap-2.5">
-            <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-green-500" />
+            <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" />
             <div className="min-w-0 text-xs leading-5">
               <div className="text-sm font-medium text-fg">
                 {appName.trim() || "Your app"} is in TestFlight ✅
@@ -1746,7 +1746,7 @@ function BuildProgress({
                   href={ascTestFlightUrl(ascAppId)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-green-500/40 bg-green-500/15 px-2.5 py-1 text-[11px] font-semibold text-fg transition hover:bg-green-500/25"
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-success-border bg-success-soft px-2.5 py-1 text-[11px] font-semibold text-fg transition hover:bg-success-border/60"
                 >
                   Open in App Store Connect <ExternalLink size={11} />
                 </a>
@@ -1787,7 +1787,7 @@ function BuildProgress({
       {phase === "timeout" && (
         <div className="rounded-md border border-border bg-elevated/40 p-3">
           <div className="flex items-start gap-2.5 text-xs leading-5">
-            <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-green-500" />
+            <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" />
             <div className="min-w-0">
               <div className="text-sm font-medium text-fg">
                 Uploaded — still processing at Apple
@@ -1812,9 +1812,9 @@ function BuildProgress({
 
       {/* ── FAILURE panel: host-agent build failure OR Apple rejected processing ── */}
       {(phase === "failed" || phase === "rejected") && (
-        <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3">
+        <div className="rounded-md border border-danger-border bg-danger-soft p-3">
           <div className="flex items-start gap-2.5">
-            <XCircle size={16} className="mt-0.5 shrink-0 text-red-400" />
+            <XCircle size={16} className="mt-0.5 shrink-0 text-danger" />
             <div className="min-w-0 text-xs leading-5">
               <div className="text-sm font-medium text-fg">
                 {phase === "rejected"
@@ -1828,7 +1828,7 @@ function BuildProgress({
                     missing icon, an unsupported orientation, or an invalid Info.plist.
                   </div>
                   {build.error && (
-                    <div className="mt-1 select-text text-red-400">{build.error}</div>
+                    <div className="mt-1 select-text text-danger">{build.error}</div>
                   )}
                   <div className="mt-1 text-muted">
                     The builds API doesn&apos;t give a detailed reason for this — open App
@@ -1836,7 +1836,7 @@ function BuildProgress({
                   </div>
                 </>
               ) : (
-                <div className="mt-0.5 select-text text-red-400">
+                <div className="mt-0.5 select-text text-danger">
                   {build.error ?? "The build did not complete. Check the log below."}
                 </div>
               )}
@@ -1867,7 +1867,7 @@ function BuildProgress({
               const isWarning = d.severity === "warning";
               return (
                 <li key={i} className="flex items-start gap-2 px-3 py-1.5">
-                  <span className={cn("mt-[2px] shrink-0", isWarning ? "text-amber-400" : "text-red-400")}>
+                  <span className={cn("mt-[2px] shrink-0", isWarning ? "text-warning" : "text-danger")}>
                     {isWarning ? <AlertTriangle size={13} /> : <XCircle size={13} />}
                   </span>
                   <span className="min-w-0 flex-1 select-text text-[11.5px] leading-snug text-fg/90">
@@ -1901,7 +1901,7 @@ function BuildProgress({
           {logOpen && (
             <div className="max-h-48 overflow-y-auto border-t border-border bg-elevated/60 px-3 py-2 font-mono text-[10.5px] leading-snug">
               {tail.map((l, i) => (
-                <div key={i} className={l.stream === "stderr" ? "text-red-400" : "text-fg/80"}>
+                <div key={i} className={l.stream === "stderr" ? "text-danger" : "text-fg/80"}>
                   {l.line}
                 </div>
               ))}

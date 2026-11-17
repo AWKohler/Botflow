@@ -40,7 +40,7 @@ import { ShareControls } from "@/components/sharing/share-controls";
 
 const PersistentTerminal = dynamic(
   () => import("@/components/persistent-workspace/terminal").then((m) => m.PersistentTerminal),
-  { ssr: false, loading: () => <div className="h-full w-full bg-elevated" /> },
+  { ssr: false, loading: () => <div className="h-full w-full bg-surface" /> },
 );
 import {
   PanelLeft,
@@ -54,8 +54,10 @@ import {
   Frame,
   ArrowUpRight,
   ExternalLink,
+  Globe,
   MousePointer2,
   RefreshCw,
+  RotateCw,
 } from "lucide-react";
 import type { PreviewInfo } from "@/lib/preview-store";
 import { buildPreviewUrl } from "@/lib/preview-url";
@@ -78,7 +80,6 @@ import { OwnerOnlyRequest } from "@/components/workspace/owner-only-request";
 import { StripeTab, StripeModeToggle } from "@/components/sandboxed-web-workspace/stripe-tab";
 import { SandboxGitHubPanel } from "./github-panel";
 import { SandboxPublishPanel } from "./publish-panel";
-import { Globe } from "lucide-react";
 
 type WorkspaceView = "preview" | "code" | "database" | "stripe";
 type SandboxStatus = "idle" | "booting" | "ready" | "error";
@@ -1074,7 +1075,7 @@ export function SandboxedWebWorkspace({
 
   // ── Render ───────────────────────────────────────────────────────────
   return (
-    <div className="h-screen flex bolt-bg text-fg">
+    <div className="flex h-screen bg-surface text-fg">
       {/* Convex paused modal — once per workspace-open while paused. Render
           re-gated on managed+paused so a mid-session BYOC transfer or unpause
           closes it rather than stranding stale managed-hosting copy. */}
@@ -1149,10 +1150,10 @@ export function SandboxedWebWorkspace({
         />
       )}
       {checkoutHandoffUrl && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120] w-[min(440px,calc(100vw-2rem))] rounded-xl border border-border bg-neutral-900 text-white shadow-2xl">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120] w-[min(440px,calc(100vw-2rem))] rounded-xl border border-border bg-bg text-fg shadow-xl">
           <div className="px-4 py-3 space-y-2.5">
             <div className="text-sm font-medium">Open Stripe Checkout in a new tab</div>
-            <p className="text-xs leading-relaxed text-neutral-300">
+            <p className="text-xs leading-relaxed text-muted">
               Stripe Checkout can&apos;t load inside the preview window. Click below to
               open it in a new tab. (In your published app it opens normally —
               this only happens in the preview.)
@@ -1160,7 +1161,7 @@ export function SandboxedWebWorkspace({
             <div className="flex items-center justify-end gap-2 pt-0.5">
               <button
                 onClick={() => setCheckoutHandoffUrl(null)}
-                className="text-xs font-medium px-3 py-1.5 rounded-md text-neutral-300 hover:bg-white/10 transition-colors"
+                className="rounded-md px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
               >
                 Dismiss
               </button>
@@ -1169,7 +1170,7 @@ export function SandboxedWebWorkspace({
                   window.open(checkoutHandoffUrl, "_blank", "noopener,noreferrer");
                   setCheckoutHandoffUrl(null);
                 }}
-                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity"
+                className="flex items-center gap-1.5 rounded-md bg-fg px-3 py-1.5 text-xs font-medium text-bg transition-opacity hover:opacity-90"
               >
                 Open Checkout
                 <ExternalLink size={13} />
@@ -1179,10 +1180,10 @@ export function SandboxedWebWorkspace({
         </div>
       )}
       {authHandoff && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120] w-[min(440px,calc(100vw-2rem))] rounded-xl border border-border bg-neutral-900 text-white shadow-2xl">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120] w-[min(440px,calc(100vw-2rem))] rounded-xl border border-border bg-bg text-fg shadow-xl">
           <div className="px-4 py-3 space-y-2.5">
             <div className="text-sm font-medium">Finish signing in in a new tab</div>
-            <p className="text-xs leading-relaxed text-neutral-300">
+            <p className="text-xs leading-relaxed text-muted">
               Sign-in can&apos;t complete inside the preview window. Click below to
               open your app in a new tab and continue — you&apos;ll be signed in
               there. (In your published app it works normally; this only happens
@@ -1191,7 +1192,7 @@ export function SandboxedWebWorkspace({
             <div className="flex items-center justify-end gap-2 pt-0.5">
               <button
                 onClick={() => setAuthHandoff(null)}
-                className="text-xs font-medium px-3 py-1.5 rounded-md text-neutral-300 hover:bg-white/10 transition-colors"
+                className="rounded-md px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
               >
                 Dismiss
               </button>
@@ -1200,7 +1201,7 @@ export function SandboxedWebWorkspace({
                   window.open(authHandoff.url, "_blank", "noopener,noreferrer");
                   setAuthHandoff(null);
                 }}
-                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity"
+                className="flex items-center gap-1.5 rounded-md bg-fg px-3 py-1.5 text-xs font-medium text-bg transition-opacity hover:opacity-90"
               >
                 Open app
                 <ExternalLink size={13} />
@@ -1212,7 +1213,7 @@ export function SandboxedWebWorkspace({
       {/* Agent sidebar. Hold the initial prompt until the sandbox is ready —
           otherwise the agent fires its first turn against an empty filesystem
           while the seed is still cloning, and tools fail. */}
-      <div className="w-96 flex flex-col bg-elevated/70 backdrop-blur-sm relative z-30">
+      <div className="relative z-30 flex w-96 shrink-0 flex-col">
         <AgentPanel
           className="h-full"
           projectId={projectId}
@@ -1222,17 +1223,14 @@ export function SandboxedWebWorkspace({
       </div>
 
       {/* Main column */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         {bootError && (
-          <div className="px-4 py-2 bg-red-900/80 border-b border-red-700 text-white text-xs flex items-center gap-3">
-            <span className="font-semibold">Sandbox failed to start</span>
-            <span className="opacity-80 flex-1 truncate">{bootError}</span>
-            <button
-              onClick={() => void bootSandbox()}
-              className="px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-white text-xs font-medium"
-            >
-              Retry
-            </button>
+          <div className="mr-2.5 mt-2 flex items-center gap-3 rounded-lg border border-danger-border bg-danger-soft px-3 py-2 text-[13px] text-danger">
+            <span className="font-medium">The sandbox didn’t start</span>
+            <span className="flex-1 truncate text-fg/80">{bootError}</span>
+            <Button variant="danger-outline" size="xs" onClick={() => void bootSandbox()}>
+              Try again
+            </Button>
           </div>
         )}
 
@@ -1245,7 +1243,7 @@ export function SandboxedWebWorkspace({
         )}
 
         {/* Header */}
-        <div className="h-12 flex items-center pr-2.5 gap-4 bg-surface backdrop-blur-sm">
+        <div className="flex h-12 shrink-0 items-center gap-2 pr-2.5">
           <Tabs
             options={
               [
@@ -1299,22 +1297,18 @@ export function SandboxedWebWorkspace({
             size="sm"
             onClick={handleStartDevServer}
             disabled={isStartingServer || sandboxStatus !== "ready"}
-            className={cn(
-              "flex items-center gap-2 font-bold text-md",
-              isDevServerRunning
-                ? "text-green-400 hover:text-green-300 hover:bg-green-400/10"
-                : "text-green-400 hover:text-green-300 hover:bg-green-400/10",
-            )}
             title={isDevServerRunning ? "Restart dev server" : "Start dev server"}
           >
             {isStartingServer ? (
-              <Loader2 size={16} className="animate-spin" />
+              <Loader2 size={14} className="animate-spin" />
+            ) : isDevServerRunning ? (
+              <RotateCw size={14} />
             ) : (
-              <Play size={16} fill="currentColor" />
+              <Play size={13} className="text-success" fill="currentColor" />
             )}
             <span>
               {isStartingServer
-                ? "Starting..."
+                ? "Starting…"
                 : isDevServerRunning
                   ? "Restart"
                   : "Start"}
@@ -1324,23 +1318,22 @@ export function SandboxedWebWorkspace({
           {currentView === "code" && (
             <Button
               variant="ghost"
-              size="sm"
+              size="icon-sm"
               onClick={() => setShowSidebar(!showSidebar)}
-              className="text-muted hover:text-fg bolt-hover"
               title={showSidebar ? "Hide explorer" : "Show explorer"}
+              aria-label={showSidebar ? "Hide explorer" : "Show explorer"}
             >
               <PanelLeft size={16} />
             </Button>
           )}
 
           {currentView === "code" && selectedFile && (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted">/</span>
-              <span className="text-fg font-medium bg-elevated/70 px-2 py-1 rounded flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-1 text-[13px]">
+              <span className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-elevated px-2 py-1 font-mono text-xs text-fg">
                 {selectedFile.split("/").pop()}
                 {hasUnsavedChanges && (
                   <span
-                    className="w-2 h-2 rounded-full bg-orange-500"
+                    className="h-1.5 w-1.5 rounded-full bg-warning-solid"
                     title="Unsaved changes"
                   />
                 )}
@@ -1350,7 +1343,7 @@ export function SandboxedWebWorkspace({
                   variant="ghost"
                   size="sm"
                   onClick={() => selectedFile && void handleFileSelect(selectedFile)}
-                  className="text-amber-600 hover:text-amber-700 bolt-hover"
+                  className="text-warning hover:bg-warning-soft hover:text-warning"
                   title="Discard your buffer and load the file's current content"
                 >
                   Reload
@@ -1360,43 +1353,45 @@ export function SandboxedWebWorkspace({
                 variant="ghost"
                 size="sm"
                 onClick={() => void handleSaveFile(saveConflict)}
-                className={cn("bolt-hover", saveConflict ? "text-amber-600 hover:text-amber-700" : "text-muted hover:text-fg")}
+                className={cn(saveConflict && "text-warning hover:bg-warning-soft hover:text-warning")}
                 title={saveConflict ? "Write your buffer over the changed file" : "Save file"}
               >
-                <Save size={16} />
-                <span className="ml-1">{saveConflict ? "Overwrite" : "Save"}</span>
+                <Save size={14} />
+                <span>{saveConflict ? "Overwrite" : "Save"}</span>
               </Button>
             </div>
           )}
 
           <div className="ml-auto flex items-center gap-2">
             {currentView === "database" && hasBackend && (
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => window.open(`/workspace/${projectId}/database`, "_blank")}
-                className="flex items-center gap-1.5 text-sm text-muted hover:text-fg border border-border rounded-md px-3 py-1 bolt-hover"
                 title="Open database in new tab"
               >
                 <ArrowUpRight size={14} />
                 Open in new tab
-              </button>
+              </Button>
             )}
             {currentView === "preview" && (
               <button
                 onClick={() => setEditMode((v) => !v)}
+                aria-pressed={editMode}
                 className={cn(
-                  "flex items-center gap-1.5 text-sm border rounded-full px-3 py-1 transition-colors",
+                  "flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors",
                   editMode
-                    ? "border-accent text-accent bg-accent/10"
-                    : "border-border text-muted hover:text-fg",
+                    ? "border-accent/40 bg-accent-soft text-accent"
+                    : "border-border bg-bg text-muted shadow-xs hover:border-border-strong hover:text-fg",
                 )}
-                title="Toggle visual edit mode"
+                title="Select an element in the preview to edit it"
               >
-                <MousePointer2 size={15} />
+                <MousePointer2 size={14} />
                 Edit
               </button>
             )}
             {currentView === "preview" && (
-              <div className="flex items-center gap-2 border border-border rounded-full px-3 py-1 min-w-[220px]">
+              <div className="flex h-8 min-w-[240px] items-center gap-2 rounded-lg border border-border bg-bg px-2.5 shadow-xs transition-colors focus-within:border-accent hover:border-border-strong">
                 <button
                   onClick={() =>
                     setPreviewDevice((prev) =>
@@ -1411,17 +1406,19 @@ export function SandboxedWebWorkspace({
                               : "desktop",
                     )
                   }
-                  className="text-muted hover:text-fg"
+                  className="rounded text-muted transition-colors hover:text-fg"
                   title={`Device: ${previewDevice}`}
+                  aria-label={`Preview device: ${previewDevice}. Click to change`}
                 >
-                  {previewDevice === "desktop" && <Monitor size={16} />}
-                  {previewDevice === "tablet" && <Tablet size={16} />}
-                  {previewDevice === "mobile" && <Smartphone size={16} />}
-                  {previewDevice === "responsive" && <AppWindow size={16} />}
-                  {previewDevice === "figma" && <Frame size={16} />}
+                  {previewDevice === "desktop" && <Monitor size={15} />}
+                  {previewDevice === "tablet" && <Tablet size={15} />}
+                  {previewDevice === "mobile" && <Smartphone size={15} />}
+                  {previewDevice === "responsive" && <AppWindow size={15} />}
+                  {previewDevice === "figma" && <Frame size={15} />}
                 </button>
                 <Input
-                  className="flex-1 bg-transparent outline-none text-sm text-fg placeholder:text-muted"
+                  aria-label="Preview path"
+                  className="min-w-0 flex-1 bg-transparent font-mono text-xs text-fg outline-none placeholder:text-subtle"
                   value={previewPath}
                   onChange={(e) => setPreviewPath(e.target.value)}
                   placeholder="/"
@@ -1435,41 +1432,38 @@ export function SandboxedWebWorkspace({
                       : "/" + previewPath;
                     window.open(buildPreviewUrl(baseUrl, path), "_blank", "noopener,noreferrer");
                   }}
-                  className="text-muted hover:text-fg"
+                  className="rounded text-muted transition-colors hover:text-fg"
                   title="Open preview in new tab"
+                  aria-label="Open preview in new tab"
                 >
-                  <ArrowUpRight size={16} />
+                  <ArrowUpRight size={15} />
                 </button>
                 <button
                   onClick={() => setPreviewReloadKey((k) => k + 1)}
-                  className="text-muted hover:text-fg"
+                  className="rounded text-muted transition-colors hover:text-fg"
                   title="Refresh preview"
+                  aria-label="Refresh preview"
                 >
-                  <RefreshCw size={15} />
+                  <RefreshCw size={14} />
                 </button>
               </div>
             )}
             <ShareControls projectId={projectId} />
             <UserButton />
-            <div className="relative">
-              <Button
-                ref={publishBtnRef}
-                variant="default"
-                size="sm"
-                className={cn(
-                  "font-bold text-sm text-white",
-                  cloudflareProjectName && "bg-green-600 hover:bg-green-700",
-                )}
-                onClick={() => setPublishOpen((v) => !v)}
-                title={cloudflareProjectName ? "Manage deployment" : "Publish to Cloudflare Pages"}
-              >
-                <Globe size={14} className="mr-1.5" />
-                {cloudflareProjectName ? "Published" : "Publish"}
-              </Button>
-              {cloudflareProjectName && (
-                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500 border-2 border-surface pointer-events-none" />
+            <Button
+              ref={publishBtnRef}
+              variant={cloudflareProjectName ? "secondary" : "default"}
+              size="sm"
+              onClick={() => setPublishOpen((v) => !v)}
+              title={cloudflareProjectName ? "Manage deployment" : "Publish to Cloudflare Pages"}
+            >
+              {cloudflareProjectName ? (
+                <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-success-solid" />
+              ) : (
+                <Globe size={14} />
               )}
-            </div>
+              {cloudflareProjectName ? "Published" : "Publish"}
+            </Button>
           </div>
         </div>
 
@@ -1482,13 +1476,13 @@ export function SandboxedWebWorkspace({
             className={cn(
               "absolute top-0 left-0 right-2.5 bottom-2.5",
               currentView === "code" ? "flex flex-col" : "hidden",
-              "rounded-xl border border-border overflow-hidden",
+              "overflow-hidden rounded-xl border border-border bg-bg",
             )}
           >
             <div className="flex-1 min-h-0 flex">
               {showSidebar && (
-                <div className="w-80 bolt-border border-r flex flex-col backdrop-blur-sm">
-                  <div className="p-2 bolt-border border-b">
+                <div className="flex w-72 shrink-0 flex-col border-r border-border bg-surface">
+                  <div className="border-b border-border p-2">
                     <Tabs
                       options={
                         [
@@ -1542,7 +1536,7 @@ export function SandboxedWebWorkspace({
                 </div>
               )}
               <div className="flex-1 min-h-0 relative">
-                <div className="absolute inset-0 bg-elevated/90 backdrop-blur-sm">
+                <div className="absolute inset-0 bg-bg">
                   {imageBlobUrl ? (
                     <ImageViewer
                       src={imageBlobUrl}
@@ -1563,7 +1557,7 @@ export function SandboxedWebWorkspace({
 
             {/* Terminal — always mounted, persists across tab switches.
                 Wired to the sandbox via /api/projects/:id/sandbox/exec. */}
-            <div className="h-64 bolt-border border-t bg-elevated backdrop-blur-sm">
+            <div className="h-64 border-t border-border bg-surface">
               <PersistentTerminal projectId={projectId} ready={sandboxStatus === "ready"} />
             </div>
           </div>

@@ -2836,7 +2836,7 @@ export default function LandingV2() {
                 <div className="px-6 pb-6 space-y-3">
                   <div className={cn(
                     'relative rounded-xl border-2 p-4 transition-all',
-                    hasConvexOAuth ? 'border-green-500/60 bg-green-500/5' : 'border-foreground/20 bg-soft',
+                    hasConvexOAuth ? 'border-success-border bg-success-soft' : 'border-foreground/20 bg-soft',
                   )}>
                     <div className="flex items-start gap-3">
                       <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-foreground">
@@ -2846,7 +2846,7 @@ export default function LandingV2() {
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-semibold text-foreground">Your Convex Account</span>
                           {hasConvexOAuth && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-700 border border-green-500/30">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-success border border-success-border">
                               <Check className="h-3 w-3" /> Connected
                             </span>
                           )}
@@ -2908,7 +2908,7 @@ export default function LandingV2() {
                             We handle the infrastructure, backups, and scaling. Instant setup.
                           </p>
                           {managedQuotaHit && (
-                            <p className="mt-1 text-xs text-amber-600 font-medium">
+                            <p className="mt-1 text-xs text-warning font-medium">
                               You&apos;ve reached your managed project limit. Delete a project or upgrade your plan.
                             </p>
                           )}

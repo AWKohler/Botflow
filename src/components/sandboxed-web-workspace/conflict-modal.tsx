@@ -329,7 +329,7 @@ export function ConflictModal({
               type="button"
               onClick={discardLocalChanges}
               disabled={aborting}
-              className="text-muted hover:text-red-400"
+              className="text-muted hover:text-danger"
             >
               {aborting ? "Aborting…" : "Discard my changes"}
             </button>
@@ -502,11 +502,11 @@ function ManualModeBody({
                 className={cn(
                   "mt-0.5 w-3 h-3 rounded-full border shrink-0 flex items-center justify-center",
                   resolved
-                    ? "border-green-500 bg-green-500/20"
-                    : "border-yellow-500 bg-yellow-500/10",
+                    ? "border-success-border bg-success-soft"
+                    : "border-warning-border bg-warning-soft",
                 )}
               >
-                {resolved && <Check size={7} className="text-green-500" />}
+                {resolved && <Check size={7} className="text-success" />}
               </span>
               <span className="flex-1 min-w-0">
                 <span className="block text-xs font-medium truncate">
@@ -554,7 +554,7 @@ function ManualModeBody({
                   className={cn(
                     "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
                     choice?.kind === "theirs"
-                      ? "bg-blue-500/20 text-blue-400"
+                      ? "bg-info-soft text-info"
                       : "hover:bg-soft/60 text-muted",
                   )}
                 >
@@ -571,7 +571,7 @@ function ManualModeBody({
                   className={cn(
                     "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
                     choice?.kind === "ours"
-                      ? "bg-green-500/20 text-green-400"
+                      ? "bg-success-soft text-success"
                       : "hover:bg-soft/60 text-muted",
                   )}
                 >
@@ -619,15 +619,15 @@ function DiffPane({
     <div className={cn("flex-1 flex flex-col min-w-0", border && "border-r border-border/60")}>
       <div className={cn(
         "flex items-center gap-1.5 px-3 py-1.5 border-b border-border/40 shrink-0",
-        color === "blue" ? "bg-blue-500/5" : "bg-green-500/5",
+        color === "blue" ? "bg-info-soft" : "bg-success-soft",
       )}>
         <span className={cn(
           "w-2 h-2 rounded-full opacity-70",
-          color === "blue" ? "bg-blue-500" : "bg-green-500",
+          color === "blue" ? "bg-info-solid" : "bg-success-solid",
         )} />
         <span className={cn(
           "text-[10px] font-medium uppercase tracking-wider",
-          color === "blue" ? "text-blue-400" : "text-green-400",
+          color === "blue" ? "text-info" : "text-success",
         )}>
           {label}
         </span>

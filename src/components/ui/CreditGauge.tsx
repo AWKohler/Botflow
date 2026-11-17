@@ -13,18 +13,18 @@ export function CreditGauge({ pct, size = 'sm', className }: CreditGaugeProps) {
 
   // 'xs' is used when two gauges sit side-by-side in the header, so they don't
   // crowd each other.
-  const diameter = size === 'lg' ? 160 : size === 'xs' ? 32 : 40;
-  const strokeWidth = size === 'lg' ? 10 : size === 'xs' ? 3.5 : 4;
+  const diameter = size === 'lg' ? 144 : size === 'xs' ? 30 : 34;
+  const strokeWidth = size === 'lg' ? 9 : 3;
   const radius = (diameter - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (clamped / 100) * circumference;
 
   const color =
-    clamped >= 80 ? '#ef4444' : // red
-    clamped >= 60 ? '#f59e0b' : // amber
-    '#22c55e';                  // green
+    clamped >= 80 ? 'var(--danger-solid)' : // red
+    clamped >= 60 ? 'var(--warning-solid)' : // amber
+    'var(--success-solid)';                  // green
 
-  const fontSize = size === 'lg' ? 28 : size === 'xs' ? 9 : 10;
+  const fontSize = size === 'lg' ? 26 : 9;
 
   return (
     <div className={cn('relative inline-flex items-center justify-center', className)}>
@@ -37,7 +37,7 @@ export function CreditGauge({ pct, size = 'sm', className }: CreditGaugeProps) {
           fill="none"
           stroke="currentColor"
           strokeWidth={strokeWidth}
-          className="text-border opacity-40"
+          className="text-soft"
         />
         {/* Progress */}
         <circle
@@ -53,10 +53,10 @@ export function CreditGauge({ pct, size = 'sm', className }: CreditGaugeProps) {
           style={{ transition: 'stroke-dashoffset 0.4s ease, stroke 0.4s ease' }}
         />
       </svg>
-      {/* Center label */}
+      {/* Center label — neutral; the ring carries the status color. */}
       <span
-        className="absolute font-semibold tabular-nums"
-        style={{ fontSize, color, lineHeight: 1 }}
+        className={cn('absolute font-medium tabular-nums', size === 'lg' ? 'text-fg' : 'text-muted')}
+        style={{ fontSize, lineHeight: 1 }}
       >
         {clamped}%
       </span>

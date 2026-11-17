@@ -1,14 +1,20 @@
 @import "tailwindcss";
 
 :root {
-    /* Sand/Tan Design Tokens (Light) */
+    color-scheme: light dark;
+
+    /* ── Sand design tokens (light) ─────────────────────────────────────
+       Surfaces step up in warmth: bg → surface → elevated → soft.
+       Text steps down in weight: text → muted → subtle. */
     --sand-bg: #fefefe;
-    --sand-surface: #fcfbf8;
-    --sand-elevated: #f8f4ed;
-    --sand-soft: #e7dfd2;
-    --sand-border: #eceae4;
-    --sand-text: #2f2f31;
-    --sand-text-muted: #3f3f46;
+    --sand-surface: #fbfaf7;
+    --sand-elevated: #f6f3ec;
+    --sand-soft: #ebe6dc;
+    --sand-border: #e9e6df;
+    --sand-border-strong: #d8d4ca;
+    --sand-text: #27272a;
+    --sand-text-muted: #5f5e5a;
+    --sand-text-subtle: #8b8984;
     --sand-accent: #1d52f1;
     --sand-accent-contrast: #ffffff;
     --sand-accent-contrast-two: #1b1713;
@@ -19,6 +25,25 @@
 
     --gray-accent-one: #5f5f5f;
     --gray-accent-two: #eceae4;
+
+    /* ── Semantic status tokens ─────────────────────────────────────────
+       `--x` is the readable text/icon color, `--x-solid` a filled control,
+       `--x-soft` a tinted surface and `--x-border` its outline. Every status
+       color in the app goes through these so both themes stay legible. */
+    --success: #17773a;
+    --success-solid: #1f9d4d;
+    --warning: #9a5b00;
+    --warning-solid: #d98a0b;
+    --danger: #c0271d;
+    --danger-solid: #d93a2f;
+    --info: #1d52f1;
+    --info-solid: #1d52f1;
+    --status-tint: 9%;
+    --status-line: 30%;
+
+    /* Elevation: one warm shadow color, scaled per theme. */
+    --shadow-rgb: 38 32 22;
+    --shadow-strength: 1;
 
     /* App Layout Vars */
     --background: var(--sand-bg);
@@ -35,30 +60,65 @@
     --color-bg: var(--sand-bg);
     --color-fg: var(--sand-text);
     --color-muted: var(--sand-text-muted);
+    --color-subtle: var(--sand-text-subtle);
     --color-surface: var(--sand-surface);
     --color-elevated: var(--sand-elevated);
     --color-soft: var(--sand-soft);
     --color-border: var(--sand-border);
+    --color-border-strong: var(--sand-border-strong);
     --color-accent: var(--sand-accent);
     --color-accent-foreground: var(--sand-accent-contrast);
+    --color-accent-soft: color-mix(in oklab, var(--sand-accent) 9%, var(--sand-bg));
+
+    --color-success: var(--success);
+    --color-success-solid: var(--success-solid);
+    --color-success-soft: color-mix(in oklab, var(--success-solid) var(--status-tint), var(--sand-bg));
+    --color-success-border: color-mix(in oklab, var(--success-solid) var(--status-line), var(--sand-border));
+    --color-warning: var(--warning);
+    --color-warning-solid: var(--warning-solid);
+    --color-warning-soft: color-mix(in oklab, var(--warning-solid) var(--status-tint), var(--sand-bg));
+    --color-warning-border: color-mix(in oklab, var(--warning-solid) var(--status-line), var(--sand-border));
+    --color-danger: var(--danger);
+    --color-danger-solid: var(--danger-solid);
+    --color-danger-soft: color-mix(in oklab, var(--danger-solid) var(--status-tint), var(--sand-bg));
+    --color-danger-border: color-mix(in oklab, var(--danger-solid) var(--status-line), var(--sand-border));
+    --color-info: var(--info);
+    --color-info-solid: var(--info-solid);
+    --color-info-soft: color-mix(in oklab, var(--info-solid) var(--status-tint), var(--sand-bg));
+    --color-info-border: color-mix(in oklab, var(--info-solid) var(--status-line), var(--sand-border));
 
     --font-sans: var(--font-geist-sans);
     --font-mono: var(--font-geist-mono);
+
+    --shadow-2xs: 0 1px 0 rgb(var(--shadow-rgb) / calc(0.04 * var(--shadow-strength)));
+    --shadow-xs: 0 1px 2px rgb(var(--shadow-rgb) / calc(0.05 * var(--shadow-strength)));
+    --shadow-sm:
+        0 1px 2px rgb(var(--shadow-rgb) / calc(0.06 * var(--shadow-strength))),
+        0 1px 1px rgb(var(--shadow-rgb) / calc(0.03 * var(--shadow-strength)));
+    --shadow-md:
+        0 4px 10px -2px rgb(var(--shadow-rgb) / calc(0.08 * var(--shadow-strength))),
+        0 2px 4px -2px rgb(var(--shadow-rgb) / calc(0.05 * var(--shadow-strength)));
+    --shadow-lg:
+        0 12px 24px -6px rgb(var(--shadow-rgb) / calc(0.1 * var(--shadow-strength))),
+        0 4px 8px -4px rgb(var(--shadow-rgb) / calc(0.06 * var(--shadow-strength)));
+    --shadow-xl:
+        0 20px 40px -10px rgb(var(--shadow-rgb) / calc(0.14 * var(--shadow-strength))),
+        0 8px 16px -8px rgb(var(--shadow-rgb) / calc(0.08 * var(--shadow-strength)));
+    --shadow-2xl: 0 32px 64px -16px rgb(var(--shadow-rgb) / calc(0.2 * var(--shadow-strength)));
 }
-
-
-
 
 @media (prefers-color-scheme: dark) {
     :root {
-        /* Night Sand (Dark) */
-        --sand-bg: #1d1a16;
-        --sand-surface: #23201b;
-        --sand-elevated: #2b2722;
-        --sand-soft: #2a251f;
-        --sand-border: #3a342e;
+        /* Night Sand (dark) */
+        --sand-bg: #1b1815;
+        --sand-surface: #221f1b;
+        --sand-elevated: #2a2621;
+        --sand-soft: #36302a;
+        --sand-border: #35302a;
+        --sand-border-strong: #4a433a;
         --sand-text: #ede6db;
-        --sand-text-muted: #b8ada1;
+        --sand-text-muted: #b5ab9f;
+        --sand-text-subtle: #857c72;
         --sand-accent: #d8826a;
         --sand-accent-contrast: #1b1713;
         /*--sand-accent-contrast-two: #ffffff;*/
@@ -66,6 +126,20 @@
 
         --gray-accent-one: #c5c1b9;
         --gray-accent-two: #272624;
+
+        --success: #7ad395;
+        --success-solid: #2f9e58;
+        --warning: #ecb866;
+        --warning-solid: #d0892a;
+        --danger: #f0948a;
+        --danger-solid: #d5493f;
+        --info: #93b0ff;
+        --info-solid: #4f77f5;
+        --status-tint: 14%;
+        --status-line: 34%;
+
+        --shadow-rgb: 0 0 0;
+        --shadow-strength: 4;
 
         --background: var(--sand-bg);
         --foreground: var(--sand-text);
@@ -86,6 +160,29 @@ body {
         Arial,
         "Apple Color Emoji",
         "Segoe UI Emoji";
+    text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+    background: color-mix(in oklab, var(--sand-accent) 22%, transparent);
+}
+
+/* One focus treatment everywhere. `:where` keeps specificity at zero so any
+   component that draws its own ring (or opts out) still wins. */
+:where(a, button, [role="button"], [role="tab"], [role="menuitem"], summary, [tabindex]):focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--sand-accent) 70%, transparent);
+    outline-offset: 2px;
+}
+
+:where(button, [role="button"], summary, label[for], select):not(:disabled) {
+    cursor: pointer;
+}
+
+/* Quiet scrollbars by default — a thin thumb with no track. */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--sand-text-subtle) 45%, transparent) transparent;
 }
 
 /* Force Google icon to pure black */
@@ -146,25 +243,25 @@ body {
 /* Custom scrollbar styles */
 .modern-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: var(--sand-text-muted) var(--sand-soft);
+    scrollbar-color: color-mix(in oklab, var(--sand-text-subtle) 45%, transparent) transparent;
 }
 
 .modern-scrollbar::-webkit-scrollbar {
     width: 8px;
+    height: 8px;
 }
 
 .modern-scrollbar::-webkit-scrollbar-track {
-    background: var(--sand-soft);
-    border-radius: 6px;
+    background: transparent;
 }
 
 .modern-scrollbar::-webkit-scrollbar-thumb {
-    background: color-mix(in oklab, var(--sand-text-muted) 80%, transparent);
-    border-radius: 6px;
+    background: color-mix(in oklab, var(--sand-text-subtle) 45%, transparent);
+    border-radius: 999px;
 }
 
 .modern-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in oklab, var(--sand-text-muted) 95%, transparent);
+    background: color-mix(in oklab, var(--sand-text-subtle) 70%, transparent);
 }
 
 /* Dune-inspired scheme (keeps class names for minimal churn) */
@@ -264,7 +361,7 @@ body {
 
 .monaco-editor .margin,
 .monaco-editor .monaco-editor-background {
-    background-color: var(--sand-elevated) !important;
+    background-color: var(--sand-bg) !important;
 }
 
 /* Terminal styles */

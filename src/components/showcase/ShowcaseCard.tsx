@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Star, Laptop } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import {
   getProjectPlatformLabel,
   type ProjectPlatform,
@@ -35,52 +36,45 @@ export function ShowcaseCard({ project, compact = false }: { project: ShowcasePr
     <Link
       href={`/p/${project.publicSlug}`}
       className={cn(
-        "group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm transition-all duration-200",
-        "hover:shadow-xl hover:-translate-y-0.5 hover:border-accent/30"
+        "group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xs transition-[border-color,box-shadow] duration-150",
+        "hover:border-border-strong hover:shadow-md"
       )}
     >
-      <div className="relative aspect-[16/10] overflow-hidden bg-gradient-to-br from-elevated to-bg">
+      <div className="relative aspect-[16/10] overflow-hidden border-b border-border bg-elevated">
         {thumb && !thumbFailed ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={thumb}
             alt={project.name}
             onError={() => setThumbFailed(true)}
-            className="w-full h-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.03]"
+            className="h-full w-full object-cover object-top"
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-muted">
-            <Icon className="h-10 w-10" />
+          <div className="absolute inset-0 flex items-center justify-center text-subtle">
+            <Icon className="h-7 w-7" strokeWidth={1.5} />
           </div>
         )}
 
-        {/* Subtle gradient overlay for legibility */}
-        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
         {/* Platform chip */}
-        <div className="absolute top-3 left-3">
-          <span className="inline-flex items-center gap-1 rounded-full bg-surface/90 backdrop-blur-sm px-2 py-1 text-[11px] font-medium text-fg shadow-sm">
-            <Icon className="h-3 w-3" />
+        <div className="absolute left-2.5 top-2.5">
+          <Badge className="bg-bg/90 text-fg backdrop-blur-sm">
             {getProjectPlatformLabel(project.platform)}
-          </span>
+          </Badge>
         </div>
 
         {/* Stars chip */}
         {project.starCount > 0 && (
-          <div className="absolute top-3 right-3">
-            <span className={cn(
-              "inline-flex items-center gap-1 rounded-full backdrop-blur-sm px-2 py-1 text-[11px] font-medium shadow-sm",
-              project.hasStarred ? "bg-accent/90 text-[var(--sand-accent-contrast)]" : "bg-surface/90 text-fg"
-            )}>
+          <div className="absolute right-2.5 top-2.5">
+            <Badge tone={project.hasStarred ? "accent" : "neutral"} className="bg-bg/90 backdrop-blur-sm">
               <Star className={cn("h-3 w-3", project.hasStarred && "fill-current")} />
               {project.starCount}
-            </span>
+            </Badge>
           </div>
         )}
       </div>
 
       <div className={cn("p-4 flex-1 flex flex-col", compact && "p-3")}>
-        <h3 className="font-medium text-fg truncate" title={project.name}>
+        <h3 className="truncate text-sm font-medium text-fg" title={project.name}>
           {project.name}
         </h3>
         {project.publicDescription && !compact && (

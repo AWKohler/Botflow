@@ -4,11 +4,16 @@ import Link from "next/link";
 import { Github, Eye, EyeOff } from "lucide-react";
 import { authClient } from "@/lib/auth/client";
 import { safeRedirect } from "@/lib/auth/policy";
+import { buttonClass } from "@/components/ui/button";
+import { fieldClass as baseFieldClass } from "@/components/ui/field";
+import { cn } from "@/lib/utils";
 
-export const fieldClass =
-  "mt-2 w-full rounded-md border border-[var(--sand-border)] bg-[var(--color-elevated)] px-3 py-2 text-sm text-[var(--sand-text)] outline-none focus:ring-2 focus:ring-[var(--sand-text-muted)]";
-export const primaryClass =
-  "w-full rounded-md bg-[var(--sand-text)] px-4 py-2.5 text-sm font-medium text-[var(--sand-bg)] disabled:opacity-50";
+// Auth forms wrap each input in its <label>, so the control carries the gap.
+export const fieldClass = cn(baseFieldClass, "mt-1.5 h-10 font-normal");
+export const primaryClass = buttonClass({ variant: "primary", className: "h-10 w-full" });
+const socialClass = buttonClass({ variant: "secondary", className: "h-10 w-full gap-2" });
+const linkClass =
+  "rounded-sm font-medium text-fg underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-fg disabled:opacity-50";
 export function AuthForm({
   signUp = false,
   redirectUrl,
@@ -142,25 +147,26 @@ export function AuthForm({
             ? "Create your account"
             : "Sign in to Botflow";
   return (
-    <div className="mx-auto w-full max-w-[372px] px-6 py-8 text-[var(--sand-text)]">
-      <h1 className="text-center text-lg font-semibold tracking-tight">
+    <div className="mx-auto w-full max-w-[380px] px-6 py-8 text-fg">
+      <h1 className="text-center text-2xl font-semibold tracking-tight">
         {title}
       </h1>
-      <p className="mt-2 mb-6 text-center text-sm text-[var(--sand-text-muted)]">
+      <p className="mb-7 mt-2 text-center text-sm text-muted">
         {["identifier", "credentials"].includes(step)
           ? signUp
-            ? "Welcome! Please fill in the details to get started."
-            : "Welcome back! Please sign in to continue"
+            ? "Start building in a couple of minutes."
+            : "Welcome back. Sign in to continue."
           : "Enter the details below to continue."}
       </p>
       {(step === "identifier" || (signUp && step === "credentials")) && (
         <>
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2.5">
             {(["github", "google"] as const).map((provider) => (
               <button
                 key={provider}
                 disabled={busy}
-                className="flex items-center justify-center gap-2 rounded-md border border-[var(--sand-border)] bg-[var(--color-elevated)] py-1.5 text-sm font-medium disabled:opacity-50"
+                type="button"
+                className={socialClass}
                 onClick={() =>
                   perform(() =>
                     authClient.signIn.social({ provider, callbackURL }),
@@ -198,16 +204,16 @@ export function AuthForm({
               </button>
             ))}
           </div>
-          <div className="my-6 flex items-center gap-4 text-xs text-[var(--sand-text-muted)]">
-            <span className="h-px flex-1 bg-[var(--sand-border)]" />
+          <div className="my-6 flex items-center gap-3 text-xs text-subtle">
+            <span className="h-px flex-1 bg-border" />
             or
-            <span className="h-px flex-1 bg-[var(--sand-border)]" />
+            <span className="h-px flex-1 bg-border" />
           </div>
         </>
       )}
       <form onSubmit={submit} className="space-y-4">
         {signUp && step === "credentials" && (
-          <label className="block text-sm font-medium">
+          <label className="block text-[13px] font-medium">
             Full name
             <input
               autoComplete="name"
@@ -219,7 +225,7 @@ export function AuthForm({
           </label>
         )}
         {step !== "reset-token" && (
-          <label className="block text-sm font-medium">
+          <label className="block text-[13px] font-medium">
             Email address
             {!signUp && step === "identifier" ? " or username" : ""}
             <input
@@ -237,7 +243,7 @@ export function AuthForm({
           </label>
         )}
         {["verify", "code", "reset-code"].includes(step) && (
-          <label className="block text-sm font-medium">
+          <label className="block text-[13px] font-medium">
             Verification code
             <input
               autoComplete="one-time-code"
@@ -254,7 +260,7 @@ export function AuthForm({
         {(step === "credentials" ||
           step === "reset-code" ||
           step === "reset-token") && (
-          <label className="block text-sm font-medium">
+          <label className="block text-[13px] font-medium">
             {step.startsWith("reset-") ? "New password" : "Password"}
             <span className="relative block">
               <input
@@ -274,7 +280,7 @@ export function AuthForm({
               <button
                 type="button"
                 aria-label={showPassword ? "Hide password" : "Show password"}
-                className="absolute right-3 top-3"
+                className="absolute bottom-0 right-1 flex h-10 w-9 items-center justify-center rounded-md text-muted transition-colors hover:text-fg"
                 onClick={() => setShowPassword(!showPassword)}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -283,19 +289,23 @@ export function AuthForm({
           </label>
         )}
         {message && (
-          <p role="status" className="text-sm">
+          <p
+            role="status"
+            className="rounded-lg border border-border bg-elevated px-3 py-2.5 text-[13px] leading-relaxed text-fg"
+          >
             {message}
           </p>
         )}
-        <button disabled={busy} className={primaryClass}>
+        <button type="submit" disabled={busy} className={primaryClass}>
           {busy ? "Please wait…" : "Continue"}
         </button>
       </form>
       {!signUp && step === "credentials" && (
-        <div className="mt-4 flex justify-between text-xs">
+        <div className="mt-4 flex justify-between text-[13px]">
           <button
+            type="button"
             disabled={busy || !email}
-            className="underline disabled:opacity-50"
+            className={linkClass}
             onClick={() =>
               perform(
                 () =>
@@ -310,7 +320,8 @@ export function AuthForm({
             Use a code instead
           </button>
           <button
-            className="underline"
+            type="button"
+            className={linkClass}
             onClick={() => {
               setStep("reset");
               setMessage("");
@@ -321,10 +332,10 @@ export function AuthForm({
         </div>
       )}
       {["identifier", "credentials"].includes(step) ? (
-        <p className="mt-6 text-center text-sm text-[var(--sand-text-muted)]">
+        <p className="mt-7 text-center text-sm text-muted">
           {signUp ? "Already have an account?" : "Don’t have an account?"}{" "}
           <Link
-            className="text-[var(--sand-text)] underline"
+            className={linkClass}
             href={`${signUp ? "/sign-in" : "/sign-up"}?redirect_url=${encodeURIComponent(callbackURL)}`}
           >
             {signUp ? "Sign in" : "Sign up"}
@@ -332,7 +343,8 @@ export function AuthForm({
         </p>
       ) : (
         <button
-          className="mt-5 w-full text-center text-sm underline"
+          type="button"
+          className={cn(linkClass, "mx-auto mt-6 block text-sm")}
           onClick={() => {
             setStep("credentials");
             setMessage("");

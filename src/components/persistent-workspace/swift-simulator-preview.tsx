@@ -1197,7 +1197,7 @@ function ActiveSwiftSimulatorPreview({
               cameraState === "active"
                 ? "text-accent"
                 : cameraState === "denied"
-                  ? "text-red-400"
+                  ? "text-danger"
                   : "text-muted",
               isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px]",
             )}
@@ -1249,7 +1249,7 @@ function ActiveSwiftSimulatorPreview({
             <button
               onClick={handleStop}
               className={cn(
-                "flex items-center rounded-md border border-border bg-elevated text-muted hover:text-red-400",
+                "flex items-center rounded-md border border-border bg-elevated text-muted hover:text-danger",
                 isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px]",
               )}
               title="Stop the simulator"
@@ -1375,7 +1375,7 @@ function StatusPill({ pill, compact = false }: { pill: PillState; compact?: bool
     case "starting":
       return (
         <span className={cn("flex items-center", gapCls, textCls)}>
-          <Loader2 size={icoSize} className="animate-spin text-blue-400" />
+          <Loader2 size={icoSize} className="animate-spin text-info" />
           <span className="text-fg/80 truncate">{compact ? "Starting" : pill.label}</span>
         </span>
       );
@@ -1384,7 +1384,7 @@ function StatusPill({ pill, compact = false }: { pill: PillState; compact?: bool
     case "installing":
       return (
         <span className={cn("flex items-center", gapCls, textCls)}>
-          <Loader2 size={icoSize} className="animate-spin text-emerald-400" />
+          <Loader2 size={icoSize} className="animate-spin text-success" />
           <span className="text-fg/80 truncate">
             {compact ? "Installing" : "Installing on simulator…"}
           </span>
@@ -1393,14 +1393,14 @@ function StatusPill({ pill, compact = false }: { pill: PillState; compact?: bool
     case "live":
       return (
         <span className={cn("flex items-center", gapCls, textCls)}>
-          <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_0_3px_rgba(74,222,128,0.2)]" />
+          <span className="h-2 w-2 rounded-full bg-success-solid shadow-[0_0_0_3px_rgba(74,222,128,0.2)]" />
           <span className="text-fg/80">Live</span>
         </span>
       );
     case "failed":
       return (
-        <span className={cn("flex items-center text-red-300", gapCls, textCls)}>
-          <span className="h-2 w-2 rounded-full bg-red-500" />
+        <span className={cn("flex items-center text-danger", gapCls, textCls)}>
+          <span className="h-2 w-2 rounded-full bg-danger-solid" />
           <span className="truncate">
             {compact
               ? "Build failed"
@@ -1417,8 +1417,8 @@ function StatusPill({ pill, compact = false }: { pill: PillState; compact?: bool
       );
     case "error":
       return (
-        <span className={cn("flex items-center text-red-300", gapCls, textCls)}>
-          <span className="h-2 w-2 rounded-full bg-red-500" />
+        <span className={cn("flex items-center text-danger", gapCls, textCls)}>
+          <span className="h-2 w-2 rounded-full bg-danger-solid" />
           <span className="truncate" title={pill.message}>
             {compact ? "Error" : pill.message}
           </span>
@@ -1436,7 +1436,7 @@ function BuildingPill({ startedAt, compact = false }: { startedAt: number; compa
   const seconds = Math.floor((now - startedAt) / 1000);
   return (
     <span className={cn("flex items-center", compact ? "gap-1.5 text-[10px]" : "gap-2 text-xs")}>
-      <Loader2 size={compact ? 10 : 12} className="animate-spin text-amber-400" />
+      <Loader2 size={compact ? 10 : 12} className="animate-spin text-warning" />
       <span className="text-fg/80">
         Building <span className="font-mono text-muted">{formatTimer(seconds)}</span>
       </span>
@@ -1461,7 +1461,7 @@ function CenterContent({
   if (pill.kind === "failed") {
     return (
       <div className="max-w-sm px-6 text-center">
-        <p className="mb-2 font-semibold text-red-300">Build failed</p>
+        <p className="mb-2 font-semibold text-danger">Build failed</p>
         <p className="text-xs text-muted">
           Expand the log below for xcodebuild output. Fix the error in the editor and
           click <span className="text-fg/80">Refresh build</span>.

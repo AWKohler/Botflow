@@ -1,6 +1,8 @@
 'use client';
 
 import { Editor, BeforeMount, OnMount } from '@monaco-editor/react';
+import { FileCode2 } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { useEffect, useRef, useState } from 'react';
 
@@ -19,24 +21,24 @@ interface CodeEditorProps {
 
 // Sand design token values (mirrored from globals.css)
 const DARK = {
-  bg:       '#1d1a16',
-  surface:  '#23201b',
-  elevated: '#2b2722',
-  border:   '#3a342e',
+  bg:       '#1b1815',
+  surface:  '#221f1b',
+  elevated: '#2a2621',
+  border:   '#35302a',
   text:     '#ede6db',
-  muted:    '#b8ada1',
-  subtle:   '#6b6259',
-  accent:   '#d89b6a',
+  muted:    '#b5ab9f',
+  subtle:   '#857c72',
+  accent:   '#d8826a',
   accentDim:'#c07a4c',
 };
 const LIGHT = {
   bg:       '#fefefe',
-  surface:  '#fcfbf8',
-  elevated: '#f8f4ed',
-  border:   '#eceae4',
-  text:     '#2f2f31',
-  muted:    '#3f3f46',
-  subtle:   '#b0a898',
+  surface:  '#fbfaf7',
+  elevated: '#f6f3ec',
+  border:   '#e9e6df',
+  text:     '#27272a',
+  muted:    '#5f5e5a',
+  subtle:   '#8b8984',
   accent:   '#1d52f1',
   accentDim:'#1740c8',
 };
@@ -79,7 +81,7 @@ export function CodeEditor({
       inherit: true,
       colors: {
         // Core
-        'editor.background':                    DARK.elevated,
+        'editor.background':                    DARK.bg,
         'editor.foreground':                    DARK.text,
         'editorCursor.foreground':              DARK.accent,
         'editorLineNumber.foreground':          DARK.subtle,
@@ -158,7 +160,7 @@ export function CodeEditor({
       base: 'vs',
       inherit: true,
       colors: {
-        'editor.background':                     LIGHT.elevated,
+        'editor.background':                     LIGHT.bg,
         'editor.foreground':                     LIGHT.text,
         'editorCursor.foreground':               LIGHT.accent,
         'editorLineNumber.foreground':           LIGHT.subtle,
@@ -282,14 +284,12 @@ export function CodeEditor({
 
   if (!filename) {
     return (
-      <div className="h-full flex items-center justify-center bg-elevated/90 backdrop-blur-sm">
-        <div className="text-center text-muted bolt-fade-in">
-          <div className="text-6xl mb-6 opacity-60">📁</div>
-          <h3 className="text-xl font-semibold mb-3 text-fg">No File Selected</h3>
-          <p className="text-sm text-muted max-w-md">
-            Choose a file from the explorer to start editing, or create a new file to get started with your project.
-          </p>
-        </div>
+      <div className="flex h-full items-center justify-center bg-bg">
+        <EmptyState
+          icon={FileCode2}
+          title="No file open"
+          description="Pick a file from the explorer to view or edit it."
+        />
       </div>
     );
   }

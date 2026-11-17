@@ -515,7 +515,7 @@ export function PersistentWorkspace({
           <ConvexStatusBanner status={convexStatus} isOwner={viewerIsOwner} />
         )}
         {bootError && (
-          <div className="px-4 py-2 bg-red-900/80 border-b border-red-700 text-white text-xs flex items-center gap-3">
+          <div className="px-4 py-2 bg-red-900/80 border-b border-danger-border text-white text-xs flex items-center gap-3">
             <span className="font-semibold">Sandbox failed to start</span>
             <span className="opacity-80">{bootError}</span>
           </div>
@@ -554,7 +554,7 @@ export function PersistentWorkspace({
               <span className="text-fg font-medium bg-elevated/70 px-2 py-1 rounded flex items-center gap-2">
                 {selectedFile.split("/").pop()}
                 {hasUnsavedChanges && (
-                  <span className="w-2 h-2 rounded-full bg-orange-500" title="Unsaved changes" />
+                  <span className="w-2 h-2 rounded-full bg-warning-solid" title="Unsaved changes" />
                 )}
               </span>
               <Button
@@ -574,17 +574,17 @@ export function PersistentWorkspace({
             <div className="text-xs text-muted flex items-center gap-1.5 px-2 py-1 rounded-md bg-elevated">
               {sandboxStatus === "booting" ? (
                 <>
-                  <Loader2 size={12} className="animate-spin text-blue-500" />
+                  <Loader2 size={12} className="animate-spin text-info" />
                   <span>Booting sandbox…</span>
                 </>
               ) : sandboxStatus === "ready" ? (
                 <>
-                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  <div className="w-2 h-2 rounded-full bg-success-solid" />
                   <span>Sandbox ready</span>
                 </>
               ) : sandboxStatus === "error" ? (
                 <>
-                  <div className="w-2 h-2 rounded-full bg-red-500" />
+                  <div className="w-2 h-2 rounded-full bg-danger-solid" />
                   <span>Sandbox error</span>
                 </>
               ) : null}

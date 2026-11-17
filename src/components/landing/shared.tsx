@@ -2,10 +2,9 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { SignedIn, SignedOut, UserButton } from '@/components/auth';
-import { ArrowRight, Cog } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { SettingsModal } from '@/components/settings/SettingsModal';
+import { BrandMark, SiteHeader } from '@/components/site/SiteHeader';
 import { serif } from './fonts';
 
 // ============================================================================
@@ -237,122 +236,11 @@ export function MarginBg() {
 }
 
 // ============================================================================
-// Shared nav (matches landing-v2)
+// Shared nav — the site-wide header (see components/site/SiteHeader)
 // ============================================================================
 
 export function LandingNav() {
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'usage' | 'connections' | 'subscription'>('usage');
-
-  return (
-    <>
-      <header className="sticky top-0 z-50 backdrop-blur-lg bg-[var(--sand-bg)]/80">
-        <MarginHatch />
-        <div className="mx-auto max-w-7xl px-6 sm:px-10 py-4">
-          <div className="flex items-center justify-between md:grid md:grid-cols-3">
-            <Link className="flex items-center gap-5" href="/">
-              {/* --- Old glyph + wordmark lockup (kept for now — trying the serif logo) ---
-              <img src="/brand/botflow-glyph.svg" alt="" className="h-8 w-8" />
-              <img
-                src="/brand/botflow-wordmark.svg"
-                alt="Botflow"
-                className="h-5 w-auto botflow-wordmark-invert"
-              />
-              --- */}
-              {/* Botflow.io lockup (includes the glyph) — black PNG on light, white PNG on dark */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/brand/botflow_logo_black.png"
-                alt="Botflow"
-                className="h-7 w-auto block dark:hidden"
-              />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/brand/botflow_logo_white.png"
-                alt="Botflow"
-                className="h-7 w-auto hidden dark:block"
-              />
-            </Link>
-
-            <nav className="hidden md:flex items-center justify-center gap-6 text-sm">
-              <SignedIn>
-                <a href="/projects" className="font-medium hover:text-[var(--sand-accent)] transition whitespace-nowrap">
-                  My Projects
-                </a>
-              </SignedIn>
-              {process.env.NEXT_PUBLIC_HIDE_EXPLORE !== 'true' && (
-                <Link href="/explore" className="font-medium hover:text-[var(--sand-accent)] transition">
-                  Explore
-                </Link>
-              )}
-              <Link href="/convex" className="font-medium hover:text-[var(--sand-accent)] transition">
-                Convex
-              </Link>
-              <Link href="/blog" className="font-medium hover:text-[var(--sand-accent)] transition">
-                Blog
-              </Link>
-              <Link href="/pricing" className="font-medium hover:text-[var(--sand-accent)] transition">
-                Pricing
-              </Link>
-              <Link href="/docs" className="font-medium hover:text-[var(--sand-accent)] transition">
-                Docs
-              </Link>
-            </nav>
-
-            <div className="flex items-center justify-end gap-2">
-              <SignedOut>
-                <Link
-                  href="/sign-in"
-                  className="hidden sm:inline-flex items-center rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3.5 py-2 text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
-                >
-                  Log in
-                </Link>
-                <Link
-                  href="/sign-up"
-                  className="inline-flex items-center rounded-xl bg-[var(--sand-text)] text-[var(--sand-bg)] px-4 py-2 text-sm font-medium shadow-md hover:opacity-90 transition"
-                >
-                  Get started
-                </Link>
-              </SignedOut>
-              <SignedIn>
-                <Link
-                  href="/projects"
-                  className="hidden sm:inline-flex h-9 items-center rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3.5 text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
-                >
-                  Dashboard
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => { setSettingsTab('usage'); setSettingsOpen(true); }}
-                  className="relative z-10 inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] text-sm shadow-sm hover:bg-[var(--sand-surface)] transition"
-                  title="Settings"
-                  aria-label="Settings"
-                >
-                  <Cog className="pointer-events-none h-4 w-4" />
-                </button>
-                <UserButton />
-              </SignedIn>
-            </div>
-          </div>
-        </div>
-        <div
-          className="h-px w-full origin-center"
-          style={{
-            background: 'var(--sand-border)',
-            animation: `lineGrowX 0.6s ${EASE_SNAP} forwards`,
-            opacity: 0.5,
-          }}
-        />
-        <style>{`@keyframes lineGrowX { from { transform: scaleX(0); } to { transform: scaleX(1); } }`}</style>
-      </header>
-
-      <SettingsModal
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        defaultTab={settingsTab}
-      />
-    </>
-  );
+  return <SiteHeader />;
 }
 
 // ============================================================================
@@ -441,11 +329,9 @@ export function LandingFooter() {
         <div className="grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-[1.7fr_1fr_1fr_1fr_0.8fr]">
           {/* Brand */}
           <div className="col-span-2 md:col-span-1 md:pr-8">
-            <div className="flex items-center gap-2.5">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/botflow-glyph.svg" alt="" className="h-7 w-7" />
-              <span className={cn(serif.className, 'text-2xl tracking-tight')}>Botflow</span>
-            </div>
+            <Link href="/" aria-label="Botflow home" className="inline-flex items-center rounded-md">
+              <BrandMark />
+            </Link>
             <p className="mt-4 max-w-xs text-sm text-[var(--sand-text-muted)] leading-relaxed">
               Describe it, and Botflow builds it — a real full-stack web app or a
               native iOS app, with a backend included and code you own.

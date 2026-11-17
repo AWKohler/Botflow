@@ -41,18 +41,18 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
   return (
     <div className={cn('rounded-lg border border-border bg-elevated p-2 space-y-1', className)}>
       <div className="flex items-center justify-between px-1">
-        <span className="text-xs font-medium text-muted">Live Actions</span>
+        <span className="text-[11px] font-medium text-muted">Activity</span>
         <div className="flex items-center gap-2">
           {totals.files > 0 && (
             <span className="text-[10px] text-muted tabular-nums">
               {totals.files} file{totals.files !== 1 ? 's' : ''}
-              <span className="text-green-500 ml-1">+{totals.additions}</span>
-              <span className="text-red-500 ml-1">-{totals.deletions}</span>
+              <span className="text-success ml-1">+{totals.additions}</span>
+              <span className="text-danger ml-1">-{totals.deletions}</span>
             </span>
           )}
           {onClear && (
             <button
-              className="text-[10px] text-muted hover:text-fg transition"
+              className="rounded-sm text-[11px] text-muted transition-colors hover:text-fg"
               onClick={onClear}
               type="button"
             >
@@ -85,12 +85,12 @@ function LiveActionStep({ action, isLast }: { action: ToolCallData; isLast: bool
 
       {/* Step indicator */}
       {isDone ? (
-        <div className="relative z-10 flex shrink-0 items-center justify-center size-4 rounded-full bg-fg mt-[3px]">
-          <Check size={9} className="text-bg" />
+        <div className="relative z-10 mt-[3px] flex size-4 shrink-0 items-center justify-center rounded-full border-[1.5px] border-border bg-bg">
+          <Check size={9} className="text-muted" />
         </div>
       ) : (
-        <div className="relative z-10 flex shrink-0 items-center justify-center size-4 rounded-full border-[1.5px] border-border bg-surface mt-[3px]">
-          <Loader2 size={9} className="animate-spin text-accent" />
+        <div className="relative z-10 mt-[3px] flex size-4 shrink-0 items-center justify-center rounded-full border-[1.5px] border-border bg-bg">
+          <Loader2 size={9} className="animate-spin text-muted" />
         </div>
       )}
 
@@ -98,16 +98,16 @@ function LiveActionStep({ action, isLast }: { action: ToolCallData; isLast: bool
       <div className="flex-1 pb-2 min-w-0">
         <button
           type="button"
-          className="flex items-center gap-1.5 text-xs hover:text-accent transition-colors w-full text-left"
+          className="flex w-full items-center gap-1.5 rounded-sm text-left text-xs transition-colors"
           onClick={() => setOpen(v => !v)}
         >
-          <span className={cn('font-medium truncate', isDone ? 'text-fg' : 'text-muted')}>
+          <span className={cn('truncate font-mono text-[11px]', isDone ? 'text-muted' : 'text-fg')}>
             {isEdit ? action.fileChange!.filePath : action.toolName}
           </span>
           {isEdit && (
             <span className="shrink-0 text-[10px] tabular-nums">
-              <span className="text-green-500">+{action.fileChange!.additions}</span>
-              <span className="text-red-500 ml-0.5">-{action.fileChange!.deletions}</span>
+              <span className="text-success">+{action.fileChange!.additions}</span>
+              <span className="text-danger ml-0.5">-{action.fileChange!.deletions}</span>
             </span>
           )}
           {open ? <ChevronDown size={10} className="text-muted shrink-0 ml-auto" /> : <ChevronRight size={10} className="text-muted shrink-0 ml-auto" />}

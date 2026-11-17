@@ -1,8 +1,6 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { SignedIn, SignedOut, SignInButton, UserButton } from "@/components/auth";
 import {
   Globe,
   Plus,
@@ -14,13 +12,17 @@ import {
   AlertCircle,
   ChevronLeft,
   ExternalLink,
-  Sparkles,
   Lock,
-  Cog,
+  Pencil,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { SettingsModal } from "@/components/settings/SettingsModal";
+import { AppShell } from "@/components/site/AppShell";
+import { Badge, Notice } from "@/components/ui/badge";
+import { Button, buttonClass } from "@/components/ui/button";
+import { Card, PageHeader, SectionHeader } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Field, Select, TextInput } from "@/components/ui/field";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface Domain {
@@ -44,35 +46,44 @@ interface DnsRecord {
 
 const RECORD_TYPES = ["A", "AAAA", "CNAME", "MX", "TXT", "NS"] as const;
 
-function Pill({ children, tone = "default" }: { children: React.ReactNode; tone?: "default" | "ok" | "warn" | "danger" }) {
-  const toneClass = {
-    default: "bg-soft text-muted",
-    ok: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
-    warn: "bg-amber-500/15 text-amber-300 border border-amber-500/30",
-    danger: "bg-red-500/15 text-red-300 border border-red-500/30",
-  }[tone];
-  return (
-    <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide", toneClass)}>
-      {children}
-    </span>
+function StatusBadge({ status }: { status: Domain["status"] }) {
+  return status === "active" ? (
+    <Badge tone="success">
+      <Check size={11} /> Active
+    </Badge>
+  ) : (
+    <Badge tone="warning">
+      <Loader2 size={11} className="animate-spin" /> Pending nameservers
+    </Badge>
   );
 }
 
 function CopyBtn({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="xs"
       onClick={() => {
         navigator.clipboard.writeText(value);
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-muted hover:text-fg hover:bg-soft transition"
     >
-      {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+      {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
       {copied ? "Copied" : "Copy"}
-    </button>
+    </Button>
+  );
+}
+
+function ErrorNotice({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <Notice tone="danger" className={className}>
+      <span className="flex items-start gap-2">
+        <AlertCircle size={14} className="mt-0.5 shrink-0" />
+        <span>{children}</span>
+      </span>
+    </Notice>
   );
 }
 
@@ -114,47 +125,37 @@ function AddDomainModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-elevated p-6 shadow-2xl">
-        <div className="mb-1 flex items-center gap-2">
-          <div className="rounded-lg bg-emerald-500/15 p-2">
-            <Globe className="h-5 w-5 text-emerald-400" />
-          </div>
-          <h2 className="text-lg font-semibold text-fg">Add a managed domain</h2>
-        </div>
-        <p className="mb-4 text-sm text-muted">
-          We&apos;ll create a Cloudflare zone and give you two nameservers to set at your registrar. Once your registrar acknowledges the change, the zone activates and you can manage DNS here.
-        </p>
-        <label className="mb-4 block">
-          <span className="mb-1 block text-xs font-medium text-muted">Apex domain</span>
-          <Input
-            autoFocus
-            type="text"
-            value={apex}
-            onChange={(e) => setApex(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
-            placeholder="example.com"
-            className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted/60 focus:border-emerald-500/50 focus:outline-none"
-          />
-          <span className="mt-1 block text-[11px] text-muted">Don&apos;t include http:// or www. — just the apex.</span>
-        </label>
-        {error && (
-          <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-            <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} disabled={busy} className="rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg hover:bg-soft transition disabled:opacity-50">
+    <Dialog
+      open
+      onClose={onClose}
+      zIndex={60}
+      title="Add a domain"
+      description="We create a Cloudflare zone and give you two nameservers to set at your registrar. Once the change is picked up, the zone activates and you manage DNS here."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
-          </button>
-          <button onClick={submit} disabled={busy || !apex.trim()} className="inline-flex items-center gap-2 rounded-lg bg-fg px-3 py-2 text-sm font-medium text-bg shadow-md hover:opacity-90 transition disabled:opacity-50">
-            {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+          </Button>
+          <Button variant="primary" onClick={submit} disabled={busy || !apex.trim()}>
+            {busy && <Loader2 size={14} className="animate-spin" />}
             Add domain
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </>
+      }
+    >
+      <Field label="Domain" htmlFor="apex-domain" hint="Just the root domain — no http:// or www.">
+        <TextInput
+          id="apex-domain"
+          autoFocus
+          type="text"
+          value={apex}
+          onChange={(e) => setApex(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
+          placeholder="example.com"
+        />
+      </Field>
+      {error && <ErrorNotice className="mt-4">{error}</ErrorNotice>}
+    </Dialog>
   );
 }
 
@@ -200,59 +201,86 @@ function RecordEditor({
     } finally { setBusy(false); }
   };
 
+  const valueLabel =
+    type === "A" || type === "AAAA"
+      ? "IP address"
+      : type === "CNAME"
+        ? "Target hostname"
+        : type === "MX"
+          ? "Mail server"
+          : type === "TXT"
+            ? "Text content"
+            : "Value";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-elevated p-6 shadow-2xl">
-        <h2 className="mb-4 text-lg font-semibold text-fg">
-          {initial ? "Edit DNS record" : "Add DNS record"}
-        </h2>
-        <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-3">
-            <label>
-              <span className="mb-1 block text-xs font-medium text-muted">Type</span>
-              <select value={type} onChange={(e) => setType(e.target.value)} className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg focus:border-emerald-500/50 focus:outline-none">
-                {RECORD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </label>
-            <label className="col-span-2">
-              <span className="mb-1 block text-xs font-medium text-muted">Name</span>
-              <Input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="@ or www" className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg focus:border-emerald-500/50 focus:outline-none" />
-            </label>
-          </div>
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-muted">
-              {type === "A" || type === "AAAA" ? "IP address" : type === "CNAME" ? "Target hostname" : type === "MX" ? "Mail server" : type === "TXT" ? "Text content" : "Value"}
-            </span>
-            <Input type="text" value={content} onChange={(e) => setContent(e.target.value)} placeholder={type === "A" ? "192.0.2.1" : type === "CNAME" ? "example.pages.dev" : ""} className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg focus:border-emerald-500/50 focus:outline-none" />
-          </label>
-          {type === "MX" && (
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-muted">Priority</span>
-              <Input type="number" value={priority} onChange={(e) => setPriority(parseInt(e.target.value, 10))} className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg focus:border-emerald-500/50 focus:outline-none" />
-            </label>
-          )}
-          {(type === "A" || type === "AAAA" || type === "CNAME") && (
-            <label className="flex items-center gap-2 text-sm text-fg">
-              <input type="checkbox" checked={proxied} onChange={(e) => setProxied(e.target.checked)} className="rounded border-border" />
-              Proxy through Cloudflare (HTTPS, caching, DDoS protection)
-            </label>
-          )}
-        </div>
-        {error && (
-          <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-            <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-        <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} disabled={busy} className="rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg hover:bg-soft transition disabled:opacity-50">Cancel</button>
-          <button onClick={submit} disabled={busy || !name || !content} className="inline-flex items-center gap-2 rounded-lg bg-fg px-3 py-2 text-sm font-medium text-bg shadow-md hover:opacity-90 transition disabled:opacity-50">
+    <Dialog
+      open
+      onClose={onClose}
+      zIndex={60}
+      title={initial ? "Edit DNS record" : "Add DNS record"}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={submit} disabled={busy || !name || !content}>
             {busy && <Loader2 size={14} className="animate-spin" />}
-            {initial ? "Save" : "Add record"}
-          </button>
+            {initial ? "Save record" : "Add record"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Type" htmlFor="record-type">
+            <Select id="record-type" value={type} onChange={(e) => setType(e.target.value)}>
+              {RECORD_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Name" htmlFor="record-name" className="col-span-2">
+            <TextInput id="record-name" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="@ or www" />
+          </Field>
         </div>
+        <Field label={valueLabel} htmlFor="record-content">
+          <TextInput
+            id="record-content"
+            type="text"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder={type === "A" ? "192.0.2.1" : type === "CNAME" ? "example.pages.dev" : ""}
+          />
+        </Field>
+        {type === "MX" && (
+          <Field label="Priority" htmlFor="record-priority">
+            <TextInput
+              id="record-priority"
+              type="number"
+              value={priority}
+              onChange={(e) => setPriority(parseInt(e.target.value, 10))}
+            />
+          </Field>
+        )}
+        {(type === "A" || type === "AAAA" || type === "CNAME") && (
+          <label className="flex items-start gap-2.5 text-[13px] text-fg">
+            <input
+              type="checkbox"
+              checked={proxied}
+              onChange={(e) => setProxied(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-border-strong accent-[var(--sand-accent)]"
+            />
+            <span>
+              Proxy through Cloudflare
+              <span className="block text-xs text-muted">Adds HTTPS, caching and DDoS protection.</span>
+            </span>
+          </label>
+        )}
+        {error && <ErrorNotice>{error}</ErrorNotice>}
       </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -312,107 +340,129 @@ function DomainDetail({
 
   return (
     <div>
-      <div className="mb-6 flex items-center gap-3">
-        <button onClick={onBack} className="inline-flex items-center gap-1 rounded-lg border border-border bg-bg px-2.5 py-1.5 text-sm text-muted hover:text-fg hover:bg-soft transition">
-          <ChevronLeft size={14} /> All domains
-        </button>
-      </div>
+      <button onClick={onBack} className={buttonClass({ variant: "ghost", size: "sm", className: "-ml-2.5 mb-5" })}>
+        <ChevronLeft size={15} /> All domains
+      </button>
 
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <div className="rounded-xl bg-emerald-500/15 p-2.5">
-          <Globe className="h-6 w-6 text-emerald-400" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-semibold text-fg break-words">{domain.apexDomain}</h1>
-          <div className="mt-1 flex items-center gap-2">
-            {domain.status === "active"
-              ? <Pill tone="ok"><Check size={10} /> Active</Pill>
-              : <Pill tone="warn"><Loader2 size={10} className="animate-spin" /> Pending nameservers</Pill>
-            }
-            <a href={`https://${domain.apexDomain}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
-              <ExternalLink size={11} />
-              {domain.apexDomain}
+      <PageHeader
+        title={<span className="break-words">{domain.apexDomain}</span>}
+        description={
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <StatusBadge status={domain.status} />
+            <a
+              href={`https://${domain.apexDomain}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-[13px] text-muted transition-colors hover:text-fg"
+            >
+              Visit site
+              <ExternalLink size={12} />
             </a>
-          </div>
-        </div>
-        <button onClick={deleteDomain} className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-300 hover:bg-red-500/20 transition">
-          <Trash2 size={12} /> Remove domain
-        </button>
-      </div>
+          </span>
+        }
+        action={
+          <Button variant="danger-outline" size="sm" onClick={deleteDomain}>
+            <Trash2 size={13} /> Remove domain
+          </Button>
+        }
+      />
 
       {domain.status !== "active" && (
-        <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5 p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-amber-400" />
-            <h3 className="font-semibold text-fg">Nameserver setup required</h3>
+        <Card className="mt-8 p-6">
+          <SectionHeader
+            title="Point your nameservers to Botflow"
+            description={
+              <>
+                At your registrar (Namecheap, GoDaddy and so on), open the nameserver settings for{" "}
+                <span className="font-mono text-fg">{domain.apexDomain}</span> and replace the existing entries with these two.
+              </>
+            }
+          />
+          <div className="mt-5">
+            {domain.nameservers && domain.nameservers.length > 0 ? (
+              <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-bg">
+                {domain.nameservers.map((ns) => (
+                  <div key={ns} className="flex items-center justify-between gap-3 py-2 pl-4 pr-2">
+                    <span className="truncate font-mono text-[13px] text-fg">{ns}</span>
+                    <CopyBtn value={ns} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <span className="text-sm text-muted">Loading nameservers…</span>
+            )}
           </div>
-          <p className="mb-4 text-sm text-muted">
-            At your registrar (Namecheap, GoDaddy, etc.), find the &ldquo;Custom DNS&rdquo; or &ldquo;Nameservers&rdquo; setting for <span className="font-mono text-fg">{domain.apexDomain}</span> and replace the existing nameservers with these two:
-          </p>
-          {domain.nameservers && domain.nameservers.length > 0 ? (
-            <div className="space-y-2">
-              {domain.nameservers.map((ns) => (
-                <div key={ns} className="flex items-center justify-between rounded-lg border border-border bg-bg px-4 py-2.5">
-                  <span className="font-mono text-sm text-fg">{ns}</span>
-                  <CopyBtn value={ns} />
-                </div>
-              ))}
-            </div>
-          ) : <span className="text-sm text-muted">Loading nameservers…</span>}
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <p className="text-[11px] text-muted">DNS changes typically propagate within a few minutes, but can take up to 24 hours.</p>
-            <button onClick={pollStatus} disabled={refreshing} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg px-3 py-1.5 text-xs text-fg hover:bg-soft transition disabled:opacity-50">
-              {refreshing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-muted">Changes usually take a few minutes, and can take up to 24 hours.</p>
+            <Button variant="secondary" size="sm" onClick={pollStatus} disabled={refreshing}>
+              {refreshing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
               Check status
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
 
       {domain.status === "active" && (
-        <div className="rounded-xl border border-border bg-elevated p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h3 className="text-base font-semibold text-fg">DNS records</h3>
-              <p className="text-xs text-muted">Manage the records in your Cloudflare zone.</p>
-            </div>
-            <button onClick={() => setEditing("new")} className="inline-flex items-center gap-1 rounded-lg bg-fg px-3 py-1.5 text-xs font-medium text-bg shadow-sm hover:opacity-90 transition">
-              <Plus size={12} /> Add record
-            </button>
-          </div>
+        <Card className="mt-8 overflow-hidden">
+          <SectionHeader
+            className="p-6 pb-5"
+            title="DNS records"
+            description="The records in this domain’s Cloudflare zone."
+            action={
+              <Button variant="secondary" size="sm" onClick={() => setEditing("new")}>
+                <Plus size={14} /> Add record
+              </Button>
+            }
+          />
 
-          {recordsErr && (
-            <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">{recordsErr}</div>
-          )}
+          {recordsErr && <ErrorNotice className="mx-6 mb-5">{recordsErr}</ErrorNotice>}
           {records === null ? (
-            <div className="flex items-center gap-2 text-sm text-muted"><Loader2 size={14} className="animate-spin" /> Loading records…</div>
+            <div className="flex items-center gap-2 border-t border-border px-6 py-8 text-sm text-muted">
+              <Loader2 size={14} className="animate-spin" /> Loading records…
+            </div>
           ) : records.length === 0 ? (
-            <div className="text-sm text-muted">No DNS records yet. Click &ldquo;Add record&rdquo; to get started.</div>
+            <div className="border-t border-border px-6 py-8 text-sm text-muted">
+              No DNS records yet. Add one to get started.
+            </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-border">
+            <div className="overflow-x-auto border-t border-border">
               <table className="w-full text-sm">
-                <thead className="bg-soft/50">
-                  <tr className="text-left text-xs text-muted">
-                    <th className="px-3 py-2">Type</th>
-                    <th className="px-3 py-2">Name</th>
-                    <th className="px-3 py-2">Content</th>
-                    <th className="px-3 py-2">Proxy</th>
-                    <th className="px-3 py-2"></th>
+                <thead>
+                  <tr className="border-b border-border bg-elevated/60 text-left text-xs font-medium text-muted">
+                    <th className="px-6 py-2.5 font-medium">Type</th>
+                    <th className="px-3 py-2.5 font-medium">Name</th>
+                    <th className="px-3 py-2.5 font-medium">Content</th>
+                    <th className="px-3 py-2.5 font-medium">Proxy</th>
+                    <th className="px-6 py-2.5" />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/60">
+                <tbody className="divide-y divide-border">
                   {records.map((r) => (
-                    <tr key={r.id} className="hover:bg-soft/30">
-                      <td className="px-3 py-2 font-mono text-xs font-semibold text-emerald-400">{r.type}</td>
-                      <td className="px-3 py-2 font-mono text-xs text-fg">{r.name}</td>
-                      <td className="px-3 py-2 font-mono text-xs text-muted truncate max-w-[300px]" title={r.content}>{r.content}</td>
-                      <td className="px-3 py-2 text-xs">{r.proxied ? <Pill tone="ok">Proxied</Pill> : <Pill>DNS only</Pill>}</td>
-                      <td className="px-3 py-2 text-right">
-                        <div className="inline-flex items-center gap-1">
-                          <button onClick={() => setEditing(r)} className="rounded p-1 text-muted hover:text-fg hover:bg-soft" title="Edit">
-                            <Cog size={13} />
+                    <tr key={r.id} className="transition-colors hover:bg-elevated/50">
+                      <td className="px-6 py-2.5 font-mono text-xs font-medium text-fg">{r.type}</td>
+                      <td className="px-3 py-2.5 font-mono text-xs text-fg">{r.name}</td>
+                      <td className="max-w-[300px] truncate px-3 py-2.5 font-mono text-xs text-muted" title={r.content}>
+                        {r.content}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {r.proxied ? <Badge tone="success">Proxied</Badge> : <Badge>DNS only</Badge>}
+                      </td>
+                      <td className="px-6 py-2.5 text-right">
+                        <div className="inline-flex items-center gap-0.5">
+                          <button
+                            onClick={() => setEditing(r)}
+                            className={buttonClass({ variant: "ghost", size: "xs", className: "w-7 px-0" })}
+                            title="Edit record"
+                            aria-label="Edit record"
+                          >
+                            <Pencil size={13} />
                           </button>
-                          <button onClick={() => deleteRecord(r.id)} className="rounded p-1 text-red-300 hover:bg-red-500/10" title="Delete">
+                          <button
+                            onClick={() => deleteRecord(r.id)}
+                            className={buttonClass({ variant: "ghost", size: "xs", className: "w-7 px-0 hover:bg-danger-soft hover:text-danger" })}
+                            title="Delete record"
+                            aria-label="Delete record"
+                          >
                             <Trash2 size={13} />
                           </button>
                         </div>
@@ -423,7 +473,7 @@ function DomainDetail({
               </table>
             </div>
           )}
-        </div>
+        </Card>
       )}
 
       {editing !== null && (
@@ -449,7 +499,6 @@ export default function DomainsClient() {
   const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -473,157 +522,104 @@ export default function DomainsClient() {
   );
 
   return (
-    <div className="min-h-screen bg-bg text-fg">
-      <header className="sticky top-0 z-30 border-b border-border bg-bg/85 backdrop-blur">
-        <div className="mx-auto max-w-7xl px-6 py-5">
-          <div className="grid grid-cols-3 items-center">
-            <Link className="flex items-center gap-3" href="/">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/botflow-glyph.svg" alt="" className="h-8 w-8" />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/brand/botflow-wordmark.svg"
-                alt="Botflow"
-                className="h-5 w-auto botflow-wordmark-invert"
-              />
-            </Link>
-            <nav className="hidden md:flex items-center justify-center gap-7 text-sm text-muted">
-              <a href="/projects" className="hover:text-fg transition">My Projects</a>
-              <a href="/explore" className="hover:text-fg transition">Explore</a>
-              <a href="/domains" className="text-fg font-medium">Domains</a>
-              <a href="/pricing" className="hover:text-fg transition">Pricing</a>
-              <a href="/docs" className="hover:text-fg transition">Docs</a>
-            </nav>
-            <div className="flex items-center justify-end gap-2">
-              <SignedOut>
-                <SignInButton>
-                  <button className="inline-flex items-center rounded-xl border border-border bg-elevated px-3.5 py-2 text-sm font-medium text-fg shadow-sm hover:bg-soft transition">Log in</button>
-                </SignInButton>
-              </SignedOut>
-              <SignedIn>
-                <button
-                  onClick={() => setSettingsOpen(true)}
-                  className="inline-flex items-center justify-center rounded-xl border border-border bg-elevated px-2.5 py-2 text-sm text-fg shadow-sm hover:bg-soft transition"
-                  title="Settings"
-                  aria-label="Settings"
-                >
-                  <Cog className="h-4 w-4" />
-                </button>
-                <UserButton afterSignOutUrl="/" />
-              </SignedIn>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-5xl px-6 py-10">
-        {!selectedDomain && (
-          <>
-            <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h1 className="text-3xl font-semibold tracking-tight">Domains</h1>
-                <p className="mt-1 text-sm text-muted">
-                  Transfer your domain to Botflow&apos;s Cloudflare account for full DNS control, then assign it to any project.
-                </p>
-              </div>
-              {managedDomainsEnabled === null ? (
+    <AppShell width="default">
+      {!selectedDomain && (
+        <>
+          <PageHeader
+            title="Domains"
+            description="Move a domain onto Botflow’s Cloudflare account for full DNS control, then assign it to any project."
+            action={
+              managedDomainsEnabled === null ? (
                 // Plan still loading — render a neutral placeholder so the
                 // upsell CTA doesn't briefly flash for paid users.
-                <div className="h-10 w-32 rounded-xl bg-elevated animate-pulse" />
+                <div className="h-9 w-32 animate-pulse rounded-lg bg-elevated" />
               ) : managedDomainsEnabled ? (
-                <button
+                <Button
+                  variant="primary"
                   onClick={() => setAddOpen(true)}
                   disabled={domains !== null && domains.length >= maxManagedDomains}
-                  className="inline-flex items-center gap-2 rounded-xl bg-fg px-4 py-2.5 text-sm font-medium text-bg shadow-md hover:opacity-90 transition disabled:opacity-50"
                 >
                   <Plus size={15} /> Add domain
-                </button>
+                </Button>
               ) : (
-                <Link
-                  href="/pricing"
-                  className="inline-flex items-center gap-2 rounded-xl bg-fg px-4 py-2.5 text-sm font-medium text-bg shadow-md hover:opacity-90 transition"
-                >
-                  <Sparkles size={15} /> Upgrade to Pro
+                <Link href="/pricing" className={buttonClass({ variant: "primary" })}>
+                  Upgrade to Pro
                 </Link>
-              )}
-            </div>
+              )
+            }
+          />
 
-            {error && (
-              <div className="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>
-            )}
+          <div className="mt-8 space-y-6">
+            {error && <ErrorNotice>{error}</ErrorNotice>}
 
             {managedDomainsEnabled === false && (
-              <div className="mb-8 rounded-2xl border border-border bg-surface p-6">
-                <div className="flex items-start gap-4">
-                  <div className="rounded-xl border border-border bg-elevated p-3">
-                    <Lock className="h-6 w-6 text-muted" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="mb-1 text-lg font-semibold text-fg">Managed domains are a Pro feature</h3>
-                    <p className="text-sm text-muted">
-                      Upgrade to Pro or Max to transfer your domains to Botflow&apos;s Cloudflare account.
-                      We&apos;ll manage DNS, SSL certificates, and proxy your traffic through Cloudflare&apos;s CDN.
-                      Your projects can then use your real domain — no <span className="font-mono">.pages.dev</span> suffix.
-                    </p>
-                    <Link
-                      href="/pricing"
-                      className="mt-4 inline-flex items-center gap-2 rounded-xl bg-fg px-3.5 py-2 text-sm font-medium text-bg shadow-md hover:opacity-90 transition"
-                    >
-                      View pricing →
-                    </Link>
-                  </div>
+              <Card className="flex items-start gap-4 p-6">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-elevated text-muted">
+                  <Lock className="h-[18px] w-[18px]" strokeWidth={1.75} />
                 </div>
-              </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-[15px] font-semibold text-fg">Managed domains are a Pro feature</h3>
+                  <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted">
+                    On Pro or Max, Botflow manages DNS and SSL for your domain and serves it through
+                    Cloudflare’s CDN, so your projects live on your real domain instead of a{" "}
+                    <span className="font-mono text-[13px]">.pages.dev</span> address.
+                  </p>
+                  <Link href="/pricing" className={buttonClass({ variant: "secondary", size: "sm", className: "mt-4" })}>
+                    Compare plans
+                  </Link>
+                </div>
+              </Card>
             )}
 
             {domains === null ? (
-              <div className="flex items-center gap-2 text-sm text-muted"><Loader2 size={14} className="animate-spin" /> Loading…</div>
-            ) : domains.length === 0 && managedDomainsEnabled ? (
-              <div className="rounded-2xl border border-dashed border-border bg-elevated/40 p-12 text-center">
-                <Globe className="mx-auto mb-3 h-10 w-10 text-muted/60" />
-                <h3 className="mb-1 text-lg font-semibold text-fg">No domains yet</h3>
-                <p className="mb-5 text-sm text-muted">Add your first domain to give your projects a real home on the web.</p>
-                <button onClick={() => setAddOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-fg px-4 py-2 text-sm font-medium text-bg shadow-md hover:opacity-90 transition">
-                  <Plus size={14} /> Add your first domain
-                </button>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {[0, 1].map((i) => (
+                  <div key={i} className="h-[104px] animate-pulse rounded-xl border border-border bg-surface" />
+                ))}
               </div>
+            ) : domains.length === 0 && managedDomainsEnabled ? (
+              <EmptyState
+                className="rounded-xl border border-dashed border-border-strong bg-surface py-20"
+                icon={Globe}
+                title="No domains yet"
+                description="Add a domain to give your projects a real home on the web."
+                action={
+                  <Button variant="primary" onClick={() => setAddOpen(true)}>
+                    <Plus size={15} /> Add your first domain
+                  </Button>
+                }
+              />
             ) : (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {domains?.map((d) => (
                   <button
                     key={d.id}
                     onClick={() => setSelected(d.id)}
-                    className="group rounded-xl border border-border bg-elevated p-5 text-left transition hover:border-emerald-500/50 hover:bg-soft/50"
+                    className="group rounded-xl border border-border bg-surface p-5 text-left shadow-xs transition-[border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-md"
                   >
-                    <div className="mb-3 flex items-center justify-between">
-                      <div className="rounded-lg bg-emerald-500/15 p-2">
-                        <Globe className="h-5 w-5 text-emerald-400" />
-                      </div>
-                      {d.status === "active"
-                        ? <Pill tone="ok"><Check size={10} /> Active</Pill>
-                        : <Pill tone="warn"><Loader2 size={10} className="animate-spin" /> Pending</Pill>
-                      }
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="truncate text-[15px] font-semibold text-fg">{d.apexDomain}</div>
+                      <StatusBadge status={d.status} />
                     </div>
-                    <div className="text-base font-semibold text-fg group-hover:text-emerald-300 transition">{d.apexDomain}</div>
-                    <div className="mt-1 text-xs text-muted">
-                      {d.status === "active" ? "Manage DNS records →" : "Set nameservers at your registrar →"}
+                    <div className="mt-2 text-[13px] text-muted">
+                      {d.status === "active" ? "Manage DNS records" : "Finish nameserver setup"}
                     </div>
                   </button>
                 ))}
               </div>
             )}
-          </>
-        )}
+          </div>
+        </>
+      )}
 
-        {selectedDomain && (
-          <DomainDetail
-            domain={selectedDomain}
-            onBack={() => setSelected(null)}
-            onChanged={(d) => setDomains((prev) => prev?.map((x) => x.id === d.id ? d : x) ?? null)}
-            onDeleted={() => { setSelected(null); load(); }}
-          />
-        )}
-      </main>
+      {selectedDomain && (
+        <DomainDetail
+          domain={selectedDomain}
+          onBack={() => setSelected(null)}
+          onChanged={(d) => setDomains((prev) => prev?.map((x) => x.id === d.id ? d : x) ?? null)}
+          onDeleted={() => { setSelected(null); load(); }}
+        />
+      )}
 
       <AddDomainModal
         open={addOpen}
@@ -633,8 +629,6 @@ export default function DomainsClient() {
           setSelected(d.id);
         }}
       />
-
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-    </div>
+    </AppShell>
   );
 }

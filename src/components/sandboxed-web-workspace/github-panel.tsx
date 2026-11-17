@@ -578,7 +578,7 @@ export function SandboxGitHubPanel({
             <button
               type="button"
               onClick={unlinkRepo}
-              className="text-muted hover:text-red-400"
+              className="text-muted hover:text-danger"
               title="Unlink"
             >
               <LogOut size={11} />
@@ -605,7 +605,7 @@ export function SandboxGitHubPanel({
         {status && !status.isClean && (
           <div className="space-y-1 text-[11px]">
             {conflictCount > 0 && (
-              <div className="text-red-400">
+              <div className="text-danger">
                 {conflictCount} file{conflictCount === 1 ? "" : "s"} with merge conflicts
               </div>
             )}
@@ -675,7 +675,7 @@ export function SandboxGitHubPanel({
           </Button>
         </div>
         {status?.hasMerging && (
-          <div className="rounded-md bg-yellow-500/10 border border-yellow-500/30 px-2.5 py-2 text-[11px] text-yellow-400">
+          <div className="rounded-md bg-warning-soft border border-warning-border px-2.5 py-2 text-[11px] text-warning">
             Merge in progress — finish resolving conflicts before saving.
           </div>
         )}

@@ -152,7 +152,7 @@ export function TemplateForkModal({
                       <img src="/convex-color.svg" className={cn("h-4 w-4", managedLocked && "grayscale")} alt="" />
                       <span className="text-sm font-medium text-fg">Botflow Managed</span>
                       {managedLocked && (
-                        <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                        <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-warning-soft px-1.5 py-0.5 text-[10px] font-semibold text-warning">
                           <Lock className="h-2.5 w-2.5" /> Pro
                         </span>
                       )}

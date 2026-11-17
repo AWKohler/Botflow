@@ -1,12 +1,14 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { SignedIn, SignedOut, SignInButton, UserButton } from "@/components/auth";
-import { Sparkles, Flame, Clock, Search as SearchIcon } from "lucide-react";
+import { AlertTriangle, Sparkles, Search as SearchIcon } from "lucide-react";
 import { ShowcaseCard, type ShowcaseProject } from "@/components/showcase/ShowcaseCard";
-import { cn } from "@/lib/utils";
+import { AppShell } from "@/components/site/AppShell";
+import { buttonClass } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { TextInput } from "@/components/ui/field";
+import { Tabs } from "@/components/ui/tabs";
 import { isSwiftPlatformEnabled } from "@/lib/project-platform";
 
 type SortKey = "top" | "recent";
@@ -34,7 +36,7 @@ export default function ExplorePage() {
       setProjects(body.projects ?? []);
     } catch (err) {
       console.error(err);
-      setError(err instanceof Error ? err.message : "Failed to load");
+      setError("Something went wrong on our side. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -56,200 +58,101 @@ export default function ExplorePage() {
     : projects;
 
   return (
-    <div className="antialiased text-fg bg-bg min-h-screen">
-      <div className="relative isolate">
-        {/* Background gradient */}
-        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-          <div
-            className="absolute -top-1/3 -left-1/4 h-[80vh] w-[80vw] rounded-full blur-3xl opacity-40"
-            style={{
-              background:
-                'radial-gradient(circle, color-mix(in oklab, var(--sand-accent) 28%, transparent) 0%, transparent 68%)',
-            }}
-          />
-          <div
-            className="absolute top-1/4 left-1/2 h-[90vh] w-[80vw] -translate-x-1/2 rounded-full blur-3xl opacity-30"
-            style={{
-              background:
-                'radial-gradient(circle, color-mix(in oklab, var(--sand-text-muted) 20%, transparent) 0%, transparent 72%)',
-            }}
+    <AppShell>
+      <div className="mx-auto max-w-2xl text-center">
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          What people are building with Botflow
+        </h1>
+        <p className="mt-3 text-base leading-relaxed text-muted">
+          Open any public project, read the code, and remix it into your own workspace.
+        </p>
+      </div>
+
+      {/* Controls */}
+      <div className="mt-10 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+        <div className="relative max-w-md flex-1">
+          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle" />
+          <TextInput
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by name, author or description"
+            aria-label="Search public projects"
+            className="pl-9"
           />
         </div>
 
-        {/* Nav */}
-        <header className="relative">
-          <div className="mx-auto max-w-7xl px-6 py-5">
-            <div className="grid grid-cols-3 items-center">
-              <Link className="flex items-center gap-3" href="/">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand/botflow-glyph.svg" alt="" className="h-8 w-8" />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/brand/botflow-wordmark.svg"
-                  alt="Botflow"
-                  className="h-5 w-auto botflow-wordmark-invert"
-                />
-              </Link>
-              <nav className="hidden md:flex items-center justify-center gap-7 text-sm text-muted">
-                <a className="hover:text-fg transition" href="/projects">My Projects</a>
-                <a className="text-fg font-medium" href="/explore">Explore</a>
-                <a className="hover:text-fg transition" href="/pricing">Pricing</a>
-              </nav>
-              <div className="flex items-center justify-end gap-2">
-                <SignedOut>
-                  <SignInButton>
-                    <button className="inline-flex items-center rounded-xl border border-border bg-elevated px-3.5 py-2 text-sm font-medium text-fg shadow-sm hover:bg-soft transition">
-                      Log in
-                    </button>
-                  </SignInButton>
-                </SignedOut>
-                <SignedIn>
-                  <UserButton afterSignOutUrl="/" />
-                </SignedIn>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Hero */}
-        <section className="relative">
-          <div className="mx-auto max-w-7xl px-6 py-12 sm:py-16">
-            <div className="text-center max-w-2xl mx-auto">
-              <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">
-                What people are building with{" "}
-                <span style={{ color: "var(--sand-accent)" }}>Botflow</span>
-              </h1>
-              <p className="mt-4 text-muted text-lg">
-                Explore public projects. Open any one, see the code, and remix it into your own workspace with one click.
-              </p>
-            </div>
-
-            {/* Controls */}
-            <div className="mt-10 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              <div className="relative flex-1 max-w-md">
-                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
-                <Input
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search by name, author, description…"
-                  className="w-full rounded-xl border border-border bg-elevated pl-9 pr-3 py-2 text-sm placeholder-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/40 transition"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="inline-flex items-center rounded-xl border border-border bg-elevated p-0.5">
-                  <button
-                    onClick={() => setSort("top")}
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition",
-                      sort === "top" ? "bg-surface text-fg shadow-sm" : "text-muted hover:text-fg"
-                    )}
-                  >
-                    <Flame className="h-4 w-4" />
-                    Top
-                  </button>
-                  <button
-                    onClick={() => setSort("recent")}
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition",
-                      sort === "recent" ? "bg-surface text-fg shadow-sm" : "text-muted hover:text-fg"
-                    )}
-                  >
-                    <Clock className="h-4 w-4" />
-                    Recent
-                  </button>
-                </div>
-
-                <div className="inline-flex items-center rounded-xl border border-border bg-elevated p-0.5">
-                  <button
-                    onClick={() => setPlatform("all")}
-                    className={cn(
-                      "rounded-lg px-3 py-1.5 text-sm font-medium transition",
-                      platform === "all" ? "bg-surface text-fg shadow-sm" : "text-muted hover:text-fg"
-                    )}
-                  >
-                    All
-                  </button>
-                  <button
-                    onClick={() => setPlatform("web")}
-                    className={cn(
-                      "rounded-lg px-3 py-1.5 text-sm font-medium transition",
-                      platform === "web" ? "bg-surface text-fg shadow-sm" : "text-muted hover:text-fg"
-                    )}
-                  >
-                    Web
-                  </button>
-                  {isSwiftPlatformEnabled() && (
-                    <button
-                      onClick={() => setPlatform("swift")}
-                      className={cn(
-                        "rounded-lg px-3 py-1.5 text-sm font-medium transition",
-                        platform === "swift" ? "bg-surface text-fg shadow-sm" : "text-muted hover:text-fg"
-                      )}
-                    >
-                      Swift
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Grid */}
-            <div className="mt-10">
-              {loading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {[...Array(8)].map((_, i) => (
-                    <div key={i} className="rounded-2xl border border-border bg-surface overflow-hidden animate-pulse">
-                      <div className="aspect-[16/10] bg-elevated" />
-                      <div className="p-4">
-                        <div className="h-4 bg-elevated rounded w-3/4 mb-2" />
-                        <div className="h-3 bg-elevated rounded w-1/2" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : error ? (
-                <div className="text-center py-20">
-                  <p className="text-muted">{error}</p>
-                  <button
-                    onClick={load}
-                    className="mt-4 inline-flex items-center gap-2 rounded-xl bg-fg px-4 py-2 text-sm font-medium text-bg shadow-md hover:opacity-90 transition"
-                  >
-                    Retry
-                  </button>
-                </div>
-              ) : filtered.length === 0 ? (
-                <div className="text-center py-20">
-                  <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-elevated mb-4">
-                    <Sparkles className="h-8 w-8 text-muted" />
-                  </div>
-                  <h2 className="text-xl font-semibold mb-2">
-                    {query.trim() ? "No matches" : "Nothing here yet"}
-                  </h2>
-                  <p className="text-muted mb-6">
-                    {query.trim()
-                      ? "Try a different search term."
-                      : "Once creators start publishing, their work will show up here."}
-                  </p>
-                  <Link
-                    href="/"
-                    className="inline-flex items-center gap-2 rounded-xl bg-fg px-4 py-2 text-sm font-medium text-bg shadow-md hover:opacity-90 transition"
-                  >
-                    Build something of your own
-                  </Link>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {filtered.map((p) => (
-                    <ShowcaseCard key={p.id} project={p} />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
+        <div className="flex items-center gap-2 sm:ml-auto">
+          <Tabs
+            options={[
+              { value: 'top', text: 'Top' },
+              { value: 'recent', text: 'Recent' },
+            ]}
+            selected={sort}
+            onSelect={setSort}
+          />
+          <Tabs
+            options={[
+              { value: 'all', text: 'All' },
+              { value: 'web', text: 'Web' },
+              ...(isSwiftPlatformEnabled() ? [{ value: 'swift' as const, text: 'Swift' }] : []),
+            ]}
+            selected={platform}
+            onSelect={setPlatform}
+          />
+        </div>
       </div>
-    </div>
+
+      {/* Grid */}
+      <div className="mt-8">
+        {loading ? (
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="animate-pulse overflow-hidden rounded-xl border border-border bg-surface">
+                <div className="aspect-[16/10] bg-elevated" />
+                <div className="space-y-2 p-4">
+                  <div className="h-4 w-3/4 rounded bg-elevated" />
+                  <div className="h-3 w-1/2 rounded bg-elevated" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : error ? (
+          <EmptyState
+            icon={AlertTriangle}
+            tone="danger"
+            title="Couldn’t load projects"
+            description={error}
+            action={
+              <button type="button" onClick={load} className={buttonClass({ variant: 'secondary' })}>
+                Try again
+              </button>
+            }
+          />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            className="rounded-xl border border-dashed border-border-strong bg-surface py-20"
+            icon={Sparkles}
+            title={query.trim() ? 'No matches' : 'Nothing here yet'}
+            description={
+              query.trim()
+                ? 'Try a different search term.'
+                : 'Once creators start publishing, their work will show up here.'
+            }
+            action={
+              <Link href="/" className={buttonClass({ variant: 'primary' })}>
+                Build something of your own
+              </Link>
+            }
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {filtered.map((p) => (
+              <ShowcaseCard key={p.id} project={p} />
+            ))}
+          </div>
+        )}
+      </div>
+    </AppShell>
   );
 }

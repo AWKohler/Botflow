@@ -288,7 +288,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                         'inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
                         requiredTier === 'max'
                           ? 'bg-accent/10 text-accent'
-                          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                          : 'bg-warning-soft text-warning'
                       )}>
                         {tierBadge}
                       </span>

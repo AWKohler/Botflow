@@ -269,7 +269,7 @@ function UserTableRow({
           </div>
         </td>
         <td className={cn('px-3 py-2.5 tabular-nums font-medium whitespace-nowrap',
-          marginNegative ? 'text-red-600 dark:text-red-400' : 'text-fg')}>
+          marginNegative ? 'text-danger' : 'text-fg')}>
           {fmtUsd(row.monthMarginUsd)}
         </td>
         <td className="px-3 py-2.5 tabular-nums text-fg whitespace-nowrap">
@@ -290,7 +290,7 @@ function UserTableRow({
         <td className="px-3 py-2.5 tabular-nums text-fg">
           {row.convexInstances}
           {row.convexPaused > 0 && (
-            <span className="text-amber-600 dark:text-amber-400 text-xs ml-1">
+            <span className="text-warning text-xs ml-1">
               ({row.convexPaused} paused)
             </span>
           )}

@@ -6,13 +6,15 @@ type Toast = { id: number; title?: string; description?: string };
 
 const ToastCtx = createContext<{ toast: (t: Omit<Toast, 'id'>) => void } | null>(null);
 
+const ERROR_RE = /fail|error|denied|conflict|unable|couldn't|could not/i;
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toast = useCallback((t: Omit<Toast, 'id'>) => {
     const id = Date.now() + Math.floor(Math.random() * 1000);
     try {
       const label = `[toast] ${t.title ?? ''}${t.description ? ` — ${t.description}` : ''}`;
-      const isError = /fail|error|denied|conflict|unable/i.test(`${t.title ?? ''} ${t.description ?? ''}`);
+      const isError = ERROR_RE.test(`${t.title ?? ''} ${t.description ?? ''}`);
       if (isError) console.error(label); else console.log(label);
     } catch {}
     setToasts((prev) => [...prev, { id, ...t }]);
@@ -27,13 +29,29 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastCtx.Provider value={value}>
       {children}
-      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
-        {toasts.map((t) => (
-          <div key={t.id} className="min-w-[240px] max-w-[360px] rounded-lg bg-neutral-900 text-white shadow-lg border border-black/10">
-            {t.title && <div className="px-3 pt-2 pb-1 text-sm font-medium">{t.title}</div>}
-            {t.description && <div className="px-3 pb-2 text-xs text-neutral-300">{t.description}</div>}
-          </div>
-        ))}
+      <div
+        aria-live="polite"
+        className="pointer-events-none fixed bottom-4 right-4 z-[100] flex flex-col gap-2"
+      >
+        {toasts.map((t) => {
+          const isError = ERROR_RE.test(`${t.title ?? ''} ${t.description ?? ''}`);
+          return (
+            <div
+              key={t.id}
+              role="status"
+              className="bolt-fade-in pointer-events-auto flex min-w-[260px] max-w-[380px] items-start gap-2.5 rounded-xl border border-border bg-bg px-3.5 py-3 shadow-lg"
+            >
+              <span
+                aria-hidden="true"
+                className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${isError ? 'bg-danger-solid' : 'bg-success-solid'}`}
+              />
+              <div className="min-w-0">
+                {t.title && <div className="text-[13px] font-medium leading-5 text-fg">{t.title}</div>}
+                {t.description && <div className="mt-0.5 text-xs leading-relaxed text-muted">{t.description}</div>}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </ToastCtx.Provider>
   );
@@ -44,4 +62,3 @@ export function useToast() {
   if (!ctx) throw new Error('useToast must be used within ToastProvider');
   return ctx;
 }
-

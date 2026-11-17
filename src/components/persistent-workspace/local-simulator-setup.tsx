@@ -41,11 +41,11 @@ export function LocalSimulatorSetup({ onReady }: { onReady: () => void }) {
         {health && <div className="space-y-3" aria-live="polite">
           {health.xcodeVersion && <p className="text-xs text-muted">Detected {health.xcodeVersion}</p>}
           {health.checks.map((item) => <div key={item.code} className="flex items-start gap-2 text-sm">
-            {item.ready ? <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-green-500" /> : <Circle size={16} className="mt-0.5 shrink-0 text-amber-500" />}
+            {item.ready ? <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" /> : <Circle size={16} className="mt-0.5 shrink-0 text-warning" />}
             <div><p className="text-fg">{item.title}</p>{!item.ready && <p className="mt-1 break-words text-xs text-muted">{item.hint} {item.url && <a href={item.url} target="_blank" rel="noreferrer" className="text-accent underline">Instructions</a>}</p>}</div>
           </div>)}
         </div>}
-        {error && <p role="alert" className="text-sm text-amber-500">{error}</p>}
+        {error && <p role="alert" className="text-sm text-warning">{error}</p>}
         <div className="flex flex-wrap gap-2">
           <button onClick={check} disabled={checking} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-fg disabled:opacity-50">{checking && <Loader2 size={14} className="animate-spin" />}{checking ? "Checking this Mac…" : "Check setup"}</button>
           {health?.ready && <button onClick={onReady} disabled={checking} className="rounded-md bg-accent px-3 py-2 text-sm text-white disabled:opacity-50">Start local preview</button>}

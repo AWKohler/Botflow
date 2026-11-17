@@ -3,15 +3,13 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { SignedIn, SignedOut, SignInButton, UserButton } from '@/components/auth';
+import { SignedIn, SignedOut, SignInButton } from '@/components/auth';
 import { cn } from '@/lib/utils';
 import {
   Plus,
   Laptop,
-  Cog,
-  Calendar,
   Layers,
-  MoreVertical,
+  MoreHorizontal,
   Trash2,
   ExternalLink,
   Database,
@@ -23,7 +21,13 @@ import {
   PauseCircle,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
-import { SettingsModal } from '@/components/settings/SettingsModal';
+import { AppShell } from '@/components/site/AppShell';
+import { PageHeader } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Badge } from '@/components/ui/badge';
+import { buttonClass } from '@/components/ui/button';
+import { Menu, MenuItem, MenuSeparator, menuItemClass } from '@/components/ui/menu';
+import { MODEL_CONFIGS } from '@/lib/agent/models';
 import type { Project } from '@/db/schema';
 import { getProjectPlatformLabel } from '@/lib/project-platform';
 
@@ -35,7 +39,6 @@ export default function ProjectsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
   const [thumbnailErrors, setThumbnailErrors] = useState<Record<string, true>>({});
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
 
@@ -131,334 +134,238 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="antialiased text-fg bg-bg min-h-screen">
-      <div className="relative isolate overflow-hidden min-h-screen">
-        <div className="pointer-events-none absolute inset-0 -z-10">
-          <div
-            className="absolute -top-1/3 -left-1/4 h-[80vh] w-[80vw] rounded-full blur-3xl opacity-50"
-            style={{
-              background:
-                'radial-gradient(circle, color-mix(in oklab, var(--sand-accent) 26%, transparent) 0%, transparent 68%)',
-            }}
+    <AppShell>
+      <PageHeader
+        title="Projects"
+        description={
+          loading || loadError
+            ? 'Everything you have built with Botflow.'
+            : `${projects.length} project${projects.length !== 1 ? 's' : ''}`
+        }
+        action={
+          <Link href="/" className={buttonClass({ variant: 'primary' })}>
+            <Plus className="h-4 w-4" />
+            New project
+          </Link>
+        }
+      />
+
+      <div className="mt-8">
+        <SignedOut>
+          <EmptyState
+            icon={Layers}
+            title="Sign in to see your projects"
+            description="Your projects are tied to your account."
+            action={
+              <SignInButton>
+                <button className={buttonClass({ variant: 'primary' })}>Sign in</button>
+              </SignInButton>
+            }
           />
-          <div
-            className="absolute top-1/3 left-1/2 h-[90vh] w-[80vw] -translate-x-1/2 rounded-full blur-3xl opacity-40"
-            style={{
-              background:
-                'radial-gradient(circle, color-mix(in oklab, var(--sand-text-muted) 20%, transparent) 0%, transparent 72%)',
-            }}
-          />
-        </div>
+        </SignedOut>
 
-        <header className="relative">
-          <div className="mx-auto max-w-7xl px-6 py-5">
-            <div className="grid grid-cols-3 items-center">
-              <Link className="flex items-center gap-3" href="/">
-                <img src="/brand/botflow-glyph.svg" alt="" className="h-8 w-8" />
-                <img
-                  src="/brand/botflow-wordmark.svg"
-                  alt="Botflow"
-                  className="h-5 w-auto botflow-wordmark-invert"
-                />
-              </Link>
-
-              <nav className="hidden md:flex items-center justify-center gap-7 text-sm text-muted">
-                <a className="text-fg font-medium" href="/projects">My Projects</a>
-                <a className="hover:text-fg transition" href="/explore">Explore</a>
-                <a className="hover:text-fg transition" href="/domains">Domains</a>
-                <a className="hover:text-fg transition" href="/pricing">Pricing</a>
-                <a className="hover:text-fg transition" href="/docs">Docs</a>
-              </nav>
-
-              <div className="flex items-center justify-end gap-2">
-                <SignedOut>
-                  <SignInButton>
-                    <button className="inline-flex items-center rounded-xl border border-border bg-elevated px-3.5 py-2 text-sm font-medium text-fg shadow-sm hover:bg-soft transition">
-                      Log in
-                    </button>
-                  </SignInButton>
-                </SignedOut>
-                <SignedIn>
-                  <button
-                    onClick={() => setShowSettings(true)}
-                    className="inline-flex items-center justify-center rounded-xl border border-border bg-elevated px-2.5 py-2 text-sm text-fg shadow-sm hover:bg-soft transition"
-                    title="Settings"
-                    aria-label="Settings"
-                  >
-                    <Cog className="h-4 w-4" />
-                  </button>
-                  <UserButton afterSignOutUrl="/" />
-                </SignedIn>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <main className="relative">
-          <div className="mx-auto max-w-7xl px-6 py-8">
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <h1 className="text-3xl font-semibold tracking-tight">My Projects</h1>
-                <p className="mt-1 text-muted">
-                  {projects.length} project{projects.length !== 1 ? 's' : ''}
-                </p>
-              </div>
-              <Link
-                href="/"
-                className="inline-flex items-center gap-2 rounded-xl bg-fg px-4 py-2.5 text-sm font-medium text-bg shadow-md hover:opacity-90 transition"
-              >
-                <Plus className="h-4 w-4" />
-                New Project
-              </Link>
-            </div>
-
-            <SignedOut>
-              <div className="text-center py-20">
-                <p className="text-muted mb-4">Please sign in to view your projects.</p>
-                <SignInButton>
-                  <button className="inline-flex items-center rounded-xl bg-fg px-4 py-2.5 text-sm font-medium text-bg shadow-md hover:opacity-90 transition">
-                    Sign In
-                  </button>
-                </SignInButton>
-              </div>
-            </SignedOut>
-
-            <SignedIn>
-              {loading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {[...Array(4)].map((_, i) => (
-                    <div
-                      key={i}
-                      className="rounded-2xl border border-border bg-surface backdrop-blur-sm animate-pulse"
-                    >
-                      <div className="aspect-video bg-elevated rounded-t-2xl"></div>
-                      <div className="p-4">
-                        <div className="h-5 bg-elevated rounded w-3/4 mb-2"></div>
-                        <div className="h-4 bg-elevated rounded w-1/2"></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : loadError ? (
-                <div className="text-center py-20">
-                  <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-elevated mb-4">
-                    <Layers className="h-8 w-8 text-muted" />
+        <SignedIn>
+          {loading ? (
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="animate-pulse overflow-hidden rounded-xl border border-border bg-surface">
+                  <div className="aspect-video bg-elevated" />
+                  <div className="space-y-2 p-4">
+                    <div className="h-4 w-3/4 rounded bg-elevated" />
+                    <div className="h-3 w-1/2 rounded bg-elevated" />
                   </div>
-                  <h2 className="text-xl font-semibold mb-2">Unable to load projects</h2>
-                  <p className="text-muted mb-6">{loadError}</p>
-                  <button
-                    type="button"
-                    onClick={() => window.location.reload()}
-                    className="inline-flex items-center gap-2 rounded-xl bg-fg px-4 py-2.5 text-sm font-medium text-bg shadow-md hover:opacity-90 transition"
-                  >
-                    Retry
-                  </button>
                 </div>
-              ) : projects.length === 0 ? (
-                <div className="text-center py-20">
-                  <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-elevated mb-4">
-                    <Layers className="h-8 w-8 text-muted" />
-                  </div>
-                  <h2 className="text-xl font-semibold mb-2">No projects yet</h2>
-                  <p className="text-muted mb-6">Create your first project to get started.</p>
-                  <Link
-                    href="/"
-                    className="inline-flex items-center gap-2 rounded-xl bg-fg px-4 py-2.5 text-sm font-medium text-bg shadow-md hover:opacity-90 transition"
+              ))}
+            </div>
+          ) : loadError ? (
+            <EmptyState
+              icon={AlertTriangle}
+              tone="danger"
+              title="Couldn’t load your projects"
+              description={loadError}
+              action={
+                <button type="button" onClick={() => window.location.reload()} className={buttonClass({ variant: 'secondary' })}>
+                  Try again
+                </button>
+              }
+            />
+          ) : projects.length === 0 ? (
+            <EmptyState
+              className="rounded-xl border border-dashed border-border-strong bg-surface py-20"
+              icon={Layers}
+              title="No projects yet"
+              description="Describe an app and Botflow builds it. Your projects will show up here."
+              action={
+                <Link href="/" className={buttonClass({ variant: 'primary' })}>
+                  <Plus className="h-4 w-4" />
+                  Create your first project
+                </Link>
+              }
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {projects.map((project) => {
+                const hasDatabase = Boolean((project.userConvexUrl || project.convexDeployUrl) && (project.userConvexDeployKey || project.convexDeployKey));
+                const thumbnailFailed = Boolean(thumbnailErrors[project.id]);
+                const modelLabel = MODEL_CONFIGS[project.model as keyof typeof MODEL_CONFIGS]?.displayName ?? project.model;
+
+                return (
+                  <div
+                    key={project.id}
+                    className={cn(
+                      'group relative cursor-pointer rounded-xl border border-border bg-surface shadow-xs transition-[border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-md',
+                      openMenuId === project.id ? 'z-40' : 'z-0'
+                    )}
+                    onClick={() => openProject(project.id)}
                   >
-                    <Plus className="h-4 w-4" />
-                    Create Project
-                  </Link>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {projects.map((project) => {
-                    const hasDatabase = Boolean((project.userConvexUrl || project.convexDeployUrl) && (project.userConvexDeployKey || project.convexDeployKey));
-                    const thumbnailFailed = Boolean(thumbnailErrors[project.id]);
-
-                    return (
-                      <div
-                        key={project.id}
-                        className={cn(
-                          'group relative rounded-2xl border border-border bg-surface backdrop-blur-sm shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer',
-                          openMenuId === project.id ? 'z-40' : 'z-0'
-                        )}
-                        onClick={() => openProject(project.id)}
-                      >
-                        <div className="aspect-video relative overflow-hidden rounded-t-2xl bg-gradient-to-br from-elevated to-bg">
-                          {project.thumbnailUrl && !thumbnailFailed ? (
-                            <img
-                              src={project.thumbnailUrl}
-                              alt={project.name}
-                              className="w-full h-full object-cover object-top"
-                              onError={() => {
-                                setThumbnailErrors((prev) => ({ ...prev, [project.id]: true }));
-                              }}
-                            />
-                          ) : (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="flex flex-col items-center text-muted">
-                                <Laptop className="h-10 w-10 mb-2" />
-                                <span className="text-xs">No preview</span>
-                              </div>
-                            </div>
-                          )}
-
-                          <div className="absolute top-3 left-3 flex items-center gap-1.5">
-                            <span className="inline-flex items-center gap-1 rounded-full bg-surface text-fg px-2 py-1 text-xs font-medium backdrop-blur-sm">
-                              <Laptop className="h-3 w-3" />
-                              {getProjectPlatformLabel(project.platform)}
-                            </span>
-                            {/* Convex usage guardrail badge (managed backends only) */}
-                            {project.backendType === 'platform' && project.convexStatus === 'paused' && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-red-500/90 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm shadow-sm">
-                                <PauseCircle className="h-3 w-3" />
-                                Backend paused
-                              </span>
-                            )}
-                            {project.backendType === 'platform' && project.convexStatus === 'warned' && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/90 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm shadow-sm">
-                                <AlertTriangle className="h-3 w-3" />
-                                High usage
-                              </span>
-                            )}
-                          </div>
-
-                          {project.isPublic && (
-                            <div className="absolute top-3 right-3">
-                              <span className="inline-flex items-center gap-1 rounded-full bg-accent/90 px-2 py-1 text-xs font-medium text-[var(--sand-accent-contrast)] backdrop-blur-sm shadow-sm">
-                                <Globe className="h-3 w-3" />
-                                Public
-                                {(project.starCount ?? 0) > 0 && (
-                                  <>
-                                    <span className="mx-0.5 opacity-60">·</span>
-                                    <Star className="h-3 w-3 fill-current" />
-                                    {project.starCount}
-                                  </>
-                                )}
-                              </span>
-                            </div>
-                          )}
-
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                            <span className="inline-flex items-center gap-2 rounded-full bg-surface px-4 py-2 text-sm font-medium shadow-lg text-fg">
-                              <ExternalLink className="h-4 w-4" />
-                              Open
-                            </span>
-                          </div>
+                    <div className="relative aspect-video overflow-hidden rounded-t-[11px] border-b border-border bg-elevated">
+                      {project.thumbnailUrl && !thumbnailFailed ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={project.thumbnailUrl}
+                          alt=""
+                          className="h-full w-full object-cover object-top"
+                          onError={() => {
+                            setThumbnailErrors((prev) => ({ ...prev, [project.id]: true }));
+                          }}
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-subtle">
+                          <Laptop className="h-7 w-7" strokeWidth={1.5} />
+                          <span className="text-xs">No preview yet</span>
                         </div>
+                      )}
 
-                        <div className="p-4">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <h3 className="font-medium text-fg truncate" title={project.name}>
-                                {project.name}
-                              </h3>
-                              <div className="flex items-center gap-2 mt-1 text-xs text-muted">
-                                <Calendar className="h-3 w-3" />
-                                <span>{formatDate(project.lastOpened)}</span>
-                                <span className="opacity-40">•</span>
-                                <span className="truncate">{project.model}</span>
-                              </div>
-                            </div>
+                      <div className="absolute left-2.5 top-2.5 flex items-center gap-1.5">
+                        <Badge className="bg-bg/90 text-fg backdrop-blur-sm">
+                          {getProjectPlatformLabel(project.platform)}
+                        </Badge>
+                        {/* Convex usage guardrail badge (managed backends only) */}
+                        {project.backendType === 'platform' && project.convexStatus === 'paused' && (
+                          <Badge tone="danger">
+                            <PauseCircle className="h-3 w-3" />
+                            Backend paused
+                          </Badge>
+                        )}
+                        {project.backendType === 'platform' && project.convexStatus === 'warned' && (
+                          <Badge tone="warning">
+                            <AlertTriangle className="h-3 w-3" />
+                            High usage
+                          </Badge>
+                        )}
+                      </div>
 
-                            <div className="relative">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenMenuId(openMenuId === project.id ? null : project.id);
-                                }}
-                                className="inline-flex items-center justify-center h-8 w-8 rounded-full hover:bg-elevated transition"
-                                aria-label="Open project actions"
-                              >
-                                <MoreVertical className="h-4 w-4 text-muted" />
-                              </button>
+                      {project.isPublic && (
+                        <div className="absolute right-2.5 top-2.5">
+                          <Badge tone="accent" className="bg-bg/90 backdrop-blur-sm">
+                            <Globe className="h-3 w-3" />
+                            Public
+                            {(project.starCount ?? 0) > 0 && (
+                              <>
+                                <span className="opacity-50">·</span>
+                                <Star className="h-3 w-3 fill-current" />
+                                {project.starCount}
+                              </>
+                            )}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
 
-                              {openMenuId === project.id && (
-                                <div
-                                  className="absolute right-0 top-full mt-1 w-60 rounded-xl border border-border bg-surface shadow-lg z-50 py-1"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <button
-                                    onClick={() => openProject(project.id)}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-fg hover:bg-elevated"
-                                  >
-                                    <ExternalLink className="h-4 w-4" />
-                                    Open
-                                  </button>
-                                  <button
-                                    onClick={() => openDatabaseManager(project.id)}
-                                    disabled={!hasDatabase}
-                                    className={cn(
-                                      'w-full flex items-center gap-2 px-3 py-2 text-sm',
-                                      hasDatabase
-                                        ? 'text-fg hover:bg-elevated'
-                                        : 'text-muted cursor-not-allowed opacity-60'
-                                    )}
-                                  >
-                                    <Database className="h-4 w-4" />
-                                    Open Database Manager
-                                  </button>
-                                  {/* Public visibility is controlled from the
-                                      project's Publish popover (deploy-gated), not here. */}
-                                  {project.isPublic && project.publicSlug && (
+                    <div className="flex items-start justify-between gap-2 p-4">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-sm font-medium text-fg" title={project.name}>
+                          {project.name}
+                        </h3>
+                        <p className="mt-1 truncate text-xs text-muted">
+                          {formatDate(project.lastOpened)}
+                          <span className="mx-1.5 text-subtle">·</span>
+                          {modelLabel}
+                        </p>
+                      </div>
+
+                      <div className="relative -mr-1.5 -mt-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenMenuId(openMenuId === project.id ? null : project.id);
+                          }}
+                          className={buttonClass({ variant: 'ghost', size: 'icon-sm' })}
+                          aria-label="Open project actions"
+                          aria-haspopup="menu"
+                          aria-expanded={openMenuId === project.id}
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </button>
+
+                        {openMenuId === project.id && (
+                          <Menu
+                            className="absolute right-0 top-full z-50 mt-1 w-56"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MenuItem onClick={() => openProject(project.id)}>
+                              <ExternalLink className="h-4 w-4 text-muted" />
+                              Open
+                            </MenuItem>
+                            <MenuItem onClick={() => openDatabaseManager(project.id)} disabled={!hasDatabase}>
+                              <Database className="h-4 w-4 text-muted" />
+                              Open database
+                            </MenuItem>
+                            {/* Public visibility is controlled from the
+                                project's Publish popover (deploy-gated), not here. */}
+                            {project.isPublic && project.publicSlug && (
+                              <>
+                                <MenuSeparator />
+                                <MenuItem onClick={() => handleCopyShareLink(project)}>
+                                  {copiedSlug === project.id ? (
                                     <>
-                                      <div className="my-1 h-px bg-border" />
-                                      <button
-                                        onClick={() => handleCopyShareLink(project)}
-                                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-fg hover:bg-elevated"
-                                      >
-                                        {copiedSlug === project.id ? (
-                                          <>
-                                            <Check className="h-4 w-4" />
-                                            Copied!
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Copy className="h-4 w-4" />
-                                            Copy share link
-                                          </>
-                                        )}
-                                      </button>
-                                      <a
-                                        href={`/p/${project.publicSlug}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={() => setOpenMenuId(null)}
-                                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-fg hover:bg-elevated"
-                                      >
-                                        <ExternalLink className="h-4 w-4" />
-                                        View public page
-                                      </a>
+                                      <Check className="h-4 w-4 text-success" />
+                                      Link copied
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="h-4 w-4 text-muted" />
+                                      Copy share link
                                     </>
                                   )}
-                                  <div className="my-1 h-px bg-border" />
-                                  <button
-                                    onClick={() => handleDeleteProject(project.id)}
-                                    disabled={deletingId === project.id}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-500/10"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                    {deletingId === project.id ? 'Deleting...' : 'Delete'}
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
+                                </MenuItem>
+                                <a
+                                  href={`/p/${project.publicSlug}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  role="menuitem"
+                                  onClick={() => setOpenMenuId(null)}
+                                  className={menuItemClass}
+                                >
+                                  <Globe className="h-4 w-4 text-muted" />
+                                  View public page
+                                </a>
+                              </>
+                            )}
+                            <MenuSeparator />
+                            <MenuItem
+                              tone="danger"
+                              onClick={() => handleDeleteProject(project.id)}
+                              disabled={deletingId === project.id}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              {deletingId === project.id ? 'Deleting…' : 'Delete project'}
+                            </MenuItem>
+                          </Menu>
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </SignedIn>
-          </div>
-        </main>
-        {openMenuId && (
-          <div className="fixed inset-0 z-30" onClick={() => setOpenMenuId(null)} />
-        )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </SignedIn>
       </div>
 
-      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
-    </div>
+      {openMenuId && (
+        <div className="fixed inset-0 z-30" onClick={() => setOpenMenuId(null)} />
+      )}
+    </AppShell>
   );
 }

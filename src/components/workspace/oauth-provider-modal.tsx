@@ -240,8 +240,8 @@ export function OAuthProviderModal({
         >
           {copiedValue === key ? (
             <>
-              <Check size={14} className="text-green-400" />
-              <span className="text-[11px] text-green-400">Copied</span>
+              <Check size={14} className="text-success" />
+              <span className="text-[11px] text-success">Copied</span>
             </>
           ) : (
             <Copy size={14} />
@@ -376,7 +376,7 @@ export function OAuthProviderModal({
                         htmlFor={inputId}
                         className={cn(
                           "flex items-center gap-2 rounded-lg border bg-elevated px-3 py-2 text-sm cursor-pointer transition-colors",
-                          fieldError ? "border-red-400/60" : "border-border hover:border-accent/50",
+                          fieldError ? "border-danger-border" : "border-border hover:border-accent/50",
                         )}
                       >
                         <FileUp size={14} className="text-muted shrink-0" />
@@ -395,7 +395,7 @@ export function OAuthProviderModal({
                         />
                       </label>
                       {field.help && <p id={helpId} className="text-[11px] text-muted leading-relaxed">{field.help}</p>}
-                      {fieldError && <p id={fieldErrorId} className="text-[11px] text-red-400 leading-relaxed">{fieldError}</p>}
+                      {fieldError && <p id={fieldErrorId} className="text-[11px] text-danger leading-relaxed">{fieldError}</p>}
                     </div>
                   );
                 }
@@ -417,13 +417,13 @@ export function OAuthProviderModal({
                       aria-describedby={describedBy}
                       className={cn(
                         "w-full bg-elevated border rounded-lg px-3 py-2 text-sm text-fg placeholder:text-muted outline-none focus:ring-1 focus:ring-accent/50 focus:border-accent/50 transition-colors",
-                        fieldError ? "border-red-400/60" : "border-border",
+                        fieldError ? "border-danger-border" : "border-border",
                       )}
                       autoComplete="off"
                       spellCheck={false}
                     />
                     {field.help && <p id={helpId} className="text-[11px] text-muted leading-relaxed">{field.help}</p>}
-                    {fieldError && <p id={fieldErrorId} className="text-[11px] text-red-400 leading-relaxed">{fieldError}</p>}
+                    {fieldError && <p id={fieldErrorId} className="text-[11px] text-danger leading-relaxed">{fieldError}</p>}
                   </div>
                 );
               })}
@@ -444,7 +444,7 @@ export function OAuthProviderModal({
 
           {/* Error banner */}
           {error && (
-            <p id={errorId} role="alert" className="text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">
+            <p id={errorId} role="alert" className="text-xs text-danger bg-danger-soft border border-danger-border rounded-lg px-3 py-2">
               {error}
             </p>
           )}

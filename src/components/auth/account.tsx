@@ -5,7 +5,13 @@ import Image from "next/image";
 import { authClient } from "@/lib/auth/client";
 import { ChangePlanModal } from "./change-plan";
 import { PaymentMethodForm } from "./payment-method";
-import { fieldClass, primaryClass } from "@/components/auth/sign-in";
+import { CreditCard, ExternalLink, ShieldCheck, UserRound } from "lucide-react";
+import { AppShell } from "@/components/site/AppShell";
+import { Badge, Notice } from "@/components/ui/badge";
+import { Button, buttonClass } from "@/components/ui/button";
+import { Card, SectionHeader } from "@/components/ui/card";
+import { Field, TextInput } from "@/components/ui/field";
+import { cn } from "@/lib/utils";
 interface Session {
   id: string;
   token: string;
@@ -219,95 +225,104 @@ export function AccountPanel({
     }
   }
   if (isPending)
-    return <main className="p-12 text-center">Loading your account…</main>;
+    return (
+      <Frame embedded={embedded}>
+        <p className="py-16 text-center text-sm text-muted">Loading your account…</p>
+      </Frame>
+    );
   if (!session)
     return (
-      <main className="p-12 text-center">
-        <Link href="/sign-in?redirect_url=%2Faccount">
-          Sign in to manage your account
-        </Link>
-      </main>
-    );
-  return (
-    <main
-      className={`${embedded ? "" : "min-h-screen p-6"} bg-[var(--color-surface)] text-[var(--sand-text)]`}
-    >
-      <div className="mx-auto max-w-4xl">
-        {changingPlan && (
-          <ChangePlanModal
-            currentPlan={subscription?.plan ?? "free"}
-            currentInterval={subscription?.interval ?? "month"}
-            onClose={() => setChangingPlan(false)}
-            onSaved={(change) => {
-              setMessage(
-                change.scheduled
-                  ? "Your plan change has been scheduled."
-                  : "Your payment was submitted. Updating your plan…",
-              );
-              setChangingPlan(false);
-              refreshBilling();
-              if (!change.scheduled) setPendingPlan(change);
-            }}
-          />
-        )}
-        {!embedded && (
-          <Link
-            href="/projects"
-            className="text-sm text-[var(--sand-text-muted)]"
-          >
-            ← Back to Botflow
+      <Frame embedded={embedded}>
+        <div className="py-16 text-center">
+          <Link href="/sign-in?redirect_url=%2Faccount" className={buttonClass({ variant: "primary" })}>
+            Sign in to manage your account
           </Link>
-        )}
-        <div
-          className={`${embedded ? "" : "mt-8"} grid overflow-hidden rounded-xl border border-[var(--sand-border)] md:grid-cols-[200px_1fr]`}
-        >
-          <aside className="bg-[var(--sand-elevated)] p-6">
-            <h1 className="text-xl font-semibold">Account</h1>
-            <p className="mt-1 text-xs text-[var(--sand-text-muted)]">
-              Manage your account info.
-            </p>
-            <nav className="mt-6 flex flex-col gap-1">
-              {["profile", "security", "billing"].map((t) => (
-                <button
-                  key={t}
-                  className={`rounded-md px-3 py-2 text-left text-sm capitalize ${tab === t ? "bg-[var(--color-surface)] font-medium" : ""}`}
-                  onClick={() => {
-                    setTab(t);
-                    setMessage("");
-                  }}
-                >
-                  {t}
-                </button>
-              ))}
-            </nav>
-          </aside>
-          <section className="space-y-6 p-8">
-            <h2 className="text-xl font-semibold capitalize">
-              {tab === "profile" ? "Profile details" : tab}
-            </h2>
-            {message && (
-              <p
-                role="status"
-                className="rounded-md bg-[var(--sand-elevated)] p-3 text-sm"
+        </div>
+      </Frame>
+    );
+
+  const tabs = [
+    { id: "profile", label: "Profile", icon: UserRound },
+    { id: "security", label: "Security", icon: ShieldCheck },
+    { id: "billing", label: "Billing", icon: CreditCard },
+  ] as const;
+  const socialAccounts = accounts.filter((a) => a.providerId !== "credential");
+  const initial = (session.user.name?.[0] ?? session.user.email?.[0] ?? "U").toUpperCase();
+
+  return (
+    <Frame embedded={embedded}>
+      {changingPlan && (
+        <ChangePlanModal
+          currentPlan={subscription?.plan ?? "free"}
+          currentInterval={subscription?.interval ?? "month"}
+          onClose={() => setChangingPlan(false)}
+          onSaved={(change) => {
+            setMessage(
+              change.scheduled
+                ? "Your plan change has been scheduled."
+                : "Your payment was submitted. Updating your plan…",
+            );
+            setChangingPlan(false);
+            refreshBilling();
+            if (!change.scheduled) setPendingPlan(change);
+          }}
+        />
+      )}
+
+      <div className={cn("grid gap-8 md:grid-cols-[200px_1fr] md:gap-10", embedded && "p-6 sm:p-8")}>
+        <aside>
+          <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
+          <p className="mt-1.5 text-sm text-muted">Your profile, sign-in and billing.</p>
+          <nav aria-label="Account sections" className="mt-6 flex gap-1 md:flex-col">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                aria-current={tab === t.id ? "page" : undefined}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors",
+                  tab === t.id ? "bg-elevated text-fg" : "text-muted hover:bg-elevated/60 hover:text-fg",
+                )}
+                onClick={() => {
+                  setTab(t.id);
+                  setMessage("");
+                }}
               >
-                {message}
-              </p>
-            )}
-            {tab === "profile" && (
-              <>
-                <div className="flex items-center gap-4">
-                  {session.user.image && (
+                <t.icon className="h-4 w-4" strokeWidth={1.75} />
+                {t.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <section className="min-w-0 space-y-6">
+          {message && (
+            <Notice role="status" className="text-fg">
+              {message}
+            </Notice>
+          )}
+
+          {tab === "profile" && (
+            <>
+              <Card className="p-6">
+                <SectionHeader title="Profile" description="How you appear across Botflow." />
+                <div className="mt-5 flex items-center gap-4">
+                  {session.user.image ? (
                     <Image
                       unoptimized
                       width={56}
                       height={56}
                       src={session.user.image}
                       alt="Profile"
-                      className="h-14 w-14 rounded-full object-cover"
+                      className="h-14 w-14 rounded-full border border-border object-cover"
                     />
+                  ) : (
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-elevated text-lg font-medium text-muted">
+                      {initial}
+                    </div>
                   )}
-                  <label className="cursor-pointer text-sm underline">
-                    Update profile image
+                  <label className={buttonClass({ variant: "secondary", size: "sm", className: "cursor-pointer" })}>
+                    Change photo
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
@@ -345,50 +360,57 @@ export function AccountPanel({
                       }),
                     );
                   }}
-                  className="space-y-3"
+                  className="mt-6"
                 >
-                  <label className="block text-sm">
-                    Full name
-                    <input
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      required
-                      className={fieldClass}
-                    />
-                  </label>
-                  <label className="block text-sm">
-                    Username
-                    <input
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      minLength={3}
-                      maxLength={30}
-                      autoComplete="username"
-                      className={fieldClass}
-                    />
-                  </label>
-                  <button disabled={busy} className={primaryClass}>
-                    Save profile
-                  </button>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Full name" htmlFor="account-name">
+                      <TextInput
+                        id="account-name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        required
+                        autoComplete="name"
+                      />
+                    </Field>
+                    <Field label="Username" htmlFor="account-username">
+                      <TextInput
+                        id="account-username"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        minLength={3}
+                        maxLength={30}
+                        autoComplete="username"
+                        placeholder="Optional"
+                      />
+                    </Field>
+                  </div>
+                  <div className="mt-5 flex justify-end">
+                    <Button type="submit" variant="primary" disabled={busy}>
+                      Save changes
+                    </Button>
+                  </div>
                 </form>
-                <div className="border-t border-[var(--sand-border)] pt-6">
-                  <h3 className="font-medium">Email addresses</h3>
+              </Card>
+
+              <Card className="p-6">
+                <SectionHeader title="Email addresses" description="Use any verified address to sign in." />
+                <ul className="mt-4 divide-y divide-border">
                   {emailAddresses.map((address) => (
-                    <div
-                      key={address.email}
-                      className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm"
-                    >
-                      <span>
-                        {address.email} ·{" "}
-                        {address.verified ? "Verified" : "Unverified"}
-                        {address.primary ? " · Primary" : ""}
+                    <li key={address.email} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                      <span className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+                        <span className="truncate">{address.email}</span>
+                        {address.primary && <Badge tone="accent">Primary</Badge>}
+                        <Badge tone={address.verified ? "success" : "warning"}>
+                          {address.verified ? "Verified" : "Unverified"}
+                        </Badge>
                       </span>
                       {!address.primary && (
-                        <div className="flex gap-3">
+                        <span className="flex gap-1">
                           {address.verified && (
-                            <button
+                            <Button
+                              variant="ghost"
+                              size="xs"
                               disabled={busy}
-                              className="underline"
                               onClick={() =>
                                 act(
                                   () => emailAction("primary", address.email),
@@ -397,11 +419,12 @@ export function AccountPanel({
                               }
                             >
                               Make primary
-                            </button>
+                            </Button>
                           )}
-                          <button
+                          <Button
+                            variant="ghost"
+                            size="xs"
                             disabled={busy}
-                            className="underline"
                             onClick={() =>
                               act(
                                 () => emailAction("remove", address.email),
@@ -410,92 +433,148 @@ export function AccountPanel({
                             }
                           >
                             Remove
-                          </button>
-                        </div>
+                          </Button>
+                        </span>
                       )}
-                    </div>
+                    </li>
                   ))}
-                  <form
-                    className="mt-4 space-y-3"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      act(
-                        async () => {
-                          const result = await emailAction(
-                            emailChangePending ? "verify" : "request",
-                            email,
-                            emailChangePending ? emailOtp : undefined,
-                          );
-                          if (!result.error) {
-                            setEmailChangePending(!emailChangePending);
-                            if (emailChangePending) {
-                              setEmail("");
-                              setEmailOtp("");
-                            }
+                </ul>
+                <form
+                  className="mt-2 border-t border-border pt-5"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    act(
+                      async () => {
+                        const result = await emailAction(
+                          emailChangePending ? "verify" : "request",
+                          email,
+                          emailChangePending ? emailOtp : undefined,
+                        );
+                        if (!result.error) {
+                          setEmailChangePending(!emailChangePending);
+                          if (emailChangePending) {
+                            setEmail("");
+                            setEmailOtp("");
                           }
-                          return result;
-                        },
-                        emailChangePending
-                          ? "Email verified. You can now make it primary or use it to sign in."
-                          : "Check your email for a verification code.",
-                      );
-                    }}
-                  >
-                    <label className="block text-sm">
-                      Add email address
-                      <input
+                        }
+                        return result;
+                      },
+                      emailChangePending
+                        ? "Email verified. You can now make it primary or use it to sign in."
+                        : "Check your email for a verification code.",
+                    );
+                  }}
+                >
+                  <div className="flex flex-wrap items-end gap-3">
+                    <Field label="Add an email address" htmlFor="account-email" className="min-w-[220px] flex-1">
+                      <TextInput
+                        id="account-email"
                         type="email"
                         required
                         value={email}
                         readOnly={emailChangePending}
                         onChange={(e) => setEmail(e.target.value)}
-                        className={fieldClass}
+                        placeholder="you@example.com"
                       />
-                    </label>
+                    </Field>
                     {emailChangePending && (
-                      <label className="block text-sm">
-                        Verification code
-                        <input
+                      <Field label="Verification code" htmlFor="account-email-otp" className="w-40">
+                        <TextInput
+                          id="account-email-otp"
                           required
                           value={emailOtp}
                           onChange={(e) => setEmailOtp(e.target.value)}
                           autoComplete="one-time-code"
                           inputMode="numeric"
                           pattern="[0-9]{6}"
-                          className={fieldClass}
+                          placeholder="6 digits"
                         />
-                      </label>
+                      </Field>
                     )}
-                    <button disabled={busy} className={primaryClass}>
-                      {emailChangePending ? "Verify email" : "Add email"}
-                    </button>
-                    {emailChangePending && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        className="ml-3 text-sm underline"
-                        onClick={() => {
-                          setEmailChangePending(false);
-                          setEmailOtp("");
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    )}
-                  </form>
-                </div>
-                <div className="border-t border-[var(--sand-border)] pt-6">
-                  <h3 className="font-medium">Connected accounts</h3>
-                  {accounts
-                    .filter((a) => a.providerId !== "credential")
+                    <div className="flex gap-2">
+                      <Button type="submit" variant="secondary" disabled={busy}>
+                        {emailChangePending ? "Verify email" : "Add email"}
+                      </Button>
+                      {emailChangePending && (
+                        <Button
+                          variant="ghost"
+                          disabled={busy}
+                          onClick={() => {
+                            setEmailChangePending(false);
+                            setEmailOtp("");
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </form>
+              </Card>
+
+              <Card className="p-6">
+                <SectionHeader title="Connected accounts" description="Sign in faster with a provider you already use." />
+                <ul className="mt-4 divide-y divide-border">
+                  {(["google", "github"] as const).map((provider) => {
+                    const linked = socialAccounts.find((a) => a.providerId === provider);
+                    return (
+                      <li key={provider} className="flex items-center justify-between gap-3 py-3">
+                        <span className="flex items-center gap-2 text-sm">
+                          {provider === "google" ? "Google" : "GitHub"}
+                          {linked && <Badge tone="success">Connected</Badge>}
+                        </span>
+                        {linked ? (
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            disabled={busy}
+                            onClick={() =>
+                              act(async () => {
+                                const result = await authClient.unlinkAccount({
+                                  accountId: linked.id,
+                                });
+                                if (!result.error) {
+                                  const updated = await authClient.listAccounts();
+                                  if (updated.data) setAccounts(updated.data);
+                                }
+                                return result;
+                              })
+                            }
+                          >
+                            Disconnect
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="secondary"
+                            size="xs"
+                            disabled={busy}
+                            onClick={() =>
+                              act(() =>
+                                authClient.linkSocial({
+                                  provider,
+                                  callbackURL: "/account",
+                                  errorCallbackURL: "/account",
+                                }),
+                              )
+                            }
+                          >
+                            Connect
+                          </Button>
+                        )}
+                      </li>
+                    );
+                  })}
+                  {socialAccounts
+                    .filter((a) => a.providerId !== "google" && a.providerId !== "github")
                     .map((a) => (
-                      <div
-                        key={a.id}
-                        className="mt-3 flex items-center justify-between text-sm"
-                      >
-                        <span className="capitalize">{a.providerId}</span>
-                        <button
-                          className="underline"
+                      <li key={a.id} className="flex items-center justify-between gap-3 py-3">
+                        <span className="flex items-center gap-2 text-sm capitalize">
+                          {a.providerId}
+                          <Badge tone="success">Connected</Badge>
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="xs"
                           disabled={busy}
                           onClick={() =>
                             act(async () => {
@@ -511,55 +590,33 @@ export function AccountPanel({
                           }
                         >
                           Disconnect
-                        </button>
-                      </div>
+                        </Button>
+                      </li>
                     ))}
-                  <div className="mt-4 flex gap-4">
-                    {(["google", "github"] as const)
-                      .filter((p) => !accounts.some((a) => a.providerId === p))
-                      .map((provider) => (
-                        <button
-                          key={provider}
-                          className="text-sm underline"
-                          onClick={() =>
-                            act(() =>
-                              authClient.linkSocial({
-                                provider,
-                                callbackURL: "/account",
-                                errorCallbackURL: "/account",
-                              }),
-                            )
-                          }
-                        >
-                          Connect {provider === "google" ? "Google" : "GitHub"}
-                        </button>
-                      ))}
-                  </div>
-                </div>
-              </>
-            )}
-            {tab === "security" && (
-              <>
-                {deleteToken && (
-                  <div className="rounded-lg border border-red-500/40 p-4">
-                    <h3 className="font-medium">Confirm account deletion</h3>
-                    <p className="mt-2 text-sm">
-                      Your login, profile, and stored integration secrets will
-                      be permanently removed. Your subscriptions will be
-                      canceled and your projects will no longer be accessible
-                      through this account.
-                    </p>
-                    <label className="mt-3 block text-sm">
-                      Type DELETE to confirm
-                      <input
+                </ul>
+              </Card>
+            </>
+          )}
+
+          {tab === "security" && (
+            <>
+              {deleteToken && (
+                <Card className="border-danger-border bg-danger-soft p-6">
+                  <SectionHeader
+                    title="Confirm account deletion"
+                    description="Your login, profile and stored integration secrets will be permanently removed. Your subscriptions will be canceled and your projects will no longer be accessible through this account."
+                  />
+                  <div className="mt-4 flex flex-wrap items-end gap-3">
+                    <Field label="Type DELETE to confirm" htmlFor="account-delete" className="w-56">
+                      <TextInput
+                        id="account-delete"
                         value={deleteConfirmation}
                         onChange={(e) => setDeleteConfirmation(e.target.value)}
-                        className={fieldClass}
                       />
-                    </label>
-                    <button
+                    </Field>
+                    <Button
+                      variant="danger"
                       disabled={busy || deleteConfirmation !== "DELETE"}
-                      className="mt-3 rounded-md bg-red-600 px-4 py-2 text-sm text-white disabled:opacity-50"
                       onClick={() =>
                         act(async () => {
                           const result = await authClient.deleteUser({
@@ -571,11 +628,15 @@ export function AccountPanel({
                       }
                     >
                       Permanently delete account
-                    </button>
+                    </Button>
                   </div>
-                )}
+                </Card>
+              )}
+
+              <Card className="p-6">
+                <SectionHeader title="Password" description="Changing your password signs out your other devices." />
                 <form
-                  className="space-y-3"
+                  className="mt-5"
                   onSubmit={(e) => {
                     e.preventDefault();
                     act(
@@ -589,70 +650,95 @@ export function AccountPanel({
                     );
                   }}
                 >
-                  <h3 className="font-medium">Password</h3>
-                  <label className="block text-sm">
-                    Current password
-                    <input
-                      type="password"
-                      autoComplete="current-password"
-                      required
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      className={fieldClass}
-                    />
-                  </label>
-                  <label className="block text-sm">
-                    New password
-                    <input
-                      type="password"
-                      autoComplete="new-password"
-                      minLength={8}
-                      maxLength={128}
-                      required
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className={fieldClass}
-                    />
-                  </label>
-                  <button disabled={busy} className={primaryClass}>
-                    Update password
-                  </button>
-                  <button
-                    type="button"
-                    className="text-sm underline"
-                    onClick={() =>
-                      act(
-                        () =>
-                          authClient.requestPasswordReset({
-                            email: session.user.email,
-                            redirectTo: "/sign-in",
-                          }),
-                        "A password reset email has been sent.",
-                      )
-                    }
-                  >
-                    Reset or set a password by email
-                  </button>
-                </form>
-                <div className="border-t border-[var(--sand-border)] pt-6">
-                  <h3 className="font-medium">Active devices</h3>
-                  {sessions.map((s) => (
-                    <div
-                      key={s.id}
-                      className="mt-4 border-b border-[var(--sand-border)] pb-4"
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Current password" htmlFor="account-current-password">
+                      <TextInput
+                        id="account-current-password"
+                        type="password"
+                        autoComplete="current-password"
+                        required
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                      />
+                    </Field>
+                    <Field label="New password" htmlFor="account-new-password" hint="At least 8 characters.">
+                      <TextInput
+                        id="account-new-password"
+                        type="password"
+                        autoComplete="new-password"
+                        minLength={8}
+                        maxLength={128}
+                        required
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                      />
+                    </Field>
+                  </div>
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3"
+                      onClick={() =>
+                        act(
+                          () =>
+                            authClient.requestPasswordReset({
+                              email: session.user.email,
+                              redirectTo: "/sign-in",
+                            }),
+                          "A password reset email has been sent.",
+                        )
+                      }
                     >
-                      <p className="text-sm">
-                        {s.userAgent || "Unknown browser"}{" "}
-                        {s.id === session.session.id ? "· This device" : ""}
-                      </p>
-                      <p className="mt-1 text-xs text-[var(--sand-text-muted)]">
-                        {s.ipAddress} · Expires{" "}
-                        {new Date(s.expiresAt).toLocaleString()}
-                      </p>
+                      Email me a reset link instead
+                    </Button>
+                    <Button type="submit" variant="primary" disabled={busy}>
+                      Update password
+                    </Button>
+                  </div>
+                </form>
+              </Card>
+
+              <Card className="p-6">
+                <SectionHeader
+                  title="Active devices"
+                  description="Where your account is currently signed in."
+                  action={
+                    sessions.length > 1 ? (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() =>
+                          act(
+                            () => authClient.revokeOtherSessions(),
+                            "Other devices signed out",
+                          )
+                        }
+                      >
+                        Sign out all others
+                      </Button>
+                    ) : undefined
+                  }
+                />
+                <ul className="mt-4 divide-y divide-border">
+                  {sessions.map((s) => (
+                    <li key={s.id} className="flex items-center justify-between gap-4 py-3">
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-2 text-sm">
+                          <span className="truncate">{describeDevice(s.userAgent)}</span>
+                          {s.id === session.session.id && <Badge tone="accent">This device</Badge>}
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-muted">
+                          {s.ipAddress ? `${s.ipAddress} · ` : ""}Signed in until{" "}
+                          {new Date(s.expiresAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
+                      </div>
                       {s.id !== session.session.id && (
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="xs"
                           disabled={busy}
-                          className="mt-2 text-sm underline"
                           onClick={() =>
                             act(async () => {
                               const r = await authClient.revokeSession({
@@ -666,114 +752,65 @@ export function AccountPanel({
                             })
                           }
                         >
-                          Sign out this device
-                        </button>
+                          Sign out
+                        </Button>
                       )}
-                    </div>
+                    </li>
                   ))}
-                  <button
-                    disabled={busy}
-                    className="mt-4 text-sm underline"
-                    onClick={() =>
-                      act(
-                        () => authClient.revokeOtherSessions(),
-                        "Other devices signed out",
-                      )
-                    }
-                  >
-                    Sign out all other devices
-                  </button>
-                </div>
-                <section className="border-t border-[var(--sand-border)] pt-6">
-                  <h3 className="font-medium">Delete account</h3>
-                  <p className="mt-2 text-sm text-[var(--sand-text-muted)]">
-                    Permanently remove your account and stored integration
-                    secrets. You will confirm by email before anything is
-                    deleted.
-                  </p>
-                  <button
-                    disabled={busy}
-                    className="mt-3 text-sm text-red-500 underline"
-                    onClick={() =>
-                      act(
-                        () => authClient.deleteUser({ callbackURL: "/" }),
-                        "Check your email to confirm account deletion.",
-                      )
-                    }
-                  >
-                    Delete account
-                  </button>
-                </section>
-              </>
-            )}
-            {tab === "billing" && (
-              <>
-                <div className="rounded-lg border border-[var(--sand-border)] p-5">
-                  <h3 className="text-lg font-medium capitalize">
-                    {subscription?.plan ?? "free"} plan
-                  </h3>
-                  {subscription && subscription.amount > 0 ? (
-                    <>
-                      <p className="mt-2">
+                </ul>
+              </Card>
+
+              <Card className="p-6">
+                <SectionHeader
+                  title="Delete account"
+                  description="Permanently remove your account and stored integration secrets. You’ll confirm by email before anything is deleted."
+                  action={
+                    <Button
+                      variant="danger-outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() =>
+                        act(
+                          () => authClient.deleteUser({ callbackURL: "/" }),
+                          "Check your email to confirm account deletion.",
+                        )
+                      }
+                    >
+                      Delete account
+                    </Button>
+                  }
+                />
+              </Card>
+            </>
+          )}
+
+          {tab === "billing" && (
+            <>
+              <Card className="p-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-[0.08em] text-subtle">Current plan</p>
+                    <h3 className="mt-1.5 text-xl font-semibold capitalize tracking-tight">
+                      {subscription?.plan ?? "free"}
+                    </h3>
+                    {subscription && subscription.amount > 0 ? (
+                      <p className="mt-1 text-sm text-muted">
                         ${subscription.amount / 100} / {subscription.interval}
-                      </p>
-                      <p className="mt-2 text-sm text-[var(--sand-text-muted)]">
-                        {subscription.cancelAtPeriodEnd
-                          ? "Access ends"
-                          : "Renews"}{" "}
+                        <span className="mx-1.5 text-subtle">·</span>
+                        {subscription.cancelAtPeriodEnd ? "Access ends" : "Renews"}{" "}
                         {new Date(subscription.periodEnd).toLocaleDateString()}
                       </p>
-                    </>
-                  ) : (
-                    <p className="mt-2 text-sm text-[var(--sand-text-muted)]">
-                      No recurring charge
-                    </p>
-                  )}
-                </div>
-                {billingDetails.upcomingPlan && (
-                  <p className="rounded-lg border border-[var(--sand-border)] p-4 text-sm">
-                    Scheduled:{" "}
-                    <span className="capitalize">
-                      {billingDetails.upcomingPlan.plan}
-                    </span>{" "}
-                    at ${billingDetails.upcomingPlan.amount / 100}/
-                    {billingDetails.upcomingPlan.interval}, starting{" "}
-                    {new Date(
-                      billingDetails.upcomingPlan.effectiveAt * 1000,
-                    ).toLocaleDateString()}
-                    .{" "}
-                    <button
-                      className="underline"
-                      disabled={busy}
-                      onClick={() => billingAction("cancel-plan-change")}
-                    >
-                      Keep current plan
-                    </button>
-                  </p>
-                )}
-                {subscription?.migrationPending ? (
-                  <p className="text-sm">
-                    Your existing subscription is being migrated. Your current
-                    price and access are preserved.
-                  </p>
-                ) : (
-                  <div className="space-y-6">
-                    <div className="flex gap-4 text-sm">
-                      <button
-                        disabled={busy}
-                        onClick={
-                          subscription?.amount
-                            ? () => setChangingPlan(true)
-                            : () => location.assign("/pricing")
-                        }
-                        className="underline"
-                      >
-                        Change plan
-                      </button>
+                    ) : (
+                      <p className="mt-1 text-sm text-muted">No recurring charge</p>
+                    )}
+                  </div>
+                  {!subscription?.migrationPending && (
+                    <div className="flex flex-wrap gap-2">
                       {subscription && subscription.amount > 0 && (
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           disabled={busy}
-                          className="underline"
                           onClick={() =>
                             billingAction(
                               subscription.cancelAtPeriodEnd
@@ -784,106 +821,203 @@ export function AccountPanel({
                         >
                           {subscription.cancelAtPeriodEnd
                             ? "Resume subscription"
-                            : "Cancel at end of billing period"}
-                        </button>
+                            : "Cancel subscription"}
+                        </Button>
                       )}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={busy}
+                        onClick={
+                          subscription?.amount
+                            ? () => setChangingPlan(true)
+                            : () => location.assign("/pricing")
+                        }
+                      >
+                        {subscription?.amount ? "Change plan" : "Upgrade"}
+                      </Button>
                     </div>
-                    <section className="border-t border-[var(--sand-border)] pt-5">
-                      <h3 className="font-medium">Payment methods</h3>
-                      {billingDetails.paymentMethods.map((card) => (
-                        <div key={card.id} className="mt-3 text-sm">
-                          <p className="capitalize">
-                            {card.brand} •••• {card.last4} · {card.expiryMonth}/
-                            {card.expiryYear}{" "}
-                            {card.isDefault ? "· Default" : ""}
-                          </p>
-                          <div className="mt-2 flex gap-4 text-xs">
-                            {!card.isDefault && (
-                              <button
+                  )}
+                </div>
+                {billingDetails.upcomingPlan && (
+                  <Notice tone="info" className="mt-5 flex flex-wrap items-center justify-between gap-3 text-fg">
+                    <span>
+                      Switching to{" "}
+                      <span className="font-medium capitalize">{billingDetails.upcomingPlan.plan}</span> at $
+                      {billingDetails.upcomingPlan.amount / 100}/{billingDetails.upcomingPlan.interval} on{" "}
+                      {new Date(
+                        billingDetails.upcomingPlan.effectiveAt * 1000,
+                      ).toLocaleDateString()}
+                      .
+                    </span>
+                    <Button
+                      variant="secondary"
+                      size="xs"
+                      disabled={busy}
+                      onClick={() => billingAction("cancel-plan-change")}
+                    >
+                      Keep current plan
+                    </Button>
+                  </Notice>
+                )}
+                {subscription?.migrationPending && (
+                  <Notice className="mt-5 text-fg">
+                    Your existing subscription is being migrated. Your current price and access are preserved.
+                  </Notice>
+                )}
+              </Card>
+
+              {!subscription?.migrationPending && (
+                <>
+                  <Card className="p-6">
+                    <SectionHeader
+                      title="Payment methods"
+                      action={
+                        !paymentSecret ? (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => billingAction("setup-payment")}
+                          >
+                            Add payment method
+                          </Button>
+                        ) : undefined
+                      }
+                    />
+                    {billingDetails.paymentMethods.length > 0 ? (
+                      <ul className="mt-4 divide-y divide-border">
+                        {billingDetails.paymentMethods.map((card) => (
+                          <li key={card.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                            <span className="flex items-center gap-2 text-sm">
+                              <span className="capitalize">{card.brand}</span>
+                              <span className="font-mono text-[13px] text-muted">•••• {card.last4}</span>
+                              <span className="text-xs text-muted">
+                                Expires {card.expiryMonth}/{card.expiryYear}
+                              </span>
+                              {card.isDefault && <Badge tone="accent">Default</Badge>}
+                            </span>
+                            <span className="flex gap-1">
+                              {!card.isDefault && (
+                                <Button
+                                  variant="ghost"
+                                  size="xs"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    billingAction("set-default-payment", card.id)
+                                  }
+                                >
+                                  Make default
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="xs"
                                 disabled={busy}
-                                className="underline"
                                 onClick={() =>
-                                  billingAction("set-default-payment", card.id)
+                                  billingAction("remove-payment", card.id)
                                 }
                               >
-                                Make default
-                              </button>
-                            )}
-                            <button
-                              disabled={busy}
-                              className="underline"
-                              onClick={() =>
-                                billingAction("remove-payment", card.id)
-                              }
+                                Remove
+                              </Button>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      !paymentSecret && <p className="mt-3 text-sm text-muted">No payment method on file.</p>
+                    )}
+                    {paymentSecret && (
+                      <div className="mt-5 border-t border-border pt-5">
+                        <PaymentMethodForm
+                          clientSecret={paymentSecret}
+                          onSaved={() => {
+                            setPaymentSecret("");
+                            refreshBilling();
+                            setMessage("Payment method saved.");
+                          }}
+                        />
+                      </div>
+                    )}
+                  </Card>
+
+                  <Card className="p-6">
+                    <SectionHeader
+                      title="Billing history"
+                      action={
+                        <Link href="/pricing" className={buttonClass({ variant: "ghost", size: "sm" })}>
+                          Compare plans
+                        </Link>
+                      }
+                    />
+                    {billingDetails.invoices.length > 0 ? (
+                      <ul className="mt-4 divide-y divide-border">
+                        {billingDetails.invoices.map((invoice) => (
+                          <li key={invoice.id} className="flex items-center justify-between gap-3 py-3 text-sm">
+                            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <span>{new Date(invoice.created * 1000).toLocaleDateString()}</span>
+                              <span className="tabular-nums text-muted">${invoice.amount / 100}</span>
+                              <Badge tone={invoice.status === "paid" ? "success" : "neutral"} className="capitalize">
+                                {invoice.status}
+                              </Badge>
+                            </span>
+                            <a
+                              href={invoice.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={buttonClass({ variant: "ghost", size: "xs" })}
                             >
-                              Remove
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                      {paymentSecret ? (
-                        <div className="mt-4">
-                          <PaymentMethodForm
-                            clientSecret={paymentSecret}
-                            onSaved={() => {
-                              setPaymentSecret("");
-                              refreshBilling();
-                              setMessage("Payment method saved.");
-                            }}
-                          />
-                        </div>
-                      ) : (
-                        <button
-                          className="mt-4 text-sm underline"
-                          disabled={busy}
-                          onClick={() => billingAction("setup-payment")}
-                        >
-                          Add payment method
-                        </button>
-                      )}
-                    </section>
-                    <section className="border-t border-[var(--sand-border)] pt-5">
-                      <h3 className="font-medium">Billing history</h3>
-                      {billingDetails.invoices.map((invoice) => (
-                        <div
-                          key={invoice.id}
-                          className="mt-3 flex justify-between gap-3 text-sm"
-                        >
-                          <span>
-                            {new Date(
-                              invoice.created * 1000,
-                            ).toLocaleDateString()}{" "}
-                            · ${invoice.amount / 100} · {invoice.status}
-                          </span>
-                          <a
-                            href={invoice.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline"
-                          >
-                            {invoice.kind === "receipt" ? "Receipt" : "Invoice"}
-                          </a>
-                        </div>
-                      ))}
-                      {!billingDetails.invoices.length && (
-                        <p className="mt-3 text-sm text-[var(--sand-text-muted)]">
-                          No payments yet
-                        </p>
-                      )}
-                    </section>
-                  </div>
-                )}
-                <Link
-                  href="/pricing"
-                  className="block text-center text-sm underline"
-                >
-                  Compare plans
-                </Link>
-              </>
-            )}
-          </section>
-        </div>
+                              {invoice.kind === "receipt" ? "Receipt" : "Invoice"}
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-3 text-sm text-muted">No payments yet.</p>
+                    )}
+                  </Card>
+                </>
+              )}
+            </>
+          )}
+        </section>
       </div>
-    </main>
+    </Frame>
   );
+}
+
+/** The /account page gets the shared app shell; the in-app dialog does not. */
+function Frame({ embedded, children }: { embedded: boolean; children: React.ReactNode }) {
+  if (embedded) return <div className="bg-bg text-fg">{children}</div>;
+  return <AppShell width="default">{children}</AppShell>;
+}
+
+/** Turn a raw user-agent string into something a person would recognize. */
+function describeDevice(userAgent?: string | null): string {
+  if (!userAgent) return "Unknown device";
+  const browser = /Edg\//.test(userAgent)
+    ? "Edge"
+    : /OPR\//.test(userAgent)
+      ? "Opera"
+      : /Firefox\//.test(userAgent)
+        ? "Firefox"
+        : /Chrome\//.test(userAgent)
+          ? "Chrome"
+          : /Safari\//.test(userAgent)
+            ? "Safari"
+            : null;
+  const os = /iPhone|iPad/.test(userAgent)
+    ? "iOS"
+    : /Android/.test(userAgent)
+      ? "Android"
+      : /Mac OS X/.test(userAgent)
+        ? "macOS"
+        : /Windows/.test(userAgent)
+          ? "Windows"
+          : /Linux/.test(userAgent)
+            ? "Linux"
+            : null;
+  if (!browser && !os) return userAgent.length > 48 ? `${userAgent.slice(0, 48)}…` : userAgent;
+  return [browser, os].filter(Boolean).join(" on ");
 }

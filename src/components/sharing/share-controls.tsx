@@ -461,7 +461,7 @@ function SharePopover({
               <span
                 className={cn(
                   "text-[10px] font-medium rounded-full px-2 py-0.5 border",
-                  m.status === "pending" ? "text-amber-700 border-amber-300 bg-amber-50" : "text-muted border-border",
+                  m.status === "pending" ? "text-warning border-warning-border bg-warning-soft" : "text-muted border-border",
                 )}
               >
                 {m.status === "pending" ? "Invited" : "Editor"}
@@ -487,7 +487,7 @@ function SharePopover({
                         <button
                           onClick={() => void performRemove(m)}
                           disabled={removingId === m.id}
-                          className="text-red-500 hover:text-red-600 p-0.5"
+                          className="text-danger hover:text-danger p-0.5"
                           title={selfLeave ? "Confirm leave" : "Confirm remove"}
                           aria-label={selfLeave ? "Confirm leave" : "Confirm remove"}
                         >
@@ -499,7 +499,7 @@ function SharePopover({
                   return (
                     <button
                       onClick={() => setConfirmingId(m.id)}
-                      className="text-muted hover:text-red-500 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                      className="text-muted hover:text-danger p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                       title={selfLeave ? "Leave project" : "Remove access"}
                       aria-label={selfLeave ? "Leave project" : "Remove access"}
                     >

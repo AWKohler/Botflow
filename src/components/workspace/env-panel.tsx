@@ -258,7 +258,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
         {!opts.locked && (
           <button
             onClick={() => handleDelete(opts.scope, key)}
-            className="text-muted hover:text-red-400 transition-colors flex-shrink-0"
+            className="text-muted hover:text-danger transition-colors flex-shrink-0"
             title="Delete variable"
           >
             <Trash2 size={14} />
@@ -279,7 +279,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
       </div>
 
       {error && (
-        <div className="text-xs text-red-400 bg-red-400/10 rounded px-2 py-1.5 border border-red-400/20">
+        <div className="text-xs text-danger bg-danger-soft rounded px-2 py-1.5 border border-danger-border">
           {error}
         </div>
       )}
@@ -309,7 +309,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
       {backendAvailable && (
         <section className="space-y-2 pt-3 border-t border-border">
           <div className="flex items-center gap-2">
-            <Server size={13} className="text-emerald-400" />
+            <Server size={13} className="text-success" />
             <span className="text-xs font-semibold text-fg">Backend</span>
           </div>
           <p className="text-[11px] text-muted leading-snug">
@@ -317,7 +317,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
           </p>
 
           {backendError ? (
-            <div className="flex items-start gap-2 text-xs text-amber-300 bg-amber-400/10 rounded px-2 py-1.5 border border-amber-400/20">
+            <div className="flex items-start gap-2 text-xs text-warning bg-warning-soft rounded px-2 py-1.5 border border-warning-border">
               <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
               <span>{backendError}</span>
             </div>

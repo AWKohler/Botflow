@@ -92,8 +92,8 @@ function WebContainerMigrationGate({
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--sand-bg)] text-[var(--sand-text)] px-4">
         <div className="max-w-md text-center space-y-5 p-8 rounded-2xl border border-border bg-white shadow-sm">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-100">
-            <AlertTriangle className="h-7 w-7 text-amber-600" />
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-warning-soft">
+            <AlertTriangle className="h-7 w-7 text-warning" />
           </div>
           <h1 className="text-2xl font-semibold text-neutral-900">Upgrade didn&apos;t finish</h1>
           <p className="text-sm text-neutral-600 leading-relaxed">

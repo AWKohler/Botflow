@@ -180,7 +180,7 @@ export function LoadingState() {
 
 export function ErrorState({ message }: { message: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-red-600/30 bg-red-600/5 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+    <div className="flex items-center gap-2 rounded-xl border border-danger-border bg-danger-soft px-4 py-3 text-sm text-danger">
       <XCircle className="w-4 h-4 shrink-0" />
       {message}
     </div>
@@ -210,7 +210,7 @@ export function StatTile({
       <div
         className={cn(
           'text-2xl font-semibold tracking-tight tabular-nums',
-          accent ? 'text-accent' : warn ? 'text-red-600 dark:text-red-400' : 'text-fg',
+          accent ? 'text-accent' : warn ? 'text-danger' : 'text-fg',
         )}
       >
         {value}
@@ -240,9 +240,9 @@ export function Meter({ pct, label }: { pct: number; label?: string }) {
           className={cn(
             'h-full rounded-full',
             state === 'critical'
-              ? 'bg-red-500'
+              ? 'bg-danger-solid'
               : state === 'warning'
-                ? 'bg-amber-500'
+                ? 'bg-warning-solid'
                 : 'bg-accent',
           )}
           style={{ width: `${clamped}%` }}
@@ -339,9 +339,9 @@ export function StatusPill({ kind, label }: { kind: StatusKind; label: string })
     <span
       className={cn(
         'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-        kind === 'good' && 'bg-emerald-600/10 text-emerald-700 dark:text-emerald-400',
-        kind === 'warning' && 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
-        kind === 'serious' && 'bg-red-600/10 text-red-700 dark:text-red-400',
+        kind === 'good' && 'bg-success-soft text-success',
+        kind === 'warning' && 'bg-warning-soft text-warning',
+        kind === 'serious' && 'bg-danger-soft text-danger',
         kind === 'neutral' && 'bg-soft text-muted',
       )}
     >

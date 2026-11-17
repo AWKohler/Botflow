@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, isToolUIPart, getToolName, type UIMessage } from 'ai';
 import { Markdown } from '@/components/ui/markdown';
-import { ChevronDown, ChevronRight, ArrowUp, X as IconX, Cog, AlertCircle, RotateCcw, Loader2, ListPlus, Check, ImagePlus, Smartphone, PanelLeft, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, ArrowUp, X as IconX, Settings2, Square, AlertCircle, RotateCcw, Loader2, ListPlus, Check, ImagePlus, Smartphone, PanelLeft, Plus } from 'lucide-react';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { cn } from '@/lib/utils';
 import { LiveActions } from '@/components/agent/LiveActions';
@@ -168,7 +168,7 @@ function SubagentStepRow({ step }: { step: SubagentStep }) {
         {step.status === 'running'
           ? <Loader2 size={9} className="animate-spin shrink-0" />
           : step.status === 'error'
-            ? <AlertCircle size={9} className="text-red-500 shrink-0" />
+            ? <AlertCircle size={9} className="text-danger shrink-0" />
             : <Check size={9} className="shrink-0 text-muted" />}
         <span className="font-medium truncate">{step.toolName}</span>
         {open ? <ChevronDown size={10} className="ml-auto shrink-0" /> : <ChevronRight size={10} className="ml-auto shrink-0" />}
@@ -1740,7 +1740,7 @@ function AgentThreadPanel({
     ? claudeCodeUsage.tokens
     : tokenEstimate;
   const tokenRatio = maxTokens > 0 ? displayedTokens / maxTokens : 0;
-  const tokenBarColor = tokenRatio >= 0.9 ? 'bg-red-500' : tokenRatio >= 0.7 ? 'bg-yellow-500' : 'bg-accent';
+  const tokenBarColor = tokenRatio >= 0.9 ? 'bg-danger-solid' : tokenRatio >= 0.7 ? 'bg-warning-solid' : 'bg-accent';
 
   const placeholder = useMemo(() => 'Ask Botflow...', []);
 
@@ -1918,7 +1918,7 @@ function AgentThreadPanel({
         errorContent = (
           <p className="flex-1 text-xs leading-relaxed whitespace-pre-wrap">
             Authentication error. Check your API key in{' '}
-            <button type="button" onClick={() => setShowSettings(true)} className="underline hover:text-red-300">Settings</button>.
+            <button type="button" onClick={() => setShowSettings(true)} className="underline hover:text-danger">Settings</button>.
           </p>
         );
         break;
@@ -1945,7 +1945,7 @@ function AgentThreadPanel({
                   fetch(`/api/projects/${encodeURIComponent(projectId)}/browser-log`, { method: 'DELETE' }).catch(() => {});
                 } catch {}
               }}
-              className="underline hover:text-red-300"
+              className="underline hover:text-danger"
             >
               reset the conversation
             </button>.
@@ -1957,7 +1957,7 @@ function AgentThreadPanel({
     }
 
     return (
-      <div className="flex items-start gap-2.5 rounded-xl px-3.5 py-3 bg-red-500/10 border border-red-500/20 text-red-400">
+      <div className="flex items-start gap-2.5 rounded-xl px-3.5 py-3 bg-danger-soft border border-danger-border text-danger">
         <AlertCircle size={14} className="mt-0.5 shrink-0" />
         {errorContent}
         <div className="flex items-center gap-1 shrink-0">
@@ -1980,7 +1980,7 @@ function AgentThreadPanel({
                   }
                 }
               }}
-              className="text-red-400/60 hover:text-red-400 transition-colors"
+              className="text-danger/60 hover:text-danger transition-colors"
               aria-label="Retry"
               title="Retry"
             >
@@ -1990,7 +1990,7 @@ function AgentThreadPanel({
           <button
             type="button"
             onClick={() => { setAgentError(null); setRetryCountdown(null); }}
-            className="text-red-400/60 hover:text-red-400 transition-colors"
+            className="text-danger/60 hover:text-danger transition-colors"
             aria-label="Dismiss"
           >
             <IconX size={13} />
@@ -2003,7 +2003,7 @@ function AgentThreadPanel({
   return (
     <div className={cn('flex h-full flex-col text-sm bg-surface text-fg p-2.5', className)}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 bg-surface">
+      <div className="flex h-9 items-center justify-between px-2 pb-2 pt-0.5">
         <div className="flex items-center gap-1">
           {/* Threads sheet toggle. -ml-1.5 cancels the hit-area padding so the
               glyph lines up with the header edge, mirroring Settings. */}
@@ -2012,7 +2012,7 @@ function AgentThreadPanel({
             onClick={onOpenThreads}
             title="Chats"
             aria-label="Open chats"
-            className="relative -ml-1.5 flex size-7 items-center justify-center rounded-full text-muted transition-colors hover:bg-soft hover:text-fg"
+            className="relative -ml-1.5 flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg"
           >
             <PanelLeft size={16} />
             {threadsAttention && (
@@ -2028,14 +2028,14 @@ function AgentThreadPanel({
           <button
             type="button"
             onClick={onNewChat}
-            className="flex h-7 items-center gap-1 rounded-full pl-2 pr-2.5 text-xs font-medium text-muted transition-colors hover:bg-soft hover:text-fg"
+            className="flex h-7 items-center gap-1 rounded-md pl-1.5 pr-2 text-xs font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
           >
             <Plus size={14} />
             New chat
           </button>
           <button
             type="button"
-            className="flex h-7 items-center rounded-full px-2.5 text-xs font-medium text-muted transition-colors hover:bg-soft hover:text-fg"
+            className="flex h-7 items-center rounded-md px-2 text-xs font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
             onClick={async () => {
               const confirmed = window.confirm('Reset this chat? This permanently deletes its messages. Your other chats are not affected.');
               if (!confirmed) return;
@@ -2101,8 +2101,14 @@ function AgentThreadPanel({
               </>
             );
           })()}
-          <button onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings" className="text-muted hover:text-fg">
-            <Cog size={16} />
+          <button
+            type="button"
+            onClick={() => setShowSettings(true)}
+            title="Settings"
+            aria-label="Settings"
+            className="-mr-1.5 flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg"
+          >
+            <Settings2 size={16} strokeWidth={1.75} />
           </button>
         </div>
       </div>
@@ -2192,7 +2198,7 @@ function AgentThreadPanel({
                     {otherAuthor.name}
                   </div>
                 )}
-                <div className={cn('rounded-xl px-2 py-3 text-[1.1rem] tracking tight min-w-0 max-w-full overflow-hidden break-words [overflow-wrap:anywhere]', m.role === 'user' ? 'bg-elevated' : '', olderClass)}>
+                <div className={cn('min-w-0 max-w-full overflow-hidden break-words text-[15px] leading-[1.6] [overflow-wrap:anywhere]', m.role === 'user' ? 'rounded-xl border border-border bg-elevated px-3.5 py-2.5' : 'px-1 py-1', olderClass)}>
                 {filteredParts.map((part, i) => {
                   if (part.type === 'text') return <Markdown key={i} content={part.text} />;
                   if (part.type === 'reasoning') {
@@ -2254,7 +2260,7 @@ function AgentThreadPanel({
           return (
             <Fragment key={m.id}>
               {dividerEl}
-              <div className={cn('rounded-xl px-2 py-3 text-[1.1rem] tracking tight min-w-0 max-w-full overflow-hidden break-words [overflow-wrap:anywhere]', olderClass)}>
+              <div className={cn('min-w-0 max-w-full overflow-hidden break-words px-1 py-1 text-[15px] leading-[1.6] [overflow-wrap:anywhere]', olderClass)}>
               {/* Content before the first tool call */}
               {preTimeline.map((group, gi) => (
                 <div key={`pre-${gi}`}>{renderContentGroup(group, `pre-${gi}`)}</div>
@@ -2411,20 +2417,20 @@ function AgentThreadPanel({
 
         {/* Lazy completion warning */}
         {showCompletionWarning && !isAgentWorking && !agentError && (
-          <div className="flex items-center gap-2.5 rounded-xl px-3.5 py-3 bg-yellow-500/10 border border-yellow-500/20 text-yellow-400">
+          <div className="flex items-center gap-2.5 rounded-lg border border-warning-border bg-warning-soft px-3 py-2.5 text-warning">
             <AlertCircle size={14} className="shrink-0" />
-            <p className="flex-1 text-xs leading-relaxed">Agent may not have finished.</p>
+            <p className="flex-1 text-[13px] leading-relaxed text-fg">The agent may have stopped early.</p>
             <button
               type="button"
               onClick={handleReprompt}
-              className="text-xs text-yellow-400 hover:text-yellow-300 underline shrink-0"
+              className="shrink-0 rounded-sm text-[13px] font-medium text-fg underline decoration-border-strong underline-offset-4 hover:decoration-fg"
             >
-              Re-prompt
+              Ask it to continue
             </button>
             <button
               type="button"
               onClick={() => setShowCompletionWarning(false)}
-              className="text-yellow-400/60 hover:text-yellow-400 transition-colors shrink-0"
+              className="shrink-0 rounded text-muted transition-colors hover:text-fg"
               aria-label="Dismiss"
             >
               <IconX size={13} />
@@ -2434,9 +2440,9 @@ function AgentThreadPanel({
 
         {/* Persistent thinking indicator */}
         {isAgentWorking && (
-          <div className="flex items-center gap-2 py-2">
-            <Loader2 size={14} className="animate-spin text-accent" />
-            <span className="text-xs text-muted">Agent is working<span className="animate-pulse">...</span></span>
+          <div className="flex items-center gap-2 px-1 py-2">
+            <Loader2 size={14} className="animate-spin text-muted" />
+            <span className="text-[13px] text-muted">Working…</span>
           </div>
         )}
 
@@ -2445,7 +2451,7 @@ function AgentThreadPanel({
       {/* Compound input card */}
       <form
         onSubmit={(e) => { void onFormSubmit(e); }}
-        className="group flex flex-col rounded-2xl border border-border bg-elevated transition-colors duration-150 ease-in-out relative mt-2"
+        className="group relative mt-2 flex flex-col rounded-xl border border-border bg-bg shadow-sm transition-[border-color,box-shadow] duration-150 focus-within:border-border-strong focus-within:shadow-md"
       >
         {/* Inset top — Live Actions */}
         {actions.length > 0 && (
@@ -2474,7 +2480,7 @@ function AgentThreadPanel({
                   </span>
                   <span className="min-w-0 flex-1 truncate">
                     {q.status === 'failed' ? (
-                      <span className="text-red-400">Couldn&apos;t start: {q.error ?? 'unknown error'}</span>
+                      <span className="text-danger">Couldn&apos;t start: {q.error ?? 'unknown error'}</span>
                     ) : (
                       <>
                         <span className="text-muted">{q.status === 'claimed' ? 'Starting…' : 'Queued'}</span>{' '}
@@ -2500,10 +2506,10 @@ function AgentThreadPanel({
         )}
 
         {/* Textarea */}
-        <div data-state="closed" style={{ cursor: 'text' }} className="px-4 pt-3">
+        <div data-state="closed" style={{ cursor: 'text' }} className="px-3 pt-2.5">
           <div className="relative flex flex-1 items-center">
             <textarea
-              className="flex w-full ring-offset-background placeholder:text-muted focus-visible:outline-none focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none text-[16px] leading-snug placeholder-shown:text-ellipsis placeholder-shown:whitespace-nowrap md:text-base focus-visible:ring-0 focus-visible:ring-offset-0 max-h-[200px] bg-transparent focus:bg-transparent flex-1 m-1 rounded-md p-0"
+              className="m-1 flex max-h-[200px] w-full flex-1 resize-none rounded-md bg-transparent p-0 text-[16px] leading-snug outline-none placeholder:text-subtle placeholder-shown:text-ellipsis placeholder-shown:whitespace-nowrap focus:bg-transparent disabled:cursor-not-allowed disabled:opacity-50 md:text-[15px]"
               id="chatinput"
               placeholder={isAgentWorking ? 'Type to queue a message...' : placeholder}
               maxLength={50000}
@@ -2533,7 +2539,7 @@ function AgentThreadPanel({
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={img.localUrl} alt="" className="w-full h-full object-cover opacity-30" />
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <AlertCircle size={16} className="text-red-400" />
+                        <AlertCircle size={16} className="text-danger" />
                       </div>
                     </>
                   ) : (
@@ -2555,7 +2561,7 @@ function AgentThreadPanel({
         )}
 
         {/* Buttons row */}
-        <div className="flex items-center gap-1 px-4 pb-2">
+        <div className="flex items-center gap-1 px-3 pb-2.5">
           <input
             ref={fileInputRef}
             id="file-upload"
@@ -2572,7 +2578,7 @@ function AgentThreadPanel({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center justify-center size-6 rounded-full text-muted hover:text-foreground transition-colors"
+              className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg"
               title="Attach image"
               aria-label="Attach image"
             >
@@ -2588,7 +2594,7 @@ function AgentThreadPanel({
               type="button"
               onClick={handleCaptureSimShot}
               disabled={!simShotAvailable || capturingSimShot}
-              className="flex items-center justify-center size-6 rounded-full text-muted hover:text-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-muted"
+              className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted"
               title={simShotAvailable ? 'Attach a screenshot of the simulator' : 'Start the simulator to attach a screenshot'}
               aria-label="Attach simulator screenshot"
             >
@@ -2652,7 +2658,7 @@ function AgentThreadPanel({
                 <button
                   id="chatinput-queue-button"
                   type="submit"
-                  className="flex size-6 items-center justify-center rounded-full bg-accent text-accent-foreground transition-colors duration-150 ease-out hover:opacity-80"
+                  className="flex size-7 items-center justify-center rounded-full bg-fg text-bg transition-opacity duration-150 ease-out hover:opacity-85"
                   title="Queue message"
                   aria-label="Queue message"
                 >
@@ -2664,7 +2670,7 @@ function AgentThreadPanel({
                   id="chatinput-stop-button"
                   type="button"
                   className={cn(
-                    'flex size-6 items-center justify-center rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors duration-150 ease-out'
+                    'flex size-7 items-center justify-center rounded-full bg-fg text-bg transition-opacity duration-150 ease-out hover:opacity-85'
                   )}
                   onClick={() => {
                     // Explicit user stop — auto-continue must not undo it.
@@ -2704,15 +2710,15 @@ function AgentThreadPanel({
                   title="Stop"
                   aria-label="Stop"
                 >
-                  <IconX size={18} />
+                  <Square size={11} fill="currentColor" />
                 </button>
               ) : (
                 <button
                   id="chatinput-send-message-button"
                   type="submit"
                   className={cn(
-                    'flex size-6 items-center justify-center rounded-full bg-accent text-accent-foreground transition-opacity duration-150 ease-out',
-                    !input.trim() && pendingImages.length === 0 ? 'disabled:cursor-not-allowed disabled:opacity-50 opacity-50' : ''
+                    'flex size-7 items-center justify-center rounded-full bg-fg text-bg transition-opacity duration-150 ease-out hover:opacity-85',
+                    !input.trim() && pendingImages.length === 0 ? 'opacity-30 disabled:cursor-not-allowed' : ''
                   )}
                   disabled={!input.trim() && pendingImages.length === 0}
                   title="Send"
@@ -2744,7 +2750,7 @@ function AgentThreadPanel({
             <span className={cn(
               'text-[10px] tabular-nums',
               isCompacting ? 'text-accent' :
-              tokenRatio >= 0.9 ? 'text-red-400' : tokenRatio >= 0.7 ? 'text-yellow-400' : 'text-muted'
+              tokenRatio >= 0.9 ? 'text-danger' : tokenRatio >= 0.7 ? 'text-warning' : 'text-muted'
             )}>
               {isCompacting
                 ? 'Compacting…'

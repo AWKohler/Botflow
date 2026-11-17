@@ -102,7 +102,7 @@ export function UsageTab() {
   return (
     <div className="space-y-6">
       {/* Credits ≠ tokens note */}
-      <div className="flex gap-2 items-start rounded-lg bg-soft border border-border px-3 py-2.5">
+      <div className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5">
         <Info className="h-3.5 w-3.5 text-muted mt-0.5 shrink-0" />
         <p className="text-xs text-muted leading-relaxed">
           <span className="font-medium text-fg">Credits ≠ tokens.</span>{' '}
@@ -125,7 +125,7 @@ export function UsageTab() {
                 className="h-full rounded-full transition-all"
                 style={{
                   width: `${data.pct}%`,
-                  backgroundColor: data.pct >= 80 ? '#ef4444' : data.pct >= 60 ? '#f59e0b' : '#22c55e',
+                  backgroundColor: data.pct >= 80 ? 'var(--danger-solid)' : data.pct >= 60 ? 'var(--warning-solid)' : 'var(--success-solid)',
                 }}
               />
             </div>
@@ -140,7 +140,7 @@ export function UsageTab() {
                 className="h-full rounded-full transition-all"
                 style={{
                   width: `${data.monthlyPct}%`,
-                  backgroundColor: data.monthlyPct >= 80 ? '#ef4444' : data.monthlyPct >= 60 ? '#f59e0b' : '#22c55e',
+                  backgroundColor: data.monthlyPct >= 80 ? 'var(--danger-solid)' : data.monthlyPct >= 60 ? 'var(--warning-solid)' : 'var(--success-solid)',
                 }}
               />
             </div>
@@ -154,8 +154,8 @@ export function UsageTab() {
 
       {/* Cache summary */}
       {hasCacheData && (
-        <div className="rounded-xl border border-border px-3 py-3 space-y-1.5">
-          <p className="text-xs font-semibold text-muted uppercase tracking-wide">Prompt cache this month</p>
+        <div className="space-y-2 rounded-lg border border-border px-4 py-3.5">
+          <p className="text-xs font-medium text-muted">Prompt cache this month</p>
           <div className="flex gap-6 text-sm">
             <div>
               <span className="text-muted text-xs">Cache hits</span>
@@ -181,11 +181,11 @@ export function UsageTab() {
       {/* Model breakdown */}
       {data.models.length > 0 && (
         <div>
-          <h3 className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">This month by model</h3>
-          <div className="rounded-xl border border-border overflow-hidden">
+          <h3 className="text-xs font-medium text-muted mb-2">This month by model</h3>
+          <div className="overflow-hidden rounded-lg border border-border">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border bg-surface">
+                <tr className="border-b border-border bg-elevated/60">
                   <th className="text-left px-3 py-2 text-xs font-medium text-muted">Model</th>
                   <th className="text-right px-3 py-2 text-xs font-medium text-muted">Credits</th>
                   <th className="text-right px-3 py-2 text-xs font-medium text-muted">Tokens</th>

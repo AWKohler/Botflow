@@ -15,8 +15,11 @@ import {
   ChevronDown,
   Play,
   X,
+  Loader2,
+  MonitorPlay,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/ui/empty-state";
 import { VisualEditorPanel } from "@/components/workspace/VisualEditorPanel";
 import { PreviewInfo } from "@/lib/preview-store";
 import { buildPreviewUrl } from "@/lib/preview-url";
@@ -1126,7 +1129,7 @@ export function Preview({
         <div class="w-full h-full relative overflow-hidden">
           <iframe srcdoc="${snapshotHtml?.replace(/"/g, '&quot;').replace(/\$/g, '$$$$') || ""}" class="border-0 w-full select-none h-full" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" style="opacity: 0.6;"></iframe>
           <div class="flex flex-col items-center justify-center absolute inset-0 z-[3] bg-black/40 backdrop-blur-[1px]" style="transform-origin: center center;">
-            <button class="flex items-center justify-center w-20 h-20 rounded-full bg-white/90 hover:bg-white hover:scale-110 shadow-2xl transition-all duration-300" onclick="this.innerHTML='<span class=\\'inline-flex h-8 w-8 rounded-full border-4 border-green-600 border-t-transparent animate-spin\\'></span>'">
+            <button class="flex items-center justify-center w-20 h-20 rounded-full bg-white/90 hover:bg-white hover:scale-110 shadow-2xl transition-all duration-300" onclick="this.innerHTML='<span class=\\'inline-flex h-8 w-8 rounded-full border-4 border-success-border border-t-transparent animate-spin\\'></span>'">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M8 5v14l11-7z" fill="#16a34a" stroke="#16a34a" stroke-width="2" stroke-linejoin="round"/>
               </svg>
@@ -1170,11 +1173,11 @@ export function Preview({
                     )}
                   >
                     {isInstalling || isStartingServer ? (
-                      <span className="inline-flex h-8 w-8 rounded-full border-4 border-green-600 border-t-transparent animate-spin" />
+                      <span className="inline-flex h-8 w-8 rounded-full border-4 border-success-border border-t-transparent animate-spin" />
                     ) : (
                       <Play
                         size={32}
-                        className="text-green-600 fill-green-600 ml-1"
+                        className="text-success fill-green-600 ml-1"
                       />
                     )}
                   </button>
@@ -1212,11 +1215,11 @@ export function Preview({
                 )}
               >
                 {isInstalling || isStartingServer ? (
-                  <span className="inline-flex h-10 w-10 rounded-full border-4 border-green-600 border-t-transparent animate-spin" />
+                  <span className="inline-flex h-10 w-10 rounded-full border-4 border-success-border border-t-transparent animate-spin" />
                 ) : (
                   <Play
                     size={40}
-                    className="text-green-600 fill-green-600 ml-1"
+                    className="text-success fill-green-600 ml-1"
                   />
                 )}
               </button>
@@ -1247,54 +1250,40 @@ export function Preview({
 
     // No snapshot available - show default "No Preview Yet" message
     return (
-      <div className="h-full flex items-center justify-center bg-surface text-muted rounded-xl border border-border">
-        <div className="text-center max-w-md px-6">
-          <div className="text-4xl mb-3">🚀</div>
-          <h3 className="text-2xl font-semibold mb-2 text-fg tracking-tight">
-            No Preview Yet
-          </h3>
-          <p className="text-md mb-4 tracking-normal">
-            Start the development server to see your app here. We&apos;ll open
-            the first active port automatically and keep this preview in sync.
-          </p>
-          <div className="flex items-center justify-center gap-2">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={onToggleDevServer}
-              disabled={Boolean(isInstalling) || Boolean(isStartingServer)}
-              className={cn(
-                "inline-flex items-center gap-2 rounded-full px-4",
-                isDevServerRunning
-                  ? "bg-red-600 hover:bg-red-700"
-                  : "bg-green-600 hover:bg-green-700",
-              )}
-            >
-              {isInstalling || isStartingServer ? (
-                <>
-                  <span className="inline-flex h-3 w-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                  <span>{isInstalling ? "Installing…" : "Starting…"}</span>
-                </>
-              ) : isDevServerRunning ? (
-                <>
-                  <span>Stop Dev Server</span>
-                </>
-              ) : (
-                <>
-                  <span>Start Dev Server</span>
-                </>
-              )}
-            </Button>
-          </div>
-          <p className="text-xs mt-3 text-muted">
-            Equivalent command:{" "}
-            <code className="bg-elevated px-1 rounded border border-border">
-              {(platform === "mobile" || platform === "multiplatform")
-                ? "pnpm exec expo start --web"
-                : "pnpm dev"}
-            </code>
-          </p>
-        </div>
+      <div className="flex h-full items-center justify-center rounded-xl border border-border bg-bg">
+        <EmptyState
+          icon={MonitorPlay}
+          title="No preview yet"
+          description="Start the dev server and your app shows up here, kept in sync as the agent works."
+          action={
+            <div className="flex flex-col items-center gap-3">
+              <Button
+                variant={isDevServerRunning ? "secondary" : "primary"}
+                onClick={onToggleDevServer}
+                disabled={Boolean(isInstalling) || Boolean(isStartingServer)}
+              >
+                {isInstalling || isStartingServer ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>{isInstalling ? "Installing…" : "Starting…"}</span>
+                  </>
+                ) : isDevServerRunning ? (
+                  <span>Stop dev server</span>
+                ) : (
+                  <span>Start dev server</span>
+                )}
+              </Button>
+              <p className="text-xs text-subtle">
+                Same as running{" "}
+                <code className="rounded border border-border bg-elevated px-1 py-0.5 font-mono text-[11px] text-muted">
+                  {(platform === "mobile" || platform === "multiplatform")
+                    ? "pnpm exec expo start --web"
+                    : "pnpm dev"}
+                </code>
+              </p>
+            </div>
+          }
+        />
       </div>
     );
   }

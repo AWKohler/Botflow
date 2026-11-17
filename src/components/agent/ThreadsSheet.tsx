@@ -23,8 +23,8 @@ export type { ThreadSummary, QueueItemSummary, ThreadPerson };
 export type ThreadAttention = 'needs_input' | 'error' | 'unread' | 'running';
 
 export const ATTENTION_DOT_CLASS: Record<ThreadAttention, string> = {
-  needs_input: 'bg-amber-500',
-  error: 'bg-red-500',
+  needs_input: 'bg-warning-solid',
+  error: 'bg-danger-solid',
   unread: 'bg-accent',
   running: 'bg-accent animate-pulse',
 };
@@ -240,9 +240,9 @@ function StatusDot({ thread }: { thread: ThreadSummary }) {
     thread.status === 'running'
       ? 'bg-accent animate-pulse'
       : thread.status === 'needs_input'
-        ? 'bg-amber-500'
+        ? 'bg-warning-solid'
         : thread.status === 'error'
-          ? 'bg-red-500'
+          ? 'bg-danger-solid'
           : thread.unread
             ? 'bg-accent'
             : 'bg-transparent';
@@ -323,8 +323,8 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
             {statusText ? (
               <span
                 className={cn(
-                  thread.status === 'needs_input' && 'text-amber-500',
-                  thread.status === 'error' && 'text-red-400',
+                  thread.status === 'needs_input' && 'text-warning',
+                  thread.status === 'error' && 'text-danger',
                   thread.status === 'running' && 'text-accent',
                 )}
               >
@@ -393,7 +393,7 @@ function RowAction({
       aria-label={label}
       className={cn(
         'flex size-6 items-center justify-center rounded-full text-muted transition-colors hover:bg-soft',
-        danger ? 'hover:text-red-400' : 'hover:text-fg',
+        danger ? 'hover:text-danger' : 'hover:text-fg',
       )}
     >
       {children}
@@ -524,7 +524,7 @@ export function ThreadsSheet({
         </div>
 
         <div className="modern-scrollbar flex-1 overflow-y-auto px-2 pb-3">
-          {error && <p className="px-2 py-3 text-xs text-red-400">{error}</p>}
+          {error && <p className="px-2 py-3 text-xs text-danger">{error}</p>}
           {!threads && !error && (
             <div className="space-y-2 px-2 py-2">
               {[0, 1, 2].map((i) => (

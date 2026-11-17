@@ -477,27 +477,27 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
           This prevents backdrop-filter from creating a containing block that
           traps Clerk's checkout panel (position:fixed) inside our modal. */}
       <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
         onClick={handleClose}
       />
       <div
         className={cn(
-          'relative w-full rounded-2xl border border-border bg-bg shadow-xl max-h-[90vh] flex flex-col overflow-hidden transition-all duration-200',
+          'relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl transition-[max-width] duration-200',
           isSubscriptionTab ? 'max-w-5xl' : activeTab === 'usage' ? 'max-w-xl' : 'max-w-lg'
         )}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 border-b border-border flex-shrink-0 gap-2">
-          <div className="flex items-center gap-2 sm:gap-6 min-w-0">
-            <h2 className="text-sm sm:text-lg font-semibold text-fg shrink-0">Settings</h2>
-            <div className="flex items-center gap-0.5 sm:gap-1">
+        <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-5">
+            <h2 className="shrink-0 text-base font-semibold text-fg">Settings</h2>
+            <div role="tablist" className="flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5">
               <button
                 onClick={() => setActiveTab('usage')}
                 className={cn(
-                  'px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap',
+                  'h-7 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-[background-color,color,box-shadow] sm:px-3',
                   activeTab === 'usage'
-                    ? 'bg-elevated text-fg'
+                    ? 'bg-bg text-fg shadow-sm'
                     : 'text-muted hover:text-fg'
                 )}
               >
@@ -506,9 +506,9 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
               <button
                 onClick={() => setActiveTab('connections')}
                 className={cn(
-                  'hidden sm:block px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap',
+                  'hidden h-7 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-[background-color,color,box-shadow] sm:block sm:px-3',
                   activeTab === 'connections'
-                    ? 'bg-elevated text-fg'
+                    ? 'bg-bg text-fg shadow-sm'
                     : 'text-muted hover:text-fg'
                 )}
               >
@@ -517,9 +517,9 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
               <button
                 onClick={() => setActiveTab('subscription')}
                 className={cn(
-                  'px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap',
+                  'h-7 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-[background-color,color,box-shadow] sm:px-3',
                   activeTab === 'subscription'
-                    ? 'bg-elevated text-fg'
+                    ? 'bg-bg text-fg shadow-sm'
                     : 'text-muted hover:text-fg'
                 )}
               >
@@ -529,19 +529,20 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
           </div>
           <button
             onClick={handleClose}
-            className="shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-full hover:bg-elevated transition"
+            aria-label="Close settings"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-fg"
           >
-            <X className="h-4 w-4 text-muted" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Scrollable body */}
-        <div className="px-3 sm:px-6 py-4 sm:py-5 overflow-y-auto flex-1">
+        <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
           <SignedOut>
             <div className="rounded-xl border border-border p-6">
               <p className="mb-4 text-sm text-muted">You need to sign in to manage settings.</p>
               <SignInButton>
-                <button className="inline-flex items-center rounded-lg border border-border bg-bg px-3.5 py-2 text-sm font-medium shadow-sm hover:bg-surface transition">
+                <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-bg px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50">
                   Sign in
                 </button>
               </SignInButton>
@@ -570,7 +571,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                       href="/pricing"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 rounded-xl bg-fg px-4 py-2.5 text-sm font-medium text-bg shadow hover:opacity-90 transition"
+                      className="inline-flex h-9 items-center gap-2 rounded-lg bg-fg px-3.5 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                     >
                       Manage subscription
                       <ExternalLink className="h-3.5 w-3.5" />
@@ -594,9 +595,9 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
             {activeTab === 'connections' && (
               <>
                 {loading ? (
-                  <div className="py-8 text-center text-sm text-muted">Loading…</div>
+                  <div className="flex items-center justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted" /></div>
                 ) : (
-                  <div className="space-y-8">
+                  <div className="divide-y divide-border [&>div]:py-6 [&>div:first-child]:pt-0 [&>div:last-child]:pb-0">
 
                     {/* ── Convex OAuth section ── */}
                     <div>
@@ -609,7 +610,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                           </p>
                         </div>
                         {hasConvexOAuth && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-medium text-green-600 border border-green-500/30 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
                             <CheckCircle2 className="h-3 w-3" /> Connected
                           </span>
                         )}
@@ -619,7 +620,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                         <button
                           onClick={startConvexOAuth}
                           disabled={convexConnecting}
-                          className="inline-flex items-center gap-2 rounded-lg border border-border bg-bg px-3.5 py-2 text-sm font-medium text-fg shadow-sm hover:bg-surface transition disabled:opacity-50"
+                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-bg px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
                         >
                           {convexConnecting ? (
                             <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting&hellip;</>
@@ -628,7 +629,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                       ) : (
                         <button
                           onClick={disconnectConvexOAuth}
-                          className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/15 px-3.5 py-2 text-sm font-medium text-red-500 hover:bg-red-500/25 transition"
+                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-danger-border px-3.5 text-sm font-medium text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
                         >
                           Disconnect
                         </button>
@@ -646,16 +647,16 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                           </p>
                         </div>
                         {hasCodexOAuth && codexOAuthStep === 'idle' ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-medium text-green-600 border border-green-500/30 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
                             <CheckCircle2 className="h-3 w-3" /> Connected
                           </span>
                         ) : null}
                       </div>
 
                       {/* TODO: remove this warning once resolved */}
-                      {/* <div className="flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2.5 mb-3">
-                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
-                        <p className="text-xs text-amber-700 dark:text-amber-300/80">
+                      {/* <div className="flex items-start gap-2 rounded-lg border border-warning-border bg-warning-soft px-3 py-2.5 mb-3">
+                        <AlertTriangle className="h-3.5 w-3.5 text-warning mt-0.5 flex-shrink-0" />
+                        <p className="text-xs text-warning">
                           Currently facing issues when using models with OpenAI OAuth.
                         </p>
                       </div> */}
@@ -663,7 +664,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                       {!hasCodexOAuth && codexOAuthStep === 'idle' && (
                         <button
                           onClick={startCodexOAuth}
-                          className="inline-flex items-center gap-2 rounded-lg border border-border bg-bg px-3.5 py-2 text-sm font-medium text-fg shadow-sm hover:bg-surface transition"
+                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-bg px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
                         >
                           Sign in with ChatGPT Codex
                         </button>
@@ -672,14 +673,14 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                       {hasCodexOAuth && codexOAuthStep === 'idle' && (
                         <button
                           onClick={disconnectCodexOAuth}
-                          className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/15 px-3.5 py-2 text-sm font-medium text-red-500 hover:bg-red-500/25 transition"
+                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-danger-border px-3.5 text-sm font-medium text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
                         >
                           Disconnect
                         </button>
                       )}
 
                       {codexOAuthStep === 'success' && (
-                        <div className="flex items-center gap-2 text-sm text-green-700">
+                        <div className="flex items-center gap-2 text-sm text-success">
                           <CheckCircle2 className="h-4 w-4" />
                           Connected successfully!
                           <button
@@ -752,7 +753,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                           </p>
                         </div>
                         {hasClaudeOAuth && oauthStep !== 'idle' && oauthStep !== 'success' ? null : hasClaudeOAuth ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-medium text-green-600 border border-green-500/30 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
                             <CheckCircle2 className="h-3 w-3" /> Connected
                           </span>
                         ) : null}
@@ -761,7 +762,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                       {!hasClaudeOAuth && oauthStep === 'idle' && (
                         <button
                           onClick={startOAuthFlow}
-                          className="inline-flex items-center gap-2 rounded-lg border border-border bg-bg px-3.5 py-2 text-sm font-medium text-fg shadow-sm hover:bg-surface transition"
+                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-bg px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
                         >
                           Connect with Claude Code
                         </button>
@@ -770,14 +771,14 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                       {hasClaudeOAuth && oauthStep === 'idle' && (
                         <button
                           onClick={disconnectOAuth}
-                          className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/15 px-3.5 py-2 text-sm font-medium text-red-500 hover:bg-red-500/25 transition"
+                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-danger-border px-3.5 text-sm font-medium text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
                         >
                           Disconnect
                         </button>
                       )}
 
                       {oauthStep === 'success' && (
-                        <div className="flex items-center gap-2 text-sm text-green-700">
+                        <div className="flex items-center gap-2 text-sm text-success">
                           <CheckCircle2 className="h-4 w-4" />
                           Connected successfully!
                           <button
@@ -803,7 +804,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                             </code>
                           </p>
                           {oauthError && (
-                            <p className="text-xs text-red-600 font-medium">{oauthError}</p>
+                            <p className="text-xs text-danger font-medium">{oauthError}</p>
                           )}
                           <div className="flex gap-2">
                             <Input
@@ -812,13 +813,13 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               value={oauthCode}
                               onChange={e => setOauthCode(e.target.value)}
                               onKeyDown={e => { if (e.key === 'Enter') exchangeCode(); }}
-                              className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:ring-2 focus:ring-border"
+                              className="flex-1 rounded-lg border border-border bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
                               disabled={oauthStep === 'exchanging'}
                             />
                             <button
                               onClick={exchangeCode}
                               disabled={!oauthCode.trim() || oauthStep === 'exchanging'}
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-fg px-3.5 py-2 text-sm font-medium text-bg shadow hover:opacity-90 disabled:opacity-40 transition"
+                              className="inline-flex h-9 items-center gap-2 rounded-lg bg-fg px-3.5 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                             >
                               {oauthStep === 'exchanging' ? (
                                 <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting…</>
@@ -849,12 +850,12 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                       <p className="text-xs text-muted mb-4">
                         Bring your own keys. Each key is saved independently — adding one won&apos;t affect the others.
                         {hasCodexOAuth && (
-                          <span className="ml-1 text-green-700 font-medium">
+                          <span className="ml-1 text-success font-medium">
                             Codex OAuth is active — OpenAI API key is used as fallback only.
                           </span>
                         )}
                         {ANTHROPIC_OAUTH_ENABLED && hasClaudeOAuth && (
-                          <span className="ml-1 text-green-700 font-medium">
+                          <span className="ml-1 text-success font-medium">
                             Claude Code OAuth is active — Anthropic API key is used as fallback only.
                           </span>
                         )}
@@ -865,17 +866,17 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                             <label className="flex items-center gap-2 text-sm font-medium text-fg mb-1.5">
                               {label}
                               {hasKey[provider] && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 border border-green-500/30">
+                                <span className="inline-flex items-center gap-1 rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
                                   Saved
                                 </span>
                               )}
                               {provider === 'openai' && hasCodexOAuth && (
-                                <span className="inline-flex items-center rounded-full bg-elevated px-2 py-0.5 text-xs text-muted">
+                                <span className="inline-flex items-center rounded-full border border-border bg-elevated px-2 py-0.5 text-[11px] font-medium text-muted">
                                   fallback
                                 </span>
                               )}
                               {ANTHROPIC_OAUTH_ENABLED && provider === 'anthropic' && hasClaudeOAuth && (
-                                <span className="inline-flex items-center rounded-full bg-elevated px-2 py-0.5 text-xs text-muted">
+                                <span className="inline-flex items-center rounded-full border border-border bg-elevated px-2 py-0.5 text-[11px] font-medium text-muted">
                                   fallback
                                 </span>
                               )}
@@ -887,14 +888,14 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                 value={keys[provider]}
                                 onChange={e => setKeys(prev => ({ ...prev, [provider]: e.target.value }))}
                                 onKeyDown={e => { if (e.key === 'Enter') saveKey(provider); }}
-                                className="flex-1 rounded-lg border border-border bg-bg text-fg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border"
+                                className="flex-1 rounded-lg border border-border bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
                               />
                               {hasKey[provider] && (
                                 <button
                                   onClick={() => removeKey(provider)}
                                   disabled={removingKey === provider || savingKey === provider}
                                   title="Remove key"
-                                  className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-red-500/30 bg-red-500/15 text-red-500 hover:bg-red-500/25 disabled:opacity-40 transition"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:border-danger-border hover:bg-danger-soft hover:text-danger disabled:opacity-40"
                                 >
                                   {removingKey === provider
                                     ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -904,7 +905,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               <button
                                 onClick={() => saveKey(provider)}
                                 disabled={!keys[provider].trim() || savingKey === provider || removingKey === provider}
-                                className="inline-flex items-center rounded-lg bg-fg px-3.5 py-2 text-sm font-medium text-bg shadow hover:opacity-90 disabled:opacity-40 transition"
+                                className="inline-flex h-9 items-center gap-2 rounded-lg bg-fg px-3.5 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                               >
                                 {savingKey === provider ? 'Saving…' : 'Save'}
                               </button>
@@ -925,7 +926,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                           </p>
                         </div>
                         {appleConnected && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-medium text-green-600 border border-green-500/30 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
                             <CheckCircle2 className="h-3 w-3" /> Connected
                           </span>
                         )}
@@ -940,7 +941,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                           <button
                             onClick={disconnectApple}
                             disabled={appleDisconnecting}
-                            className="ml-auto inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/15 px-3.5 py-2 text-sm font-medium text-red-500 hover:bg-red-500/25 disabled:opacity-50 transition"
+                            className="ml-auto inline-flex h-9 items-center gap-2 rounded-lg border border-danger-border px-3.5 text-sm font-medium text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
                           >
                             {appleDisconnecting ? (
                               <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Disconnecting&hellip;</>
@@ -952,8 +953,8 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                           {/* Free Apple IDs never see the Integrations page — lead
                               with the paid-membership requirement or the link below
                               dead-ends for anyone not enrolled. */}
-                          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
-                            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-400" />
+                          <div className="flex items-start gap-2 rounded-lg border border-warning-border bg-warning-soft px-3 py-2.5">
+                            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-warning" />
                             <p className="text-xs leading-5 text-muted">
                               <span className="font-semibold text-fg">
                                 Requires a paid Apple Developer account (US$99/year).
@@ -1019,7 +1020,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                 placeholder="e.g. 2X9R4HXF34"
                                 value={appleKeyIdInput}
                                 onChange={e => setAppleKeyIdInput(e.target.value)}
-                                className="w-full rounded-lg border border-border bg-bg text-fg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border"
+                                className="w-full rounded-lg border border-border bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
                               />
                             </div>
                             <div>
@@ -1029,7 +1030,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                 placeholder="69a6de7e-…"
                                 value={appleIssuerIdInput}
                                 onChange={e => setAppleIssuerIdInput(e.target.value)}
-                                className="w-full rounded-lg border border-border bg-bg text-fg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border"
+                                className="w-full rounded-lg border border-border bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
                               />
                             </div>
                           </div>
@@ -1042,7 +1043,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               placeholder="e.g. A1B2C3D4E5"
                               value={appleTeamIdInput}
                               onChange={e => setAppleTeamIdInput(e.target.value)}
-                              className="w-full rounded-lg border border-border bg-bg text-fg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border"
+                              className="w-full rounded-lg border border-border bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-border-strong focus:border-accent focus:ring-3 focus:ring-accent/15"
                             />
                             <p className="mt-1 text-[11px] leading-4 text-muted">
                               To set it manually:{' '}
@@ -1059,12 +1060,12 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                             </p>
                           </div>
                           {appleError && (
-                            <p className="text-xs text-red-600 font-medium">{appleError}</p>
+                            <p className="text-xs text-danger font-medium">{appleError}</p>
                           )}
                           <button
                             onClick={saveAppleCredentials}
                             disabled={!appleP8 || !appleKeyIdInput.trim() || !appleIssuerIdInput.trim() || appleSaving}
-                            className="inline-flex items-center gap-2 rounded-lg bg-fg px-3.5 py-2 text-sm font-medium text-bg shadow hover:opacity-90 disabled:opacity-40 transition"
+                            className="inline-flex h-9 items-center gap-2 rounded-lg bg-fg px-3.5 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                           >
                             {appleSaving ? (
                               <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Verifying&hellip;</>

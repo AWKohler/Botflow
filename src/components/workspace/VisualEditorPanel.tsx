@@ -284,7 +284,7 @@ export function VisualEditorPanel({
         <span className="text-[11px] text-muted min-w-[42px] text-right">
           {status === "saving" && "Saving…"}
           {status === "saved" && "Saved"}
-          {status === "error" && <span className="text-red-500">Error</span>}
+          {status === "error" && <span className="text-danger">Error</span>}
         </span>
         <button onClick={onClose} className="text-muted hover:text-fg" title="Close">
           <X size={15} />
@@ -299,7 +299,7 @@ export function VisualEditorPanel({
       ) : (
         <div className="flex-1 overflow-y-auto modern-scrollbar p-3 space-y-4">
           {errorMsg && (
-            <div className="text-[11px] text-red-500 bg-red-500/10 rounded px-2 py-1">
+            <div className="text-[11px] text-danger bg-danger-soft rounded px-2 py-1">
               {errorMsg}
             </div>
           )}
@@ -318,7 +318,7 @@ export function VisualEditorPanel({
                   {c}
                   <button
                     onClick={() => removeClass(c)}
-                    className="text-muted hover:text-red-500"
+                    className="text-muted hover:text-danger"
                     title="Remove"
                   >
                     <X size={11} />

@@ -1,14 +1,18 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { KeyRound } from 'lucide-react';
 import { SignedIn, SignedOut, SignInButton } from '@/components/auth';
+import { AppShell } from '@/components/site/AppShell';
+import { Badge } from '@/components/ui/badge';
+import { Button, buttonClass } from '@/components/ui/button';
+import { Card, PageHeader } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { TextInput } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
 
 export default function SettingsPage() {
   const { toast } = useToast();
-  const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [openaiKey, setOpenaiKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
@@ -51,12 +55,14 @@ export default function SettingsPage() {
       const res = await fetch('/api/user-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // Only send the keys the user typed. An omitted field keeps its saved
+        // value on the server; sending null would clear it.
         body: JSON.stringify({
-          openaiApiKey: openaiKey.trim() || null,
-          anthropicApiKey: anthropicKey.trim() || null,
-          moonshotApiKey: moonshotKey.trim() || null,
-          fireworksApiKey: fireworksKey.trim() || null,
-          xaiApiKey: xaiKey.trim() || null,
+          openaiApiKey: openaiKey.trim() || undefined,
+          anthropicApiKey: anthropicKey.trim() || undefined,
+          moonshotApiKey: moonshotKey.trim() || undefined,
+          fireworksApiKey: fireworksKey.trim() || undefined,
+          xaiApiKey: xaiKey.trim() || undefined,
         }),
       });
       if (res.ok) {
@@ -71,7 +77,7 @@ export default function SettingsPage() {
         setMoonshotKey('');
         setFireworksKey('');
         setXaiKey('');
-        toast({ title: 'Settings saved', description: 'Your API keys have been updated.' });
+        toast({ title: 'Keys saved', description: 'Your API keys have been updated.' });
       } else {
         toast({ title: 'Save failed', description: 'Could not save settings.' });
       }
@@ -82,141 +88,65 @@ export default function SettingsPage() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-white text-neutral-900">
-      <div className="max-w-2xl mx-auto px-6 py-10">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-semibold">Settings</h1>
-          <button
-            className="text-sm text-neutral-600 hover:text-neutral-900 underline"
-            onClick={() => router.back()}
-          >
-            Back
-          </button>
-        </div>
+  const keys = [
+    { id: 'openai', label: 'OpenAI', placeholder: 'sk-…', saved: hasOpenai, value: openaiKey, set: setOpenaiKey },
+    { id: 'anthropic', label: 'Anthropic', placeholder: 'sk-ant-…', saved: hasAnthropic, value: anthropicKey, set: setAnthropicKey },
+    { id: 'moonshot', label: 'Moonshot', placeholder: 'sk-…', saved: hasMoonshot, value: moonshotKey, set: setMoonshotKey },
+    { id: 'fireworks', label: 'Fireworks AI', placeholder: 'fw_…', saved: hasFireworks, value: fireworksKey, set: setFireworksKey },
+    { id: 'xai', label: 'xAI (Grok)', placeholder: 'xai-…', saved: hasXai, value: xaiKey, set: setXaiKey },
+  ];
+  const dirty = keys.some((k) => k.value.trim());
 
+  return (
+    <AppShell width="narrow">
+      <PageHeader
+        title="API keys"
+        description="Bring your own model keys. Add as many providers as you like — keys are stored on the server and never shown again."
+      />
+
+      <div className="mt-8">
         <SignedOut>
-          <div className="rounded-xl border border-black/10 p-6 bg-white">
-            <p className="mb-4">You need to sign in to manage settings.</p>
-            <SignInButton>
-              <button className="inline-flex items-center rounded-lg border border-black/10 bg-white px-3.5 py-2 text-sm font-medium shadow-sm hover:bg-neutral-50 transition">
-                Sign in
-              </button>
-            </SignInButton>
-          </div>
+          <EmptyState
+            className="rounded-xl border border-dashed border-border-strong bg-surface"
+            icon={KeyRound}
+            title="Sign in to manage your keys"
+            action={
+              <SignInButton>
+                <button className={buttonClass({ variant: 'primary' })}>Sign in</button>
+              </SignInButton>
+            }
+          />
         </SignedOut>
 
         <SignedIn>
-          <div className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm">
-            <p className="text-sm text-neutral-600 mb-6">
-              Bring your own keys. Add one or both providers. Keys are stored server-side.
-            </p>
-
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium mb-2">OpenAI API Key</label>
-                <div className="flex items-center gap-2">
-                  <Input
+          <Card>
+            <div className="divide-y divide-border">
+              {keys.map((k) => (
+                <div key={k.id} className="grid gap-2 px-6 py-5 sm:grid-cols-[180px_1fr] sm:items-center sm:gap-6">
+                  <label htmlFor={`key-${k.id}`} className="flex items-center gap-2 text-sm font-medium text-fg">
+                    {k.label}
+                    {k.saved && <Badge tone="success">Saved</Badge>}
+                  </label>
+                  <TextInput
+                    id={`key-${k.id}`}
                     type="password"
-                    placeholder={hasOpenai ? '●●●●●●●● saved' : 'sk-...'}
-                    value={openaiKey}
-                    onChange={(e) => setOpenaiKey(e.target.value)}
-                    className="flex-1 rounded-lg border border-black/10 px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-200"
+                    placeholder={k.saved ? 'Enter a new key to replace the saved one' : k.placeholder}
+                    value={k.value}
+                    onChange={(e) => k.set(e.target.value)}
+                    className="font-mono text-[13px] placeholder:font-sans"
                   />
-                  <button
-                    onClick={save}
-                    disabled={saving}
-                    className="inline-flex items-center rounded-lg bg-black px-3.5 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-50"
-                  >
-                    Save
-                  </button>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Anthropic API Key</label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="password"
-                    placeholder={hasAnthropic ? '●●●●●●●● saved' : 'anthropic-...'}
-                    value={anthropicKey}
-                    onChange={(e) => setAnthropicKey(e.target.value)}
-                    className="flex-1 rounded-lg border border-black/10 px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-200"
-                  />
-                  <button
-                    onClick={save}
-                    disabled={saving}
-                    className="inline-flex items-center rounded-lg bg-black px-3.5 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-50"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Moonshot API Key</label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="password"
-                    placeholder={hasMoonshot ? '●●●●●●●● saved' : 'moonshot-...'}
-                    value={moonshotKey}
-                    onChange={(e) => setMoonshotKey(e.target.value)}
-                    className="flex-1 rounded-lg border border-black/10 px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-200"
-                  />
-                  <button
-                    onClick={save}
-                    disabled={saving}
-                    className="inline-flex items-center rounded-lg bg-black px-3.5 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-50"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Fireworks AI API Key</label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="password"
-                    placeholder={hasFireworks ? '●●●●●●●● saved' : 'fw-...'}
-                    value={fireworksKey}
-                    onChange={(e) => setFireworksKey(e.target.value)}
-                    className="flex-1 rounded-lg border border-black/10 px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-200"
-                  />
-                  <button
-                    onClick={save}
-                    disabled={saving}
-                    className="inline-flex items-center rounded-lg bg-black px-3.5 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-50"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">xAI (Grok) API Key</label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="password"
-                    placeholder={hasXai ? '●●●●●●●● saved' : 'xai-...'}
-                    value={xaiKey}
-                    onChange={(e) => setXaiKey(e.target.value)}
-                    className="flex-1 rounded-lg border border-black/10 px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-200"
-                  />
-                  <button
-                    onClick={save}
-                    disabled={saving}
-                    className="inline-flex items-center rounded-lg bg-black px-3.5 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-50"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
+              ))}
             </div>
-          </div>
+            <div className="flex items-center justify-between gap-4 border-t border-border bg-elevated/50 px-6 py-3.5">
+              <p className="text-xs text-muted">Leave a field empty to keep its current key.</p>
+              <Button variant="primary" onClick={save} disabled={saving || !dirty}>
+                {saving ? 'Saving…' : 'Save keys'}
+              </Button>
+            </div>
+          </Card>
         </SignedIn>
       </div>
-    </div>
+    </AppShell>
   );
 }
-

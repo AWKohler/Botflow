@@ -143,13 +143,13 @@ export function BuildIssuesPanel({
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-border px-3 py-2 text-xs">
         {errorCount > 0 && (
-          <span className="flex items-center gap-1.5 text-red-400">
-            <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
+          <span className="flex items-center gap-1.5 text-danger">
+            <span className="inline-block h-2 w-2 rounded-full bg-danger-solid" />
             {errorCount} {errorCount === 1 ? "error" : "errors"}
           </span>
         )}
         {warningCount > 0 && (
-          <span className="flex items-center gap-1.5 text-amber-400">
+          <span className="flex items-center gap-1.5 text-warning">
             <AlertTriangle size={12} />
             {warningCount} {warningCount === 1 ? "warning" : "warnings"}
           </span>
@@ -187,7 +187,7 @@ export function BuildIssuesPanel({
       <div className="max-h-72 overflow-y-auto">
         {showRawFallback ? (
           <div className="px-3 py-2">
-            <p className="mb-2 text-[11px] text-amber-400">
+            <p className="mb-2 text-[11px] text-warning">
               {failureMessage ??
                 "Build failed but no structured errors were extracted. Showing sanitized build log."}
             </p>
@@ -298,7 +298,7 @@ function DiagnosticRow({
     <div className="group px-3 py-1.5">
       <div className="flex items-start gap-2">
         {/* Severity icon */}
-        <div className={cn("mt-[2px] shrink-0", isError ? "text-red-400" : "text-amber-400")}>
+        <div className={cn("mt-[2px] shrink-0", isError ? "text-danger" : "text-warning")}>
           {isError ? <XCircle size={13} /> : <AlertTriangle size={13} />}
         </div>
         {/* Snippet toggle */}
@@ -373,7 +373,7 @@ function RawLogView({
         lines.map((l, i) => (
           <div
             key={i}
-            className={l.stream === "stderr" ? "text-red-400" : "text-fg/80"}
+            className={l.stream === "stderr" ? "text-danger" : "text-fg/80"}
           >
             {l.line}
           </div>

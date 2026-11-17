@@ -79,7 +79,7 @@ export function FileSearch({ projectId, onOpenFile }: FileSearchProps) {
         </div>
         <div className="mt-1 text-xs text-muted">
           {error
-            ? <span className="text-red-400">{error}</span>
+            ? <span className="text-danger">{error}</span>
             : searching
               ? "Searching…"
               : results.length > 0

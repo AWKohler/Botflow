@@ -89,8 +89,8 @@ export function StripeConnectModal({
                 className={
                   "text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded " +
                   (mode === "live"
-                    ? "bg-red-500/15 text-red-400"
-                    : "bg-amber-500/15 text-amber-400")
+                    ? "bg-danger-soft text-danger"
+                    : "bg-warning-soft text-warning")
                 }
               >
                 {mode} mode

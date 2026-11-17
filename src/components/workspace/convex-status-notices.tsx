@@ -42,7 +42,7 @@ export function ConvexStatusBanner({
 
   if (status === "paused") {
     return (
-      <div className="px-4 py-2 bg-red-900/80 border-b border-red-700 text-white text-xs flex items-center gap-3">
+      <div className="px-4 py-2 bg-red-900/80 border-b border-danger-border text-white text-xs flex items-center gap-3">
         <PauseCircle className="h-4 w-4 shrink-0" />
         <span className="font-semibold shrink-0">Backend paused</span>
         <span className="opacity-80 flex-1 truncate">
@@ -52,7 +52,7 @@ export function ConvexStatusBanner({
         {isOwner ? (
           <a
             href={SUPPORT_MAILTO}
-            className="px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-white text-xs font-medium shrink-0"
+            className="px-2 py-1 rounded bg-danger-solid hover:bg-danger-solid/90 text-white text-xs font-medium shrink-0"
           >
             Contact us
           </a>
@@ -65,7 +65,7 @@ export function ConvexStatusBanner({
 
   if (status === "warned" && !warnDismissed) {
     return (
-      <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 text-amber-400 text-xs flex items-center gap-3">
+      <div className="px-4 py-2 bg-warning-soft border-b border-warning-border text-warning text-xs flex items-center gap-3">
         <AlertTriangle className="h-4 w-4 shrink-0" />
         <span className="font-semibold shrink-0">High backend usage</span>
         <span className="opacity-90 flex-1 truncate">
@@ -74,7 +74,7 @@ export function ConvexStatusBanner({
         </span>
         <button
           onClick={() => setWarnDismissed(true)}
-          className="p-1 rounded hover:bg-amber-500/20 shrink-0"
+          className="p-1 rounded hover:bg-warning-border/60 shrink-0"
           aria-label="Dismiss warning"
         >
           <X className="h-3.5 w-3.5" />
@@ -97,7 +97,7 @@ export function ConvexPausedModal({
     <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4">
       <div className="w-[min(480px,calc(100vw-2rem))] rounded-xl border border-border bg-surface text-fg shadow-2xl">
         <div className="px-5 py-4 border-b border-border flex items-center gap-2.5">
-          <PauseCircle className="h-5 w-5 text-red-400 shrink-0" />
+          <PauseCircle className="h-5 w-5 text-danger shrink-0" />
           <h2 className="font-semibold flex-1">Your backend is paused</h2>
           <button
             onClick={onClose}
