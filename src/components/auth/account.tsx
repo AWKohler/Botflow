@@ -67,7 +67,8 @@ export function AccountPanel() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [sessionsState, setSessionsState] = useState<"loading" | "ready" | "error">("loading");
+  // "stale": the server only lists devices for a recent sign-in.
+  const [sessionsState, setSessionsState] = useState<"loading" | "ready" | "stale" | "error">("loading");
   const [accounts, setAccounts] = useState<
     { id: string; providerId: string; accountId: string }[]
   >([]);
@@ -208,7 +209,8 @@ export function AccountPanel() {
       .listSessions()
       .then((r) => {
         if (r.data) setSessions(r.data as Session[]);
-        setSessionsState(r.data ? "ready" : "error");
+        const notFresh = r.error?.code === "SESSION_NOT_FRESH" || r.error?.status === 403;
+        setSessionsState(r.data ? "ready" : notFresh ? "stale" : "error");
       })
       .catch(() => setSessionsState("error"));
     authClient.listAccounts().then((r) => {
@@ -780,6 +782,19 @@ export function AccountPanel() {
                 </ul>
                 {sessionsState === "loading" && (
                   <p className="mt-2 text-xs text-muted">Checking for other devices…</p>
+                )}
+                {sessionsState === "stale" && (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+                    <p className="text-[13px] text-muted">
+                      To see and sign out your other devices, confirm it’s you by signing in again.
+                    </p>
+                    <Link
+                      href="/sign-in?redirect_url=%2Faccount%3Ftab%3Dsecurity"
+                      className={buttonClass({ variant: "secondary", size: "sm" })}
+                    >
+                      Sign in again
+                    </Link>
+                  </div>
                 )}
                 {sessionsState === "error" && (
                   <p className="mt-2 text-xs text-muted">

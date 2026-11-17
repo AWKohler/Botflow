@@ -358,8 +358,11 @@ export function SandboxedWebWorkspace({
         // sentence (e.g. the at-capacity message) rather than raw JSON.
         let msg = `Failed to start sandbox (status ${sessionRes.status})`;
         try {
-          const body = (await sessionRes.json()) as { error?: string };
-          if (body?.error) msg = body.error;
+          const body = (await sessionRes.json()) as { error?: string; message?: string };
+          // Some errors carry a code in `error` and the sentence in `message`
+          // (rate limits do); show the sentence, never the bare code.
+          if (body?.message) msg = body.message;
+          else if (body?.error) msg = body.error;
         } catch { /* non-JSON body — keep the status fallback */ }
         const err = new Error(msg) as Error & { atCapacity?: boolean };
         err.atCapacity = sessionRes.status === 503;
