@@ -272,8 +272,8 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
     <div className="p-3 text-sm space-y-5 overflow-y-auto modern-scrollbar">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="font-medium text-fg text-xs uppercase tracking-wide">Environment Variables</h3>
-        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={fetchAll} title="Refresh">
+        <h3 className="text-[13px] font-semibold text-fg">Environment variables</h3>
+        <Button variant="ghost" size="icon-sm" className="h-7 w-7" onClick={fetchAll} title="Refresh" aria-label="Refresh">
           <RefreshCw size={14} />
         </Button>
       </div>
@@ -287,8 +287,8 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
       {/* ───────── Frontend section ───────── */}
       <section className="space-y-2">
         <div className="flex items-center gap-2">
-          <Globe size={13} className="text-accent" />
-          <span className="text-xs font-semibold text-fg">Frontend</span>
+          <Globe size={13} className="text-muted" />
+          <span className="text-xs font-medium text-fg">Frontend</span>
         </div>
         <p className="text-[11px] text-muted leading-snug">
           Visible to anyone who uses your app — these are bundled into the site. Don’t put secrets here.
@@ -299,7 +299,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
           renderRow(v.key, v.value, { scope: 'frontend', secret: v.isSecret }),
         )}
         {frontendVars.length === 0 && systemVars.length === 0 && (
-          <p className="text-xs text-muted italic py-1">No frontend variables yet.</p>
+          <p className="py-1 text-xs text-subtle">No frontend variables yet.</p>
         )}
 
         {renderAddForm('frontend')}
@@ -309,15 +309,15 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
       {backendAvailable && (
         <section className="space-y-2 pt-3 border-t border-border">
           <div className="flex items-center gap-2">
-            <Server size={13} className="text-success" />
-            <span className="text-xs font-semibold text-fg">Backend</span>
+            <Server size={13} className="text-muted" />
+            <span className="text-xs font-medium text-fg">Backend</span>
           </div>
           <p className="text-[11px] text-muted leading-snug">
             Secret, server-only values used by your Convex backend. Synced live with the Convex dashboard.
           </p>
 
           {backendError ? (
-            <div className="flex items-start gap-2 text-xs text-warning bg-warning-soft rounded px-2 py-1.5 border border-warning-border">
+            <div className="flex items-start gap-2 rounded-md border border-warning-border bg-warning-soft px-2 py-1.5 text-xs text-warning">
               <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
               <span>{backendError}</span>
             </div>
@@ -332,7 +332,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
                 }),
               )}
               {backendVars.length === 0 && (
-                <p className="text-xs text-muted italic py-1">No backend variables yet.</p>
+                <p className="py-1 text-xs text-subtle">No backend variables yet.</p>
               )}
               {renderAddForm('backend')}
             </>

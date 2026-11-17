@@ -162,20 +162,20 @@ export function QuestionPrompt({
   return (
     <div
       className={cn(
-        "rounded-xl border border-border bg-elevated overflow-hidden",
+        "overflow-hidden rounded-xl border border-border bg-bg shadow-xs",
         className,
       )}
     >
       {/* Title row */}
-      <div className="px-3 pt-2.5 pb-2 space-y-0.5">
+      <div className="space-y-0.5 px-3.5 pb-2 pt-3">
         {active.header && (
-          <div className="text-[10px] uppercase tracking-wider text-muted">
+          <div className="text-[11px] font-medium text-muted">
             {active.header}
           </div>
         )}
-        <div className="text-sm text-fg">{active.question}</div>
+        <div className="text-sm font-medium leading-snug text-fg">{active.question}</div>
         {total > 1 && (
-          <div className="text-[10px] text-muted">
+          <div className="text-[11px] text-muted">
             Question {clampedIndex} of {total}
           </div>
         )}
@@ -192,22 +192,22 @@ export function QuestionPrompt({
               onClick={() => handlePick(option.id)}
               disabled={disabled}
               className={cn(
-                "w-full text-left rounded-md px-2 py-1.5 flex items-center gap-2",
-                "hover:bg-surface transition-colors",
+                "flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left",
+                "transition-colors hover:bg-elevated",
                 disabled && "opacity-60 cursor-not-allowed",
               )}
             >
               <span
                 className={cn(
-                  "h-5 min-w-5 px-1 rounded-[4px] inline-flex items-center justify-center text-xs font-medium border",
+                  "inline-flex h-5 min-w-5 items-center justify-center rounded-[5px] border px-1 text-[11px] font-medium",
                   checked
-                    ? "bg-accent text-accent-foreground border-accent"
-                    : "bg-transparent text-muted border-border",
+                    ? "border-fg bg-fg text-bg"
+                    : "border-border-strong bg-transparent text-muted",
                 )}
               >
                 {optionBadge(idx)}
               </span>
-              <span className="text-sm text-fg">
+              <span className="text-[13px] leading-5 text-fg">
                 {option.label}
                 {option.description && (
                   <span className="text-muted"> {option.description}</span>
@@ -221,10 +221,10 @@ export function QuestionPrompt({
           <div className="flex items-center gap-2 pt-1 px-2 pb-1">
             <span
               className={cn(
-                "h-5 min-w-5 px-1 rounded-[4px] inline-flex items-center justify-center text-xs font-medium border",
+                "inline-flex h-5 min-w-5 items-center justify-center rounded-[5px] border px-1 text-[11px] font-medium",
                 selectedIds.includes(QUESTION_CUSTOM_ID)
-                  ? "bg-accent text-accent-foreground border-accent"
-                  : "bg-transparent text-muted border-border",
+                  ? "border-fg bg-fg text-bg"
+                  : "border-border-strong bg-transparent text-muted",
               )}
             >
               {optionBadge(options.length)}
@@ -235,20 +235,20 @@ export function QuestionPrompt({
               onChange={(e) => handleCustomChange(e.target.value)}
               placeholder={active.customPlaceholder ?? "Type your answer"}
               disabled={disabled}
-              className="flex-1 h-7 rounded-md border border-border bg-surface px-2 text-sm text-fg outline-none focus:border-accent disabled:opacity-50"
+              className="h-7 flex-1 rounded-md border border-border bg-bg px-2 text-[13px] text-fg outline-none transition-[border-color,box-shadow] placeholder:text-subtle focus:border-accent focus:ring-3 focus:ring-accent/15 disabled:opacity-50"
             />
           </div>
         )}
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-end gap-1.5 px-3 pb-2 pt-1 border-t border-border">
+      <div className="flex items-center justify-end gap-1.5 border-t border-border px-3 py-2">
         {onSkip && (
           <button
             type="button"
             onClick={onSkip}
             disabled={disabled}
-            className="h-6 px-2 rounded-[4px] text-xs text-muted hover:text-fg hover:bg-surface disabled:opacity-50 transition-colors"
+            className="h-7 rounded-md px-2.5 text-xs font-medium text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
           >
             Skip
           </button>
@@ -257,7 +257,7 @@ export function QuestionPrompt({
           type="button"
           onClick={handleSubmit}
           disabled={!canSubmit || disabled}
-          className="h-6 px-2.5 rounded-[4px] text-xs font-medium bg-accent text-accent-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+          className="h-7 rounded-md bg-fg px-3 text-xs font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {clampedIndex < total ? "Next" : "Send"}
         </button>
