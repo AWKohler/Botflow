@@ -16,6 +16,8 @@ import {
   usePanelData,
   type StatusKind,
 } from '@/components/panel/ui';
+import { tableFrameClass, tableHeadCellClass, tableHeadRowClass } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 
 interface InfraData {
   projects: {
@@ -174,13 +176,14 @@ export default function PanelInfraPage() {
             <h3 className="mb-3 text-[13px] font-medium text-fg">
               Top backends by calls (30d)
             </h3>
-            <table className="w-full text-sm min-w-[560px]">
+            <div className={tableFrameClass}>
+            <table className="w-full text-sm min-w-[560px] [&_td]:px-3 [&_td]:py-2">
               <thead>
-                <tr className="text-left text-muted border-b border-border">
-                  <th className="py-1.5 pr-3 font-medium">Project</th>
-                  <th className="py-1.5 pr-3 font-medium">Owner</th>
-                  <th className="py-1.5 pr-3 font-medium">Status</th>
-                  <th className="py-1.5 font-medium text-right">Calls</th>
+                <tr className={tableHeadRowClass}>
+                  <th className={tableHeadCellClass}>Project</th>
+                  <th className={tableHeadCellClass}>Owner</th>
+                  <th className={tableHeadCellClass}>Status</th>
+                  <th className={cn(tableHeadCellClass, 'text-right')}>Calls</th>
                 </tr>
               </thead>
               <tbody>
@@ -200,6 +203,7 @@ export default function PanelInfraPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </Card>
         )}
       </Section>
@@ -245,14 +249,15 @@ export default function PanelInfraPage() {
             <h3 className="mb-3 text-[13px] font-medium text-fg">
               Recent delivery failures
             </h3>
-            <table className="w-full text-sm min-w-[640px]">
+            <div className={tableFrameClass}>
+            <table className="w-full text-sm min-w-[640px] [&_td]:px-3 [&_td]:py-2">
               <thead>
-                <tr className="text-left text-muted border-b border-border">
-                  <th className="py-1.5 pr-3 font-medium">Source</th>
-                  <th className="py-1.5 pr-3 font-medium">Event</th>
-                  <th className="py-1.5 pr-3 font-medium">Attempts</th>
-                  <th className="py-1.5 pr-3 font-medium">Last error</th>
-                  <th className="py-1.5 font-medium">When</th>
+                <tr className={tableHeadRowClass}>
+                  <th className={tableHeadCellClass}>Source</th>
+                  <th className={tableHeadCellClass}>Event</th>
+                  <th className={tableHeadCellClass}>Attempts</th>
+                  <th className={tableHeadCellClass}>Last error</th>
+                  <th className={tableHeadCellClass}>When</th>
                 </tr>
               </thead>
               <tbody>
@@ -274,6 +279,7 @@ export default function PanelInfraPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </Card>
         )}
       </Section>

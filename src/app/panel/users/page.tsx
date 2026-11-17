@@ -16,6 +16,7 @@ import {
   timeAgo,
   usePanelData,
 } from '@/components/panel/ui';
+import { tableHeadRowClass } from '@/components/ui/table';
 
 interface UserRow {
   userId: string;
@@ -184,7 +185,7 @@ export default function PanelUsersPage() {
       <div className="rounded-xl border border-border bg-surface overflow-x-auto modern-scrollbar">
         <table className="w-full min-w-[1040px] text-sm">
           <thead>
-            <tr className="border-b border-border bg-elevated/60 text-left text-xs">
+            <tr className={tableHeadRowClass}>
               <th className="py-2.5 pl-4 pr-2 font-medium text-muted">User</th>
               {COLUMNS.map((c) => (
                 <th

@@ -172,7 +172,7 @@ export default function PanelProvidersPage() {
       </Section>
 
       <Section title="Provider accounts">
-        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {/* Stripe — live revenue */}
           <ProviderCard
             name="Stripe"

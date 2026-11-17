@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { tableHeadRowClass } from '@/components/ui/table';
 
 interface ModelRow {
   model: string;
@@ -179,7 +180,7 @@ export function UsageTab() {
           <div className="overflow-hidden rounded-lg border border-border">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border bg-elevated/60">
+                <tr className={tableHeadRowClass}>
                   <th className="text-left px-3 py-2 text-xs font-medium text-muted">Model</th>
                   <th className="text-right px-3 py-2 text-xs font-medium text-muted">Credits</th>
                   <th className="text-right px-3 py-2 text-xs font-medium text-muted">Tokens</th>

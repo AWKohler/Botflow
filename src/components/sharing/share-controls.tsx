@@ -21,6 +21,7 @@ import { createPortal } from "react-dom";
 import { useUser } from "@/components/auth";
 import { UserPlus, Mail, Crown, X, Check, Loader2 } from "lucide-react";
 import { TextInput } from "@/components/ui/field";
+import { Switch } from "@/components/ui/switch";
 import { Button, buttonClass } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { SHARING_ENABLED } from "@/lib/feature-flags";
@@ -257,27 +258,7 @@ function Toggle({
 }) {
   return (
     <label className={cn("flex items-start gap-3 select-none", disabled ? "opacity-60" : "cursor-pointer")}>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={cn(
-          // appearance-none + border-0 + p-0 strip the UA button chrome that
-          // was shifting the knob; inline-flex/items-center centers the knob
-          // so its slide is purely the transform below.
-          "relative mt-0.5 inline-flex h-[18px] w-8 shrink-0 cursor-pointer items-center rounded-full border-0 p-0 appearance-none transition-colors",
-          checked ? "bg-accent" : "bg-soft",
-        )}
-      >
-        <span
-          className={cn(
-            "inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform",
-            checked ? "translate-x-[16px]" : "translate-x-[2px]",
-          )}
-        />
-      </button>
+      <Switch checked={checked} onChange={onChange} disabled={disabled} aria-label={label} className="mt-0.5" />
       <span className="flex-1">
         <span className="block text-sm text-fg">{label}</span>
         {hint && <span className="block text-xs text-muted mt-0.5">{hint}</span>}
