@@ -16,6 +16,7 @@ const TABS = [
   { href: '/panel/providers', label: 'Providers', icon: Activity },
 ];
 
+/** `activePath` lets a preview or test render the nav for a given tab; it defaults to the current route. */
 export function PanelNav({ activePath }: { activePath?: string } = {}) {
   const current = usePathname();
   const pathname = activePath ?? current;

@@ -18,6 +18,8 @@ export interface LimitReachedPayload {
 interface Props {
   payload: LimitReachedPayload;
   onClose: () => void;
+  /** Opens the place where the user can change plan. Falls back to /pricing. */
+  onUpgrade?: () => void;
 }
 
 const TIER_NAMES: Record<string, string> = {
@@ -52,15 +54,15 @@ export function parseLimitPayload(body: unknown): LimitReachedPayload | null {
   return null;
 }
 
-export function LimitModal({ payload, onClose }: Props) {
+export function LimitModal({ payload, onClose, onUpgrade }: Props) {
   const { upgradeTarget, message, limitType, current, limit, tier } = payload;
   const Icon = LIMIT_TYPE_ICONS[limitType] ?? Gauge;
   const targetName = upgradeTarget ? TIER_NAMES[upgradeTarget] : null;
   const targetPrice = upgradeTarget ? TIER_PRICES[upgradeTarget] : null;
 
   const handleUpgrade = () => {
-    // Open settings modal to subscription tab
-    window.dispatchEvent(new CustomEvent('open-settings', { detail: { tab: 'subscription' } }));
+    if (onUpgrade) onUpgrade();
+    else window.open('/pricing', '_blank', 'noopener,noreferrer');
     onClose();
   };
 
