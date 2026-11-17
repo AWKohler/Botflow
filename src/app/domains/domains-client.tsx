@@ -530,13 +530,14 @@ export default function DomainsClient() {
             title="Domains"
             description="Move a domain onto Botflow’s Cloudflare account for full DNS control, then assign it to any project."
             action={
-              managedDomainsEnabled === null ? (
-                // Plan still loading — render a neutral placeholder so the
-                // upsell CTA doesn't briefly flash for paid users.
-                <div className="h-9 w-32 animate-pulse rounded-lg bg-elevated" />
+              managedDomainsEnabled === null || domains === null ? (
+                // Still loading: show no action at all. The result may be the
+                // empty state (which has no header button), and a placeholder
+                // here would make the page jump when it arrives.
+                undefined
               ) : managedDomainsEnabled ? (
                 // With no domains yet, the empty state below carries the one action.
-                domains !== null && domains.length === 0 ? undefined : (
+                domains.length === 0 ? undefined : (
                   <Button
                     variant="primary"
                     onClick={() => setAddOpen(true)}
@@ -576,11 +577,13 @@ export default function DomainsClient() {
             )}
 
             {domains === null ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="h-[104px] animate-pulse rounded-xl border border-border bg-surface" />
-                ))}
-              </div>
+              // One quiet block the size of the empty state, so nothing shifts
+              // whether the list turns out empty or not.
+              <div
+                aria-busy="true"
+                aria-label="Loading domains"
+                className="h-[19.5rem] animate-pulse rounded-xl border border-border bg-surface"
+              />
             ) : domains.length === 0 && managedDomainsEnabled ? (
               <EmptyState
                 className="rounded-xl border border-dashed border-border-strong bg-surface py-20"

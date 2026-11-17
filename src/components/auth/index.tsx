@@ -209,7 +209,6 @@ export function UserButton(_props: {
               <Settings2 className="h-4 w-4 text-muted" strokeWidth={1.75} />
               Settings
             </Link>
-            <MenuSeparator />
             <MenuItem
               onClick={async () => {
                 const result = await authClient.signOut();

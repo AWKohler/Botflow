@@ -490,7 +490,8 @@ export function ThreadsSheet({
           outside the sheet close it via the document listener above). */}
       <div
         className={cn(
-          'fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity duration-200',
+          // Lighter in light mode, where a heavy blurred scrim turns the warm page muddy.
+          'fixed inset-0 bg-black/25 backdrop-blur-[1px] transition-opacity duration-200 dark:bg-black/45 dark:backdrop-blur-[2px]',
           open ? 'opacity-100' : 'opacity-0',
         )}
       />

@@ -163,7 +163,8 @@ export default function PanelInfraPage() {
             warn={convex.orphanedInstances > 0}
             sub="backends on deleted projects" />
         </StatGrid>
-        <div className="flex flex-wrap gap-2 mt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span className="text-xs text-muted">Platform backends by status</span>
           {convex.byStatus.map((s) => (
             <span key={s.status} className="flex items-center gap-1.5 text-sm text-fg">
               <StatusPill kind={convexStatusKind(s.status)} label={s.status} />

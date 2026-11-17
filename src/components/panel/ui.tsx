@@ -274,7 +274,7 @@ export function Meter({ pct, label }: { pct: number; label?: string }) {
               ? 'bg-danger-solid'
               : state === 'warning'
                 ? 'bg-warning-solid'
-                : 'bg-accent',
+                : 'bg-accent/55',
           )}
           style={{ width: `${clamped}%` }}
         />

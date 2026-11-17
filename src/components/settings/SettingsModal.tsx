@@ -1036,7 +1036,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
         <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
           {body}
           {/* A soft fade at the bottom edge signals that the list continues. */}
-          <div aria-hidden="true" className="pointer-events-none sticky -bottom-5 -mb-5 h-10 bg-gradient-to-t from-bg to-transparent" />
+          <div aria-hidden="true" className="pointer-events-none sticky -bottom-5 -mb-5 h-16 bg-gradient-to-t from-bg via-bg/80 to-transparent" />
         </div>
       </div>
     </div>,

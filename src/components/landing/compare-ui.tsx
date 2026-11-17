@@ -268,18 +268,20 @@ export function CompareTable({ themName, groups }: { themName: string; groups: C
                   <div
                     key={row.feature}
                     className={cn(
-                      'grid grid-cols-[1.3fr_1fr_1fr] sm:grid-cols-[1.6fr_1fr_1fr] items-center',
+                      // Cells stretch to the row's height (and centre their own content),
+                      // so the tinted column is one unbroken band whatever wraps.
+                      'grid grid-cols-[1.3fr_1fr_1fr] sm:grid-cols-[1.6fr_1fr_1fr]',
                       (gi !== groups.length - 1 || ri !== group.rows.length - 1) &&
                         'border-b border-[var(--sand-border)]',
                     )}
                   >
-                    <div className="px-4 sm:px-7 py-4 text-sm text-[var(--sand-text)]">
+                    <div className="flex items-center self-stretch px-4 sm:px-7 py-4 text-sm text-[var(--sand-text)]">
                       {row.feature}
                     </div>
-                    <div className="px-2 sm:px-4 py-4 text-center bg-[var(--sand-soft)]/40">
+                    <div className="flex items-center justify-center self-stretch px-2 sm:px-4 py-4 text-center bg-[var(--sand-soft)]/40">
                       <CompareCell value={row.us} highlight />
                     </div>
-                    <div className="px-2 sm:px-4 py-4 text-center">
+                    <div className="flex items-center justify-center self-stretch px-2 sm:px-4 py-4 text-center">
                       <CompareCell value={row.them} />
                     </div>
                   </div>
