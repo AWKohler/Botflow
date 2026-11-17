@@ -596,7 +596,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                 {loading ? (
                   <div className="flex items-center justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted" /></div>
                 ) : (
-                  <div className="divide-y divide-border [&>div]:py-6 [&>div:first-child]:pt-0 [&>div:last-child]:pb-0">
+                  <div className="divide-y divide-border [&>div]:py-5 [&>div:first-child]:pt-0 [&>div:last-child]:pb-0">
 
                     {/* ── Convex OAuth section ── */}
                     <div>
