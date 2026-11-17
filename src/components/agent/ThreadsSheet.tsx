@@ -355,8 +355,10 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
       {!renaming && (
         <div
           className={cn(
-            // Hover-revealed on desktop; always shown on touch screens, which can't hover.
-            'flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100',
+            // Revealed on hover or keyboard focus (and always on touch screens,
+            // which can't hover). Hidden rather than transparent, so a resting
+            // row gives its whole width to the title.
+            'hidden shrink-0 items-center gap-0.5 group-hover/row:flex group-focus-within/row:flex [@media(hover:none)]:flex',
           )}
         >
           <RowAction label="Rename" onClick={() => setRenaming(true)}>

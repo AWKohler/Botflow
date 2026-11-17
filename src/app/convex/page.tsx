@@ -26,6 +26,7 @@ import {
   Reveal,
   SectionLabel,
   StaggerButton,
+  marketingSecondaryClass,
   serif,
 } from '@/components/landing/shared';
 import { isManagedConvexEnabled } from '@/lib/project-platform';
@@ -376,7 +377,7 @@ export default function ConvexPage() {
                 <button
                   type="button"
                   onClick={scrollToShowcase}
-                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-6 py-3 text-base font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
+                  className={marketingSecondaryClass}
                 >
                   See it in action
                   <ArrowRight className="h-4 w-4" />
@@ -406,7 +407,7 @@ export default function ConvexPage() {
                 >
                   <CardSpotlight />
                   {/* Same icon tile as every other feature grid on the site. */}
-                  <div className="relative z-10 mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--sand-border)] bg-[var(--sand-bg)] text-[var(--sand-text-muted)]">
+                  <div className="relative z-10 mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] text-[var(--sand-text-muted)]">
                     <p.icon aria-hidden className="h-5 w-5" strokeWidth={1.6} />
                   </div>
                   <h3 className="relative z-10 text-xl font-semibold mb-2">
@@ -577,7 +578,7 @@ export default function ConvexPage() {
                 >
                   <CardSpotlight />
                   <div className="relative z-10 mb-4 flex items-start justify-between gap-3">
-                    <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--sand-bg)] border border-[var(--sand-border)] text-[var(--sand-text-muted)] group-hover:text-[var(--sand-accent)] group-hover:border-[var(--sand-accent)]/30 transition-colors duration-300">
+                    <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--sand-elevated)] border border-[var(--sand-border)] text-[var(--sand-text-muted)] group-hover:text-[var(--sand-accent)] group-hover:border-[var(--sand-accent)]/30 transition-colors duration-300">
                       <c.icon className="h-5 w-5" strokeWidth={1.6} />
                     </div>
                     <ArrowUpRight
@@ -723,7 +724,7 @@ export default function ConvexPage() {
                     key={b.title}
                     className="relative rounded-xl border border-[var(--sand-border)] bg-[var(--sand-bg)] p-5"
                   >
-                    <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--sand-border)] bg-[var(--sand-bg)] text-[var(--sand-text-muted)]">
+                    <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] text-[var(--sand-text-muted)]">
                       <b.icon aria-hidden className="h-5 w-5" strokeWidth={1.6} />
                     </div>
                     <p className="font-semibold text-[0.95rem] mb-1">{b.title}</p>

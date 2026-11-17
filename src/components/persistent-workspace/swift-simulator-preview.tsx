@@ -1100,7 +1100,7 @@ function ActiveSwiftSimulatorPreview({
         <div className={cn("ml-auto flex items-center", isPip ? "gap-1" : "gap-1.5")}>
           {/* FPS counter — full mode only */}
           {!isPip && pill.kind === "live" && (
-            <span className="rounded-md bg-elevated px-2 py-0.5 font-mono text-[10px] text-muted">
+            <span className="rounded-md bg-elevated px-2 py-0.5 font-mono text-[11px] text-muted">
               {fps} fps
             </span>
           )}
@@ -1227,7 +1227,7 @@ function ActiveSwiftSimulatorPreview({
             >
               Issues
               {diagnostics.length > 0 && (
-                <span className="ml-0.5 rounded-full bg-elevated px-1.5 text-[10px] text-fg/80">
+                <span className="ml-0.5 rounded-full bg-elevated px-1.5 text-[11px] text-fg/80">
                   {diagnostics.length}
                 </span>
               )}
@@ -1283,7 +1283,7 @@ function ActiveSwiftSimulatorPreview({
           }
           footer={
             !isPip && pill.kind === "live" ? (
-              <div className="rounded-md bg-black/55 px-2 py-0.5 text-[10px] text-white/70 backdrop-blur whitespace-nowrap">
+              <div className="rounded-md bg-black/55 px-2 py-0.5 text-[11px] text-white/70 backdrop-blur whitespace-nowrap">
                 {kbdFocused
                   ? "Keyboard connected — typing goes to the device"
                   : "Click the screen to enable keyboard"}
@@ -1366,7 +1366,7 @@ function StatusPill({ pill, compact = false }: { pill: PillState; compact?: bool
   // PIP `compact` mode shrinks text + drops verbose labels so the pill fits
   // a 280px-wide header. The status icon and color stay identical so the
   // visual semantics match between modes.
-  const textCls = compact ? "text-[10px]" : "text-xs";
+  const textCls = compact ? "text-[11px]" : "text-xs";
   const gapCls = compact ? "gap-1.5" : "gap-2";
   const icoSize = compact ? 10 : 12;
   switch (pill.kind) {
@@ -1435,7 +1435,7 @@ function BuildingPill({ startedAt, compact = false }: { startedAt: number; compa
   }, []);
   const seconds = Math.floor((now - startedAt) / 1000);
   return (
-    <span className={cn("flex items-center", compact ? "gap-1.5 text-[10px]" : "gap-2 text-xs")}>
+    <span className={cn("flex items-center", compact ? "gap-1.5 text-[11px]" : "gap-2 text-xs")}>
       <Loader2 size={compact ? 10 : 12} className="animate-spin text-warning" />
       <span className="text-fg/80">
         Building <span className="font-mono text-muted">{formatTimer(seconds)}</span>

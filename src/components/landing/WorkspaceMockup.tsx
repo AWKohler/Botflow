@@ -77,14 +77,14 @@ export interface WorkspaceMockupProps {
 
 function MockTabs({ options, selected, onSelect }: { options: { value: string; text: string }[]; selected: string; onSelect: (v: string) => void }) {
   return (
-    <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5">
+    <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5 dark:bg-bg">
       {options.map((o) => (
         <button
           key={o.value}
           onClick={() => onSelect(o.value)}
           className={cn(
             'h-7 rounded-md px-3 text-[13px] font-medium transition-[background-color,color,box-shadow] duration-150',
-            selected === o.value ? 'bg-bg text-fg shadow-sm' : 'text-muted hover:text-fg',
+            selected === o.value ? 'bg-bg text-fg shadow-sm dark:bg-soft' : 'text-muted hover:text-fg',
           )}
         >
           {o.text}
@@ -360,7 +360,7 @@ export default function App() {
 
         {/* Messages — a soft fade under the header, so a scrolled line is never cut off flush. */}
         <div className="relative flex min-h-0 flex-1 flex-col border-t border-border">
-        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 h-5 bg-gradient-to-b from-surface to-transparent" />
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 h-12 bg-gradient-to-b from-surface via-surface/80 to-transparent" />
         <div ref={scrollRef} className="modern-scrollbar flex-1 space-y-3 overflow-auto px-3.5 py-3 text-sm">
           {messages.map((m, mi) => {
             if (m.role === 'user') {
@@ -537,13 +537,13 @@ export default function App() {
               {showSidebar && (
                 <div className="w-64 border-r border-border flex flex-col backdrop-blur-sm shrink-0">
                   <div className="p-2 border-b border-border">
-                    <div className="flex w-full items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5">
+                    <div className="flex w-full items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5 dark:bg-bg">
                       {['Files', 'Search', 'ENV'].map((t) => (
                         <button
                           key={t}
                           className={cn(
                             'h-7 flex-1 rounded-md px-3 text-[13px] font-medium',
-                            t === 'Files' ? 'bg-bg text-fg shadow-sm' : 'text-muted',
+                            t === 'Files' ? 'bg-bg text-fg shadow-sm dark:bg-soft' : 'text-muted',
                           )}
                         >
                           {t}

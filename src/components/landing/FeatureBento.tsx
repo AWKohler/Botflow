@@ -89,7 +89,7 @@ function Eyebrow({
   return (
     <p
       className={cn(
-        "text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--sand-accent)]",
+        "text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--sand-text-muted)]",
         className,
       )}
     >

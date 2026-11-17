@@ -8,6 +8,7 @@ import {
   Reveal,
   SectionLabel,
   StaggerButton,
+  marketingSecondaryClass,
 } from '@/components/landing/shared';
 import { serif } from '@/components/landing/fonts';
 import { cn } from '@/lib/utils';
@@ -96,7 +97,7 @@ export default function NotFound() {
                   <StaggerButton text="Back to home" href="/" />
                   <Link
                     href="/projects"
-                    className="inline-flex h-12 items-center rounded-xl border border-[var(--sand-border-strong)] bg-[var(--sand-bg)] px-6 text-base font-medium text-[var(--sand-text)] shadow-xs transition-colors hover:bg-[var(--sand-elevated)]"
+                    className={marketingSecondaryClass}
                   >
                     Go to my projects
                   </Link>

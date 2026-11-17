@@ -312,7 +312,7 @@ export function MiniBars({
               </span>
             )}
             <div
-              className="rounded-t-[4px] bg-accent/80 transition-colors group-hover:bg-accent"
+              className="rounded-t-[4px] bg-accent/55 transition-colors group-hover:bg-accent/80"
               style={{ height: `${Math.max(2, (d.value / max) * (labelled ? 82 : 100))}%` }}
             />
             {!labelled && (
@@ -378,7 +378,7 @@ export function HBarList({
           </div>
           <div className="flex-1 h-4 rounded-[4px] bg-soft/50 overflow-hidden">
             <div
-              className="h-full rounded-[4px] bg-accent/80"
+              className="h-full rounded-[4px] bg-accent/55"
               style={{ width: `${(r.value / max) * 100}%` }}
             />
           </div>

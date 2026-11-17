@@ -236,7 +236,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
         <div
           ref={dropdownRef}
           className={cn(
-            'modern-scrollbar absolute z-50 max-h-[320px] min-w-[min(288px,calc(100vw-16px))] max-w-[calc(100vw-16px)] overflow-y-auto rounded-xl border border-border bg-bg p-1 shadow-lg',
+            'modern-scrollbar absolute z-50 max-h-[min(26rem,calc(100dvh-10rem))] min-w-[min(288px,calc(100vw-16px))] max-w-[calc(100vw-16px)] overflow-y-auto rounded-xl border border-border bg-bg p-1 shadow-lg',
             // 'up' opens above the trigger (bottom toolbars like the landing
             // prompt box, where a downward menu is clipped by the hero's
             // overflow-hidden); 'down' opens below (top toolbars like the agent
@@ -281,9 +281,8 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                     <span className="text-[13px] font-medium text-fg">
                       {config.displayName}
                     </span>
-                    <span className="inline-flex items-center rounded-full border border-border bg-elevated px-1.5 py-px text-[11px] font-medium text-muted">
-                      {providerLabel(modelId)}
-                    </span>
+                    {/* Provider is plain text; only the plan requirement is a tag. */}
+                    <span className="text-xs text-muted">{providerLabel(modelId)}</span>
                     {tierBadge && (
                       <span className={cn(
                         'inline-flex items-center rounded-full border px-1.5 py-px text-[11px] font-medium',
@@ -313,7 +312,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                 {(!isDisabled && isCredentialMissing && !isTierLocked && !SERVER_KEY_MODELS.has(modelId)) && (
                   <div className="flex items-center gap-1 text-muted">
                     <Lock className="h-3 w-3" />
-                    <span className="text-[11px]">no key</span>
+                    <span className="text-[11px]">No key</span>
                   </div>
                 )}
                 {!isDisabled && isTierLocked && (
@@ -325,6 +324,10 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
               </button>
             );
           })}
+          {/* Says what the multiplier is relative to, and closes the list cleanly. */}
+          <p className="sticky -bottom-1 -mx-1 -mb-1 mt-1 border-t border-border bg-bg px-3.5 py-2 text-[11px] leading-snug text-muted">
+            Credit rates are relative to a 1× model: a 6× model uses credits six times as fast.
+          </p>
         </div>
       )}
     </div>

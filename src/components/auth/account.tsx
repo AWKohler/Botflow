@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { authClient } from "@/lib/auth/client";
 import { ChangePlanModal } from "./change-plan";
+import { ProviderLogo } from "./sign-in";
 import { PaymentMethodForm } from "./payment-method";
 import dynamic from "next/dynamic";
 import { CreditCard, ExternalLink, Gauge, Plug, ShieldCheck, UserRound } from "lucide-react";
@@ -650,7 +651,8 @@ export function AccountPanel() {
                     const linked = socialAccounts.find((a) => a.providerId === provider);
                     return (
                       <li key={provider} className="flex items-center justify-between gap-3 py-3">
-                        <span className="flex items-center gap-2 text-sm">
+                        <span className="flex items-center gap-2.5 text-sm">
+                          <ProviderLogo provider={provider} />
                           {provider === "google" ? "Google" : "GitHub"}
                           {linked && <Badge tone="success">Connected</Badge>}
                         </span>
@@ -903,7 +905,8 @@ export function AccountPanel() {
                         </Button>
                       )}
                       <Button
-                        variant="secondary"
+                        // On Free, upgrading is the one thing this card is for.
+                        variant={subscription?.amount ? "secondary" : "primary"}
                         size="sm"
                         disabled={busy}
                         onClick={

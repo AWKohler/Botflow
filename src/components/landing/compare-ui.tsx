@@ -13,6 +13,7 @@ import {
   Reveal,
   SectionLabel,
   StaggerButton,
+  marketingSecondaryClass,
   serif,
 } from '@/components/landing/shared';
 import type {
@@ -82,7 +83,7 @@ export function CompareHero({
               <StaggerButton text="Start building free" href="/sign-up" />
               <Link
                 href="/compare"
-                className="inline-flex items-center gap-2 rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-6 py-3 text-base font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
+                className={marketingSecondaryClass}
               >
                 All comparisons
               </Link>
@@ -698,7 +699,7 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
                         {p.name}
                       </h3>
                       {p.isBotflow && (
-                        <span className="inline-flex items-center rounded-full bg-[var(--sand-accent)] px-3 py-1 text-xs font-semibold text-[var(--sand-accent-contrast)]">
+                        <span className="inline-flex items-center rounded-full border border-[var(--sand-accent)]/25 bg-[var(--sand-accent)]/10 px-3 py-1 text-xs font-medium text-[var(--sand-accent)]">
                           Our pick — and our product
                         </span>
                       )}

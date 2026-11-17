@@ -237,6 +237,14 @@ export function MarginBg() {
 }
 
 // ============================================================================
+// Secondary marketing button — the one companion to StaggerButton
+// ============================================================================
+
+/** Class for the outlined button that sits beside a primary StaggerButton. */
+export const marketingSecondaryClass =
+  'inline-flex h-12 items-center gap-2 rounded-xl border border-[var(--sand-border-strong)] bg-[var(--sand-bg)] px-6 text-base font-medium text-[var(--sand-text)] shadow-xs transition-colors hover:bg-[var(--sand-elevated)]';
+
+// ============================================================================
 // Closing band — the one way every marketing page ends
 // ============================================================================
 
@@ -274,7 +282,7 @@ export function ClosingCta({
               {secondary && (
                 <Link
                   href={secondary.href}
-                  className="inline-flex h-12 items-center gap-2 rounded-xl border border-[var(--sand-border-strong)] bg-[var(--sand-bg)] px-6 text-base font-medium shadow-xs transition-colors hover:bg-[var(--sand-elevated)]"
+                  className={marketingSecondaryClass}
                 >
                   {secondary.text}
                 </Link>

@@ -977,7 +977,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
         <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3 sm:gap-5">
             <h2 className="shrink-0 text-base font-semibold text-fg">Settings</h2>
-            <div role="tablist" className="flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5">
+            <div role="tablist" className="flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5 dark:bg-bg">
               {(
                 [
                   ['usage', 'Usage'],
@@ -992,7 +992,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                   className={cn(
                     'h-7 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-[background-color,color,box-shadow] sm:px-3',
                     id === 'connections' && 'hidden sm:block',
-                    activeTab === id ? 'bg-bg text-fg shadow-sm' : 'text-muted hover:text-fg',
+                    activeTab === id ? 'bg-bg text-fg shadow-sm ring-1 ring-border-strong/50 dark:bg-soft dark:ring-border-strong' : 'text-muted hover:text-fg',
                   )}
                 >
                   {label}

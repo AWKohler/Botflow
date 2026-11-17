@@ -394,7 +394,11 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
                 {(['free', 'pro', 'max'] as PlanKey[]).map((p) => (
                   <div
                     key={p}
-                    className="px-3 sm:px-5 py-5 text-center text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]"
+                    className={cn(
+                      'px-3 sm:px-5 py-5 text-center text-xs font-medium uppercase tracking-[0.18em]',
+                      // Pro is the highlighted plan in the cards, so its column carries the same cue.
+                      p === 'pro' ? 'bg-[var(--sand-soft)]/40 text-[var(--sand-text)]' : 'text-[var(--sand-text-muted)]',
+                    )}
                   >
                     {p}
                   </div>
@@ -430,7 +434,10 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
                       {(['free', 'pro', 'max'] as PlanKey[]).map((p) => (
                         <div
                           key={p}
-                          className="px-3 sm:px-5 py-4 text-center"
+                          className={cn(
+                            'flex items-center justify-center self-stretch px-3 sm:px-5 py-4 text-center',
+                            p === 'pro' && 'bg-[var(--sand-soft)]/40',
+                          )}
                         >
                           <ComparisonCell value={row.values[p]} />
                         </div>

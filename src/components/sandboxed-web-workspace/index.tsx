@@ -1086,6 +1086,76 @@ export function SandboxedWebWorkspace({
     }
   }, [projectId, isStartingServer, toast]);
 
+  // Phone: the app pane's actions. Shown in the top bar, in the same place as
+  // the chat pane's More menu, so there is one More button per pane.
+  const appMoreMenu = (
+    <div className="relative">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="App actions"
+        title="App actions"
+        className="size-11 text-muted"
+        aria-haspopup="menu"
+        aria-expanded={mobileMenuOpen}
+        onClick={() => setMobileMenuOpen((v) => !v)}
+      >
+        <MoreHorizontal size={18} />
+      </Button>
+      {mobileMenuOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setMobileMenuOpen(false)} />
+          <Menu className="absolute right-0 top-full z-50 mt-1 w-56">
+            <MenuItem
+              disabled={isStartingServer || sandboxStatus !== "ready"}
+              onClick={() => {
+                setMobileMenuOpen(false);
+                void handleStartDevServer();
+              }}
+            >
+              <RotateCw size={15} className="text-muted" />
+              {isDevServerRunning ? "Restart dev server" : "Start dev server"}
+            </MenuItem>
+            {currentView === "preview" && (
+              <>
+                <MenuItem
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setPreviewReloadKey((k) => k + 1);
+                  }}
+                >
+                  <RefreshCw size={15} className="text-muted" />
+                  Refresh preview
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    const baseUrl = previews[activePreviewIndex]?.baseUrl;
+                    if (!baseUrl) return;
+                    const path = previewPath.startsWith("/") ? previewPath : "/" + previewPath;
+                    window.open(buildPreviewUrl(baseUrl, path), "_blank", "noopener,noreferrer");
+                  }}
+                >
+                  <ArrowUpRight size={15} className="text-muted" />
+                  Open preview in a new tab
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setEditMode((v) => !v);
+                  }}
+                >
+                  <MousePointer2 size={15} className="text-muted" />
+                  {editMode ? "Stop editing" : "Edit visually"}
+                </MenuItem>
+              </>
+            )}
+          </Menu>
+        </>
+      )}
+    </div>
+  );
+
   // ── Render ───────────────────────────────────────────────────────────
   return (
     <div className="flex h-[100dvh] flex-col bg-surface text-fg md:flex-row">
@@ -1113,8 +1183,9 @@ export function SandboxedWebWorkspace({
         {/* The chat panel renders its "More" menu into this slot on phones. */}
         <div
           id="workspace-chat-actions"
-          className={cn("flex w-11 shrink-0 justify-center", mobilePane !== "chat" && "invisible")}
+          className={cn("w-11 shrink-0 justify-center", mobilePane === "chat" ? "flex" : "hidden")}
         />
+        {mobilePane === "app" && <div className="flex w-11 shrink-0 justify-center">{appMoreMenu}</div>}
       </div>
       {/* Convex paused modal — once per workspace-open while paused. Render
           re-gated on managed+paused so a mid-session BYOC transfer or unpause
@@ -1500,71 +1571,6 @@ export function SandboxedWebWorkspace({
                 </button>
               </div>
             )}
-            {/* Small screens: everything that isn't Share or Publish lives here. */}
-            <div className="relative md:hidden">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="More actions"
-                className="tap-44"
-                aria-haspopup="menu"
-                aria-expanded={mobileMenuOpen}
-                onClick={() => setMobileMenuOpen((v) => !v)}
-              >
-                <MoreHorizontal size={16} />
-              </Button>
-              {mobileMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setMobileMenuOpen(false)} />
-                  <Menu className="absolute right-0 top-full z-50 mt-1 w-56">
-                    <MenuItem
-                      disabled={isStartingServer || sandboxStatus !== "ready"}
-                      onClick={() => {
-                        setMobileMenuOpen(false);
-                        void handleStartDevServer();
-                      }}
-                    >
-                      <RotateCw size={15} className="text-muted" />
-                      {isDevServerRunning ? "Restart dev server" : "Start dev server"}
-                    </MenuItem>
-                    {currentView === "preview" && (
-                      <>
-                        <MenuItem
-                          onClick={() => {
-                            setMobileMenuOpen(false);
-                            setPreviewReloadKey((k) => k + 1);
-                          }}
-                        >
-                          <RefreshCw size={15} className="text-muted" />
-                          Refresh preview
-                        </MenuItem>
-                        <MenuItem
-                          onClick={() => {
-                            setMobileMenuOpen(false);
-                            const baseUrl = previews[activePreviewIndex]?.baseUrl;
-                            if (!baseUrl) return;
-                            const path = previewPath.startsWith("/") ? previewPath : "/" + previewPath;
-                            window.open(buildPreviewUrl(baseUrl, path), "_blank", "noopener,noreferrer");
-                          }}
-                        >
-                          <ArrowUpRight size={15} className="text-muted" />
-                          Open preview in a new tab
-                        </MenuItem>
-                        <MenuItem
-                          onClick={() => {
-                            setMobileMenuOpen(false);
-                            setEditMode((v) => !v);
-                          }}
-                        >
-                          <MousePointer2 size={15} className="text-muted" />
-                          {editMode ? "Stop editing" : "Edit visually"}
-                        </MenuItem>
-                      </>
-                    )}
-                  </Menu>
-                </>
-              )}
-            </div>
             <ShareControls projectId={projectId} />
             <div className="hidden md:block">
               <UserButton />

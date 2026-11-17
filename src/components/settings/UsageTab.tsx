@@ -153,11 +153,11 @@ export function UsageTab() {
           <p className="text-xs font-medium text-muted">Prompt cache this month</p>
           <div className="flex gap-6 text-sm">
             <div>
-              <span className="text-muted text-xs">Cache hits</span>
+              <span className="text-muted text-xs">Cached input tokens</span>
               <p className="font-medium text-fg tabular-nums">{fmt(totalCachedRead)}</p>
             </div>
             <div>
-              <span className="text-muted text-xs">Cache writes</span>
+              <span className="text-muted text-xs">Cache write tokens</span>
               <p className="font-medium text-fg tabular-nums">{fmt(totalCachedWrite)}</p>
             </div>
             <div>
@@ -169,7 +169,7 @@ export function UsageTab() {
               </p>
             </div>
           </div>
-          <p className="text-xs text-muted">Cache hits are billed at a fraction of normal input cost, saving credits.</p>
+          <p className="text-xs text-muted">Cached input tokens are billed at a fraction of the normal input rate, which saves credits.</p>
         </div>
       )}
 
@@ -184,7 +184,7 @@ export function UsageTab() {
                   <th className="text-left px-3 py-2 text-xs font-medium text-muted">Model</th>
                   <th className="text-right px-3 py-2 text-xs font-medium text-muted">Credits</th>
                   <th className="text-right px-3 py-2 text-xs font-medium text-muted">Tokens</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-muted">Cache hits</th>
+                  <th className="text-right px-3 py-2 text-xs font-medium text-muted">Cached tokens</th>
                   <th className="text-right px-3 py-2 text-xs font-medium text-muted">Turns</th>
                 </tr>
               </thead>

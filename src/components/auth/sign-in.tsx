@@ -173,33 +173,7 @@ export function AuthForm({
                   )
                 }
               >
-                {provider === "github" ? (
-                  <Github size={16} />
-                ) : (
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="16"
-                    height="16"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fill="#4285F4"
-                      d="M21.6 12.23c0-.71-.06-1.39-.18-2.05H12v3.88h5.38a4.6 4.6 0 0 1-2 3.02v2.52h3.24c1.89-1.74 2.98-4.3 2.98-7.37Z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 22c2.7 0 4.96-.89 6.62-2.4l-3.24-2.52c-.89.6-2.03.96-3.38.96-2.6 0-4.81-1.76-5.6-4.13H3.06v2.6A10 10 0 0 0 12 22Z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M6.4 13.91a6 6 0 0 1 0-3.82v-2.6H3.06a10 10 0 0 0 0 9.02l3.34-2.6Z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 5.96c1.47 0 2.79.51 3.83 1.51l2.87-2.87A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.94 5.49l3.34 2.6A6 6 0 0 1 12 5.96Z"
-                    />
-                  </svg>
-                )}
+                <ProviderLogo provider={provider} />
                 Continue with {provider === "google" ? "Google" : "GitHub"}
               </button>
             ))}
@@ -351,5 +325,36 @@ export function AuthForm({
         </button>
       )}
     </div>
+  );
+}
+
+/** The provider's mark, shared by the sign-in buttons and Settings → Security. */
+export function ProviderLogo({ provider }: { provider: string }) {
+  if (provider === "github") return <Github size={16} aria-hidden="true" />;
+  if (provider !== "google") return null;
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      aria-hidden="true"
+    >
+      <path
+        fill="#4285F4"
+        d="M21.6 12.23c0-.71-.06-1.39-.18-2.05H12v3.88h5.38a4.6 4.6 0 0 1-2 3.02v2.52h3.24c1.89-1.74 2.98-4.3 2.98-7.37Z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 22c2.7 0 4.96-.89 6.62-2.4l-3.24-2.52c-.89.6-2.03.96-3.38.96-2.6 0-4.81-1.76-5.6-4.13H3.06v2.6A10 10 0 0 0 12 22Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M6.4 13.91a6 6 0 0 1 0-3.82v-2.6H3.06a10 10 0 0 0 0 9.02l3.34-2.6Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 5.96c1.47 0 2.79.51 3.83 1.51l2.87-2.87A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.94 5.49l3.34 2.6A6 6 0 0 1 12 5.96Z"
+      />
+    </svg>
   );
 }

@@ -274,6 +274,11 @@ h3 {
     text-wrap: balance;
 }
 
+/* Paragraphs avoid ending on a single short word. */
+p {
+    text-wrap: pretty;
+}
+
 /* Touch screens: grow a control's hit area to 44px without changing how it
    looks. For controls that are not themselves absolutely positioned. */
 @media (pointer: coarse) {

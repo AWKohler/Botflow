@@ -2047,8 +2047,8 @@ export default function LandingV2() {
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src="/convex-color.svg" className="h-3.5 w-3.5" alt="" />
                               ) : convexBackendType === 'user' ? (
-                                // eslint-disable-next-line @next/next/no-img-element
                                 // White mark: flipped to ink in light mode so it is not washed out.
+                                // eslint-disable-next-line @next/next/no-img-element
                                 <img src="/convex-white.svg" className="h-3.5 w-3.5 invert dark:invert-0" alt="" />
                               ) : convexBackendType === 'muhkoo' ? (
                                 <KeyRound className="h-3.5 w-3.5" />
@@ -2207,20 +2207,34 @@ export default function LandingV2() {
                     <button
                       type="button"
                       onClick={handleProviderAuthClick}
-                      className="inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
+                      className={cn(
+                        'inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium transition',
+                        // Connected is a status, not a call to action: no fill, no shadow, a tick.
+                        isSignedIn && hasClaudeOAuth
+                          ? 'border-transparent text-[var(--sand-text-muted)] hover:text-[var(--sand-text)]'
+                          : 'border-[var(--sand-border)] bg-[var(--sand-elevated)] shadow-sm hover:bg-[var(--sand-surface)]',
+                      )}
                     >
                       <Anthropic className="h-4 w-4 shrink-0" />
                       {/* Signed-in people connect a subscription; they don't sign in again. */}
                       {!isSignedIn ? 'Sign in with Claude' : hasClaudeOAuth ? 'Claude connected' : 'Connect Claude'}
+                      {isSignedIn && hasClaudeOAuth && <Check className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden />}
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={handleProviderAuthClick}
-                    className="inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
+                    className={cn(
+                        'inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium transition',
+                        // Connected is a status, not a call to action: no fill, no shadow, a tick.
+                        isSignedIn && hasCodexOAuth
+                          ? 'border-transparent text-[var(--sand-text-muted)] hover:text-[var(--sand-text)]'
+                          : 'border-[var(--sand-border)] bg-[var(--sand-elevated)] shadow-sm hover:bg-[var(--sand-surface)]',
+                      )}
                   >
                     <OpenAI className="h-4 w-4 shrink-0" />
                     {!isSignedIn ? 'Sign in with ChatGPT' : hasCodexOAuth ? 'ChatGPT connected' : 'Connect ChatGPT'}
+                    {isSignedIn && hasCodexOAuth && <Check className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden />}
                   </button>
                 </div>
 

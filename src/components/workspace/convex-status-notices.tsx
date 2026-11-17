@@ -42,7 +42,7 @@ export function ConvexStatusBanner({
 
   if (status === "paused") {
     return (
-      <div className="px-4 py-2 bg-red-900/80 border-b border-danger-border text-white text-xs flex items-center gap-3">
+      <div className="flex items-center gap-3 border-b border-danger-border bg-danger-soft px-4 py-2 text-xs text-danger">
         <PauseCircle className="h-4 w-4 shrink-0" />
         <span className="font-semibold shrink-0">Backend paused</span>
         <span className="opacity-80 flex-1 truncate">
