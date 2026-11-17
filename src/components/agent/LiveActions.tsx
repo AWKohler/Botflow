@@ -42,10 +42,10 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
   return (
     <div className={cn('rounded-lg border border-border bg-elevated p-2 space-y-1', className)}>
       <div className="flex items-center justify-between px-1">
-        <span className="text-[11px] font-medium text-muted">Activity</span>
+        <span className="text-xs font-medium text-muted">Activity</span>
         <div className="flex items-center gap-2">
           {totals.files > 0 && (
-            <span className="text-[10px] text-muted tabular-nums">
+            <span className="text-[11px] text-muted tabular-nums">
               {totals.files} file{totals.files !== 1 ? 's' : ''}
               <span className="text-success ml-1">+{totals.additions}</span>
               <span className="text-danger ml-1">-{totals.deletions}</span>
@@ -53,7 +53,7 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
           )}
           {onClear && (
             <button
-              className="rounded-sm text-[11px] text-muted transition-colors hover:text-fg"
+              className="rounded-sm text-xs text-muted transition-colors hover:text-fg"
               onClick={onClear}
               type="button"
             >
@@ -102,11 +102,11 @@ function LiveActionStep({ action, isLast }: { action: ToolCallData; isLast: bool
           className="flex w-full items-center gap-1.5 rounded-sm text-left text-xs transition-colors"
           onClick={() => setOpen(v => !v)}
         >
-          <span className={cn('truncate text-xs', isEdit && 'font-mono text-[11px]', isDone ? 'text-muted' : 'text-fg')}>
+          <span className={cn('truncate text-[13px]', isEdit && 'font-mono text-xs', isDone ? 'text-muted' : 'text-fg')}>
             {isEdit ? action.fileChange!.filePath : formatToolName(action.toolName)}
           </span>
           {isEdit && (
-            <span className="shrink-0 text-[10px] tabular-nums">
+            <span className="shrink-0 text-[11px] tabular-nums">
               <span className="text-success">+{action.fileChange!.additions}</span>
               <span className="text-danger ml-0.5">-{action.fileChange!.deletions}</span>
             </span>

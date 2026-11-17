@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  Globe,
   Loader2,
   ExternalLink,
   Copy,
@@ -406,12 +405,9 @@ export function SandboxPublishPanel({
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="rounded-md border border-border bg-elevated p-1.5">
-              <Globe className="h-3.5 w-3.5 text-muted" />
-            </div>
             <h3 className="text-sm font-semibold text-fg">Publish</h3>
             {state === "published" && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[10px] font-medium text-success border border-success-border">
+              <span className="inline-flex items-center gap-1 rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
                 <Check size={10} /> Live
               </span>
             )}
@@ -643,7 +639,7 @@ export function SandboxPublishPanel({
                           <span className="font-mono text-sm text-fg">{customDomain}</span>
                           <div className="flex items-center gap-1">
                             {customDomainStatus === "active"
-                              ? <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[10px] font-medium text-success border border-success-border"><Check size={10} /> Active</span>
+                              ? <span className="inline-flex items-center gap-1 rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success"><Check size={10} /> Active</span>
                               : <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-medium text-warning border border-warning-border"><Loader2 size={10} className="animate-spin" /> Pending</span>
                             }
                             <button onClick={removeCname} className="rounded-md p-1 text-danger hover:bg-danger-soft" title="Remove">

@@ -2038,9 +2038,10 @@ function AgentThreadPanel({
           </button>
           <button
             type="button"
+            title="Delete this chat's messages and start over"
             className="flex h-7 items-center rounded-md px-2 text-xs font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
             onClick={async () => {
-              const confirmed = window.confirm('Reset this chat? This permanently deletes its messages. Your other chats are not affected.');
+              const confirmed = window.confirm('Clear this chat? This permanently deletes its messages. Your other chats are not affected.');
               if (!confirmed) return;
               try {
                 const r = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}`, { method: 'DELETE' });
@@ -2067,7 +2068,7 @@ function AgentThreadPanel({
               }
             }}
           >
-            Reset
+            Clear chat
           </button>
         </div>
         <div className="flex items-center gap-2">
@@ -2076,32 +2077,27 @@ function AgentThreadPanel({
             // Shrink both gauges a touch when they sit side-by-side so they
             // don't crowd each other. Mirrored layout: the Botflow gauge sits
             // next to Settings at the outer edge, the Claude plan gauge inside it.
+            // One usage meter: the ring shows whichever allowance this chat's
+            // model actually draws on, and the tooltip spells out both.
             const showClaudePlan = Boolean(usesClaudePlan && claudePlanUsage);
-            const gaugeSize = showClaudePlan ? 'xs' : 'sm';
+            const planPct = claudePlanUsage
+              ? Math.max(claudePlanUsage.fiveHour ?? 0, claudePlanUsage.sevenDay ?? 0)
+              : 0;
             return (
-              <>
-                {showClaudePlan && claudePlanUsage && (
-                  <GaugeWithTooltip
-                    label="Claude plan usage"
-                    lines={[
-                      ...(claudePlanUsage.fiveHour !== null ? [`Session (5h): ${claudePlanUsage.fiveHour}% used`] : []),
-                      ...(claudePlanUsage.sevenDay !== null ? [`Week (7d): ${claudePlanUsage.sevenDay}% used`] : []),
-                      'Claude Code runs on your Claude subscription.',
-                    ]}
-                  >
-                    <CreditGauge
-                      pct={Math.max(claudePlanUsage.fiveHour ?? 0, claudePlanUsage.sevenDay ?? 0)}
-                      size={gaugeSize}
-                    />
-                  </GaugeWithTooltip>
-                )}
-                <GaugeWithTooltip
-                  label="Botflow credits"
-                  lines={[`${Math.round(creditPct)}% of your weekly platform credits used.`]}
-                >
-                  <CreditGauge pct={creditPct} size={gaugeSize} />
-                </GaugeWithTooltip>
-              </>
+              <GaugeWithTooltip
+                label={showClaudePlan ? 'Usage — your Claude plan' : 'Usage — Botflow credits'}
+                lines={[
+                  ...(showClaudePlan && claudePlanUsage
+                    ? [
+                        ...(claudePlanUsage.fiveHour !== null ? [`Claude session (5h): ${claudePlanUsage.fiveHour}% used`] : []),
+                        ...(claudePlanUsage.sevenDay !== null ? [`Claude week (7d): ${claudePlanUsage.sevenDay}% used`] : []),
+                      ]
+                    : []),
+                  `Botflow credits this week: ${Math.round(creditPct)}% used`,
+                ]}
+              >
+                <CreditGauge pct={showClaudePlan ? planPct : creditPct} size="sm" />
+              </GaugeWithTooltip>
             );
           })()}
           <button
@@ -2739,6 +2735,7 @@ function AgentThreadPanel({
         {(displayedTokens > 0 || isCompacting) && (
           <div
             className="flex cursor-help items-center gap-2.5 border-t border-border px-3.5 py-2"
+            aria-label="Context window used"
             title="Context window used vs. total — how much of the model's memory this conversation is using. Older messages are auto-summarized as it fills up."
           >
             <div className="flex-1 h-1 rounded-full bg-soft overflow-hidden">
@@ -2751,13 +2748,13 @@ function AgentThreadPanel({
               />
             </div>
             <span className={cn(
-              'text-[10px] tabular-nums',
+              'whitespace-nowrap text-[11px] tabular-nums',
               isCompacting ? 'text-muted' :
               tokenRatio >= 0.9 ? 'text-danger' : tokenRatio >= 0.7 ? 'text-warning' : 'text-muted'
             )}>
               {isCompacting
                 ? 'Compacting…'
-                : `${formatTokenCount(displayedTokens)} / ${formatTokenCount(maxTokens)}`}
+                : `Context ${formatTokenCount(displayedTokens)} / ${formatTokenCount(maxTokens)}`}
             </span>
           </div>
         )}

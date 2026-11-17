@@ -393,20 +393,20 @@ function SharePopover({
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
-        className="fixed z-50 w-[380px] max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-bg p-4 shadow-xl"
+        className="fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-bg shadow-xl"
         style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
       >
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <h3 className="text-sm font-semibold text-fg">Share project</h3>
-            <p className="mt-0.5 text-xs leading-relaxed text-muted">
-              Invite collaborators by email. They can prompt their own agents in this workspace.
-            </p>
-          </div>
-          <button onClick={onClose} className="-mr-1 -mt-1 rounded-md p-1.5 text-muted transition-colors hover:bg-elevated hover:text-fg" aria-label="Close">
-            <X size={15} />
+        {/* Same layout as the Publish popover: title row, divider, body. */}
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h3 className="text-sm font-semibold text-fg">Share project</h3>
+          <button onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-muted transition-colors hover:bg-elevated hover:text-fg">
+            <X size={14} />
           </button>
         </div>
+        <div className="p-4">
+        <p className="mb-4 text-[13px] leading-relaxed text-muted">
+          Invite collaborators by email. They can prompt their own agents in this workspace.
+        </p>
 
         {isOwner && (
           <div className="flex items-center gap-2 mb-4">
@@ -549,10 +549,11 @@ function SharePopover({
           </div>
         )}
 
-        <p className="text-[11px] text-muted mt-3 pt-3 border-t border-border">
+        <p className="mt-3 border-t border-border pt-3 text-xs leading-relaxed text-muted">
           Sharing requires a Pro or Max plan. Platform-metered model usage by collaborators bills
           your credits, capped per collaborator.
         </p>
+        </div>
       </div>
     </>,
     document.body,

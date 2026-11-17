@@ -35,6 +35,8 @@ import { AgentPanel } from "@/components/agent/AgentPanel";
 import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabOption } from "@/components/ui/tabs";
+import { Menu, MenuItem } from "@/components/ui/menu";
+import Link from "next/link";
 import { UserButton } from "@/components/auth";
 import { ShareControls } from "@/components/sharing/share-controls";
 
@@ -53,8 +55,10 @@ import {
   AppWindow,
   Frame,
   ArrowUpRight,
+  ChevronLeft,
   ExternalLink,
   Globe,
+  MoreHorizontal,
   MousePointer2,
   RefreshCw,
   RotateCw,
@@ -148,6 +152,7 @@ export function SandboxedWebWorkspace({
   const [githubRepoName, setGithubRepoName] = useState<string | null>(null);
   const [githubDefaultBranch, setGithubDefaultBranch] = useState<string | null>(null);
   const [mobilePane, setMobilePane] = useState<"chat" | "app">("chat");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>("preview");
 
   // ── Preview / dev server ─────────────────────────────────────────────
@@ -1078,7 +1083,15 @@ export function SandboxedWebWorkspace({
   return (
     <div className="flex h-[100dvh] flex-col bg-surface text-fg md:flex-row">
       {/* Small screens show one pane at a time; this bar switches between them. */}
-      <div className="flex h-11 shrink-0 items-center justify-center border-b border-border md:hidden">
+      <div className="relative flex h-11 shrink-0 items-center justify-center border-b border-border md:hidden">
+        <Link
+          href="/projects"
+          aria-label="Back to projects"
+          className="absolute left-2 flex h-8 items-center gap-0.5 rounded-lg pl-1 pr-2 text-[13px] font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
+        >
+          <ChevronLeft size={16} />
+          Projects
+        </Link>
         <Tabs
           options={[
             { value: "chat", text: "Chat" },
@@ -1265,7 +1278,7 @@ export function SandboxedWebWorkspace({
         )}
 
         {/* Header */}
-        <div className="flex h-12 shrink-0 items-center gap-2 overflow-x-auto pl-2.5 pr-2.5 [scrollbar-width:none] md:overflow-visible md:pl-0">
+        <div className="flex h-12 shrink-0 items-center gap-2 pl-2.5 pr-2.5 md:pl-0">
           <Tabs
             options={
               [
@@ -1320,6 +1333,7 @@ export function SandboxedWebWorkspace({
             onClick={handleStartDevServer}
             disabled={isStartingServer || sandboxStatus !== "ready"}
             title={isDevServerRunning ? "Restart dev server" : "Start dev server"}
+            className="hidden md:inline-flex"
           >
             {isStartingServer ? (
               <Loader2 size={14} className="animate-spin" />
@@ -1350,7 +1364,7 @@ export function SandboxedWebWorkspace({
           )}
 
           {currentView === "code" && selectedFile && (
-            <div className="flex min-w-0 items-center gap-1 text-[13px]">
+            <div className="hidden min-w-0 items-center gap-1 text-[13px] md:flex">
               <span className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-elevated px-2 py-1 font-mono text-xs text-fg">
                 {selectedFile.split("/").pop()}
                 {hasUnsavedChanges && (
@@ -1391,6 +1405,7 @@ export function SandboxedWebWorkspace({
                 size="sm"
                 onClick={() => window.open(`/workspace/${projectId}/database`, "_blank")}
                 title="Open database in new tab"
+                className="hidden md:inline-flex"
               >
                 <ArrowUpRight size={14} />
                 Open in new tab
@@ -1401,7 +1416,7 @@ export function SandboxedWebWorkspace({
                 onClick={() => setEditMode((v) => !v)}
                 aria-pressed={editMode}
                 className={cn(
-                  "flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors",
+                  "hidden h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors md:flex",
                   editMode
                     ? "border-accent/40 bg-accent-soft text-accent"
                     : "border-border bg-bg text-muted shadow-xs hover:border-border-strong hover:text-fg",
@@ -1413,7 +1428,7 @@ export function SandboxedWebWorkspace({
               </button>
             )}
             {currentView === "preview" && (
-              <div className="flex h-8 min-w-[240px] items-center gap-2 rounded-lg border border-border bg-bg px-2.5 shadow-xs transition-colors focus-within:border-accent hover:border-border-strong">
+              <div className="hidden h-8 min-w-[240px] items-center gap-2 rounded-lg border border-border-strong bg-bg px-2.5 shadow-xs transition-colors focus-within:border-accent md:flex">
                 <button
                   onClick={() =>
                     setPreviewDevice((prev) =>
@@ -1470,8 +1485,74 @@ export function SandboxedWebWorkspace({
                 </button>
               </div>
             )}
+            {/* Small screens: everything that isn't Share or Publish lives here. */}
+            <div className="relative md:hidden">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="More actions"
+                aria-haspopup="menu"
+                aria-expanded={mobileMenuOpen}
+                onClick={() => setMobileMenuOpen((v) => !v)}
+              >
+                <MoreHorizontal size={16} />
+              </Button>
+              {mobileMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMobileMenuOpen(false)} />
+                  <Menu className="absolute right-0 top-full z-50 mt-1 w-56">
+                    <MenuItem
+                      disabled={isStartingServer || sandboxStatus !== "ready"}
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        void handleStartDevServer();
+                      }}
+                    >
+                      <RotateCw size={15} className="text-muted" />
+                      {isDevServerRunning ? "Restart dev server" : "Start dev server"}
+                    </MenuItem>
+                    {currentView === "preview" && (
+                      <>
+                        <MenuItem
+                          onClick={() => {
+                            setMobileMenuOpen(false);
+                            setPreviewReloadKey((k) => k + 1);
+                          }}
+                        >
+                          <RefreshCw size={15} className="text-muted" />
+                          Refresh preview
+                        </MenuItem>
+                        <MenuItem
+                          onClick={() => {
+                            setMobileMenuOpen(false);
+                            const baseUrl = previews[activePreviewIndex]?.baseUrl;
+                            if (!baseUrl) return;
+                            const path = previewPath.startsWith("/") ? previewPath : "/" + previewPath;
+                            window.open(buildPreviewUrl(baseUrl, path), "_blank", "noopener,noreferrer");
+                          }}
+                        >
+                          <ArrowUpRight size={15} className="text-muted" />
+                          Open preview in a new tab
+                        </MenuItem>
+                        <MenuItem
+                          onClick={() => {
+                            setMobileMenuOpen(false);
+                            setEditMode((v) => !v);
+                          }}
+                        >
+                          <MousePointer2 size={15} className="text-muted" />
+                          {editMode ? "Stop editing" : "Edit visually"}
+                        </MenuItem>
+                      </>
+                    )}
+                  </Menu>
+                </>
+              )}
+            </div>
             <ShareControls projectId={projectId} />
-            <UserButton />
+            <div className="hidden md:block">
+              <UserButton />
+            </div>
             <Button
               ref={publishBtnRef}
               variant={cloudflareProjectName ? "secondary" : "primary"}
@@ -1510,7 +1591,7 @@ export function SandboxedWebWorkspace({
                         [
                           { value: "files", text: "Files" },
                           { value: "search", text: "Search" },
-                          { value: "env", text: "ENV" },
+                          { value: "env", text: "Env" },
                           ...(gitTabAllowed ? [{ value: "git", text: "Git" }] : []),
                         ] as TabOption<"files" | "search" | "env" | "git">[]
                       }
@@ -1579,7 +1660,7 @@ export function SandboxedWebWorkspace({
 
             {/* Terminal — always mounted, persists across tab switches.
                 Wired to the sandbox via /api/projects/:id/sandbox/exec. */}
-            <div className="h-64 border-t border-border bg-surface">
+            <div className="h-44 border-t border-border bg-surface">
               <PersistentTerminal projectId={projectId} ready={sandboxStatus === "ready"} />
             </div>
           </div>

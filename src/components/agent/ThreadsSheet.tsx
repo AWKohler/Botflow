@@ -245,7 +245,8 @@ function StatusDot({ thread }: { thread: ThreadSummary }) {
           ? 'bg-danger-solid'
           : thread.unread
             ? 'bg-accent'
-            : 'bg-transparent';
+            : null;
+  if (!cls) return null;
   return (
     <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
       <span className={cn('size-2 rounded-full', cls)} />
@@ -290,7 +291,6 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
         selected ? 'bg-elevated' : 'hover:bg-elevated/60',
       )}
     >
-      <StatusDot thread={thread} />
       {renaming ? (
         <input
           ref={inputRef}
@@ -307,7 +307,7 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
             }
           }}
           aria-label="Chat title"
-          className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1 text-sm text-fg outline-none focus:border-accent/60"
+          className="min-w-0 flex-1 rounded-md border border-border-strong bg-bg px-2 py-1 text-sm text-fg outline-none focus:border-accent focus:ring-3 focus:ring-accent/20"
         />
       ) : (
         <button
@@ -333,17 +333,20 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
             ) : (
               <span className="truncate">{modelName}</span>
             )}
-            <span className="text-muted/50">·</span>
+            <span className="text-subtle">·</span>
             <span className="shrink-0 tabular-nums">{relativeTime(thread.updatedAt)}</span>
             {thread.queued > 0 && (
               <>
-                <span className="text-muted/50">·</span>
+                <span className="text-subtle">·</span>
                 <span className="shrink-0">{thread.queued} queued</span>
               </>
             )}
           </div>
         </button>
       )}
+      {/* Status sits at the trailing edge so every title starts on the same
+          left edge as the sheet's heading. */}
+      {!renaming && <StatusDot thread={thread} />}
       {!renaming && viewerIds.length > 0 && (
         <span className="shrink-0 group-hover/row:hidden">
           <PeopleChips userIds={viewerIds} people={people} size="xs" />
@@ -392,7 +395,7 @@ function RowAction({
       title={label}
       aria-label={label}
       className={cn(
-        'flex size-6 items-center justify-center rounded-full text-muted transition-colors hover:bg-soft',
+        'flex size-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-soft',
         danger ? 'hover:text-danger' : 'hover:text-fg',
       )}
     >
@@ -480,11 +483,11 @@ export function ThreadsSheet({
 
   return (
     <div className={cn('absolute inset-0 z-40', open ? 'pointer-events-auto' : 'pointer-events-none')} aria-hidden={!open}>
-      {/* Backdrop — dims the agent column (clicks outside the sheet close it
-          via the document listener above). */}
+      {/* Backdrop — dims the whole workspace, not just the chat column (clicks
+          outside the sheet close it via the document listener above). */}
       <div
         className={cn(
-          'absolute inset-0 bg-black/30 transition-opacity duration-200',
+          'fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity duration-200',
           open ? 'opacity-100' : 'opacity-0',
         )}
       />
@@ -495,7 +498,7 @@ export function ThreadsSheet({
         aria-label="Chats"
         tabIndex={-1}
         className={cn(
-          'absolute inset-y-0 left-0 flex w-[86%] max-w-[340px] flex-col rounded-r-2xl border-r border-border bg-surface shadow-2xl outline-none',
+          'absolute inset-y-0 left-0 flex w-[86%] max-w-[340px] flex-col border-r border-border bg-bg shadow-2xl outline-none',
           'transition-transform duration-200 ease-out',
           open ? 'translate-x-0' : '-translate-x-full',
         )}

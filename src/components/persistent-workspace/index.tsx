@@ -668,7 +668,7 @@ export function PersistentWorkspace({
                         [
                           { value: "files", text: "Files" },
                           { value: "search", text: "Search" },
-                          { value: "env", text: "ENV" },
+                          { value: "env", text: "Env" },
                           { value: "git", text: "Git" },
                         ] as TabOption<"files" | "search" | "env" | "git">[]
                       }
@@ -767,7 +767,7 @@ export function PersistentWorkspace({
             </div>
 
             {/* Terminal */}
-            <div className="h-64 border-t border-border bg-surface">
+            <div className="h-44 border-t border-border bg-surface">
               <PersistentTerminal projectId={projectId} ready={sandboxStatus === "ready"} />
             </div>
           </div>
