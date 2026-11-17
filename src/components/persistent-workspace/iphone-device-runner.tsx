@@ -629,7 +629,7 @@ function CompanionSetupGuide({ error, onRetry }: { error: string | null; onRetry
         className="block"
         onClick={handleDownloadClick}
       >
-        <Button className="w-full gap-2 font-semibold">
+        <Button className="w-full gap-2">
           <Download size={15} />
           Download Botflow Companion ({osLabel})
         </Button>

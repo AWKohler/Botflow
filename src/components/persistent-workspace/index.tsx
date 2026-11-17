@@ -632,7 +632,7 @@ export function PersistentWorkspace({
             />
 
             <Button
-              variant="default"
+              variant="accent"
               size="sm"
               onClick={() =>
                 platform === "swift"

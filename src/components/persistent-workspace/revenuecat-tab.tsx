@@ -394,7 +394,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
             </div>
           )}
 
-          <Button onClick={openDashboard} className="w-full font-semibold">
+          <Button onClick={openDashboard} className="w-full">
             <ExternalLink size={16} className="mr-1.5" />
             Open RevenueCat Dashboard
           </Button>
@@ -571,7 +571,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
           <Field label="API v2 Project ID (Project settings → General, starts proj…)" value={rcProjectId} onChange={setRcProjectId} placeholder="proj1a2b3c4d" mono />
 
           <div className="flex items-center gap-2 pt-1">
-            <Button onClick={handleConnect} disabled={submitting} className="font-semibold">
+            <Button onClick={handleConnect} disabled={submitting} >
               {submitting ? <Loader2 size={16} className="mr-1.5 animate-spin" /> : null}
               {submitting ? "Connecting…" : "Connect RevenueCat"}
             </Button>

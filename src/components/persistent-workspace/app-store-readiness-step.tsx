@@ -468,7 +468,7 @@ export function AppStoreReadinessStep({
       <div>
         <Button
           size="sm"
-          className="gap-2 font-semibold"
+          className="gap-2"
           disabled={runDisabled}
           onClick={() => void runReadinessCheck()}
         >
@@ -537,7 +537,7 @@ export function AppStoreReadinessStep({
           <Button
             size="sm"
             variant="outline"
-            className="gap-2 font-semibold"
+            className="gap-2"
             disabled={!iconPrompt.trim() || iconGenerating || iconUploading}
             onClick={() => void generateIcon()}
           >
@@ -780,7 +780,7 @@ export function AppStoreReadinessStep({
 
             <Button
               size="sm"
-              className="gap-2 font-semibold"
+              className="gap-2"
               disabled={pushing || !metaReady}
               onClick={() => void pushMetadata()}
             >

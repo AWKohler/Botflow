@@ -923,7 +923,7 @@ export function PublishToAppStore({
               </Button>
             )}
             {step === 1 && (
-              <Button size="sm" className="gap-1.5 font-semibold" onClick={handleContinueFromStep1}>
+              <Button size="sm" className="gap-1.5" onClick={handleContinueFromStep1}>
                 Continue
                 <ChevronRight size={13} />
               </Button>
@@ -931,7 +931,7 @@ export function PublishToAppStore({
             {step === 2 && creds.connected && (
               <Button
                 size="sm"
-                className="gap-1.5 font-semibold"
+                className="gap-1.5"
                 onClick={() => {
                   step2ManualRef.current = false;
                   setStep(3);
@@ -944,7 +944,7 @@ export function PublishToAppStore({
             {step === 3 && (
               <Button
                 size="sm"
-                className="gap-1.5 font-semibold"
+                className="gap-1.5"
                 onClick={() => setStep(4)}
                 disabled={readinessBusy}
                 title={readinessBusy ? "Finishing a paid step — one moment…" : undefined}
@@ -954,7 +954,7 @@ export function PublishToAppStore({
               </Button>
             )}
             {step === 4 && buildSettled && (
-              <Button size="sm" className="font-semibold" onClick={onClose}>
+              <Button size="sm"  onClick={onClose}>
                 Done
               </Button>
             )}
@@ -1307,7 +1307,7 @@ function Step2AppleDeveloper({
 
         <Button
           size="sm"
-          className="gap-2 font-semibold"
+          className="gap-2"
           disabled={!hasP8 || !keyIdInput.trim() || !issuerIdInput.trim() || saving}
           onClick={onSave}
         >
@@ -1426,7 +1426,7 @@ function Step3Submit({
 
       <Button
         size="sm"
-        className="w-full gap-2 font-semibold"
+        className="w-full gap-2"
         disabled={!appStatus.found || submitting}
         onClick={onSubmit}
         title={appStatus.found ? "Build and upload to App Store Connect" : "Waiting for the app record"}

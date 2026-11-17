@@ -4,6 +4,7 @@ import { ButtonHTMLAttributes, forwardRef } from "react";
 export type ButtonVariant =
   | "default"
   | "primary"
+  | "accent"
   | "secondary"
   | "outline"
   | "ghost"
@@ -20,8 +21,9 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 /**
  * The one button style for the app. Pick the variant by intent:
- *   primary        the main action of a view (ink)
- *   default        the brand accent — reserved for the single hero action
+ *   default        the main action of a view (ink). `primary` is an alias.
+ *   accent         the brand accent — reserved for one hero action per
+ *                  surface (Publish in the workspace)
  *   secondary      a peer action next to a primary one
  *   outline/ghost  low-emphasis and toolbar actions
  *   danger*        destructive actions
@@ -34,9 +36,12 @@ const base =
   "transition-[background-color,border-color,color,box-shadow,opacity] duration-150 " +
   "disabled:pointer-events-none disabled:opacity-50";
 
+const INK = "bg-fg text-bg shadow-xs hover:bg-fg/88 active:bg-fg/80";
+
 const variants: Record<ButtonVariant, string> = {
-  default: "bg-accent text-accent-foreground shadow-xs hover:bg-accent/90 active:bg-accent/85",
-  primary: "bg-fg text-bg shadow-xs hover:bg-fg/88 active:bg-fg/80",
+  default: INK,
+  primary: INK,
+  accent: "bg-accent text-accent-foreground shadow-xs hover:bg-accent/90 active:bg-accent/85",
   secondary:
     "border border-border bg-bg text-fg shadow-xs hover:border-border-strong hover:bg-elevated active:bg-soft/70",
   outline: "border border-border bg-transparent text-fg hover:border-border-strong hover:bg-elevated",
