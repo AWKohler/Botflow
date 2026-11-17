@@ -2,7 +2,9 @@ import { cn } from "@/lib/utils";
 import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes } from "react";
 
 /** Popover surface shared by every dropdown menu and floating panel. */
-export const popoverClass = "rounded-xl border border-border bg-bg shadow-lg";
+/** In dark mode shadows barely show, so the surface itself is one step lighter with a stronger edge. */
+export const popoverClass =
+  "rounded-xl border border-border bg-bg shadow-lg dark:border-border-strong dark:bg-elevated";
 
 export const Menu = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
@@ -13,7 +15,7 @@ Menu.displayName = "Menu";
 
 export const menuItemClass =
   "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] text-fg transition-colors " +
-  "hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent";
+  "hover:bg-elevated dark:hover:bg-soft disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent";
 
 export const MenuItem = forwardRef<
   HTMLButtonElement,

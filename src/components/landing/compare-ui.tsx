@@ -203,9 +203,8 @@ export function GlanceCards({
 function CompareCell({ value, highlight }: { value: boolean | string; highlight?: boolean }) {
   if (value === true) {
     return (
-      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--sand-accent)]/10 text-[var(--sand-accent)]">
-        <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
-      </span>
+      // An ink tick, the same mark the plan cards use.
+      <Check className="mx-auto h-4 w-4 text-[var(--sand-text)]" strokeWidth={2.25} aria-label="Included" />
     );
   }
   if (value === false) {
@@ -252,7 +251,7 @@ export function CompareTable({ themName, groups }: { themName: string; groups: C
 
             {groups.map((group, gi) => (
               <div key={group.label}>
-                <div className="border-b border-[var(--sand-border)] bg-[var(--sand-elevated)]/40">
+                <div className="grid grid-cols-[1.3fr_1fr_1fr] sm:grid-cols-[1.6fr_1fr_1fr] border-b border-[var(--sand-border)] bg-[var(--sand-elevated)]/40">
                   <div
                     className={cn(
                       serif.className,
@@ -261,6 +260,9 @@ export function CompareTable({ themName, groups }: { themName: string; groups: C
                   >
                     {group.label}
                   </div>
+                  {/* Empty cells, so the Botflow column's tint runs unbroken through group rows. */}
+                  <div aria-hidden className="bg-[var(--sand-soft)]/40" />
+                  <div aria-hidden />
                 </div>
                 {group.rows.map((row, ri) => (
                   <div

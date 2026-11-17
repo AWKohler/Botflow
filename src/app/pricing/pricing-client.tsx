@@ -241,9 +241,8 @@ function FaqItem({ q, a, index }: { q: string; a: string; index: number }) {
 function ComparisonCell({ value }: { value: CellValue }) {
   if (value === true) {
     return (
-      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--sand-accent)]/10 text-[var(--sand-accent)]">
-        <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
-      </span>
+      // An ink tick, the same mark the plan cards use.
+      <Check className="mx-auto h-4 w-4 text-[var(--sand-text)]" strokeWidth={2.25} aria-label="Included" />
     );
   }
   if (value === false) {
@@ -412,11 +411,15 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
                     <div
                       className={cn(
                         serif.className,
-                        'col-span-4 px-5 sm:px-7 py-3 text-base italic text-[var(--sand-text-muted)]',
+                        'px-5 sm:px-7 py-3 text-base italic text-[var(--sand-text-muted)]',
                       )}
                     >
                       {group.label}
                     </div>
+                    {/* Empty cells, so the Pro column's tint runs unbroken through group rows. */}
+                    {(['free', 'pro', 'max'] as PlanKey[]).map((p) => (
+                      <div key={p} aria-hidden className={cn(p === 'pro' && 'bg-[var(--sand-soft)]/40')} />
+                    ))}
                   </div>
                   {group.rows.map((row, ri) => (
                     <div

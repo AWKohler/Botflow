@@ -2096,7 +2096,7 @@ export default function LandingV2() {
                                     <div className="flex items-center gap-1.5 font-medium text-[var(--sand-text)]">
                                       <span>Botflow Managed</span>
                                       {managedBackendLocked && (
-                                        <span className="inline-flex items-center rounded-full bg-[var(--sand-accent)]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--sand-text)]">
+                                        <span className="inline-flex items-center rounded-full border border-accent/25 bg-accent-soft px-1.5 py-px text-[11px] font-medium text-accent">
                                           Pro
                                         </span>
                                       )}
@@ -2157,7 +2157,7 @@ export default function LandingV2() {
                                     <div className="min-w-0 flex-1">
                                       <div className="flex items-center gap-1.5 font-medium text-[var(--sand-text)]">
                                         <span>MuhKoo</span>
-                                        <span className="inline-flex items-center rounded-full bg-[var(--sand-accent)]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--sand-text)]">
+                                        <span className="inline-flex items-center rounded-full border border-accent/25 bg-accent-soft px-1.5 py-px text-[11px] font-medium text-accent">
                                           Beta
                                         </span>
                                       </div>
@@ -2188,7 +2188,11 @@ export default function LandingV2() {
                       <SignedOut>
                         <button
                           onClick={() => start(false)}
-                          className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--sand-text)] text-[var(--sand-bg)] shadow-md hover:opacity-80 transition"
+                          // Same resting look as the signed-in button: quiet until there is a prompt.
+                          className={cn(
+                            'shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--sand-text)] text-[var(--sand-bg)] shadow-md transition',
+                            prompt.trim() ? 'hover:opacity-80' : 'opacity-40 hover:opacity-60',
+                          )}
                         >
                           <ArrowUp className="h-5 w-5" />
                         </button>

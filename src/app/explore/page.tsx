@@ -63,7 +63,7 @@ export default function ExplorePage() {
     <AppShell>
       <div className="mx-auto max-w-2xl text-center">
         <h1 className={cn(serif.className, "text-4xl leading-[1.08] tracking-tight sm:text-5xl")}>
-          What people are building <em className={serif.className}>with Botflow</em>
+          What people are building <em className={serif.className} style={{ color: "var(--sand-accent)" }}>with Botflow</em>
         </h1>
         <p className="mt-3 text-base leading-relaxed text-muted">
           Open any public project, read the code, and remix it into your own workspace.

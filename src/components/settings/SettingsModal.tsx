@@ -788,13 +788,17 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                     : <Trash2 className="h-3.5 w-3.5" />}
                                 </button>
                               )}
-                              <button
-                                onClick={() => saveKey(provider)}
-                                disabled={!keys[provider].trim() || savingKey === provider || removingKey === provider}
-                                className={buttonClass({ variant: keys[provider].trim() ? 'primary' : 'secondary' })}
-                              >
-                                {savingKey === provider ? 'Saving…' : 'Save'}
-                              </button>
+                              {/* Save appears with the first character, so a page of empty
+                                  fields is not a page of greyed-out buttons. */}
+                              {keys[provider].trim() && (
+                                <button
+                                  onClick={() => saveKey(provider)}
+                                  disabled={savingKey === provider || removingKey === provider}
+                                  className={buttonClass({ variant: 'primary' })}
+                                >
+                                  {savingKey === provider ? 'Saving…' : 'Save'}
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -971,7 +975,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
-        className="relative flex max-h-[min(42rem,calc(100dvh-2rem-8vh))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl"
+        className="relative flex max-h-[min(42rem,calc(100dvh-2rem-8vh))] min-h-[min(30rem,calc(100dvh-2rem-8vh))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-6">

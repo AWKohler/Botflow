@@ -400,7 +400,7 @@ export function SandboxPublishPanel({
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
-        className="fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-bg shadow-xl"
+        className="fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-bg dark:border-border-strong dark:bg-elevated shadow-xl"
         style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">

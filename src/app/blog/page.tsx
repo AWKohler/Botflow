@@ -71,7 +71,7 @@ export default async function BlogIndexPage() {
               'max-w-3xl text-balance text-5xl leading-[1.05] tracking-tight sm:text-6xl md:text-7xl',
             )}
           >
-            Field notes on building <em className="italic">with</em> AI.
+            Field notes on building <em className="italic text-[var(--sand-accent)]">with</em> AI.
           </h1>
           <p className="mt-6 max-w-2xl text-lg text-[var(--sand-text-muted)]">
             Product updates, engineering deep-dives, and the occasional

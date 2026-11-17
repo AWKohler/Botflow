@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SignedIn, SignedOut } from '@/components/auth';
 import {
   EditorialGrid,
   LandingFooter,
@@ -95,12 +96,17 @@ export default function NotFound() {
               <Reveal delay={360}>
                 <div className="mt-8 flex flex-wrap items-center gap-3">
                   <StaggerButton text="Back to home" href="/" />
-                  <Link
-                    href="/projects"
-                    className={marketingSecondaryClass}
-                  >
-                    Go to my projects
-                  </Link>
+                  {/* The second action fits who is looking at it. */}
+                  <SignedIn>
+                    <Link href="/projects" className={marketingSecondaryClass}>
+                      Go to my projects
+                    </Link>
+                  </SignedIn>
+                  <SignedOut>
+                    <Link href="/sign-in" className={marketingSecondaryClass}>
+                      Log in
+                    </Link>
+                  </SignedOut>
                 </div>
               </Reveal>
             </div>

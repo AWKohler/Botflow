@@ -200,7 +200,7 @@ function OverflowChip({ hidden }: { hidden: ActiveCollaborator[] }) {
           <div
             onMouseEnter={hold}
             onMouseLeave={release}
-            className="fixed z-50 w-56 max-h-64 overflow-y-auto modern-scrollbar rounded-xl border border-border bg-surface shadow-lg p-1.5"
+            className="fixed z-50 w-56 max-h-64 overflow-y-auto modern-scrollbar rounded-xl border border-border bg-surface dark:border-border-strong dark:bg-elevated shadow-lg p-1.5"
             style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
           >
             {hidden.map((c) => (
@@ -395,7 +395,7 @@ function SharePopover({
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
-        className="fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-bg shadow-xl"
+        className="fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-bg dark:border-border-strong dark:bg-elevated shadow-xl"
         style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
       >
         {/* Same layout as the Publish popover: title row, divider, body. */}

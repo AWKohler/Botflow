@@ -263,7 +263,7 @@ export function ClosingCta({
   return (
     <section className="relative">
       <MarginHatch />
-      <div className="pointer-events-none absolute inset-0 -z-10 landing-gradient opacity-60" />
+      {/* Flat on purpose: the same quiet band on every page, no tinted wash. */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
         <Reveal>
           <div className="mx-auto max-w-2xl text-center">
