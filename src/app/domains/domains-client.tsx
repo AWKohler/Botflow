@@ -534,13 +534,16 @@ export default function DomainsClient() {
                 // upsell CTA doesn't briefly flash for paid users.
                 <div className="h-9 w-32 animate-pulse rounded-lg bg-elevated" />
               ) : managedDomainsEnabled ? (
-                <Button
-                  variant="primary"
-                  onClick={() => setAddOpen(true)}
-                  disabled={domains !== null && domains.length >= maxManagedDomains}
-                >
-                  <Plus size={15} /> Add domain
-                </Button>
+                // With no domains yet, the empty state below carries the one action.
+                domains !== null && domains.length === 0 ? undefined : (
+                  <Button
+                    variant="primary"
+                    onClick={() => setAddOpen(true)}
+                    disabled={domains !== null && domains.length >= maxManagedDomains}
+                  >
+                    <Plus size={15} /> Add domain
+                  </Button>
+                )
               ) : (
                 <Link href="/pricing" className={buttonClass({ variant: "primary" })}>
                   Upgrade to Pro
@@ -584,7 +587,7 @@ export default function DomainsClient() {
                 title="No domains yet"
                 description="Add a domain to give your projects a real home on the web."
                 action={
-                  <Button variant="secondary" onClick={() => setAddOpen(true)}>
+                  <Button variant="primary" onClick={() => setAddOpen(true)}>
                     <Plus size={15} /> Add your first domain
                   </Button>
                 }

@@ -74,13 +74,13 @@ export function ShowcaseCard({ project, compact = false }: { project: ShowcasePr
       </div>
 
       <div className={cn("p-4 flex-1 flex flex-col", compact && "p-3")}>
-        <h3 className="truncate text-sm font-medium text-fg" title={project.name}>
+        <h3 className="truncate text-[15px] font-medium text-fg" title={project.name}>
           {project.name}
         </h3>
         {project.publicDescription && !compact && (
-          <p className="mt-1 text-xs text-muted line-clamp-2">{project.publicDescription}</p>
+          <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-muted">{project.publicDescription}</p>
         )}
-        <div className="mt-3 flex items-center gap-2 text-xs text-muted">
+        <div className="mt-3 flex items-center gap-2 text-[13px] text-muted">
           {project.author.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={project.author.imageUrl} alt="" className="h-5 w-5 rounded-full border border-border" />

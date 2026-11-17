@@ -204,8 +204,26 @@ export default function PanelOverviewPage() {
             value={fmtNum(users.total)}
             sub={users.truncated ? 'directory truncated at 5,000' : undefined}
           />
-          <StatTile label="Free / Pro / Max" value={`${users.free} / ${users.pro} / ${users.max}`}
-            sub={`${revenue.betaUsers} beta (pro floor, $0)`} />
+          <StatTile
+            label="Users by plan"
+            value={
+              <span className="flex items-baseline gap-4 text-xl">
+                {(
+                  [
+                    ['Free', users.free],
+                    ['Pro', users.pro],
+                    ['Max', users.max],
+                  ] as const
+                ).map(([plan, count]) => (
+                  <span key={plan}>
+                    {fmtNum(count)}
+                    <span className="ml-1 text-[11px] font-normal tracking-normal text-muted">{plan}</span>
+                  </span>
+                ))}
+              </span>
+            }
+            sub={`${revenue.betaUsers} beta (pro floor, $0)`}
+          />
           <StatTile label="Active this month" value={fmtNum(users.activeThisMonth)}
             sub={`${users.activeLastMonth} last month`} />
           <StatTile label="Signups, 7d" value={String(users.signups7d)} />

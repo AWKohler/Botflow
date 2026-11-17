@@ -14,9 +14,14 @@ import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 
+/**
+ * Whole dollars by default, so a row of figures reads in one format; pass
+ * `cents: true` in detail tables where the cents matter. Amounts under $1
+ * always show cents (otherwise they would all read "$0").
+ */
 export function fmtUsd(v: number, opts?: { cents?: boolean }): string {
   const abs = Math.abs(v);
-  const cents = opts?.cents ?? abs < 100;
+  const cents = opts?.cents ?? (abs > 0 && abs < 1);
   return v.toLocaleString('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -193,7 +198,7 @@ export function StatTile({
   warn,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   sub?: string;
   /** Highlight the value in the accent color (use sparingly — one per row). */
   accent?: boolean;
@@ -263,28 +268,58 @@ export function MiniBars({
   formatValue?: (v: number) => string;
 }) {
   const max = Math.max(1, ...data.map((d) => d.value));
+  // With few bars there is room to label each one directly (value on top,
+  // period underneath); dense series fall back to the hover tooltip.
+  const labelled = data.length <= 14;
   return (
-    <div className="flex items-end gap-[2px]" style={{ height }} role="img"
-      aria-label={data.map((d) => `${d.label}: ${formatValue(d.value)}`).join(', ')}>
-      {data.map((d) => (
-        <div key={d.label} className="group relative flex-1 flex flex-col justify-end h-full min-w-[6px]">
-          <div
-            className="rounded-t-[4px] bg-accent/80 group-hover:bg-accent transition-colors"
-            style={{ height: `${Math.max(2, (d.value / max) * 100)}%` }}
-          />
-          <div
-            className={cn(
-              'pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-10',
-              'whitespace-nowrap rounded-md border border-border bg-elevated px-2 py-1 text-xs text-fg shadow-sm',
+    <div role="img" aria-label={data.map((d) => `${d.label}: ${formatValue(d.value)}`).join(', ')}>
+      <div className="flex items-end gap-1.5" style={{ height }}>
+        {data.map((d) => (
+          <div key={d.label} className="group relative flex h-full min-w-[6px] flex-1 flex-col justify-end">
+            {labelled && (
+              <span className="mb-1 text-center text-[11px] tabular-nums text-muted">
+                {formatValue(d.value)}
+              </span>
             )}
-          >
-            <span className="text-muted">{d.label}</span>{' '}
-            <span className="font-medium tabular-nums">{formatValue(d.value)}</span>
+            <div
+              className="rounded-t-[4px] bg-accent/80 transition-colors group-hover:bg-accent"
+              style={{ height: `${Math.max(2, (d.value / max) * (labelled ? 82 : 100))}%` }}
+            />
+            {!labelled && (
+              <div
+                className={cn(
+                  'pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 hidden -translate-x-1/2 group-hover:block',
+                  'whitespace-nowrap rounded-md border border-border bg-bg px-2 py-1 text-xs text-fg shadow-sm',
+                )}
+              >
+                <span className="text-muted">{periodLabel(d.label)}</span>{' '}
+                <span className="font-medium tabular-nums">{formatValue(d.value)}</span>
+              </div>
+            )}
           </div>
+        ))}
+      </div>
+      {labelled && (
+        <div className="mt-1.5 flex gap-1.5 border-t border-border pt-1.5">
+          {data.map((d) => (
+            <span key={d.label} className="min-w-[6px] flex-1 truncate text-center text-[11px] text-muted">
+              {periodLabel(d.label)}
+            </span>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "2026-06" → "Jun", "2026-11-03" → "Nov 3"; anything else is shown as is. */
+function periodLabel(raw: string): string {
+  const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(raw);
+  if (!m) return raw;
+  const month = MONTHS[Number(m[2]) - 1] ?? raw;
+  return m[3] ? `${month} ${Number(m[3])}` : month;
 }
 
 // ─── Horizontal labeled bars (per-row identity from the label, one hue) ──────

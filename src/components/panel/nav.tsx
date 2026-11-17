@@ -9,9 +9,9 @@ import { Badge } from '@/components/ui/badge';
 import { Activity, Boxes, Gauge, UserCog, Users } from 'lucide-react';
 
 const TABS = [
-  { href: '/panel/accounts', label: 'Accounts', icon: UserCog },
   { href: '/panel', label: 'Overview', icon: Gauge },
   { href: '/panel/users', label: 'Users', icon: Users },
+  { href: '/panel/accounts', label: 'Accounts', icon: UserCog },
   { href: '/panel/infra', label: 'Infrastructure', icon: Boxes },
   { href: '/panel/providers', label: 'Providers', icon: Activity },
 ];

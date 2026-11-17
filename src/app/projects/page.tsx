@@ -143,10 +143,13 @@ export default function ProjectsPage() {
             : `${projects.length} project${projects.length !== 1 ? 's' : ''}`
         }
         action={
-          <Link href="/" className={buttonClass({ variant: 'primary' })}>
-            <Plus className="h-4 w-4" />
-            New project
-          </Link>
+          // With no projects yet, the empty state below carries the one action.
+          !loading && !loadError && projects.length === 0 ? undefined : (
+            <Link href="/" className={buttonClass({ variant: 'primary' })}>
+              <Plus className="h-4 w-4" />
+              New project
+            </Link>
+          )
         }
       />
 
@@ -196,7 +199,7 @@ export default function ProjectsPage() {
               title="No projects yet"
               description="Describe an app and Botflow builds it. Your projects will show up here."
               action={
-                <Link href="/" className={buttonClass({ variant: 'secondary' })}>
+                <Link href="/" className={buttonClass({ variant: 'primary' })}>
                   <Plus className="h-4 w-4" />
                   Create your first project
                 </Link>
@@ -274,17 +277,19 @@ export default function ProjectsPage() {
 
                     <div className="flex items-start justify-between gap-2 p-4">
                       <div className="min-w-0 flex-1">
-                        <h3 className="truncate text-sm font-medium text-fg" title={project.name}>
+                        <h3 className="truncate text-[15px] font-medium text-fg" title={project.name}>
                           {project.name}
                         </h3>
-                        <p className="mt-1 truncate text-xs text-muted">
+                        <p className="mt-1 truncate text-[13px] text-muted">
                           {formatDate(project.lastOpened)}
                           <span className="mx-1.5 text-subtle">·</span>
                           {modelLabel}
                         </p>
                       </div>
 
-                      <div className="relative -mr-1.5 -mt-1">
+                      {/* Not `relative`: the menu anchors to the card, so it opens
+                          below the card instead of over its own title and date. */}
+                      <div className="-mr-1.5 -mt-1">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -300,7 +305,7 @@ export default function ProjectsPage() {
 
                         {openMenuId === project.id && (
                           <Menu
-                            className="absolute right-0 top-full z-50 mt-1 w-56"
+                            className="absolute right-2 top-full z-50 -mt-1.5 w-56"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MenuItem onClick={() => openProject(project.id)}>

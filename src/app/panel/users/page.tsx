@@ -92,6 +92,11 @@ const COLUMNS: Array<{ key: SortKey; label: string; title?: string }> = [
   { key: 'joinedAt', label: 'Joined' },
 ];
 
+/** Columns whose values are numbers — right-aligned so digits line up. */
+const NUMERIC = new Set<SortKey>([
+  'monthMarginUsd', 'monthRevenueUsd', 'monthCostUsd', 'lifetimeRevenueUsd', 'lifetimeCostUsd', 'projectCount', 'convexInstances',
+]);
+
 function sortValue(row: UserRow, key: SortKey): number {
   if (key === 'lastActiveAt' || key === 'joinedAt') {
     const v = row[key];
@@ -177,15 +182,21 @@ export default function PanelUsersPage() {
       </div>
 
       <div className="rounded-xl border border-border bg-surface overflow-x-auto modern-scrollbar">
-        <table className="w-full min-w-[1000px] text-[13px]">
+        <table className="w-full min-w-[1040px] text-sm">
           <thead>
             <tr className="border-b border-border bg-elevated/60 text-left text-xs">
               <th className="py-2.5 pl-4 pr-2 font-medium text-muted">User</th>
               {COLUMNS.map((c) => (
-                <th key={c.key} className="whitespace-nowrap px-2 py-2.5 font-medium text-muted last:pr-4">
+                <th
+                  key={c.key}
+                  className={cn(
+                    'whitespace-nowrap px-2 py-2.5 font-medium text-muted last:pr-4',
+                    NUMERIC.has(c.key) && 'text-right',
+                  )}
+                >
                   <button
                     onClick={() => toggleSort(c.key)}
-                    className="flex items-center gap-1 hover:text-fg"
+                    className={cn('inline-flex items-center gap-1 hover:text-fg', NUMERIC.has(c.key) && 'flex-row-reverse')}
                     title={c.title}
                   >
                     {c.label}
@@ -265,26 +276,26 @@ function UserTableRow({
             </div>
           </div>
         </td>
-        <td className={cn('px-3 py-2.5 tabular-nums font-medium whitespace-nowrap',
+        <td className={cn('px-2 py-2.5 text-right tabular-nums font-medium whitespace-nowrap',
           marginNegative ? 'text-danger' : 'text-fg')}>
-          {fmtUsd(row.monthMarginUsd)}
+          {fmtUsd(row.monthMarginUsd, { cents: true })}
         </td>
-        <td className="px-2 py-2.5 tabular-nums text-fg whitespace-nowrap">
-          {fmtUsd(row.monthRevenueUsd)}
+        <td className="whitespace-nowrap px-2 py-2.5 text-right tabular-nums text-fg">
+          {fmtUsd(row.monthRevenueUsd, { cents: true })}
           {row.revenueBasis === 'stripe' && (
             <span className="text-xs text-muted ml-1" title="from a live Stripe subscription">
               live
             </span>
           )}
         </td>
-        <td className="px-2 py-2.5 tabular-nums text-fg">{fmtUsd(row.monthCostUsd)}</td>
-        <td className={cn('px-3 py-2.5 tabular-nums', row.lifetimeRevenueUsd > 0 ? 'text-fg font-medium' : 'text-muted')}>
-          {fmtUsd(row.lifetimeRevenueUsd)}
+        <td className="px-2 py-2.5 text-right tabular-nums text-fg">{fmtUsd(row.monthCostUsd, { cents: true })}</td>
+        <td className={cn('px-2 py-2.5 text-right tabular-nums', row.lifetimeRevenueUsd > 0 ? 'text-fg font-medium' : 'text-muted')}>
+          {fmtUsd(row.lifetimeRevenueUsd, { cents: true })}
         </td>
-        <td className="px-2 py-2.5 tabular-nums text-fg">{fmtUsd(row.lifetimeCostUsd)}</td>
+        <td className="px-2 py-2.5 text-right tabular-nums text-fg">{fmtUsd(row.lifetimeCostUsd, { cents: true })}</td>
         <td className="px-2 py-2.5"><Meter pct={row.budgetUtilPct} /></td>
-        <td className="px-2 py-2.5 tabular-nums text-fg">{row.projectCount}</td>
-        <td className="px-2 py-2.5 tabular-nums text-fg">
+        <td className="px-2 py-2.5 text-right tabular-nums text-fg">{row.projectCount}</td>
+        <td className="whitespace-nowrap px-2 py-2.5 text-right tabular-nums text-fg">
           {row.convexInstances}
           {row.convexPaused > 0 && (
             <span className="text-warning text-xs ml-1">
@@ -293,7 +304,7 @@ function UserTableRow({
           )}
         </td>
         <td className="px-2 py-2.5 text-muted whitespace-nowrap">{timeAgo(row.lastActiveAt)}</td>
-        <td className="px-2 py-2.5 text-muted whitespace-nowrap">{timeAgo(row.joinedAt)}</td>
+        <td className="whitespace-nowrap py-2.5 pl-2 pr-4 text-muted">{timeAgo(row.joinedAt)}</td>
       </tr>
       {expanded && (
         <tr className="border-b border-border/60 bg-elevated/30">
@@ -310,12 +321,12 @@ function UserTableRow({
               <Detail label="RevenueCat" value={String(row.revenuecatProjects)} />
               <Detail label="Managed domains" value={String(row.managedDomains)} />
               <Detail label="Last sign-in" value={timeAgo(row.lastSignInAt)} />
-              <Detail label="Stripe rev, this month" value={fmtUsd(row.stripeMonthRevenueUsd)} />
+              <Detail label="Stripe rev, this month" value={fmtUsd(row.stripeMonthRevenueUsd, { cents: true })} />
               <Detail
                 label="Stripe subscription"
                 value={
                   row.stripeSubscription
-                    ? `${row.stripeSubscription.product} · ${fmtUsd(row.stripeSubscription.monthlyUsd)}/mo · ${row.stripeSubscription.status}`
+                    ? `${row.stripeSubscription.product} · ${fmtUsd(row.stripeSubscription.monthlyUsd, { cents: true })}/mo · ${row.stripeSubscription.status}`
                     : '—'
                 }
               />

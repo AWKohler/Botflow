@@ -89,6 +89,18 @@ function convexStatusKind(status: string): StatusKind {
   return 'neutral';
 }
 
+/** "sandbox-host" → "Sandbox host", "vercel" → "Vercel". */
+function providerName(raw: string): string {
+  const words = raw.replace(/[-_]+/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** "invoice.paid" → "Invoice paid", "RENEWAL" → "Renewal". The raw type stays in the tooltip. */
+function eventName(raw: string): string {
+  const words = raw.replace(/[._]+/g, ' ').trim().toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 export default function PanelInfraPage() {
   const { data, loading, error, refresh, refreshing } =
     usePanelData<InfraData>('/api/panel/infra');
@@ -114,7 +126,7 @@ export default function PanelInfraPage() {
             sub={`${projects.deleted} soft-deleted`} />
           <StatTile label="Live sessions" value={String(projects.liveSessionCount)} accent />
           {sandboxes.byProvider.map((p) => (
-            <StatTile key={p.provider} label={`${p.provider} sandboxes`} value={fmtNum(p.count)} />
+            <StatTile key={p.provider} label={`${providerName(p.provider)} sandboxes`} value={fmtNum(p.count)} />
           ))}
           <StatTile label="Public projects" value={String(projects.publicProjects)} />
           <StatTile label="GitHub linked" value={String(projects.githubLinked)} />
@@ -164,7 +176,7 @@ export default function PanelInfraPage() {
         </div>
         {convex.topByCalls.length > 0 && (
           <Card className="mt-4 overflow-x-auto modern-scrollbar">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted mb-3">
+            <h3 className="mb-3 text-[13px] font-medium text-fg">
               Top backends by calls (30d)
             </h3>
             <table className="w-full text-sm min-w-[560px]">
@@ -200,7 +212,7 @@ export default function PanelInfraPage() {
       <Section title="Payment webhook pipelines" hint="durable outbox delivery to project backends">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted mb-3">Stripe</h3>
+            <h3 className="mb-3 text-[13px] font-medium text-fg">Stripe</h3>
             {webhooks.stripe.length === 0 ? (
               <p className="text-sm text-muted">No deliveries yet.</p>
             ) : (
@@ -218,7 +230,7 @@ export default function PanelInfraPage() {
             )}
           </Card>
           <Card>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted mb-3">RevenueCat</h3>
+            <h3 className="mb-3 text-[13px] font-medium text-fg">RevenueCat</h3>
             {webhooks.revenuecat.length === 0 ? (
               <p className="text-sm text-muted">No deliveries yet.</p>
             ) : (
@@ -235,7 +247,7 @@ export default function PanelInfraPage() {
         </div>
         {webhooks.recentFailures.length > 0 && (
           <Card className="mt-4 overflow-x-auto modern-scrollbar">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted mb-3">
+            <h3 className="mb-3 text-[13px] font-medium text-fg">
               Recent delivery failures
             </h3>
             <table className="w-full text-sm min-w-[640px]">
@@ -252,7 +264,7 @@ export default function PanelInfraPage() {
                 {webhooks.recentFailures.map((f, i) => (
                   <tr key={i} className="border-b border-border/60 last:border-0">
                     <td className="py-1.5 pr-3 text-fg capitalize">{f.source}</td>
-                    <td className="py-1.5 pr-3 text-fg">{f.canonicalType}</td>
+                    <td className="py-1.5 pr-3 text-fg" title={f.canonicalType}>{eventName(f.canonicalType)}</td>
                     <td className="py-1.5 pr-3 tabular-nums text-fg">
                       {f.attempts}
                       {f.lastStatus != null && (
