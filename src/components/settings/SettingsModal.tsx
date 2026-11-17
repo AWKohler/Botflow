@@ -2,10 +2,11 @@
 
 import { Input } from "@/components/ui/input";
 import { useEffect, useState } from 'react';
-import { SignedIn, SignedOut, SignInButton, PricingTable } from '@/components/auth';
+import { SignedIn, SignedOut, SignInButton } from '@/components/auth';
 import { useToast } from '@/components/ui/toast';
 import { X, ExternalLink, AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { buttonClass } from '@/components/ui/button';
 import { UsageTab } from './UsageTab';
 import { ANTHROPIC_OAUTH_ENABLED } from '@/lib/feature-flags';
 
@@ -13,15 +14,15 @@ interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
   defaultTab?: Tab;
-  /** Pass true when rendering inside the workspace — COEP headers prevent Stripe iframes
-   *  from loading, so the subscription tab opens /pricing in a new tab instead. */
+  /** Pass true when rendering inside the workspace, where leaving the page
+   *  would interrupt work: links out of the dialog then open in a new tab. */
   workspaceContext?: boolean;
-  /** 'page' renders the same tabs and content inline (no backdrop, no close
-   *  button) so the /settings page and the dialog are one implementation. */
-  variant?: 'modal' | 'page';
+  /** 'section' renders just the content of `defaultTab`, with no dialog
+   *  around it, so the Settings page and the dialog are one implementation. */
+  variant?: 'modal' | 'section';
 }
 
-type Tab = 'usage' | 'connections' | 'subscription';
+type Tab = 'usage' | 'connections';
 type Provider = 'openai' | 'anthropic' | 'moonshot' | 'fireworks' | 'together' | 'google' | 'xai';
 type OAuthStep = 'idle' | 'connecting' | 'exchanging' | 'success';
 
@@ -125,20 +126,21 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
 
   useEffect(() => {
     if (!open) return;
-    // On mobile, connections tab is hidden — fall back to usage
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+    // Connections stays a larger-screen task (its sign-in flows need a second
+    // window), so on a phone the dialog falls back to Usage.
+    const isMobile = variant === 'modal' && typeof window !== 'undefined' && window.innerWidth < 640;
     setActiveTab(defaultTab === 'connections' && isMobile ? 'usage' : defaultTab);
-  }, [open, defaultTab]);
+  }, [open, defaultTab, variant]);
 
   // If screen resizes to mobile while connections is active, switch away
   useEffect(() => {
-    if (activeTab !== 'connections') return;
+    if (activeTab !== 'connections' || variant !== 'modal') return;
     const check = () => {
       if (window.innerWidth < 640) setActiveTab('usage');
     };
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
-  }, [activeTab]);
+  }, [activeTab, variant]);
 
   useEffect(() => {
     if (!open) return;
@@ -508,123 +510,22 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
     }
   };
 
-  const isPage = variant === 'page';
-
-  return (
-    <div className={isPage ? undefined : 'fixed inset-0 z-[200] flex items-center justify-center px-4'}>
-      {/* Blur backdrop as a sibling — NOT an ancestor of the modal content, so
-          backdrop-filter never becomes the containing block for fixed-position
-          children (the Stripe payment form). */}
-      {!isPage && (
-        <div
-          className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
-          onClick={handleClose}
-        />
-      )}
-      <div
-        className={cn(
-          // One width for every tab, so switching tabs never resizes the dialog.
-          'relative flex w-full flex-col overflow-hidden border border-border bg-bg',
-          isPage ? 'rounded-xl' : 'max-h-[90vh] max-w-3xl rounded-2xl shadow-2xl',
-        )}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-6">
-          <div className="flex min-w-0 items-center gap-3 sm:gap-5">
-            {!isPage && <h2 className="shrink-0 text-base font-semibold text-fg">Settings</h2>}
-            <div role="tablist" className="flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5">
-              <button
-                onClick={() => setActiveTab('usage')}
-                className={cn(
-                  'h-7 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-[background-color,color,box-shadow] sm:px-3',
-                  activeTab === 'usage'
-                    ? 'bg-bg text-fg shadow-sm'
-                    : 'text-muted hover:text-fg'
-                )}
-              >
-                Usage
-              </button>
-              <button
-                onClick={() => setActiveTab('connections')}
-                className={cn(
-                  'h-7 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-[background-color,color,box-shadow] sm:px-3',
-                  activeTab === 'connections'
-                    ? 'bg-bg text-fg shadow-sm'
-                    : 'text-muted hover:text-fg'
-                )}
-              >
-                Connections
-              </button>
-              <button
-                onClick={() => setActiveTab('subscription')}
-                className={cn(
-                  'h-7 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-[background-color,color,box-shadow] sm:px-3',
-                  activeTab === 'subscription'
-                    ? 'bg-bg text-fg shadow-sm'
-                    : 'text-muted hover:text-fg'
-                )}
-              >
-                Subscription
-              </button>
-            </div>
-          </div>
-{!isPage && (
-          <button
-            onClick={handleClose}
-            aria-label="Close settings"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-fg"
-          >
-            <X className="h-4 w-4" />
-          </button>
-          )}
+  const body = (
+    <>
+      <SignedOut>
+        <div className="rounded-xl border border-border p-6">
+          <p className="mb-4 text-sm text-muted">You need to sign in to manage settings.</p>
+          <SignInButton>
+            <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-bg px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50">
+              Sign in
+            </button>
+          </SignInButton>
         </div>
+      </SignedOut>
 
-        {/* Scrollable body */}
-        <div className={cn("px-4 py-5 sm:px-6", !isPage && "flex-1 overflow-y-auto")}>
-          <SignedOut>
-            <div className="rounded-xl border border-border p-6">
-              <p className="mb-4 text-sm text-muted">You need to sign in to manage settings.</p>
-              <SignInButton>
-                <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-bg px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50">
-                  Sign in
-                </button>
-              </SignInButton>
-            </div>
-          </SignedOut>
-
-          <SignedIn>
+      <SignedIn>
             {/* ── Usage tab ── */}
             {activeTab === 'usage' && <UsageTab />}
-
-            {/* ── Subscription tab ── */}
-            {activeTab === 'subscription' && (
-              <div>
-                <p className="mb-5 text-[13px] text-muted">
-                  Everyone starts on Free. Upgrade when you want more projects and included model credits.
-                </p>
-                {workspaceContext ? (
-                  /* Stripe iframes can't run inside COEP-isolated workspace pages.
-                     Open the pricing page in a new tab where there's no COEP restriction. */
-                  <div className="flex flex-col items-start gap-3">
-                    <p className="text-sm text-muted">
-                      Subscription management opens in a new tab to ensure the payment form loads correctly.
-                    </p>
-                    <a
-                      href="/pricing"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex h-9 items-center gap-2 rounded-lg bg-fg px-3.5 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
-                    >
-                      Manage subscription
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  </div>
-                ) : (
-                  <PricingTable newSubscriptionRedirectUrl="/projects" compact />
-                )}
-              </div>
-            )}
 
             {/* ── Connections tab ── */}
             {activeTab === 'connections' && (
@@ -877,7 +778,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               <button
                                 onClick={() => saveKey(provider)}
                                 disabled={!keys[provider].trim() || savingKey === provider || removingKey === provider}
-                                className="inline-flex h-9 items-center gap-2 rounded-lg bg-fg px-3.5 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
+                                className={buttonClass({ variant: keys[provider].trim() ? 'primary' : 'secondary' })}
                               >
                                 {savingKey === provider ? 'Saving…' : 'Save'}
                               </button>
@@ -1024,7 +925,9 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                           <button
                             onClick={saveAppleCredentials}
                             disabled={!appleP8 || !appleKeyIdInput.trim() || !appleIssuerIdInput.trim() || appleSaving}
-                            className="inline-flex h-9 items-center gap-2 rounded-lg bg-fg px-3.5 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
+                            className={buttonClass({
+                              variant: appleP8 && appleKeyIdInput.trim() && appleIssuerIdInput.trim() ? 'primary' : 'secondary',
+                            })}
                           >
                             {appleSaving ? (
                               <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Verifying&hellip;</>
@@ -1038,8 +941,72 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                 )}
               </>
             )}
-          </SignedIn>
+      </SignedIn>
+    </>
+  );
+
+  if (variant === 'section') return body;
+
+  return (
+    // Anchored to the top with one fixed height, so the header and tabs stay
+    // exactly where they are when you switch tabs.
+    <div className="fixed inset-0 z-[200] flex items-start justify-center px-4 pt-[max(1rem,8vh)]">
+      {/* Blur backdrop as a sibling — NOT an ancestor of the dialog content, so
+          backdrop-filter never becomes the containing block for fixed children. */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={handleClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        className="relative flex h-[min(42rem,calc(100dvh-2rem-8vh))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-5">
+            <h2 className="shrink-0 text-base font-semibold text-fg">Settings</h2>
+            <div role="tablist" className="flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5">
+              {(
+                [
+                  ['usage', 'Usage'],
+                  ['connections', 'Connections'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  role="tab"
+                  aria-selected={activeTab === id}
+                  onClick={() => setActiveTab(id)}
+                  className={cn(
+                    'h-7 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-[background-color,color,box-shadow] sm:px-3',
+                    id === 'connections' && 'hidden sm:block',
+                    activeTab === id ? 'bg-bg text-fg shadow-sm' : 'text-muted hover:text-fg',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {/* The plan has one home: the Settings page. */}
+            <a
+              href="/account?tab=billing"
+              {...(workspaceContext ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+              className="hidden h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-muted transition-colors hover:bg-elevated hover:text-fg sm:inline-flex"
+            >
+              Plan and billing
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+            <button
+              onClick={handleClose}
+              aria-label="Close settings"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-fg"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
+        <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">{body}</div>
       </div>
     </div>
   );

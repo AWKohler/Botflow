@@ -5,13 +5,24 @@ import Image from "next/image";
 import { authClient } from "@/lib/auth/client";
 import { ChangePlanModal } from "./change-plan";
 import { PaymentMethodForm } from "./payment-method";
-import { CreditCard, ExternalLink, ShieldCheck, UserRound } from "lucide-react";
+import dynamic from "next/dynamic";
+import { CreditCard, ExternalLink, Gauge, Plug, ShieldCheck, UserRound } from "lucide-react";
+import { UsageTab } from "@/components/settings/UsageTab";
 import { AppShell } from "@/components/site/AppShell";
 import { Badge, Notice } from "@/components/ui/badge";
 import { Button, buttonClass } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, TextInput } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
+// Loaded lazily: the connections code imports this module's siblings.
+const ConnectionsSection = dynamic(
+  () => import("@/components/settings/SettingsModal").then((m) => m.SettingsModal),
+  { ssr: false },
+);
+
+const TAB_IDS = ["profile", "security", "usage", "connections", "billing"] as const;
+type TabId = (typeof TAB_IDS)[number];
+
 interface Session {
   id: string;
   token: string;
@@ -20,15 +31,9 @@ interface Session {
   expiresAt: Date;
   createdAt: Date;
 }
-export function AccountPanel({
-  embedded = false,
-  initialTab = "profile",
-}: {
-  embedded?: boolean;
-  initialTab?: string;
-}) {
+export function AccountPanel() {
   const { data: session, isPending } = authClient.useSession();
-  const [tab, setTab] = useState(initialTab);
+  const [tab, setTab] = useState<TabId>("profile");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -191,8 +196,8 @@ export function AccountPanel({
     });
   }
   useEffect(() => {
-    if (new URLSearchParams(location.search).get("tab") === "billing")
-      setTab("billing");
+    const requested = new URLSearchParams(location.search).get("tab");
+    if (requested && (TAB_IDS as readonly string[]).includes(requested)) setTab(requested as TabId);
   }, []);
   useEffect(() => {
     if (!session) return;
@@ -231,33 +236,36 @@ export function AccountPanel({
   }
   if (isPending)
     return (
-      <Frame embedded={embedded}>
-        <p className="py-16 text-center text-sm text-muted">Loading your account…</p>
-      </Frame>
+      <AppShell>
+        <p className="py-16 text-center text-sm text-muted">Loading your settings…</p>
+      </AppShell>
     );
   if (!session)
     return (
-      <Frame embedded={embedded}>
+      <AppShell>
         <div className="py-16 text-center">
           <Link href="/sign-in?redirect_url=%2Faccount" className={buttonClass({ variant: "primary" })}>
-            Sign in to manage your account
+            Sign in to manage your settings
           </Link>
         </div>
-      </Frame>
+      </AppShell>
     );
 
-  const tabs = [
+  const tabs: { id: TabId; label: string; icon: typeof UserRound; desktopOnly?: boolean }[] = [
     { id: "profile", label: "Profile", icon: UserRound },
     { id: "security", label: "Security", icon: ShieldCheck },
-    { id: "billing", label: "Billing", icon: CreditCard },
-  ] as const;
+    { id: "usage", label: "Usage", icon: Gauge },
+    // Connecting accounts needs a second window, so it stays a larger-screen task.
+    { id: "connections", label: "Connections", icon: Plug, desktopOnly: true },
+    { id: "billing", label: "Plan and billing", icon: CreditCard },
+  ];
   const socialAccounts = accounts.filter((a) => a.providerId !== "credential");
   const thisDevice = session.session as unknown as Session;
   const deviceRows: Session[] = sessions.length ? sessions : [thisDevice];
   const initial = (session.user.name?.[0] ?? session.user.email?.[0] ?? "U").toUpperCase();
 
   return (
-    <Frame embedded={embedded}>
+    <AppShell>
       {changingPlan && (
         <ChangePlanModal
           currentPlan={subscription?.plan ?? "free"}
@@ -276,23 +284,26 @@ export function AccountPanel({
         />
       )}
 
-      <div className={cn("grid gap-8 md:grid-cols-[200px_minmax(0,760px)] md:gap-12", embedded && "p-6 sm:p-8")}>
+      <div className="grid gap-8 md:grid-cols-[200px_minmax(0,760px)] md:gap-12">
         <aside>
-          <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
-          <p className="mt-1.5 text-sm text-muted">Your profile, sign-in and billing.</p>
-          <nav aria-label="Account sections" className="mt-6 flex gap-1 md:flex-col">
+          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+          <p className="mt-1.5 text-sm text-muted">Your account, usage, connections and plan.</p>
+          <nav aria-label="Settings sections" className="-mx-1 mt-6 flex gap-1 overflow-x-auto px-1 md:mx-0 md:flex-col md:overflow-visible md:px-0">
             {tabs.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 aria-current={tab === t.id ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors",
+                  "shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors",
+                  t.desktopOnly ? "hidden sm:flex" : "flex",
                   tab === t.id ? "bg-elevated text-fg" : "text-muted hover:bg-elevated/60 hover:text-fg",
                 )}
                 onClick={() => {
                   setTab(t.id);
                   setMessage("");
+                  // Keep the address in step, so a section can be linked to and reloaded.
+                  history.replaceState(null, "", `/account?tab=${t.id}`);
                 }}
               >
                 <t.icon className="h-4 w-4" strokeWidth={1.75} />
@@ -804,6 +815,27 @@ export function AccountPanel({
             </>
           )}
 
+          {tab === "usage" && (
+            <Card className="p-6">
+              <SectionHeader title="Usage" description="How much of your plan's model credits you have used." />
+              <div className="mt-5">
+                <UsageTab />
+              </div>
+            </Card>
+          )}
+
+          {tab === "connections" && (
+            <Card className="p-6">
+              <SectionHeader
+                title="Connections"
+                description="Subscriptions, accounts and API keys that Botflow can use on your behalf."
+              />
+              <div className="mt-6">
+                <ConnectionsSection variant="section" defaultTab="connections" open onClose={() => {}} />
+              </div>
+            </Card>
+          )}
+
           {tab === "billing" && (
             <>
               <Card className="p-6">
@@ -999,14 +1031,8 @@ export function AccountPanel({
           )}
         </section>
       </div>
-    </Frame>
+    </AppShell>
   );
-}
-
-/** The /account page gets the shared app shell; the in-app dialog does not. */
-function Frame({ embedded, children }: { embedded: boolean; children: React.ReactNode }) {
-  if (embedded) return <div className="bg-bg text-fg">{children}</div>;
-  return <AppShell>{children}</AppShell>;
 }
 
 /** Turn a raw user-agent string into something a person would recognize. */

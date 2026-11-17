@@ -4,7 +4,9 @@ import { ExternalLink } from 'lucide-react';
 import {
   Card,
   ErrorState,
+  displayName,
   fmtNum,
+  modelName,
   fmtUsd,
   HBarList,
   LoadingState,
@@ -84,6 +86,12 @@ const DASHBOARDS: Record<string, string> = {
   upstash: 'https://console.upstash.com',
 };
 
+/** OpenAI bills per "model, direction": show the model the way the app names it. */
+function lineItemName(raw: string): string {
+  const [model, ...rest] = raw.split(', ');
+  return [modelName(model), ...rest].join(', ');
+}
+
 function fmtBytes(b: number): string {
   if (b >= 1e9) return `${(b / 1e9).toFixed(2)} GB`;
   if (b >= 1e6) return `${(b / 1e6).toFixed(1)} MB`;
@@ -152,7 +160,7 @@ export default function PanelProvidersPage() {
           ) : (
             <HBarList
               rows={meteredThisMonth.map((m) => ({
-                label: m.provider,
+                label: displayName(m.provider),
                 value: m.costUsd,
                 sub: `${m.models.length} model${m.models.length === 1 ? '' : 's'}`,
               }))}
@@ -188,21 +196,21 @@ export default function PanelProvidersPage() {
             {stripe.configured && !stripe.error && (
               <>
                 <div className="text-2xl font-semibold tracking-tight text-fg mb-1">
-                  {fmtUsd(stripe.mrrUsd, { cents: true })}
+                  {fmtUsd(stripe.mrrUsd)}
                   <span className="text-xs font-normal text-muted ml-2">
-                    MRR · {fmtUsd(stripe.lifetimeNetUsd, { cents: true })} lifetime
+                    MRR · {fmtUsd(stripe.lifetimeNetUsd)} lifetime
                   </span>
                 </div>
                 <div className="text-xs text-muted mb-2">
                   {stripe.account?.name ?? stripe.account?.id} · {stripe.payingCustomers} paying
-                  customers · {fmtUsd(stripe.last30dNetUsd, { cents: true })} last 30d
+                  customers · {fmtUsd(stripe.last30dNetUsd)} last 30d
                 </div>
                 {(stripe.legacyLifetimeNetUsd > 0 || stripe.legacyMrrUsd > 0) && (
                   <p className="text-xs text-muted">
                     Excludes unrelated legacy products on the same account (
-                    {fmtUsd(stripe.legacyMrrUsd, { cents: true })}/mo,{' '}
-                    {fmtUsd(stripe.legacyLifetimeNetUsd, { cents: true })} lifetime). Whole
-                    account: {fmtUsd(stripe.accountLifetimeNetUsd, { cents: true })}.
+                    {fmtUsd(stripe.legacyMrrUsd)}/mo,{' '}
+                    {fmtUsd(stripe.legacyLifetimeNetUsd)} lifetime). Whole
+                    account: {fmtUsd(stripe.accountLifetimeNetUsd)}.
                   </p>
                 )}
               </>
@@ -238,6 +246,12 @@ export default function PanelProvidersPage() {
                 </div>
                 {openai.daily && openai.daily.length > 0 && (
                   <div className="mt-3">
+                    <div className="mb-2 flex items-baseline justify-between text-xs text-muted">
+                      <span>Daily spend, last {openai.daily.length} days</span>
+                      <span className="tabular-nums">
+                        peak {fmtUsd(Math.max(...openai.daily.map((d) => d.usd)))}
+                      </span>
+                    </div>
                     <MiniBars
                       data={openai.daily.map((d) => ({ label: d.date, value: d.usd }))}
                       formatValue={(v) => fmtUsd(v)}
@@ -249,7 +263,7 @@ export default function PanelProvidersPage() {
                   <div className="mt-3 space-y-1">
                     {openai.byLineItem.slice(0, 6).map((li) => (
                       <div key={li.lineItem} className="flex justify-between text-xs">
-                        <span className="text-muted truncate mr-2">{li.lineItem}</span>
+                        <span className="text-muted truncate mr-2">{lineItemName(li.lineItem)}</span>
                         <span className="tabular-nums text-fg">{fmtUsd(li.usd)}</span>
                       </div>
                     ))}

@@ -5,8 +5,10 @@ import { createPortal } from 'react-dom';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, isToolUIPart, getToolName, type UIMessage } from 'ai';
 import { Markdown } from '@/components/ui/markdown';
-import { ChevronDown, ChevronRight, ArrowUp, X as IconX, Settings2, Square, AlertCircle, RotateCcw, Loader2, ListPlus, Check, ImagePlus, Smartphone, PanelLeft, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, ArrowUp, X as IconX, Settings2, Square, AlertCircle, RotateCcw, Loader2, ListPlus, Check, ImagePlus, Smartphone, PanelLeft, ChevronLeft, SquarePen, MoreHorizontal, Trash2 } from 'lucide-react';
+import Link from 'next/link';
 import { SettingsModal } from '@/components/settings/SettingsModal';
+import { Menu, MenuItem, MenuSeparator } from '@/components/ui/menu';
 import { cn } from '@/lib/utils';
 import { LiveActions } from '@/components/agent/LiveActions';
 import { useToast } from '@/components/ui/toast';
@@ -16,7 +18,6 @@ import { ModelSelector } from '@/components/ui/ModelSelector';
 import { useClampToViewport } from '@/components/ui/use-clamp-to-viewport';
 import { formatToolName } from '@/lib/agent/tool-labels';
 import { LimitModal, parseLimitPayload, type LimitReachedPayload } from '@/components/ui/LimitModal';
-import { CreditGauge } from '@/components/ui/CreditGauge';
 import type { AgentErrorType } from '@/lib/agent/errors';
 import { processImageForUpload } from '@/lib/image-processing';
 import { ImageLightbox } from '@/components/ui/ImageLightbox';
@@ -211,8 +212,11 @@ function SubagentCard({ steps, label }: { steps: SubagentStep[]; label?: string 
 // ============================================================================
 // Token display formatter
 // ============================================================================
-/** Hover wrapper for the header gauges — shows a small labelled tooltip so
- *  the user knows which usage each ring measures. */
+/** Icon button in the chat header: 44px touch target on phones, 28px on desktop. */
+const headerIconButton =
+  'relative flex size-11 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg md:size-7';
+
+/** Hover wrapper for the usage label — the tooltip spells out every allowance. */
 function GaugeWithTooltip({
   label,
   lines,
@@ -234,7 +238,7 @@ function GaugeWithTooltip({
       {hovered && (
         <div
           ref={tooltipRef}
-          className="pointer-events-none absolute right-0 top-full mt-1.5 z-50 w-max max-w-[min(240px,calc(100vw-16px))] rounded-lg border border-border bg-bg px-3 py-2 shadow-lg"
+          className="pointer-events-none absolute bottom-full right-0 z-50 mb-1.5 w-max max-w-[min(240px,calc(100vw-16px))] rounded-lg border border-border bg-bg px-3 py-2 shadow-lg"
         >
           <div className="text-[11px] font-medium text-fg">{label}</div>
           {lines.map((line, i) => (
@@ -347,6 +351,8 @@ function AgentThreadPanel({
   // Server flag (USE_TOGETHER_KIMI): Kimi K2.7 is served by Together AI, not Fireworks.
   const [useTogetherKimi, setUseTogetherKimi] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [projectName, setProjectName] = useState<string | null>(null);
   const [agentError, setAgentError] = useState<StructuredError | null>(null);
   const [retryCountdown, setRetryCountdown] = useState<number | null>(null);
   const [limitPayload, setLimitPayload] = useState<LimitReachedPayload | null>(null);
@@ -378,7 +384,8 @@ function AgentThreadPanel({
   const [showCompletionWarning, setShowCompletionWarning] = useState(false);
 
   // --- Credit gauge state ---
-  const [creditPct, setCreditPct] = useState(0);
+  // null until the first response, so nothing reads "0% used" while loading.
+  const [creditPct, setCreditPct] = useState<number | null>(null);
 
   // --- Claude plan usage gauge (OAuth subscription only) ---
   // Mirrors Claude Code's /usage numbers: session (5h) and week (7d)
@@ -397,8 +404,9 @@ function AgentThreadPanel({
     let cancelled = false;
     fetch(`/api/projects/${encodeURIComponent(projectId)}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((p: { sharedTier?: string } | null) => {
+      .then((p: { sharedTier?: string; name?: string } | null) => {
         if (cancelled) return;
+        if (typeof p?.name === 'string') setProjectName(p.name);
         if (p?.sharedTier === 'pro' || p?.sharedTier === 'max') {
           sharedTierRef.current = p.sharedTier;
           setUserTier(p.sharedTier);
@@ -2003,26 +2011,68 @@ function AgentThreadPanel({
     );
   };
 
+  // Deletes this chat's messages and starts a fresh segment.
+  const clearChat = async () => {
+    const confirmed = window.confirm('Clear this chat? This permanently deletes its messages. Your other chats are not affected.');
+    if (!confirmed) return;
+    try {
+      const r = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}`, { method: 'DELETE' });
+      const data = await r.json().catch(() => ({} as { currentSegmentId?: string }));
+      if (typeof data.currentSegmentId === 'string') setCurrentSegmentId(data.currentSegmentId);
+      savedIdsRef.current.clear();
+      segmentByMessageIdRef.current.clear();
+      lastAssistantSavedRef.current = null;
+      setMessages([]);
+      setHasAgentResponded(false);
+      setTokenEstimate(0);
+      setClaudeCodeUsage(null);
+      setIsCompacting(false);
+      onThreadChanged();
+      // Wipe browser-log ring buffer — new segment, fresh slate.
+      fetch(`/api/projects/${encodeURIComponent(projectId)}/browser-log`, { method: 'DELETE' }).catch(() => {});
+      // Clean up any pending image attachments
+      setPendingImages(prev => {
+        prev.forEach(img => URL.revokeObjectURL(img.localUrl));
+        return [];
+      });
+    } catch (err) {
+      console.error('Failed to reset chat:', err);
+    }
+  };
+
   return (
     <div className={cn('flex h-full flex-col text-sm bg-surface text-fg p-2.5', className)}>
-      {/* Header */}
-      <div className="flex h-9 items-center justify-between px-2 pb-2 pt-0.5">
-        <div className="flex items-center gap-1">
-          {/* Threads sheet toggle. -ml-1.5 cancels the hit-area padding so the
-              glyph lines up with the header edge, mirroring Settings. */}
+      {/* Header: where you are (project, with a way back) on the left; the
+          three chat actions on the right. Touch targets are 44px on phones. */}
+      <div className="flex h-11 items-center justify-between gap-2 px-1 pb-2 pt-0.5 md:h-9">
+        <div className="flex min-w-0 items-center gap-0.5">
+          <Link
+            href="/projects"
+            title="All projects"
+            aria-label="Back to all projects"
+            className="-ml-1 hidden size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg md:flex"
+          >
+            <ChevronLeft size={16} />
+          </Link>
+          <span className="truncate pl-1.5 text-[13px] font-medium text-fg md:pl-0.5" title={projectName ?? undefined}>
+            {projectName ?? '\u00A0'}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <PeopleChips userIds={viewerIds} people={people} />
           <button
             type="button"
             onClick={onOpenThreads}
             title="Chats"
             aria-label="Open chats"
-            className="relative -ml-1.5 flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg"
+            className={headerIconButton}
           >
             <PanelLeft size={16} />
             {threadsAttention && (
               <span
                 aria-hidden
                 className={cn(
-                  'absolute right-0.5 top-0.5 size-2 rounded-full ring-2 ring-surface',
+                  'absolute right-2.5 top-2.5 size-2 rounded-full ring-2 ring-surface md:right-0.5 md:top-0.5',
                   ATTENTION_DOT_CLASS[threadsAttention],
                 )}
               />
@@ -2031,84 +2081,52 @@ function AgentThreadPanel({
           <button
             type="button"
             onClick={onNewChat}
-            className="flex h-7 items-center gap-1 rounded-md pl-1.5 pr-2 text-xs font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
+            title="New chat"
+            aria-label="New chat"
+            className={headerIconButton}
           >
-            <Plus size={14} />
-            New chat
+            <SquarePen size={16} strokeWidth={1.75} />
           </button>
-          <button
-            type="button"
-            title="Delete this chat's messages and start over"
-            className="flex h-7 items-center rounded-md px-2 text-xs font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
-            onClick={async () => {
-              const confirmed = window.confirm('Clear this chat? This permanently deletes its messages. Your other chats are not affected.');
-              if (!confirmed) return;
-              try {
-                const r = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}`, { method: 'DELETE' });
-                const data = await r.json().catch(() => ({} as { currentSegmentId?: string }));
-                if (typeof data.currentSegmentId === 'string') setCurrentSegmentId(data.currentSegmentId);
-                savedIdsRef.current.clear();
-                segmentByMessageIdRef.current.clear();
-                lastAssistantSavedRef.current = null;
-                setMessages([]);
-                setHasAgentResponded(false);
-                setTokenEstimate(0);
-                setClaudeCodeUsage(null);
-                setIsCompacting(false);
-                onThreadChanged();
-                // Wipe browser-log ring buffer — new segment, fresh slate.
-                fetch(`/api/projects/${encodeURIComponent(projectId)}/browser-log`, { method: 'DELETE' }).catch(() => {});
-                // Clean up any pending image attachments
-                setPendingImages(prev => {
-                  prev.forEach(img => URL.revokeObjectURL(img.localUrl));
-                  return [];
-                });
-              } catch (err) {
-                console.error('Failed to reset chat:', err);
-              }
-            }}
-          >
-            Clear chat
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <PeopleChips userIds={viewerIds} people={people} />
-          {(() => {
-            // Shrink both gauges a touch when they sit side-by-side so they
-            // don't crowd each other. Mirrored layout: the Botflow gauge sits
-            // next to Settings at the outer edge, the Claude plan gauge inside it.
-            // One usage meter: the ring shows whichever allowance this chat's
-            // model actually draws on, and the tooltip spells out both.
-            const showClaudePlan = Boolean(usesClaudePlan && claudePlanUsage);
-            const planPct = claudePlanUsage
-              ? Math.max(claudePlanUsage.fiveHour ?? 0, claudePlanUsage.sevenDay ?? 0)
-              : 0;
-            return (
-              <GaugeWithTooltip
-                label={showClaudePlan ? 'Usage — your Claude plan' : 'Usage — Botflow credits'}
-                lines={[
-                  ...(showClaudePlan && claudePlanUsage
-                    ? [
-                        ...(claudePlanUsage.fiveHour !== null ? [`Claude session (5h): ${claudePlanUsage.fiveHour}% used`] : []),
-                        ...(claudePlanUsage.sevenDay !== null ? [`Claude week (7d): ${claudePlanUsage.sevenDay}% used`] : []),
-                      ]
-                    : []),
-                  `Botflow credits this week: ${Math.round(creditPct)}% used`,
-                ]}
-              >
-                <CreditGauge pct={showClaudePlan ? planPct : creditPct} size="sm" />
-              </GaugeWithTooltip>
-            );
-          })()}
-          <button
-            type="button"
-            onClick={() => setShowSettings(true)}
-            title="Settings"
-            aria-label="Settings"
-            className="-mr-1.5 flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg"
-          >
-            <Settings2 size={16} strokeWidth={1.75} />
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              title="More"
+              aria-label="More chat actions"
+              aria-haspopup="menu"
+              aria-expanded={headerMenuOpen}
+              onClick={() => setHeaderMenuOpen((v) => !v)}
+              className={cn(headerIconButton, '-mr-1')}
+            >
+              <MoreHorizontal size={16} />
+            </button>
+            {headerMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} />
+                <Menu className="absolute right-0 top-full z-50 mt-1 w-52">
+                  <MenuItem
+                    onClick={() => {
+                      setHeaderMenuOpen(false);
+                      setShowSettings(true);
+                    }}
+                  >
+                    <Settings2 size={15} strokeWidth={1.75} className="text-muted" />
+                    Usage and settings
+                  </MenuItem>
+                  <MenuSeparator />
+                  <MenuItem
+                    tone="danger"
+                    onClick={() => {
+                      setHeaderMenuOpen(false);
+                      void clearChat();
+                    }}
+                  >
+                    <Trash2 size={15} strokeWidth={1.75} />
+                    Clear this chat
+                  </MenuItem>
+                </Menu>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -2730,34 +2748,80 @@ function AgentThreadPanel({
           </div>
         </div>
 
-        {/* Inset bottom — Token counter. Shows the agent's real usage when
-            available; falls back to our char/4 estimate before the first report. */}
-        {(displayedTokens > 0 || isCompacting) && (
-          <div
-            className="flex cursor-help items-center gap-2.5 border-t border-border px-3.5 py-2"
-            aria-label="Context window used"
-            title="Context window used vs. total — how much of the model's memory this conversation is using. Older messages are auto-summarized as it fills up."
-          >
-            <div className="flex-1 h-1 rounded-full bg-soft overflow-hidden">
-              <div
-                className={cn(
-                  'h-full rounded-full transition-all duration-300',
-                  isCompacting ? 'animate-pulse bg-fg/40' : tokenBarColor,
-                )}
-                style={{ width: `${Math.min(tokenRatio * 100, 100)}%` }}
-              />
+        {/* Inset bottom — the two things that run out, each with its name:
+            this conversation's context on the left, the allowance the turn
+            draws on (Claude plan or Botflow credits) on the right. */}
+        {(() => {
+          const showContext = displayedTokens > 0 || isCompacting;
+          const showClaudePlan = Boolean(usesClaudePlan && claudePlanUsage);
+          const session = claudePlanUsage?.fiveHour ?? null;
+          const week = claudePlanUsage?.sevenDay ?? null;
+          // The label names whichever limit is closest to running out.
+          const usage: { label: string; pct: number } | null = showClaudePlan
+            ? (session ?? 0) >= (week ?? 0)
+              ? { label: 'Claude session', pct: session ?? 0 }
+              : { label: 'Claude week', pct: week ?? 0 }
+            : creditPct !== null
+              ? { label: 'Weekly credits', pct: creditPct }
+              : null;
+          if (!showContext && !usage) return null;
+          return (
+            <div className="flex items-center gap-3 border-t border-border px-3.5 py-2 text-[11px] tabular-nums">
+              {showContext ? (
+                <div
+                  className="flex min-w-0 flex-1 cursor-help items-center gap-2.5"
+                  aria-label="Context window used"
+                  title="Context window used vs. total — how much of the model's memory this conversation is using. Older messages are auto-summarized as it fills up."
+                >
+                  <div className="h-1 min-w-6 flex-1 overflow-hidden rounded-full bg-soft">
+                    <div
+                      className={cn(
+                        'h-full rounded-full transition-all duration-300',
+                        isCompacting ? 'animate-pulse bg-fg/40' : tokenBarColor,
+                      )}
+                      style={{ width: `${Math.min(tokenRatio * 100, 100)}%` }}
+                    />
+                  </div>
+                  <span className={cn(
+                    'whitespace-nowrap',
+                    isCompacting ? 'text-muted' :
+                    tokenRatio >= 0.9 ? 'text-danger' : tokenRatio >= 0.7 ? 'text-warning' : 'text-muted'
+                  )}>
+                    {isCompacting
+                      ? 'Compacting…'
+                      : `Context ${formatTokenCount(displayedTokens)} / ${formatTokenCount(maxTokens)}`}
+                  </span>
+                </div>
+              ) : (
+                <span className="flex-1" />
+              )}
+              {usage && (
+                <GaugeWithTooltip
+                  label={showClaudePlan ? 'Usage — your Claude plan' : 'Usage — Botflow credits'}
+                  lines={[
+                    ...(showClaudePlan
+                      ? [
+                          ...(session !== null ? [`Claude session (5h): ${session}% used`] : []),
+                          ...(week !== null ? [`Claude week (7d): ${week}% used`] : []),
+                        ]
+                      : []),
+                    ...(creditPct !== null ? [`Botflow credits this week: ${Math.round(creditPct)}% used`] : []),
+                  ]}
+                >
+                  <span
+                    className={cn(
+                      'cursor-help whitespace-nowrap',
+                      showContext && 'border-l border-border pl-3',
+                      usage.pct >= 80 ? 'text-danger' : usage.pct >= 60 ? 'text-warning' : 'text-muted',
+                    )}
+                  >
+                    {usage.label} {Math.round(usage.pct)}% used
+                  </span>
+                </GaugeWithTooltip>
+              )}
             </div>
-            <span className={cn(
-              'whitespace-nowrap text-[11px] tabular-nums',
-              isCompacting ? 'text-muted' :
-              tokenRatio >= 0.9 ? 'text-danger' : tokenRatio >= 0.7 ? 'text-warning' : 'text-muted'
-            )}>
-              {isCompacting
-                ? 'Compacting…'
-                : `Context ${formatTokenCount(displayedTokens)} / ${formatTokenCount(maxTokens)}`}
-            </span>
-          </div>
-        )}
+          );
+        })()}
       </form>
 
       {/* Portals render to document.body — skip during SSR. */}

@@ -1,23 +1,14 @@
 "use client";
 import Image from "next/image";
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { authClient } from "@/lib/auth/client";
 import { safeRedirect } from "@/lib/auth/policy";
 import { AuthForm } from "./sign-in";
-import { AccountPanel } from "./account";
-import dynamic from "next/dynamic";
-import { CreditCard, LogOut, Settings2, UserRound, X } from "lucide-react";
+import Link from "next/link";
+import { LogOut, Settings2, X } from "lucide-react";
 import { buttonClass } from "@/components/ui/button";
-import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
+import { Menu, MenuItem, MenuSeparator, menuItemClass } from "@/components/ui/menu";
 export { PricingTable } from "./pricing-table";
-
-// Loaded on demand: the settings dialog imports from this module, so a static
-// import here would be circular.
-const SettingsModal = dynamic(
-  () => import("@/components/settings/SettingsModal").then((m) => m.SettingsModal),
-  { ssr: false },
-);
 
 interface User {
   id: string;
@@ -175,12 +166,6 @@ export function UserButton(_props: {
   void _props;
   const { user } = useUser();
   const [open, setOpen] = useState(false);
-  const [accountTab, setAccountTab] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const accountDialog = React.useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    if (accountTab) accountDialog.current?.showModal();
-  }, [accountTab]);
   if (!user) return null;
   return (
     <div className="relative text-fg">
@@ -219,33 +204,11 @@ export function UserButton(_props: {
               </p>
             </div>
             <MenuSeparator />
-            <MenuItem
-              onClick={() => {
-                setOpen(false);
-                setSettingsOpen(true);
-              }}
-            >
+            {/* One destination for everything about the account. */}
+            <Link href="/account" role="menuitem" className={menuItemClass} onClick={() => setOpen(false)}>
               <Settings2 className="h-4 w-4 text-muted" strokeWidth={1.75} />
               Settings
-            </MenuItem>
-            <MenuItem
-              onClick={() => {
-                setOpen(false);
-                setAccountTab("profile");
-              }}
-            >
-              <UserRound className="h-4 w-4 text-muted" strokeWidth={1.75} />
-              Account
-            </MenuItem>
-            <MenuItem
-              onClick={() => {
-                setOpen(false);
-                setAccountTab("billing");
-              }}
-            >
-              <CreditCard className="h-4 w-4 text-muted" strokeWidth={1.75} />
-              Billing
-            </MenuItem>
+            </Link>
             <MenuSeparator />
             <MenuItem
               onClick={async () => {
@@ -258,27 +221,6 @@ export function UserButton(_props: {
             </MenuItem>
           </Menu>
         </>
-      )}
-      {/* Portalled to <body>: the header uses backdrop-filter, which would
-          otherwise become the containing block for the dialog's fixed overlay. */}
-      {settingsOpen &&
-        typeof document !== "undefined" &&
-        createPortal(<SettingsModal open onClose={() => setSettingsOpen(false)} />, document.body)}
-      {accountTab && (
-        <dialog
-          ref={accountDialog}
-          onClose={() => setAccountTab(null)}
-          className="fixed inset-0 m-auto max-h-[90vh] w-[calc(100%-2rem)] max-w-4xl overflow-y-auto rounded-2xl border border-border bg-bg p-0 text-fg shadow-2xl backdrop:bg-black/40 backdrop:backdrop-blur-[2px]"
-        >
-          <button
-            aria-label="Close account"
-            className={buttonClass({ variant: "ghost", size: "icon-sm", className: "absolute right-3 top-3 z-10" })}
-            onClick={() => accountDialog.current?.close()}
-          >
-            <X className="h-4 w-4" />
-          </button>
-          <AccountPanel embedded initialTab={accountTab} />
-        </dialog>
       )}
     </div>
   );

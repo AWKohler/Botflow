@@ -3,6 +3,7 @@
 import {
   Card,
   ErrorState,
+  displayName,
   fmtNum,
   HBarList,
   LoadingState,
@@ -89,12 +90,6 @@ function convexStatusKind(status: string): StatusKind {
   return 'neutral';
 }
 
-/** "sandbox-host" → "Sandbox host", "vercel" → "Vercel". */
-function providerName(raw: string): string {
-  const words = raw.replace(/[-_]+/g, ' ').trim();
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
 /** "invoice.paid" → "Invoice paid", "RENEWAL" → "Renewal". The raw type stays in the tooltip. */
 function eventName(raw: string): string {
   const words = raw.replace(/[._]+/g, ' ').trim().toLowerCase();
@@ -124,12 +119,12 @@ export default function PanelInfraPage() {
         <StatGrid>
           <StatTile label="Active projects" value={fmtNum(projects.active)}
             sub={`${projects.deleted} soft-deleted`} />
-          <StatTile label="Live sessions" value={String(projects.liveSessionCount)} accent />
+          <StatTile label="Live sessions" value={fmtNum(projects.liveSessionCount)} />
           {sandboxes.byProvider.map((p) => (
-            <StatTile key={p.provider} label={`${providerName(p.provider)} sandboxes`} value={fmtNum(p.count)} />
+            <StatTile key={p.provider} label={`${displayName(p.provider)} sandboxes`} value={fmtNum(p.count)} />
           ))}
-          <StatTile label="Public projects" value={String(projects.publicProjects)} />
-          <StatTile label="GitHub linked" value={String(projects.githubLinked)} />
+          <StatTile label="Public projects" value={fmtNum(projects.publicProjects)} />
+          <StatTile label="GitHub linked" value={fmtNum(projects.githubLinked)} />
         </StatGrid>
         <p className="text-xs text-muted mt-3">
           Snapshot storage: {sandboxes.snapshotPolicy}. Per-sandbox sizes aren&apos;t
@@ -142,14 +137,14 @@ export default function PanelInfraPage() {
         <Section title="By platform" className="mb-0">
           <Card>
             <HBarList
-              rows={projects.byPlatform.map((p) => ({ label: p.platform, value: p.count }))}
+              rows={projects.byPlatform.map((p) => ({ label: displayName(p.platform), value: p.count }))}
             />
           </Card>
         </Section>
         <Section title="Reaper pipeline" hint="free-tier lifecycle stages" className="mb-0">
           <Card>
             <HBarList
-              rows={projects.byReapStage.map((s) => ({ label: s.stage, value: s.count }))}
+              rows={projects.byReapStage.map((s) => ({ label: displayName(s.stage), value: s.count }))}
             />
           </Card>
         </Section>
@@ -157,12 +152,12 @@ export default function PanelInfraPage() {
 
       <Section title="Convex backends">
         <StatGrid>
-          <StatTile label="Platform instances" value={fmtNum(convex.platformInstances)} accent
+          <StatTile label="Platform instances" value={fmtNum(convex.platformInstances)}
             sub="on the Botflow Convex team" />
           <StatTile label="BYOC instances" value={fmtNum(convex.byocInstances)}
             sub="user-billed" />
           <StatTile label="Calls, last 30d" value={fmtNum(convex.totalCallsLast30d)} />
-          <StatTile label="Orphaned" value={String(convex.orphanedInstances)}
+          <StatTile label="Orphaned" value={fmtNum(convex.orphanedInstances)}
             warn={convex.orphanedInstances > 0}
             sub="backends on deleted projects" />
         </StatGrid>
@@ -263,7 +258,7 @@ export default function PanelInfraPage() {
               <tbody>
                 {webhooks.recentFailures.map((f, i) => (
                   <tr key={i} className="border-b border-border/60 last:border-0">
-                    <td className="py-1.5 pr-3 text-fg capitalize">{f.source}</td>
+                    <td className="py-1.5 pr-3 text-fg">{displayName(f.source)}</td>
                     <td className="py-1.5 pr-3 text-fg" title={f.canonicalType}>{eventName(f.canonicalType)}</td>
                     <td className="py-1.5 pr-3 tabular-nums text-fg">
                       {f.attempts}
@@ -289,9 +284,9 @@ export default function PanelInfraPage() {
             sub="last poll" />
           <StatTile label="Stripe delivery activity" value={timeAgo(ops.stripeDeliveryLastActivity)} />
           <StatTile label="RC delivery activity" value={timeAgo(ops.revenuecatDeliveryLastActivity)} />
-          <StatTile label="Pending OAuth modals" value={String(ops.pendingOauthRequests)} />
-          <StatTile label="Pending env-var modals" value={String(ops.pendingEnvVarRequests)} />
-          <StatTile label="Pending agent questions" value={String(ops.pendingChatQuestions)} />
+          <StatTile label="Pending OAuth modals" value={fmtNum(ops.pendingOauthRequests)} />
+          <StatTile label="Pending env-var modals" value={fmtNum(ops.pendingEnvVarRequests)} />
+          <StatTile label="Pending agent questions" value={fmtNum(ops.pendingChatQuestions)} />
         </StatGrid>
       </Section>
     </div>

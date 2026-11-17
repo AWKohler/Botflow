@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CreditGauge } from '@/components/ui/CreditGauge';
-import { Loader2, Info } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 interface ModelRow {
   model: string;
@@ -26,8 +25,9 @@ interface CreditsData {
 }
 
 function fmt(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  const trim = (v: number) => v.toFixed(1).replace(/\.0$/, '');
+  if (n >= 1_000_000) return `${trim(n / 1_000_000)}M`;
+  if (n >= 1_000) return `${trim(n / 1_000)}k`;
   return String(n);
 }
 
@@ -70,6 +70,38 @@ const MODEL_DISPLAY: Record<string, string> = {
   'grok-4.5': 'Grok 4.5', // historical usage records
 };
 
+function UsageMeter({ label, used, limit, pct }: { label: string; used: number; limit: number; pct: number }) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-[13px] font-medium text-fg">{label}</p>
+        <p className="text-xs tabular-nums text-muted">{Math.round(clamped)}% used</p>
+      </div>
+      <div
+        className="mt-2 h-1.5 overflow-hidden rounded-full bg-soft"
+        role="progressbar"
+        aria-label={`Credits used ${label.toLowerCase()}`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(clamped)}
+      >
+        <div
+          className="h-full rounded-full transition-all"
+          style={{
+            width: `${clamped}%`,
+            backgroundColor:
+              clamped >= 80 ? 'var(--danger-solid)' : clamped >= 60 ? 'var(--warning-solid)' : 'var(--success-solid)',
+          }}
+        />
+      </div>
+      <p className="mt-2 text-xs tabular-nums text-muted">
+        <span className="font-medium text-fg">{fmt(used)}</span> of {fmt(limit)} credits
+      </p>
+    </div>
+  );
+}
+
 export function UsageTab() {
   const [data, setData] = useState<CreditsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,55 +133,17 @@ export function UsageTab() {
 
   return (
     <div className="space-y-6">
-      {/* Credits ≠ tokens note */}
-      <div className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5">
-        <Info className="h-3.5 w-3.5 text-muted mt-0.5 shrink-0" />
-        <p className="text-xs text-muted leading-relaxed">
-          <span className="font-medium text-fg">Credits ≠ tokens.</span>{' '}
-          Credits are normalized across models — 1 MiniMax token = 1 credit. Cached input tokens cost significantly less.
-          Your own API keys (OAuth / BYOK) don&apos;t count toward your platform budget.
-        </p>
-      </div>
-
-      {/* Weekly gauge + stats */}
-      <div className="flex items-center gap-8">
-        <CreditGauge pct={data.pct} size="lg" />
-        <div className="space-y-3 flex-1">
-          <div>
-            <p className="text-xs text-muted mb-1">Weekly credits</p>
-            <p className="text-sm font-medium text-fg">
-              {fmt(data.weeklyUsed)} <span className="text-muted font-normal">/ {fmt(data.weeklyLimit)}</span>
-            </p>
-            <div className="mt-1.5 h-1.5 rounded-full bg-soft overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${data.pct}%`,
-                  backgroundColor: data.pct >= 80 ? 'var(--danger-solid)' : data.pct >= 60 ? 'var(--warning-solid)' : 'var(--success-solid)',
-                }}
-              />
-            </div>
-          </div>
-          <div>
-            <p className="text-xs text-muted mb-1">Monthly credits</p>
-            <p className="text-sm font-medium text-fg">
-              {fmt(data.monthlyUsed)} <span className="text-muted font-normal">/ {fmt(data.monthlyLimit)}</span>
-            </p>
-            <div className="mt-1.5 h-1.5 rounded-full bg-soft overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${data.monthlyPct}%`,
-                  backgroundColor: data.monthlyPct >= 80 ? 'var(--danger-solid)' : data.monthlyPct >= 60 ? 'var(--warning-solid)' : 'var(--success-solid)',
-                }}
-              />
-            </div>
-          </div>
-          <p className="text-xs text-muted">
-            Plan: <span className="capitalize font-medium text-fg">{data.tier}</span>
-            {' · '}Credits reset weekly (Mon) and monthly.
-          </p>
+      {/* The two allowances, each named, with its own bar and percentage. */}
+      <div>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <UsageMeter label="This week" used={data.weeklyUsed} limit={data.weeklyLimit} pct={data.pct} />
+          <UsageMeter label="This month" used={data.monthlyUsed} limit={data.monthlyLimit} pct={data.monthlyPct} />
         </div>
+        <p className="mt-4 text-xs leading-relaxed text-muted">
+          <span className="font-medium text-fg">{data.tier.charAt(0).toUpperCase() + data.tier.slice(1)} plan.</span>{' '}
+          Credits measure model use billed to Botflow, and reset every Monday and every month. Turns that run on
+          your own subscription or API keys don&apos;t use credits.
+        </p>
       </div>
 
       {/* Cache summary */}

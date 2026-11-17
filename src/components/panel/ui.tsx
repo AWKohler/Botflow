@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { buttonClass } from '@/components/ui/button';
+import { MODEL_CONFIGS } from '@/lib/agent/models';
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide-react';
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
@@ -30,12 +31,43 @@ export function fmtUsd(v: number, opts?: { cents?: boolean }): string {
   });
 }
 
+/**
+ * One rule for every count in the panel: exact, with a thousands separator,
+ * below 10,000 ("2,841"); compact from there up ("48K", "1.2M").
+ */
 export function fmtNum(v: number): string {
-  if (Math.abs(v) >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}B`;
-  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  const trim = (n: number) => n.toFixed(1).replace(/\.0$/, '');
+  if (Math.abs(v) >= 1_000_000_000) return `${trim(v / 1_000_000_000)}B`;
+  if (Math.abs(v) >= 1_000_000) return `${trim(v / 1_000_000)}M`;
   if (Math.abs(v) >= 10_000) return `${(v / 1_000).toFixed(0)}K`;
-  if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
   return v.toLocaleString('en-US', { maximumFractionDigits: 0 });
+}
+
+const NAMES: Record<string, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  google: 'Google',
+  xai: 'xAI',
+  fireworks: 'Fireworks',
+  together: 'Together',
+  moonshot: 'Moonshot',
+  stripe: 'Stripe',
+  revenuecat: 'RevenueCat',
+  vercel: 'Vercel',
+  byoc: 'BYOC',
+};
+
+/** Display name for a raw identifier: "openai" → "OpenAI", "sandbox-host" → "Sandbox host". */
+export function displayName(raw: string): string {
+  const known = NAMES[raw.toLowerCase()];
+  if (known) return known;
+  const words = raw.replace(/[-_.]+/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** "claude-sonnet-5-5" → "Claude Sonnet 5.5"; unknown ids are shown as they are. */
+export function modelName(id: string): string {
+  return (MODEL_CONFIGS as Record<string, { displayName: string } | undefined>)[id]?.displayName ?? id;
 }
 
 export function fmtPct(v: number): string {
@@ -194,15 +226,12 @@ export function StatTile({
   label,
   value,
   sub,
-  accent,
   warn,
 }: {
   label: string;
   value: React.ReactNode;
   sub?: string;
-  /** Highlight the value in the accent color (use sparingly — one per row). */
-  accent?: boolean;
-  /** Negative/at-risk numbers. */
+  /** Negative/at-risk numbers. Colour is for state only, never decoration. */
   warn?: boolean;
 }) {
   return (
@@ -211,7 +240,7 @@ export function StatTile({
       <div
         className={cn(
           'text-2xl font-semibold tracking-tight tabular-nums',
-          accent ? 'text-accent' : warn ? 'text-danger' : 'text-fg',
+          warn ? 'text-danger' : 'text-fg',
         )}
       >
         {value}
@@ -299,13 +328,20 @@ export function MiniBars({
           </div>
         ))}
       </div>
-      {labelled && (
+      {labelled ? (
         <div className="mt-1.5 flex gap-1.5 border-t border-border pt-1.5">
           {data.map((d) => (
             <span key={d.label} className="min-w-[6px] flex-1 truncate text-center text-[11px] text-muted">
               {periodLabel(d.label)}
             </span>
           ))}
+        </div>
+      ) : (
+        // Dense series: first, middle and last period, plus the peak for scale.
+        <div className="mt-1.5 flex justify-between border-t border-border pt-1.5 text-[11px] tabular-nums text-muted">
+          <span>{periodLabel(data[0]?.label ?? '')}</span>
+          <span>{periodLabel(data[Math.floor((data.length - 1) / 2)]?.label ?? '')}</span>
+          <span>{periodLabel(data[data.length - 1]?.label ?? '')}</span>
         </div>
       )}
     </div>
@@ -336,7 +372,7 @@ export function HBarList({
     <div className="space-y-2">
       {rows.map((r) => (
         <div key={r.label} className="flex items-center gap-3">
-          <div className="w-44 shrink-0 truncate text-sm text-fg" title={r.label}>
+          <div className="w-40 shrink-0 truncate text-sm text-fg" title={r.label}>
             {r.label}
           </div>
           <div className="flex-1 h-4 rounded-[4px] bg-soft/50 overflow-hidden">
@@ -349,7 +385,7 @@ export function HBarList({
             {formatValue(r.value)}
           </div>
           {r.sub !== undefined && (
-            <div className="w-24 shrink-0 text-right text-xs text-muted tabular-nums">
+            <div className="w-36 shrink-0 whitespace-nowrap text-right text-xs text-muted tabular-nums">
               {r.sub}
             </div>
           )}
@@ -377,7 +413,7 @@ export function StatusPill({ kind, label }: { kind: StatusKind; label: string })
       )}
     >
       <Icon className="w-3 h-3" />
-      {label}
+      {label.charAt(0).toUpperCase() + label.slice(1)}
     </span>
   );
 }

@@ -149,7 +149,7 @@ export default function PanelUsersPage() {
     <div>
       <PageHeader
         title="Users"
-        subtitle={`${data.totalCount} users${data.truncated ? ' (showing first 5,000)' : ''} — sorted by ${
+        subtitle={`${fmtNum(data.totalCount)} users${data.truncated ? ' (showing first 5,000)' : ''} — sorted by ${
           COLUMNS.find((c) => c.key === sortKey)?.label
         }`}
         onRefresh={refresh}

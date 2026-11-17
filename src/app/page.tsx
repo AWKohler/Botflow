@@ -1369,7 +1369,7 @@ export default function LandingV2() {
   const [convexConnecting, setConvexConnecting] = useState(false);
   const convexSelectorRef = useRef<HTMLDivElement>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsDefaultTab, setSettingsDefaultTab] = useState<'usage' | 'connections' | 'subscription'>('usage');
+  const [settingsDefaultTab, setSettingsDefaultTab] = useState<'usage' | 'connections'>('usage');
   // Provider sign-in pills: signed-in users jump to the Connections settings tab
   // (to link Claude/ChatGPT); signed-out users are sent to login first.
   const handleProviderAuthClick = useCallback(() => {
@@ -2123,8 +2123,7 @@ export default function LandingV2() {
                                         title: 'Pro plan required',
                                         description: 'Botflow-managed Convex is included on Pro and Max. Free projects can use Bring Your Own Convex or No Backend.',
                                       });
-                                      setSettingsDefaultTab('subscription');
-                                      setShowSettings(true);
+                                      window.open('/pricing', '_blank', 'noopener,noreferrer');
                                       setShowConvexSelector(false);
                                       return;
                                     }

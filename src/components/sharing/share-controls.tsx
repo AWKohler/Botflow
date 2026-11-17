@@ -21,7 +21,7 @@ import { createPortal } from "react-dom";
 import { useUser } from "@/components/auth";
 import { UserPlus, Mail, Crown, X, Check, Loader2 } from "lucide-react";
 import { TextInput } from "@/components/ui/field";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClass } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { SHARING_ENABLED } from "@/lib/feature-flags";
 import { cn } from "@/lib/utils";
@@ -87,12 +87,17 @@ function useActiveCollaborators(projectId: string): ActiveCollaborator[] {
 function useSharing(projectId: string, open: boolean) {
   const [state, setState] = useState<SharingState | null>(null);
   const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
+    setFailed(false);
     try {
       const res = await fetch(`/api/projects/${projectId}/members`);
       if (res.ok) setState((await res.json()) as SharingState);
+      else setFailed(true);
+    } catch {
+      setFailed(true);
     } finally {
       setLoading(false);
     }
@@ -102,7 +107,7 @@ function useSharing(projectId: string, open: boolean) {
     if (open) void reload();
   }, [open, reload]);
 
-  return { state, loading, reload, setState };
+  return { state, loading, failed, reload, setState };
 }
 
 // ─── Popover positioning (mirrors publish-panel.tsx) ─────────────────────────
@@ -294,7 +299,23 @@ function SharePopover({
 }) {
   const { toast } = useToast();
   const { user } = useUser();
-  const { state, loading, reload, setState } = useSharing(projectId, true);
+  const { state, failed, reload, setState } = useSharing(projectId, true);
+  // The owner's plan decides whether inviting is available at all, so the
+  // sheet can offer the upgrade instead of a field that would only error.
+  const [tier, setTier] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/usage/credits")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { tier?: string } | null) => {
+        if (!cancelled) setTier(d?.tier ?? "free");
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const planAllowsSharing = tier === "pro" || tier === "max";
   const [email, setEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [position, setPosition] = useState<AnchoredPosition | null>(null);
@@ -408,48 +429,76 @@ function SharePopover({
           Invite collaborators by email. They can prompt their own agents in this workspace.
         </p>
 
-        {isOwner && (
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex-1 relative">
-              <Mail size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-subtle" />
-              <TextInput
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && void submitInvite()}
-                placeholder="teammate@example.com"
-                aria-label="Invite by email"
-                className="h-8 pl-8 text-[13px]"
-              />
-            </div>
-            <Button variant="primary" size="sm" disabled={inviting} onClick={() => void submitInvite()}>
-              {inviting ? <Loader2 size={14} className="animate-spin" /> : "Invite"}
-            </Button>
+        {isOwner && tier !== null && !planAllowsSharing ? (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2.5">
+            <p className="text-[13px] leading-snug text-fg">Sharing is part of the Pro and Max plans.</p>
+            <a href="/pricing" target="_blank" rel="noopener noreferrer" className={buttonClass({ variant: "primary", size: "sm", className: "shrink-0" })}>
+              Compare plans
+            </a>
           </div>
+        ) : (
+          (isOwner || !state) && (
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex-1 relative">
+                <Mail size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-subtle" />
+                <TextInput
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && void submitInvite()}
+                  placeholder="teammate@example.com"
+                  aria-label="Invite by email"
+                  disabled={!state}
+                  className="h-8 pl-8 text-[13px]"
+                />
+              </div>
+              <Button
+                variant={email.trim() ? "primary" : "secondary"}
+                size="sm"
+                disabled={!state || inviting || !email.trim()}
+                onClick={() => void submitInvite()}
+              >
+                {inviting ? <Loader2 size={14} className="animate-spin" /> : "Invite"}
+              </Button>
+            </div>
+          )
         )}
 
         <div className="space-y-1 mb-4">
           <div className="mb-1.5 text-[11px] font-medium text-muted">
             People with access
           </div>
-          {/* Owner row — always present. */}
-          <div className="flex items-center gap-2.5 px-1 py-1">
-            <AvatarDisc
-              id={user?.id ?? "owner"}
-              name={isOwner ? (user?.fullName ?? "You") : "Project owner"}
-              imageUrl={isOwner ? user?.imageUrl : undefined}
-              size={26}
-            />
-            <span className="text-sm text-fg truncate flex-1">
-              {isOwner ? (user?.fullName ?? "You") : "Project owner"}
-            </span>
-            <span className="text-[10px] font-medium text-muted border border-border rounded-full px-2 py-0.5 flex items-center gap-1">
-              <Crown size={10} /> Owner
-            </span>
-          </div>
-          {loading && !state && (
-            <div className="flex items-center gap-2 px-1 py-2 text-xs text-muted">
-              <Loader2 size={12} className="animate-spin" /> Loading members…
+          {!state && failed && (
+            <div className="flex items-center justify-between gap-3 px-1 py-1.5">
+              <p className="text-[13px] text-muted">Couldn&apos;t load who has access.</p>
+              <Button variant="secondary" size="xs" onClick={() => void reload()}>
+                Try again
+              </Button>
+            </div>
+          )}
+          {/* Placeholder rows while the list loads — never a made-up person. */}
+          {!state && !failed &&
+            [0, 1].map((i) => (
+              <div key={i} className="flex items-center gap-2.5 px-1 py-1" aria-hidden={i > 0} aria-busy="true" aria-label={i === 0 ? "Loading people" : undefined}>
+                <span className="size-[26px] shrink-0 animate-pulse rounded-full bg-soft" />
+                <span className={cn("h-3 animate-pulse rounded bg-soft", i === 0 ? "w-36" : "w-28")} />
+              </div>
+            ))}
+          {/* Owner row. */}
+          {state && (
+            <div className="flex items-center gap-2.5 px-1 py-1">
+              <AvatarDisc
+                id={user?.id ?? "owner"}
+                name={isOwner ? (user?.fullName ?? "You") : "Project owner"}
+                imageUrl={isOwner ? user?.imageUrl : undefined}
+                size={26}
+              />
+              <span className="text-sm text-fg truncate flex-1">
+                {isOwner ? (user?.fullName ?? "You") : "Project owner"}
+              </span>
+              <span className="text-[10px] font-medium text-muted border border-border rounded-full px-2 py-0.5 flex items-center gap-1">
+                <Crown size={10} /> Owner
+              </span>
             </div>
           )}
           {state?.members.map((m) => (
@@ -512,7 +561,9 @@ function SharePopover({
             </div>
           ))}
           {state && state.members.length === 0 && (
-            <p className="text-xs text-muted px-1 py-1">No collaborators yet — invite someone above.</p>
+            <p className="text-xs text-muted px-1 py-1">
+              {isOwner ? "Only you so far." : "No other collaborators yet."}
+            </p>
           )}
         </div>
 
@@ -549,10 +600,11 @@ function SharePopover({
           </div>
         )}
 
-        <p className="mt-3 border-t border-border pt-3 text-xs leading-relaxed text-muted">
-          Sharing requires a Pro or Max plan. Platform-metered model usage by collaborators bills
-          your credits, capped per collaborator.
-        </p>
+        {isOwner && planAllowsSharing && (
+          <p className="mt-3 border-t border-border pt-3 text-xs leading-relaxed text-muted">
+            Collaborators&apos; use of Botflow credits bills your plan, capped per collaborator.
+          </p>
+        )}
         </div>
       </div>
     </>,
