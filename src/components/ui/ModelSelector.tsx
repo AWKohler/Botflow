@@ -204,12 +204,12 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
           'inline-flex items-center gap-1.5 transition min-w-0',
           isComposer
             ? cn(
-                'h-6 rounded-full pl-1.5 pr-2 text-xs font-medium text-muted hover:bg-soft hover:text-foreground max-w-[200px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
-                open && 'bg-soft text-foreground',
+                'h-7 max-w-[200px] rounded-md pl-1.5 pr-2 text-xs font-medium text-muted hover:bg-elevated hover:text-fg',
+                open && 'bg-elevated text-fg',
               )
             : isSm
-              ? 'border bg-elevated border-border rounded-md px-2 py-1 text-xs text-muted max-w-[180px]'
-              : 'border pointer-events-auto rounded-full border-border bg-elevated px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm hover:border-transparent hover:bg-accent/15 max-w-[120px] sm:max-w-[200px]',
+              ? 'max-w-[180px] rounded-md border border-border bg-bg px-2 py-1 text-xs text-muted shadow-xs hover:border-border-strong'
+              : 'pointer-events-auto max-w-[120px] rounded-full border border-border bg-bg px-3 py-1.5 text-xs font-medium text-fg shadow-xs hover:border-border-strong hover:bg-elevated sm:max-w-[200px] sm:text-sm',
         )}
       >
         {leading != null && (
@@ -235,7 +235,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
         <div
           ref={dropdownRef}
           className={cn(
-            'absolute z-50 min-w-[min(280px,calc(100vw-16px))] max-w-[calc(100vw-16px)] max-h-[320px] overflow-y-auto modern-scrollbar rounded-xl border border-border bg-surface shadow-lg',
+            'modern-scrollbar absolute z-50 max-h-[320px] min-w-[min(288px,calc(100vw-16px))] max-w-[calc(100vw-16px)] overflow-y-auto rounded-xl border border-border bg-bg p-1 shadow-lg',
             // 'up' opens above the trigger (bottom toolbars like the landing
             // prompt box, where a downward menu is clipped by the hero's
             // overflow-hidden); 'down' opens below (top toolbars like the agent
@@ -269,26 +269,26 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                 aria-disabled={isDisabled}
                 title={isDisabled ? disabledReason : undefined}
                 className={cn(
-                  'flex w-full items-center gap-3 px-3 py-2.5 text-left transition',
-                  isSelected ? 'bg-elevated' : 'hover:bg-elevated/60',
+                  'flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left transition-colors',
+                  isSelected ? 'bg-elevated' : 'hover:bg-elevated',
                   isTierLocked && 'opacity-50',
                   isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent',
                 )}
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className={cn('text-sm font-medium', isSelected ? 'text-foreground' : 'text-foreground')}>
+                    <span className="text-[13px] font-medium text-fg">
                       {config.displayName}
                     </span>
-                    <span className="inline-flex items-center rounded-full bg-soft px-1.5 py-0.5 text-[10px] font-medium text-muted">
+                    <span className="inline-flex items-center rounded-full border border-border bg-elevated px-1.5 py-px text-[10px] font-medium text-muted">
                       {providerLabel(modelId)}
                     </span>
                     {tierBadge && (
                       <span className={cn(
-                        'inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                        'inline-flex items-center rounded-full border px-1.5 py-px text-[10px] font-medium',
                         requiredTier === 'max'
-                          ? 'bg-accent/10 text-accent'
-                          : 'bg-warning-soft text-warning'
+                          ? 'border-accent/25 bg-accent-soft text-accent'
+                          : 'border-border bg-bg text-fg'
                       )}>
                         {tierBadge}
                       </span>
@@ -296,8 +296,8 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                   </div>
                   <div className="flex items-center gap-2 text-[11px] text-muted mt-0.5">
                     <span>{formatContextSize(config.maxContextTokens)} context</span>
-                    <span className="text-muted/50">·</span>
-                    <span className="font-medium">{modelCostLabel}</span>
+                    <span className="text-subtle">·</span>
+                    <span>{modelCostLabel}</span>
                   </div>
                   {isDisabled && (
                     <div className="text-[11px] text-muted mt-0.5">{disabledReason}</div>

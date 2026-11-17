@@ -20,7 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useUser } from "@/components/auth";
 import { UserPlus, Mail, Crown, X, Check, Loader2 } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { TextInput } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { SHARING_ENABLED } from "@/lib/feature-flags";
@@ -393,17 +393,17 @@ function SharePopover({
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
-        className="fixed z-50 w-[380px] max-w-[calc(100vw-1rem)] rounded-2xl border border-border bg-bg shadow-2xl p-4"
+        className="fixed z-50 w-[380px] max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-bg p-4 shadow-xl"
         style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
       >
         <div className="flex items-start justify-between mb-3">
           <div>
             <h3 className="text-sm font-semibold text-fg">Share project</h3>
-            <p className="text-xs text-muted mt-0.5">
+            <p className="mt-0.5 text-xs leading-relaxed text-muted">
               Invite collaborators by email. They can prompt their own agents in this workspace.
             </p>
           </div>
-          <button onClick={onClose} className="text-muted hover:text-fg p-0.5" aria-label="Close">
+          <button onClick={onClose} className="-mr-1 -mt-1 rounded-md p-1.5 text-muted transition-colors hover:bg-elevated hover:text-fg" aria-label="Close">
             <X size={15} />
           </button>
         </div>
@@ -411,24 +411,25 @@ function SharePopover({
         {isOwner && (
           <div className="flex items-center gap-2 mb-4">
             <div className="flex-1 relative">
-              <Mail size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
-              <Input
+              <Mail size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-subtle" />
+              <TextInput
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && void submitInvite()}
                 placeholder="teammate@example.com"
-                className="pl-8 h-8 text-sm"
+                aria-label="Invite by email"
+                className="h-8 pl-8 text-[13px]"
               />
             </div>
-            <Button size="sm" className="h-8 text-white font-medium" disabled={inviting} onClick={() => void submitInvite()}>
+            <Button variant="primary" size="sm" disabled={inviting} onClick={() => void submitInvite()}>
               {inviting ? <Loader2 size={14} className="animate-spin" /> : "Invite"}
             </Button>
           </div>
         )}
 
         <div className="space-y-1 mb-4">
-          <div className="text-[11px] font-medium uppercase tracking-wide text-muted mb-1.5">
+          <div className="mb-1.5 text-[11px] font-medium text-muted">
             People with access
           </div>
           {/* Owner row — always present. */}
@@ -574,11 +575,11 @@ export function ShareControls({ projectId }: { projectId: string }) {
         ref={triggerRef}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "flex items-center justify-center w-8 h-8 rounded-full border border-border transition-colors bolt-hover",
-          open ? "bg-elevated text-fg" : "bg-surface text-muted hover:text-fg hover:bg-elevated",
+          "flex h-8 w-8 items-center justify-center rounded-lg border border-border shadow-xs transition-colors",
+          open ? "bg-elevated text-fg" : "bg-bg text-muted hover:border-border-strong hover:text-fg",
         )}
         title="Share this project"
-        aria-label="Share"
+        aria-label="Share project"
       >
         <UserPlus size={15} />
       </button>
