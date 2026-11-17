@@ -234,7 +234,7 @@ function GaugeWithTooltip({
       {hovered && (
         <div
           ref={tooltipRef}
-          className="pointer-events-none absolute right-0 top-full mt-1.5 z-50 w-max max-w-[min(240px,calc(100vw-16px))] rounded-lg border border-border bg-elevated px-3 py-2 shadow-xl"
+          className="pointer-events-none absolute right-0 top-full mt-1.5 z-50 w-max max-w-[min(240px,calc(100vw-16px))] rounded-lg border border-border bg-bg px-3 py-2 shadow-lg"
         >
           <div className="text-[11px] font-medium text-fg">{label}</div>
           {lines.map((line, i) => (

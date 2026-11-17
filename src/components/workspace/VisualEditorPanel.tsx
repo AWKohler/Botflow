@@ -299,7 +299,7 @@ export function VisualEditorPanel({
       ) : (
         <div className="flex-1 overflow-y-auto modern-scrollbar p-3 space-y-4">
           {errorMsg && (
-            <div className="text-[11px] text-danger bg-danger-soft rounded px-2 py-1">
+            <div className="rounded-md border border-danger-border bg-danger-soft px-2 py-1 text-[11px] text-danger">
               {errorMsg}
             </div>
           )}
@@ -337,7 +337,7 @@ export function VisualEditorPanel({
               }}
               onBlur={commitAddInput}
               placeholder="Add classes…"
-              className="mt-2 w-full bg-surface rounded px-2 py-1 text-xs text-fg outline-none border border-border focus:border-accent"
+              className="mt-2 w-full rounded-md border border-border bg-bg px-2 py-1 text-xs text-fg outline-none transition-[border-color,box-shadow] focus:border-accent focus:ring-3 focus:ring-accent/15"
             />
           </Section>
 
@@ -455,7 +455,7 @@ function Select({
     <select
       value={value}
       onChange={(e) => e.target.value && onChange(e.target.value)}
-      className="w-full bg-surface rounded px-2 py-1 text-xs text-fg outline-none border border-border focus:border-accent"
+      className="w-full rounded-md border border-border bg-bg px-2 py-1 text-xs text-fg outline-none transition-[border-color,box-shadow] focus:border-accent focus:ring-3 focus:ring-accent/15"
     >
       <option value="">—</option>
       {group.map((g) => (

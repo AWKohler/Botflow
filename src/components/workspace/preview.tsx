@@ -1029,7 +1029,7 @@ export function Preview({
                   href="https://apps.apple.com/us/app/expo-go/id982107779"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs px-3 py-1.5 rounded-full border border-border bg-white hover:bg-neutral-50 transition text-neutral-800"
+                  className="inline-flex h-7 items-center rounded-lg border border-border bg-bg px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated"
                   title="Download on the App Store"
                 >
                   App Store
@@ -1038,7 +1038,7 @@ export function Preview({
                   href="https://play.google.com/store/apps/details?id=host.exp.exponent&hl=en_US&pli=1"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs px-3 py-1.5 rounded-full border border-border bg-white hover:bg-neutral-50 transition text-neutral-800"
+                  className="inline-flex h-7 items-center rounded-lg border border-border bg-bg px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated"
                   title="Get it on Google Play"
                 >
                   Google Play
@@ -1558,7 +1558,7 @@ export function Preview({
                 href="https://apps.apple.com/us/app/expo-go/id982107779"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs px-3 py-1.5 rounded-full border border-border bg-white hover:bg-neutral-50 transition text-neutral-800"
+                className="inline-flex h-7 items-center rounded-lg border border-border bg-bg px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated"
                 title="Download on the App Store"
               >
                 App Store
@@ -1567,7 +1567,7 @@ export function Preview({
                 href="https://play.google.com/store/apps/details?id=host.exp.exponent&hl=en_US&pli=1"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs px-3 py-1.5 rounded-full border border-border bg-white hover:bg-neutral-50 transition text-neutral-800"
+                className="inline-flex h-7 items-center rounded-lg border border-border bg-bg px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated"
                 title="Get it on Google Play"
               >
                 Google Play

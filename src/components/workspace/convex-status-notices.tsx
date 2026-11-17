@@ -52,7 +52,7 @@ export function ConvexStatusBanner({
         {isOwner ? (
           <a
             href={SUPPORT_MAILTO}
-            className="px-2 py-1 rounded bg-danger-solid hover:bg-danger-solid/90 text-white text-xs font-medium shrink-0"
+            className="shrink-0 rounded-md bg-danger-solid px-2 py-1 text-xs font-medium text-white hover:bg-danger-solid/90"
           >
             Contact us
           </a>
@@ -95,13 +95,13 @@ export function ConvexPausedModal({
 }) {
   return (
     <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-[2px] flex items-center justify-center p-4">
-      <div className="w-[min(480px,calc(100vw-2rem))] rounded-xl border border-border bg-surface text-fg shadow-2xl">
+      <div className="w-[min(480px,calc(100vw-2rem))] rounded-2xl border border-border bg-bg text-fg shadow-2xl">
         <div className="px-5 py-4 border-b border-border flex items-center gap-2.5">
           <PauseCircle className="h-5 w-5 text-danger shrink-0" />
-          <h2 className="font-semibold flex-1">Your backend is paused</h2>
+          <h2 className="flex-1 text-base font-semibold">Your backend is paused</h2>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-elevated"
+            className="rounded-md p-1.5 text-muted transition-colors hover:bg-elevated hover:text-fg"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -137,14 +137,14 @@ export function ConvexPausedModal({
           {isOwner && (
             <a
               href={SUPPORT_MAILTO}
-              className="px-3 py-1.5 rounded-lg bg-accent text-accent-foreground text-sm font-medium"
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-fg px-3 text-[13px] font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
             >
               Contact us
             </a>
           )}
           <button
             onClick={onClose}
-            className="px-3 py-1.5 rounded-lg border border-border text-sm hover:bg-elevated"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
           >
             Dismiss
           </button>

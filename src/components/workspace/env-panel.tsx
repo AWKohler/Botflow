@@ -279,7 +279,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
       </div>
 
       {error && (
-        <div className="text-xs text-danger bg-danger-soft rounded px-2 py-1.5 border border-danger-border">
+        <div className="rounded-md border border-danger-border bg-danger-soft px-2 py-1.5 text-xs text-danger">
           {error}
         </div>
       )}

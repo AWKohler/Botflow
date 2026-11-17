@@ -205,7 +205,7 @@ export function TemplateForkModal({
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3.5">
-          <button onClick={onClose} className="rounded-lg border border-border bg-bg px-3.5 py-2 text-sm font-medium text-fg hover:bg-elevated">
+          <button onClick={onClose} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50">
             Cancel
           </button>
           <button

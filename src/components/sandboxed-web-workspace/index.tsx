@@ -1182,7 +1182,7 @@ export function SandboxedWebWorkspace({
                   window.open(checkoutHandoffUrl, "_blank", "noopener,noreferrer");
                   setCheckoutHandoffUrl(null);
                 }}
-                className="flex items-center gap-1.5 rounded-md bg-fg px-3 py-1.5 text-xs font-medium text-bg transition-opacity hover:opacity-90"
+                className="flex h-7 items-center gap-1.5 rounded-md bg-fg px-3 text-xs font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
               >
                 Open Checkout
                 <ExternalLink size={13} />
@@ -1213,7 +1213,7 @@ export function SandboxedWebWorkspace({
                   window.open(authHandoff.url, "_blank", "noopener,noreferrer");
                   setAuthHandoff(null);
                 }}
-                className="flex items-center gap-1.5 rounded-md bg-fg px-3 py-1.5 text-xs font-medium text-bg transition-opacity hover:opacity-90"
+                className="flex h-7 items-center gap-1.5 rounded-md bg-fg px-3 text-xs font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
               >
                 Open app
                 <ExternalLink size={13} />
