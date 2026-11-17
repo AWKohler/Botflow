@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabOption } from "@/components/ui/tabs";
 import { UserButton } from "@/components/auth";
 import { ShareControls } from "@/components/sharing/share-controls";
+import { FileCode2 } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { FileSearch } from "./file-search";
 import { SandboxGitHubPanel } from "@/components/sandboxed-web-workspace/github-panel";
@@ -468,7 +470,7 @@ export function PersistentWorkspace({
   }, [hasUnsavedChanges]);
 
   return (
-    <div className="h-screen flex bolt-bg text-fg">
+    <div className="flex h-screen bg-surface text-fg">
       {/* Owner-only (sharing permission table): other members see who the
           request is waiting on instead of a form they can't submit. */}
       {pendingOAuthRequest && !viewerIsOwner && hiddenOAuthRequestId !== pendingOAuthRequest.id && (
@@ -499,7 +501,7 @@ export function PersistentWorkspace({
       {/* Agent sidebar. `relative z-30` so the model-selector / backend popovers
           that overflow the w-96 column paint above the adjacent main panel
           instead of being covered by it. */}
-      <div className="w-96 flex flex-col bg-elevated/70 backdrop-blur-sm relative z-30">
+      <div className="relative z-30 flex w-96 shrink-0 flex-col">
         <AgentPanel
           className="h-full"
           projectId={projectId}
@@ -509,20 +511,20 @@ export function PersistentWorkspace({
       </div>
 
       {/* Main column */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         {/* Convex usage guardrail banner (paused: sticky red; warned: dismissible amber) */}
         {managedBackend && (
           <ConvexStatusBanner status={convexStatus} isOwner={viewerIsOwner} />
         )}
         {bootError && (
-          <div className="px-4 py-2 bg-red-900/80 border-b border-danger-border text-white text-xs flex items-center gap-3">
-            <span className="font-semibold">Sandbox failed to start</span>
-            <span className="opacity-80">{bootError}</span>
+          <div className="mr-2.5 mt-2 flex items-center gap-3 rounded-lg border border-danger-border bg-danger-soft px-3 py-2 text-[13px] text-danger">
+            <span className="font-medium">The sandbox didn’t start</span>
+            <span className="flex-1 truncate text-fg/80">{bootError}</span>
           </div>
         )}
 
         {/* Header */}
-        <div className="h-12 flex items-center pr-2.5 gap-4 bg-surface backdrop-blur-sm">
+        <div className="flex h-12 shrink-0 items-center gap-2 pr-2.5">
           <Tabs
             options={
               [
@@ -539,52 +541,50 @@ export function PersistentWorkspace({
           {currentView === "code" && (
             <Button
               variant="ghost"
-              size="sm"
+              size="icon-sm"
               onClick={() => setShowSidebar((v) => !v)}
-              className="text-muted hover:text-fg bolt-hover"
               title={showSidebar ? "Hide explorer" : "Show explorer"}
+              aria-label={showSidebar ? "Hide explorer" : "Show explorer"}
             >
               <PanelLeft size={16} />
             </Button>
           )}
 
           {currentView === "code" && selectedFile && (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted">/</span>
-              <span className="text-fg font-medium bg-elevated/70 px-2 py-1 rounded flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-1 text-[13px]">
+              <span className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-elevated px-2 py-1 font-mono text-xs text-fg">
                 {selectedFile.split("/").pop()}
                 {hasUnsavedChanges && (
-                  <span className="w-2 h-2 rounded-full bg-warning-solid" title="Unsaved changes" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-warning-solid" title="Unsaved changes" />
                 )}
               </span>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={handleSaveFile}
-                className="text-muted hover:text-fg bolt-hover"
                 title="Save file"
               >
-                <Save size={16} />
-                <span className="ml-1">Save</span>
+                <Save size={14} />
+                <span>Save</span>
               </Button>
             </div>
           )}
 
           <div className="ml-auto flex items-center gap-2">
-            <div className="text-xs text-muted flex items-center gap-1.5 px-2 py-1 rounded-md bg-elevated">
+            <div className="flex items-center gap-1.5 px-1 text-xs text-muted">
               {sandboxStatus === "booting" ? (
                 <>
-                  <Loader2 size={12} className="animate-spin text-info" />
+                  <Loader2 size={12} className="animate-spin" />
                   <span>Booting sandbox…</span>
                 </>
               ) : sandboxStatus === "ready" ? (
                 <>
-                  <div className="w-2 h-2 rounded-full bg-success-solid" />
+                  <div className="h-1.5 w-1.5 rounded-full bg-success-solid" />
                   <span>Sandbox ready</span>
                 </>
               ) : sandboxStatus === "error" ? (
                 <>
-                  <div className="w-2 h-2 rounded-full bg-danger-solid" />
+                  <div className="h-1.5 w-1.5 rounded-full bg-danger-solid" />
                   <span>Sandbox error</span>
                 </>
               ) : null}
@@ -595,28 +595,28 @@ export function PersistentWorkspace({
             {currentView === "database" && hasBackend && (
               <>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => void deployBackend()}
                   disabled={deployingBackend}
-                  className="text-muted hover:text-fg"
                   title="Deploy Convex backend"
                 >
                   {deployingBackend ? (
-                    <Loader2 size={16} className="animate-spin" />
+                    <Loader2 size={14} className="animate-spin" />
                   ) : (
-                    <Rocket size={16} />
+                    <Rocket size={14} />
                   )}
-                  <span className="ml-1">{deployingBackend ? "Deploying…" : "Deploy"}</span>
+                  <span>{deployingBackend ? "Deploying…" : "Deploy"}</span>
                 </Button>
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => window.open(`/workspace/${projectId}/database`, "_blank")}
-                  className="flex items-center gap-1.5 text-sm text-muted hover:text-fg border border-border rounded-md px-3 py-1 bolt-hover"
                   title="Open database in new tab"
                 >
                   <ArrowUpRight size={14} />
                   Open in new tab
-                </button>
+                </Button>
               </>
             )}
 
@@ -634,7 +634,6 @@ export function PersistentWorkspace({
             <Button
               variant="default"
               size="sm"
-              className="font-bold text-sm text-white"
               onClick={() =>
                 platform === "swift"
                   ? setPublishOpen(true)
@@ -642,7 +641,7 @@ export function PersistentWorkspace({
               }
               title={platform === "swift" ? "Publish to App Store" : "Publish (coming soon)"}
             >
-              <Globe size={14} className="mr-1.5" />
+              <Globe size={14} />
               Publish
             </Button>
           </div>
@@ -657,13 +656,13 @@ export function PersistentWorkspace({
             className={cn(
               "absolute top-0 left-0 right-2.5 bottom-2.5",
               currentView === "code" ? "flex flex-col" : "hidden",
-              "rounded-xl border border-border overflow-hidden",
+              "overflow-hidden rounded-xl border border-border bg-bg",
             )}
           >
             <div className="flex-1 min-h-0 flex">
               {showSidebar && (
-                <div className="w-80 bolt-border border-r flex flex-col backdrop-blur-sm">
-                  <div className="p-2 bolt-border border-b">
+                <div className="flex w-72 shrink-0 flex-col border-r border-border bg-surface">
+                  <div className="border-b border-border p-2">
                     <Tabs
                       options={
                         [
@@ -738,7 +737,7 @@ export function PersistentWorkspace({
                 </div>
               )}
               <div className="flex-1 min-h-0 relative">
-                <div className="absolute inset-0 bg-elevated/90 backdrop-blur-sm">
+                <div className="absolute inset-0 bg-bg">
                   {selectedFile ? (
                     <CodeEditor
                       value={fileContent}
@@ -749,12 +748,18 @@ export function PersistentWorkspace({
                       revealNonce={revealNonce}
                     />
                   ) : (
-                    <div className="flex items-center justify-center h-full text-muted text-sm">
-                      {sandboxStatus === "ready"
-                        ? "Select a file to edit"
-                        : sandboxStatus === "booting"
-                          ? "Booting sandbox…"
-                          : "Sandbox not ready"}
+                    <div className="flex h-full items-center justify-center bg-bg">
+                      <EmptyState
+                        icon={FileCode2}
+                        title={
+                          sandboxStatus === "ready"
+                            ? "No file open"
+                            : sandboxStatus === "booting"
+                              ? "Starting the sandbox…"
+                              : "The sandbox isn’t ready"
+                        }
+                        description={sandboxStatus === "ready" ? "Pick a file from the explorer to view or edit it." : undefined}
+                      />
                     </div>
                   )}
                 </div>
@@ -762,7 +767,7 @@ export function PersistentWorkspace({
             </div>
 
             {/* Terminal */}
-            <div className="h-64 bolt-border border-t bg-elevated backdrop-blur-sm">
+            <div className="h-64 border-t border-border bg-surface">
               <PersistentTerminal projectId={projectId} ready={sandboxStatus === "ready"} />
             </div>
           </div>
@@ -776,7 +781,7 @@ export function PersistentWorkspace({
                 currentView === "revenuecat" ? "block" : "hidden",
               )}
             >
-              <div className="w-full h-full rounded-xl border border-border overflow-hidden bg-elevated/60">
+              <div className="h-full w-full overflow-hidden rounded-xl border border-border bg-bg">
                 <RevenueCatTab
                   projectId={projectId}
                   status={revenuecatStatus === "connected" ? "connected" : "connecting"}
@@ -797,7 +802,7 @@ export function PersistentWorkspace({
                 currentView === "database" ? "block" : "hidden",
               )}
             >
-              <div className="w-full h-full rounded-xl border border-border overflow-hidden bg-elevated/60">
+              <div className="h-full w-full overflow-hidden rounded-xl border border-border bg-bg">
                 {backendProvisioned ? (
                   <ConvexDashboard
                     projectId={projectId}
@@ -846,7 +851,7 @@ export function PersistentWorkspace({
               )
             ) : (
               <div className="absolute inset-0 pb-2.5 pr-2.5">
-                <div className="w-full h-full rounded-xl border border-border overflow-hidden bg-elevated/60 flex items-center justify-center">
+                <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-xl border border-border bg-bg">
                   <div className="text-center text-muted text-sm max-w-sm px-6">
                     <p className="text-fg font-semibold mb-2">No preview</p>
                     <p>
