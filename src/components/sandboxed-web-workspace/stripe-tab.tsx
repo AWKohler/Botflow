@@ -270,7 +270,7 @@ export function StripeTab({ projectId, mode, onOpenFullDashboard, onDisconnected
   const needsOnboarding = status?.connected === true && status.ready === false;
 
   return (
-    <div className="flex flex-col h-full bg-bolt-bg">
+    <div className="flex h-full flex-col bg-bg">
       <div className="flex items-center justify-between px-6 py-3 border-b border-border">
         <div className="flex items-center gap-1.5">
           {/* Hide the dashboard sub-views until onboarding is actually

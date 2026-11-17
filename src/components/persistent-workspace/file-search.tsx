@@ -96,7 +96,7 @@ export function FileSearch({ projectId, onOpenFile }: FileSearchProps) {
             key={`${r.file}:${r.line}:${idx}`}
             onClick={() => onOpenFile(r.file)}
             className={cn(
-              "w-full text-left px-2 py-2 rounded-md border border-transparent hover:border-border hover:bg-elevated/60 bolt-hover",
+              "w-full text-left px-2 py-2 rounded-md border border-transparent hover:border-border hover:bg-elevated/60",
             )}
             title={`${r.file}:${r.line}`}
           >

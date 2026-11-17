@@ -191,61 +191,6 @@ body {
     scrollbar-color: color-mix(in oklab, var(--sand-text-subtle) 45%, transparent) transparent;
 }
 
-/* Force Google icon to pure black */
-.cl-providerIcon__google {
-    filter: grayscale(100%) contrast(200%) brightness(0);
-}
-
-/* Force Google icon to pure white in dark mode */
-@media (prefers-color-scheme: dark) {
-    .cl-providerIcon__google {
-        filter: grayscale(1) brightness(2.2) contrast(0.85);
-    }
-}
-
-/* Force Google icon to pure black */
-.cl-providerIcon__github {
-    filter: grayscale(100%) contrast(200%) brightness(100);
-}
-
-/* Force Github icon to pure white in dark mode */
-@media (prefers-color-scheme: dark) {
-    .cl-providerIcon__github {
-        filter: grayscale(1) brightness(10) contrast(0.85);
-    }
-}
-
-.cl-socialButtonsBlockButton > span {
-    gap: 0.5rem; /* Tailwind gap-2 */
-}
-
-/* Clerk billing drawer — render above custom modals (z-[200]) */
-.cl-drawerRoot,
-.cl-drawerContent {
-    z-index: 9999 !important;
-}
-
-/* Billing frequency switch — accent color only when toggled on */
-[class*="cl-pricingTable"] [role="switch"][data-state="checked"] {
-    background-color: var(--sand-accent) !important;
-}
-
-/* Pricing page: widen the gap between Clerk's plan cards.
-   Target only the root PricingTable grid, NOT the cards (which have
-   `cl-pricingTableCard` as a substring of `cl-pricingTable`). */
-.pricing-clerk-wrapper [data-clerk-component="PricingTable"] > div {
-    gap: 1.25rem !important;
-}
-
-/* On wide screens force three plans onto one row even if Clerk's
-   default grid would wrap. Scoped to the immediate PricingTable child
-   so it never reaches into individual cards. */
-@media (min-width: 960px) {
-    .pricing-clerk-wrapper [data-clerk-component="PricingTable"] > div {
-        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    }
-}
-
 /* Custom scrollbar styles */
 .modern-scrollbar {
     scrollbar-width: thin;
@@ -268,48 +213,6 @@ body {
 
 .modern-scrollbar::-webkit-scrollbar-thumb:hover {
     background: color-mix(in oklab, var(--sand-text-subtle) 70%, transparent);
-}
-
-/* Dune-inspired scheme (keeps class names for minimal churn) */
-.bolt-bg {
-    background:
-        radial-gradient(
-            1000px 600px at 20% -10%,
-            color-mix(in oklab, var(--sand-accent) 12%, transparent),
-            transparent
-        ),
-        radial-gradient(
-            900px 500px at 120% 10%,
-            color-mix(in oklab, var(--sand-accent) 10%, transparent),
-            transparent
-        ),
-        linear-gradient(135deg, var(--sand-bg) 0%, var(--sand-surface) 100%);
-}
-
-.bolt-border {
-    border-color: var(--sand-border);
-}
-
-.bolt-hover {
-    transition: all 0.18s ease-in-out;
-}
-
-.bolt-hover:hover {
-    background-color: color-mix(
-        in oklab,
-        var(--sand-elevated) 80%,
-        var(--sand-overlay)
-    );
-}
-
-.botflow-wordmark-invert {
-    display: block;
-}
-
-@media (prefers-color-scheme: dark) {
-    .botflow-wordmark-invert {
-        filter: invert(1) brightness(1.1);
-    }
 }
 
 /* Landing page gradient */
@@ -344,15 +247,15 @@ body {
     pointer-events: none;
 }
 
-/* Animation classes */
-.bolt-fade-in {
-    animation: fadeIn 0.3s ease-in-out;
+/* Entrance animation for transient surfaces (toasts). */
+.fade-in-up {
+    animation: fadeIn 0.2s ease-out;
 }
 
 @keyframes fadeIn {
     from {
         opacity: 0;
-        transform: translateY(10px);
+        transform: translateY(6px);
     }
     to {
         opacity: 1;

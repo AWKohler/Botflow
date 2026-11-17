@@ -134,7 +134,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
         </code>
         <button
           onClick={copy}
-          className="flex items-center gap-1 rounded-md border border-border px-2.5 text-xs text-muted hover:text-fg bolt-hover"
+          className="flex items-center gap-1 rounded-md border border-border px-2.5 text-xs text-muted hover:text-fg"
           title="Copy"
         >
           {copied ? <Check size={13} /> : <Copy size={13} />}
