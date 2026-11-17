@@ -12,7 +12,6 @@ import {
   AlertCircle,
   Trash2,
   Lock,
-  Sparkles,
   Rocket,
   Wand2,
   X,
