@@ -101,7 +101,7 @@ export function FileTree({ files, selectedFile, onFileSelect, onFileDrop }: File
         <div
           key={filePath}
           className={cn(
-            'flex h-7 cursor-pointer items-center rounded-md px-2 text-[13px] transition-colors duration-100',
+            'flex h-7 cursor-pointer items-center rounded-md px-2 text-[13px] transition-colors duration-100 pointer-coarse:h-10 pointer-coarse:text-[15px]',
             'hover:bg-elevated',
             // Selected file: a clearly stronger fill than hover, plus weight.
             isSelected && !isFolder && 'bg-soft font-medium',
@@ -166,7 +166,7 @@ export function FileTree({ files, selectedFile, onFileSelect, onFileDrop }: File
       {/* Root "Project" row */}
       <div
         className={cn(
-          'flex h-7 cursor-pointer items-center rounded-md px-2 text-[13px] transition-colors duration-100 hover:bg-elevated',
+          'flex h-7 cursor-pointer items-center rounded-md px-2 text-[13px] transition-colors duration-100 hover:bg-elevated pointer-coarse:h-10 pointer-coarse:text-[15px]',
           isRootTarget && isDraggingOver && 'bg-accent-soft ring-1 ring-accent',
         )}
         onClick={() => toggleFolder('/')}

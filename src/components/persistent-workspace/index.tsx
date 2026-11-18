@@ -848,7 +848,7 @@ export function PersistentWorkspace({
             </div>
 
             {/* Terminal */}
-            <div className="h-44 border-t border-border bg-surface">
+            <div className="h-32 border-t border-border bg-surface md:h-44">
               <PersistentTerminal projectId={projectId} ready={sandboxStatus === "ready"} />
             </div>
           </div>

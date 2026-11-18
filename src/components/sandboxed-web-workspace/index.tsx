@@ -165,6 +165,10 @@ export function SandboxedWebWorkspace({
   const [githubDefaultBranch, setGithubDefaultBranch] = useState<string | null>(null);
   const [mobilePane, setMobilePane] = useState<"chat" | "app">("chat");
   const [terminalOpen, setTerminalOpen] = useState(true);
+  // On a phone the terminal starts folded away: open, it takes a third of the code view.
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 767px)").matches) setTerminalOpen(false);
+  }, []);
   const [projectName, setProjectName] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>("preview");
@@ -1777,7 +1781,7 @@ export function SandboxedWebWorkspace({
                 type="button"
                 onClick={() => setTerminalOpen((v) => !v)}
                 aria-expanded={terminalOpen}
-                className="flex h-8 w-full items-center gap-1.5 px-3 text-xs font-medium text-muted transition-colors hover:text-fg"
+                className="flex h-8 w-full items-center gap-1.5 px-3 text-xs font-medium text-muted transition-colors hover:text-fg pointer-coarse:h-10 pointer-coarse:text-[13px]"
               >
                 <ChevronRight size={12} className={cn("transition-transform", terminalOpen && "rotate-90")} />
                 Terminal
