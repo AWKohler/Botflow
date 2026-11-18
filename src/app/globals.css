@@ -330,12 +330,12 @@ body {
 .auth-art__stroke--beam {
     /* A diagonal beam of cool light across the pale upper half. */
     right: -25%;
-    top: 12%;
-    width: 105%;
-    height: 22%;
+    top: 9%;
+    width: 110%;
+    height: 27%;
     transform: rotate(-16deg);
-    background: linear-gradient(90deg, rgb(169 184 255 / 0) 0%, rgb(169 184 255 / 0.75) 45%, rgb(255 255 255 / 0.6) 70%, rgb(255 255 255 / 0) 100%);
-    filter: blur(34px);
+    background: linear-gradient(90deg, rgb(128 150 255 / 0) 0%, rgb(128 150 255 / 0.85) 42%, rgb(196 207 255 / 0.9) 68%, rgb(255 255 255 / 0) 100%);
+    filter: blur(30px);
 }
 .auth-art__grain {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5  0 0 0 0 .5  0 0 0 0 .5  0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");

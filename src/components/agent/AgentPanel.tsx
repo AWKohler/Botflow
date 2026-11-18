@@ -2880,7 +2880,7 @@ function AgentThreadPanel({
                   <span
                     className={cn(
                       'cursor-help whitespace-nowrap',
-                      showContext && 'md:border-l md:border-border md:pl-3',
+                      showContext && 'min-[380px]:border-l min-[380px]:border-border min-[380px]:pl-3',
                       usage.pct >= 80 ? 'text-danger' : usage.pct >= 60 ? 'text-warning' : 'text-muted',
                     )}
                   >

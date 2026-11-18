@@ -157,7 +157,7 @@ export default function PanelProvidersPage() {
       >
         <Card>
           {meteredThisMonth.length === 0 ? (
-            <p className="text-sm text-muted">No platform-metered usage this month.</p>
+            <p className="text-[13px] leading-relaxed text-muted">No platform-metered usage this month.</p>
           ) : (
             <HBarList
               rows={meteredThisMonth.map((m) => ({
@@ -188,12 +188,12 @@ export default function PanelProvidersPage() {
             }
           >
             {!stripe.configured && (
-              <p className="text-sm text-muted">
+              <p className="text-[13px] leading-relaxed text-muted">
                 Set <code className="font-mono text-xs">STRIPE_READ_ONLY_KEY</code> (restricted
                 read key) to pull real revenue.
               </p>
             )}
-            {stripe.error && <p className="text-sm text-muted break-words">{stripe.error}</p>}
+            {stripe.error && <p className="text-[13px] leading-relaxed text-muted break-words">{stripe.error}</p>}
             {stripe.configured && !stripe.error && (
               <>
                 <div className="text-2xl font-semibold tracking-tight text-fg mb-1">
@@ -202,12 +202,12 @@ export default function PanelProvidersPage() {
                     MRR · {fmtUsd(stripe.lifetimeNetUsd)} lifetime
                   </span>
                 </div>
-                <div className="text-xs text-muted mb-2">
+                <div className="text-[13px] text-muted mb-2">
                   {stripe.account?.name ?? stripe.account?.id} · {stripe.payingCustomers} paying
                   customers · {fmtUsd(stripe.last30dNetUsd)} last 30d
                 </div>
                 {(stripe.legacyLifetimeNetUsd > 0 || stripe.legacyMrrUsd > 0) && (
-                  <p className="text-xs text-muted">
+                  <p className="text-[13px] leading-relaxed text-muted">
                     Excludes unrelated legacy products on the same account (
                     {fmtUsd(stripe.legacyMrrUsd)}/mo,{' '}
                     {fmtUsd(stripe.legacyLifetimeNetUsd)} lifetime). Whole
@@ -233,12 +233,12 @@ export default function PanelProvidersPage() {
             }
           >
             {!openai.configured && (
-              <p className="text-sm text-muted">
+              <p className="text-[13px] leading-relaxed text-muted">
                 Set <code className="font-mono text-xs">OPENAI_ADMIN_KEY</code> (org admin
                 key) to pull real org spend.
               </p>
             )}
-            {openai.error && <p className="text-sm text-muted break-words">{openai.error}</p>}
+            {openai.error && <p className="text-[13px] leading-relaxed text-muted break-words">{openai.error}</p>}
             {openai.totalUsd !== undefined && (
               <>
                 <div className="text-2xl font-semibold tracking-tight text-fg mb-1">
@@ -263,7 +263,7 @@ export default function PanelProvidersPage() {
                 {openai.byLineItem && openai.byLineItem.length > 0 && (
                   <div className="mt-3 space-y-1">
                     {openai.byLineItem.slice(0, 6).map((li) => (
-                      <div key={li.lineItem} className="flex justify-between text-xs">
+                      <div key={li.lineItem} className="flex justify-between text-[13px]">
                         <span className="text-muted truncate mr-2">{lineItemName(li.lineItem)}</span>
                         <span className="tabular-nums text-fg">{fmtUsd(li.usd)}</span>
                       </div>
@@ -280,7 +280,7 @@ export default function PanelProvidersPage() {
             dashboardKey="anthropic"
             status={<StatusPill kind="neutral" label="unavailable" />}
           >
-            <p className="text-sm text-muted">
+            <p className="text-[13px] leading-relaxed text-muted">
               Org spend needs an Anthropic <span className="font-mono text-xs">sk-ant-admin…</span>{' '}
               key, which isn&apos;t obtainable for this account yet. Platform-metered
               Anthropic spend appears in the chart above; use the console for
@@ -303,12 +303,12 @@ export default function PanelProvidersPage() {
             }
           >
             {!neon.configured && (
-              <p className="text-sm text-muted">
+              <p className="text-[13px] leading-relaxed text-muted">
                 Set <code className="font-mono text-xs">NEON_PERSONAL_ADMIN_KEY</code> to list
                 projects and storage.
               </p>
             )}
-            {neon.error && <p className="text-sm text-muted break-words">{neon.error}</p>}
+            {neon.error && <p className="text-[13px] leading-relaxed text-muted break-words">{neon.error}</p>}
             {neon.projects && (
               <>
                 <div className="text-2xl font-semibold tracking-tight text-fg mb-2">
@@ -319,7 +319,7 @@ export default function PanelProvidersPage() {
                 </div>
                 <div className="space-y-1">
                   {neon.projects.slice(0, 6).map((p) => (
-                    <div key={p.name} className="flex justify-between text-xs">
+                    <div key={p.name} className="flex justify-between text-[13px]">
                       <span className="text-muted truncate mr-2">{p.name}</span>
                       <span className="tabular-nums text-fg">
                         {p.storageBytes != null ? fmtBytes(p.storageBytes) : '—'}
@@ -346,13 +346,13 @@ export default function PanelProvidersPage() {
             }
           >
             {!upstash.configured && (
-              <p className="text-sm text-muted">
+              <p className="text-[13px] leading-relaxed text-muted">
                 Set <code className="font-mono text-xs">UPSTASH_PERSONAL_ADMIN_KEY</code>{' '}
                 (+ <code className="font-mono text-xs">UPSTASH_EMAIL</code> for Basic auth) to
                 list databases.
               </p>
             )}
-            {upstash.error && <p className="text-sm text-muted break-words">{upstash.error}</p>}
+            {upstash.error && <p className="text-[13px] leading-relaxed text-muted break-words">{upstash.error}</p>}
             {upstash.databases && (
               <>
                 {upstash.totalMonthlyBillingUsd !== undefined && (
@@ -382,7 +382,7 @@ export default function PanelProvidersPage() {
                     </div>
                   ))}
                   {upstash.databases.length === 0 && (
-                    <p className="text-sm text-muted">No databases visible to this key.</p>
+                    <p className="text-[13px] leading-relaxed text-muted">No databases visible to this key.</p>
                   )}
                 </div>
               </>
@@ -395,7 +395,7 @@ export default function PanelProvidersPage() {
             dashboardKey="fireworks"
             status={<StatusPill kind="neutral" label="dashboard only" />}
           >
-            <p className="text-sm text-muted">
+            <p className="text-[13px] leading-relaxed text-muted">
               No spend API. Metered spend:{' '}
               <span className="text-fg font-medium">
                 {fmtUsd(meteredThisMonth.find((m) => m.provider === 'fireworks')?.costUsd ?? 0)}
@@ -409,7 +409,7 @@ export default function PanelProvidersPage() {
             dashboardKey="vercel"
             status={<StatusPill kind="neutral" label="dashboard only" />}
           >
-            <p className="text-sm text-muted">
+            <p className="text-[13px] leading-relaxed text-muted">
               Vercel exposes no billing API. Sandbox compute/storage costs need the
               per-session metering instrumentation (planned) — until then, use the
               team usage dashboard.
@@ -421,7 +421,7 @@ export default function PanelProvidersPage() {
             dashboardKey="convex"
             status={<StatusPill kind="neutral" label="dashboard only" />}
           >
-            <p className="text-sm text-muted">
+            <p className="text-[13px] leading-relaxed text-muted">
               Platform-team billing isn&apos;t exposed via API. Instance counts and
               per-backend call volume are on the Infrastructure tab.
             </p>
@@ -432,7 +432,7 @@ export default function PanelProvidersPage() {
             dashboardKey="cloudflare"
             status={<StatusPill kind="neutral" label="dashboard only" />}
           >
-            <p className="text-sm text-muted">
+            <p className="text-[13px] leading-relaxed text-muted">
               Pages deploys ride the free/paid plan rather than metered billing;
               deploy counts are on the Infrastructure tab.
             </p>

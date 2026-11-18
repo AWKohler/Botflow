@@ -25,9 +25,9 @@ export function AuthArt() {
         // A fine weave and almost no halftone: the surface should read as canvas
         // up close and stay out of the way from a distance.
         threadSize={2.5}
-        texture={0.7}
-        halftone={0.03}
-        grain={0.35}
+        texture={0.5}
+        halftone={0.02}
+        grain={0.28}
         relief={0.5}
         gloss={0.3}
       >

@@ -2275,7 +2275,7 @@ export default function LandingV2() {
                 {
                   role: 'user',
                   content:
-                    'Build me Flowsync — a finance dashboard SaaS landing page. Dark, premium feel with a 3D hero visual, multi-currency account cards, a recent transactions feed, and a smart forecasting section.',
+                    'Build me Flowsync, a finance dashboard landing page: dark and premium, with a 3D hero, account cards and a recent transactions feed.',
                 },
                 {
                   role: 'assistant',
@@ -2284,9 +2284,7 @@ export default function LandingV2() {
                   toolCalls: [
                     { name: 'writeFile', detail: 'src/App.tsx', done: true },
                     { name: 'writeFile', detail: 'src/components/Hero.tsx', done: true },
-                    { name: 'writeFile', detail: 'src/components/Accounts.tsx', done: true },
                     { name: 'writeFile', detail: 'convex/schema.ts', done: true },
-                    { name: 'convexDeploy', done: true },
                     { name: 'startDevServer', done: true },
                   ],
                 },

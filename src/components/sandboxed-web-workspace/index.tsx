@@ -98,7 +98,7 @@ const PREVIEW_DEVICES = [
   { id: "tablet", label: "Tablet", hint: "768 px", icon: Tablet },
   { id: "mobile", label: "Phone", hint: "375 px", icon: Smartphone },
   { id: "responsive", label: "All sizes", hint: "Side by side", icon: AppWindow },
-  { id: "figma", label: "Snapshots", hint: "3 sizes, static", icon: Frame },
+  { id: "figma", label: "Snapshots", hint: "Static", icon: Frame },
 ] as const;
 
 interface SandboxedWebWorkspaceProps {
@@ -1545,7 +1545,7 @@ export function SandboxedWebWorkspace({
                   {deviceMenuOpen && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setDeviceMenuOpen(false)} />
-                      <Menu className="absolute left-0 top-full z-50 mt-2 w-52">
+                      <Menu className="absolute left-0 top-full z-50 mt-2 w-60">
                         <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted">Preview size</div>
                         {PREVIEW_DEVICES.map((d) => (
                           <MenuItem
@@ -1558,10 +1558,10 @@ export function SandboxedWebWorkspace({
                             }}
                           >
                             {/* The tablet is drawn on its side, so it can't be mistaken for the phone. */}
-                            <d.icon size={15} className={cn("text-muted", d.id === "tablet" && "rotate-90")} />
+                            <d.icon size={15} className={cn("shrink-0 text-muted", d.id === "tablet" && "rotate-90")} />
                             <span className="flex-1">{d.label}</span>
-                            <span className="text-xs tabular-nums text-subtle">{d.hint}</span>
-                            <Check size={14} className={cn("text-fg", previewDevice !== d.id && "invisible")} />
+                            <span className="whitespace-nowrap text-xs tabular-nums text-subtle">{d.hint}</span>
+                            <Check size={14} className={cn("shrink-0 text-fg", previewDevice !== d.id && "invisible")} />
                           </MenuItem>
                         ))}
                       </Menu>

@@ -246,7 +246,12 @@ function ComparisonCell({ value }: { value: CellValue }) {
     );
   }
   if (value === false) {
-    return <span className="text-[var(--sand-text-muted)]/40">—</span>;
+    // Same line box as text and tick cells, and a spoken label instead of "em dash".
+    return (
+      <span role="img" aria-label="Not included" className="text-sm leading-5 text-[var(--sand-text-muted)]/40">
+        —
+      </span>
+    );
   }
   return (
     <span className="text-sm text-[var(--sand-text)] font-medium">{value}</span>

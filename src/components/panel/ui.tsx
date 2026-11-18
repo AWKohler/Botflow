@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { buttonClass } from '@/components/ui/button';
+import { PageHeader as AppPageHeader } from '@/components/ui/card';
 import { MODEL_CONFIGS } from '@/lib/agent/models';
 import { AlertTriangle, CheckCircle2, Loader2, MinusCircle, RefreshCw, XCircle } from 'lucide-react';
 
@@ -154,30 +155,31 @@ export function PageHeader({
   refreshing?: boolean;
   generatedAt?: string;
 }) {
+  // The same title block as every other app page, with the timestamp and
+  // Refresh as its action.
   return (
-    <div className="mb-8 flex items-end justify-between gap-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-fg">{title}</h1>
-        {subtitle && <p className="mt-1.5 text-sm text-muted">{subtitle}</p>}
-      </div>
-      {onRefresh && (
-        <div className="flex items-center gap-3 shrink-0">
-          {generatedAt && (
-            <span className="text-xs text-muted hidden sm:inline">
-              as of {timeAgo(generatedAt)}
-            </span>
-          )}
-          <button
-            onClick={onRefresh}
-            disabled={refreshing}
-            className={buttonClass({ variant: 'secondary', size: 'sm' })}
-          >
-            <RefreshCw className={cn('w-3.5 h-3.5', refreshing && 'animate-spin')} />
-            Refresh
-          </button>
-        </div>
-      )}
-    </div>
+    <AppPageHeader
+      className="mb-8"
+      title={title}
+      description={subtitle}
+      action={
+        onRefresh && (
+          <>
+            {generatedAt && (
+              <span className="mr-1 hidden text-xs text-muted sm:inline">as of {timeAgo(generatedAt)}</span>
+            )}
+            <button
+              onClick={onRefresh}
+              disabled={refreshing}
+              className={buttonClass({ variant: 'secondary', size: 'sm' })}
+            >
+              <RefreshCw className={cn('w-3.5 h-3.5', refreshing && 'animate-spin')} />
+              Refresh
+            </button>
+          </>
+        )
+      }
+    />
   );
 }
 
@@ -407,7 +409,7 @@ export function StatusPill({ kind, label }: { kind: StatusKind; label: string })
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium',
+        'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-px text-[11px] font-medium leading-4',
         kind === 'good' && 'border-success-border bg-success-soft text-success',
         kind === 'warning' && 'border-warning-border bg-warning-soft text-warning',
         kind === 'serious' && 'border-danger-border bg-danger-soft text-danger',

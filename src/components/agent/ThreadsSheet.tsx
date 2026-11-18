@@ -519,7 +519,8 @@ export function ThreadsSheet({
           </button>
         </div>
 
-        <div className="px-3 pb-2">
+        {/* Same 8px inset as the rows below, so the button and the cards share an edge. */}
+        <div className="px-2 pb-2">
           <button
             type="button"
             onClick={onNewChat}
