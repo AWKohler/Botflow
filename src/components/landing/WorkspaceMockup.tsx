@@ -437,7 +437,8 @@ export default function App() {
                 <div className="h-full w-[12%] rounded-full bg-fg/30" />
               </div>
               <span className="whitespace-nowrap">Context 24K / 1M</span>
-              <span className="whitespace-nowrap border-l border-border pl-2.5">Weekly credits {creditPct}% used</span>
+              {/* Dropped on the narrowest phones, where the two figures do not fit on one line. */}
+              <span className="whitespace-nowrap border-l border-border pl-2.5 max-[359px]:hidden">Weekly credits {creditPct}% used</span>
             </div>
           </div>
         </div>
