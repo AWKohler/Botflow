@@ -204,7 +204,7 @@ function ComparisonCell({ value }: { value: CellValue }) {
   if (value === false) {
     // Same line box as text and tick cells, and a spoken label instead of "em dash".
     return (
-      <span role="img" aria-label="Not included" className="text-sm leading-5 text-[var(--sand-text-muted)]/40">
+      <span role="img" aria-label="Not included" className="text-sm leading-5 text-[var(--sand-text-muted)]">
         —
       </span>
     );
