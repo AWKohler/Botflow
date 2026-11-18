@@ -156,7 +156,7 @@ export default function PanelOverviewPage() {
               sub="net of refunds" />
             <StatTile label="Revenue, last 30d" value={fmtUsd(stripe.revenue.last30dNetUsd)} />
             <StatTile label="Paying customers" value={fmtNum(stripe.revenue.payingCustomers)}
-              sub={`${stripe.attributedUsers} mapped to a Clerk user`} />
+              sub={`${stripe.attributedUsers} linked to a Botflow account`} />
             <StatTile label="Past due" value={String(stripe.subscriptions.pastDue)}
               warn={stripe.subscriptions.pastDue > 0} sub="failing payments" />
             <StatTile label="Canceled, 30d" value={String(stripe.subscriptions.canceledLast30d)}

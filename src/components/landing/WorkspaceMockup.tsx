@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import {
   Check,
   ChevronDown,
@@ -277,12 +277,18 @@ export function WorkspaceMockup({
   const [currentView, setCurrentView] = useState<string>(defaultView);
   const [showSidebar, setShowSidebar] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
-  // Auto-scroll agent panel
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  // The chat shows the end of the conversation. Rather than scrolling to the
+  // bottom (which leaves the first visible message cut in half), drop leading
+  // messages until what is left fits, so the column always starts on a whole one.
+  const [trim, setTrim] = useState({ count: messages.length, first: 0 });
+  if (trim.count !== messages.length) setTrim({ count: messages.length, first: 0 });
+  const firstShown = trim.first;
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el && el.scrollHeight > el.clientHeight + 1 && trim.first < trim.count - 1) {
+      setTrim({ count: trim.count, first: trim.first + 1 });
     }
-  }, [messages]);
+  }, [trim]);
 
   const defaultFiles: MockFileEntry[] = files ?? [
     {
@@ -358,11 +364,10 @@ export default function App() {
           </div>
         </div>
 
-        {/* Messages — a soft fade under the header, so a scrolled line is never cut off flush. */}
+        {/* Messages */}
         <div className="relative flex min-h-0 flex-1 flex-col border-t border-border">
-        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 h-12 bg-gradient-to-b from-surface via-surface/80 to-transparent" />
-        <div ref={scrollRef} className="modern-scrollbar flex-1 space-y-3 overflow-auto px-3.5 py-3 text-sm">
-          {messages.map((m, mi) => {
+        <div ref={scrollRef} className="flex-1 space-y-3 overflow-hidden px-3.5 py-3 text-sm">
+          {messages.slice(firstShown).map((m, mi) => {
             if (m.role === 'user') {
               return (
                 <div key={mi} className="rounded-xl border border-border bg-elevated px-3.5 py-2.5 text-[15px] leading-[1.6]">
