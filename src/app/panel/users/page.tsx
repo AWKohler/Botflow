@@ -159,14 +159,14 @@ export default function PanelUsersPage() {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative">
+        <div className="relative max-sm:w-full">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
           <TextInput
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by email, name or ID"
             aria-label="Search users"
-            className="w-64 pl-9"
+            className="w-full pl-9 sm:w-64"
           />
         </div>
         <Tabs
