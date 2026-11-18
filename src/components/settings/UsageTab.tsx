@@ -186,13 +186,14 @@ export function UsageTab() {
       {hasCacheData && (
         <div className="space-y-2 rounded-lg border border-border px-4 py-3.5">
           <p className="text-xs font-medium text-muted">Prompt cache this month</p>
-          <div className="flex gap-6 text-sm">
+          {/* Labels stay on one line; on a phone the shorter names fit three across. */}
+          <div className="flex gap-x-6 gap-y-2 text-sm max-sm:justify-between max-sm:gap-x-3 [&_span]:whitespace-nowrap">
             <div>
-              <span className="text-muted text-xs">Cached input tokens</span>
+              <span className="text-muted text-xs"><span className="sm:hidden">Cached input</span><span className="max-sm:hidden">Cached input tokens</span></span>
               <p className="font-medium text-fg tabular-nums">{fmt(totalCachedRead)}</p>
             </div>
             <div>
-              <span className="text-muted text-xs">Cache write tokens</span>
+              <span className="text-muted text-xs"><span className="sm:hidden">Cache write</span><span className="max-sm:hidden">Cache write tokens</span></span>
               <p className="font-medium text-fg tabular-nums">{fmt(totalCachedWrite)}</p>
             </div>
             <div>
