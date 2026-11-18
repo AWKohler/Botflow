@@ -274,7 +274,7 @@ export function Meter({ pct, label }: { pct: number; label?: string }) {
               ? 'bg-danger-solid'
               : state === 'warning'
                 ? 'bg-warning-solid'
-                : 'bg-accent/55',
+                : 'bg-accent/70',
           )}
           style={{ width: `${clamped}%` }}
         />
@@ -312,7 +312,7 @@ export function MiniBars({
               </span>
             )}
             <div
-              className="rounded-t-[4px] bg-accent/55 transition-colors group-hover:bg-accent/80"
+              className="rounded-t-[4px] bg-accent/70 transition-colors group-hover:bg-accent/90"
               style={{ height: `${Math.max(2, (d.value / max) * (labelled ? 82 : 100))}%` }}
             />
             {!labelled && (
@@ -378,7 +378,7 @@ export function HBarList({
           </div>
           <div className="flex-1 h-4 rounded-[4px] bg-soft/50 overflow-hidden">
             <div
-              className="h-full rounded-[4px] bg-accent/55"
+              className="h-full rounded-[4px] bg-accent/70"
               style={{ width: `${(r.value / max) * 100}%` }}
             />
           </div>

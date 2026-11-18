@@ -351,8 +351,8 @@ body {
 }
 .auth-art__prompt {
     color: #1c1c1a;
-    /* Opaque enough that the weave never shows behind the text. */
-    background: rgb(255 255 255 / 0.9);
+    /* Frosted glass over the painting (it sits above the canvas, so it stays clean). */
+    background: rgb(255 255 255 / 0.72);
     border: 1px solid rgb(255 255 255 / 0.7);
     box-shadow:
         inset 0 1px 0 0 rgb(255 255 255 / 0.7),
@@ -393,7 +393,7 @@ body {
     }
     :root:not([data-theme="light"]) .auth-art__prompt {
         color: #f3efe6;
-        background: rgb(22 20 18 / 0.82);
+        background: rgb(22 20 18 / 0.6);
         border-color: rgb(255 255 255 / 0.14);
         box-shadow:
             inset 0 1px 0 0 rgb(255 255 255 / 0.12),

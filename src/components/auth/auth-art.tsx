@@ -19,40 +19,45 @@ const noSubscribe = () => () => {};
 export function AuthArt() {
   const painted = useSyncExternalStore(noSubscribe, supportsHtmlInCanvas, () => false);
   return (
-    <Canvas
-      className="auth-art h-full w-full overflow-hidden rounded-2xl border border-border"
-      // A fine weave and almost no halftone: the surface should read as canvas
-      // up close and stay out of the way from a distance.
-      threadSize={2.5}
-      texture={0.7}
-      halftone={0.03}
-      grain={0.35}
-      relief={0.5}
-      gloss={0.3}
-    >
-      <div className="auth-art__painting relative h-full w-full overflow-hidden">
-        <div aria-hidden="true" className="auth-art__wash absolute inset-0" />
-        <div aria-hidden="true" className="auth-art__stroke auth-art__stroke--deep absolute" />
-        <div aria-hidden="true" className="auth-art__stroke auth-art__stroke--light absolute" />
-        <div aria-hidden="true" className="auth-art__stroke auth-art__stroke--beam absolute" />
-        <div aria-hidden="true" className="auth-art__grain absolute inset-0" />
-        {!painted && <div aria-hidden="true" className="auth-art__weave absolute inset-0" />}
-
-        <div className="relative flex h-full flex-col items-center justify-center px-8 lg:px-12">
-          <div className="auth-art__prompt flex w-full max-w-[452px] items-center gap-3 rounded-2xl py-3 pl-5 pr-3">
-            <p className="min-w-0 flex-1 truncate text-base">Ask Botflow to build your project</p>
-            <span className="auth-art__send flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
-              <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.25} />
-            </span>
-          </div>
+    <div className="auth-art relative h-full w-full overflow-hidden rounded-2xl border border-border">
+      <Canvas
+        className="h-full w-full"
+        // A fine weave and almost no halftone: the surface should read as canvas
+        // up close and stay out of the way from a distance.
+        threadSize={2.5}
+        texture={0.7}
+        halftone={0.03}
+        grain={0.35}
+        relief={0.5}
+        gloss={0.3}
+      >
+        <div className="auth-art__painting relative h-full w-full overflow-hidden">
+          <div aria-hidden="true" className="auth-art__wash absolute inset-0" />
+          <div aria-hidden="true" className="auth-art__stroke auth-art__stroke--deep absolute" />
+          <div aria-hidden="true" className="auth-art__stroke auth-art__stroke--light absolute" />
+          <div aria-hidden="true" className="auth-art__stroke auth-art__stroke--beam absolute" />
+          <div aria-hidden="true" className="auth-art__grain absolute inset-0" />
+          {!painted && <div aria-hidden="true" className="auth-art__weave absolute inset-0" />}
         </div>
+      </Canvas>
 
-        {painted && (
-          <p className="auth-art__hint pointer-events-none absolute bottom-5 left-6 text-xs motion-reduce:hidden">
-            Move your cursor to paint
-          </p>
-        )}
+      {/* The prompt box sits above the canvas, not in it: the painting keeps its
+          weave, and the one thing to read stays perfectly clean. Pointer events
+          pass through, so the brush still works underneath. */}
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-8 lg:px-12">
+        <div className="auth-art__prompt flex w-full max-w-[452px] items-center gap-3 rounded-2xl py-3 pl-5 pr-3">
+          <p className="min-w-0 flex-1 truncate text-base">Ask Botflow to build your project</p>
+          <span className="auth-art__send flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
+            <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.25} />
+          </span>
+        </div>
       </div>
-    </Canvas>
+
+      {painted && (
+        <p className="auth-art__hint pointer-events-none absolute bottom-5 left-6 text-xs motion-reduce:hidden">
+          Move your cursor to paint
+        </p>
+      )}
+    </div>
   );
 }
