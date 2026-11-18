@@ -84,7 +84,7 @@ export default function ExplorePage() {
           />
         </div>
 
-        <div className="flex items-center gap-2 sm:ml-auto">
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
           <Tabs
             options={[
               { value: 'top', text: 'Top' },
