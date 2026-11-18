@@ -158,9 +158,9 @@ export default function PanelOverviewPage() {
             <StatTile label="Paying customers" value={fmtNum(stripe.revenue.payingCustomers)}
               sub={`${stripe.attributedUsers} linked to a Botflow account`} />
             <StatTile label="Past due" value={String(stripe.subscriptions.pastDue)}
-              warn={stripe.subscriptions.pastDue > 0} sub="failing payments" />
+              tone={stripe.subscriptions.pastDue > 0 ? 'warning' : undefined} sub="failing payments" />
             <StatTile label="Canceled, 30d" value={String(stripe.subscriptions.canceledLast30d)}
-              warn={stripe.subscriptions.canceledLast30d > 0} sub="churn" />
+              sub="churn" />
           </StatGrid>
           {(stripe.legacy.lifetimeNetUsd > 0 || stripe.legacy.mrrUsd > 0) && (
             <p className="text-xs text-muted mt-3">
@@ -191,7 +191,7 @@ export default function PanelOverviewPage() {
           <StatTile
             label="Gross margin"
             value={fmtUsd(revenue.grossMarginUsd)}
-            warn={revenue.grossMarginUsd < 0}
+            tone={revenue.grossMarginUsd < 0 ? 'danger' : undefined}
             sub={`${revenue.marginBasis === 'stripe' ? 'Stripe MRR' : 'est. MRR'} − LLM cost; excludes sandbox/Convex`}
           />
           <StatTile label="Lifetime LLM cost" value={fmtUsd(usage.lifetimeCostUsd)} />
@@ -236,7 +236,7 @@ export default function PanelOverviewPage() {
           <StatTile
             label="Near credit ceiling"
             value={fmtNum(users.usersOver80PctBudget)}
-            warn={users.usersOver80PctBudget > 0}
+            tone={users.usersOver80PctBudget > 0 ? 'warning' : undefined}
             sub="≥80% of monthly budget"
           />
         </StatGrid>

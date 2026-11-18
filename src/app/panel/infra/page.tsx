@@ -168,7 +168,7 @@ export default function PanelInfraPage() {
             sub="user-billed" />
           <StatTile label="Calls, last 30d" value={fmtNum(convex.totalCallsLast30d)} />
           <StatTile label="Orphaned" value={fmtNum(convex.orphanedInstances)}
-            warn={convex.orphanedInstances > 0}
+            tone={convex.orphanedInstances > 0 ? 'warning' : undefined}
             sub="backends on deleted projects" />
         </StatGrid>
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -256,7 +256,7 @@ export default function PanelInfraPage() {
         {webhooks.recentFailures.length > 0 && (
           <Card className="mt-4 overflow-x-auto modern-scrollbar">
             <h3 className="mb-3 text-[13px] font-medium text-fg">
-              Recent delivery failures
+              Recent failed attempts
             </h3>
             <div className={tableFrameClass}>
             <table className="w-full text-sm min-w-[640px] [&_td]:px-3 [&_td]:py-2">

@@ -229,13 +229,17 @@ export function StatTile({
   label,
   value,
   sub,
-  warn,
+  tone,
 }: {
   label: string;
   value: React.ReactNode;
   sub?: string;
-  /** Negative/at-risk numbers. Colour is for state only, never decoration. */
-  warn?: boolean;
+  /**
+   * Colour is for state only, never decoration, and means the same thing as in
+   * the status pills: amber for something at risk that can still recover, red
+   * for something that has already gone wrong.
+   */
+  tone?: 'warning' | 'danger';
 }) {
   return (
     <div className="rounded-xl border border-border bg-surface px-4 py-3.5">
@@ -243,7 +247,7 @@ export function StatTile({
       <div
         className={cn(
           'text-2xl font-semibold tracking-tight tabular-nums',
-          warn ? 'text-danger' : 'text-fg',
+          tone === 'danger' ? 'text-danger' : tone === 'warning' ? 'text-warning' : 'text-fg',
         )}
       >
         {value}
