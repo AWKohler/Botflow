@@ -26,7 +26,7 @@ import { Button, buttonClass } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { SHARING_ENABLED } from "@/lib/feature-flags";
 import { cn } from "@/lib/utils";
-import { phoneSheetBackdropClass, phoneSheetBodyClass, phoneSheetClass, phoneSheetCloseClass, phoneSheetTitleClass, usePhoneSheetModal } from "@/components/ui/sheet";
+import { phoneSheetBackdropClass, phoneSheetBodyClass, phoneSheetClass, phoneSheetCloseClass, phoneSheetGrabberClass, phoneSheetTitleClass, usePhoneSheetModal } from "@/components/ui/sheet";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -407,6 +407,7 @@ function SharePopover({
         )}
         style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
       >
+        <div aria-hidden="true" className={phoneSheetGrabberClass} />
         {/* Same layout as the Publish popover: title row, divider, body. */}
         <div className={cn("flex items-center justify-between border-b border-border px-4 py-3", phoneSheetTitleClass)}>
           <h3 id={titleId} className="text-sm font-semibold text-fg">Share project</h3>

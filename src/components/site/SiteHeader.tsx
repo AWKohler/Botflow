@@ -75,7 +75,13 @@ export function SiteHeader() {
       if (e.key === 'Escape') setMenuOpen(false);
     };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    // The page behind does not scroll while the menu is open.
+    const { overflow } = document.documentElement.style;
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.documentElement.style.overflow = overflow;
+    };
   }, [menuOpen]);
 
   const links = isSignedIn ? MEMBER_LINKS : VISITOR_LINKS;
@@ -123,7 +129,8 @@ export function SiteHeader() {
               <Link href="/sign-in" className={buttonClass({ variant: 'ghost', size: 'sm', className: 'hidden text-fg sm:inline-flex' })}>
                 Log in
               </Link>
-              <Link href="/sign-up" className={buttonClass({ variant: 'primary', size: 'sm' })}>
+              {/* The open phone menu carries its own Get started; one is enough. */}
+              <Link href="/sign-up" className={buttonClass({ variant: 'primary', size: 'sm', className: menuOpen ? 'max-md:hidden' : undefined })}>
                 Get started
               </Link>
             </SignedOut>
@@ -150,7 +157,7 @@ export function SiteHeader() {
                 its backdrop blur makes it the containing block.) */}
             <div
               aria-hidden="true"
-              className="absolute inset-x-0 top-full h-dvh bg-black/25 md:hidden"
+              className="absolute inset-x-0 top-full h-dvh touch-none bg-black/25 md:hidden"
               onClick={() => setMenuOpen(false)}
             />
             <nav

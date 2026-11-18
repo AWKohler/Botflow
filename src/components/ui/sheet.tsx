@@ -7,6 +7,9 @@ import { createPortal } from "react-dom";
 import { buttonClass } from "./button";
 import { useModal } from "./use-modal";
 
+// Below Tailwind's `sm`. This is the width at which an anchored 420px popover
+// stops fitting, which is why sheets use it; the workspaces switch to one pane
+// at a time earlier (below `md`), where those popovers still fit.
 const PHONE_QUERY = "(max-width: 639px)";
 
 function subscribePhone(onChange: () => void) {
@@ -40,10 +43,12 @@ export const phoneSheetClass =
   "max-sm:pb-[env(safe-area-inset-bottom)] max-sm:motion-safe:animate-[sheet-up_0.24s_cubic-bezier(0.2,0.8,0.2,1)]";
 export const phoneSheetBackdropClass =
   "max-sm:touch-none max-sm:bg-black/40 max-sm:backdrop-blur-[2px] max-sm:motion-safe:animate-[sheet-fade_0.18s_ease-out]";
+/** The grabber at the top of a sheet (phones only), the same mark `BottomSheet` carries. */
+export const phoneSheetGrabberClass = "mx-auto mt-2 hidden h-1 w-9 shrink-0 rounded-full bg-border-strong max-sm:block";
 /** Title row and scrolling body of such a popover, sized for a phone. */
-export const phoneSheetTitleClass = "max-sm:pl-5 max-sm:pr-2 max-sm:py-2 max-sm:[&_h3]:text-base";
+export const phoneSheetTitleClass = "max-sm:pl-5 max-sm:pr-2 max-sm:pb-2 max-sm:pt-1 max-sm:[&_h3]:text-base";
 export const phoneSheetCloseClass = "max-sm:flex max-sm:size-11 max-sm:items-center max-sm:justify-center max-sm:[&_svg]:size-5";
-export const phoneSheetBodyClass = "max-sm:max-h-[calc(85dvh-3.75rem)] max-sm:overflow-y-auto max-sm:overscroll-contain";
+export const phoneSheetBodyClass = "max-sm:max-h-[calc(85dvh-4.25rem)] max-sm:overflow-y-auto max-sm:overscroll-contain";
 
 /**
  * The behaviour that goes with `phoneSheetClass`: while such a popover is a

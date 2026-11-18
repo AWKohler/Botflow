@@ -347,15 +347,15 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
           <Reveal delay={120}>
             <div className="rounded-2xl border border-[var(--sand-border)] bg-[var(--sand-bg)] overflow-hidden">
               {/* Table header */}
-              <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1fr_1fr_1fr] border-b border-[var(--sand-border)]">
-                <div className="px-5 sm:px-7 py-5 text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]">
+              <div className="grid grid-cols-[minmax(0,1.8fr)_repeat(3,minmax(0,1fr))] sm:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))] border-b border-[var(--sand-border)]">
+                <div className="px-4 sm:px-7 py-5 text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]">
                   Feature
                 </div>
                 {(['free', 'pro', 'max'] as PlanKey[]).map((p) => (
                   <div
                     key={p}
                     className={cn(
-                      'px-3 sm:px-5 py-5 text-center text-xs font-medium uppercase tracking-[0.18em]',
+                      'px-1.5 sm:px-5 py-5 text-center text-xs font-medium uppercase tracking-[0.18em]',
                       // Pro is the highlighted plan in the cards, so its column carries the same cue.
                       p === 'pro' ? 'bg-[var(--sand-soft)]/40 text-[var(--sand-text)]' : 'text-[var(--sand-text-muted)]',
                     )}
@@ -368,11 +368,11 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
               {/* Groups */}
               {comparisonGroups.map((group, gi) => (
                 <div key={group.label}>
-                  <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1fr_1fr_1fr] border-b border-[var(--sand-border)] bg-[var(--sand-elevated)]/40">
+                  <div className="grid grid-cols-[minmax(0,1.8fr)_repeat(3,minmax(0,1fr))] sm:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))] border-b border-[var(--sand-border)] bg-[var(--sand-elevated)]/40">
                     <div
                       className={cn(
                         serif.className,
-                        'px-5 sm:px-7 py-3 text-base italic text-[var(--sand-text-muted)]',
+                        'px-4 sm:px-7 py-3 text-base italic text-[var(--sand-text-muted)]',
                       )}
                     >
                       {group.label}
@@ -386,20 +386,20 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
                     <div
                       key={row.feature}
                       className={cn(
-                        'grid grid-cols-[1.5fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1fr_1fr_1fr] items-center',
+                        'grid grid-cols-[minmax(0,1.8fr)_repeat(3,minmax(0,1fr))] sm:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))] items-center',
                         (gi !== comparisonGroups.length - 1 ||
                           ri !== group.rows.length - 1) &&
                           'border-b border-[var(--sand-border)]',
                       )}
                     >
-                      <div className="px-5 sm:px-7 py-4 text-sm text-[var(--sand-text)]">
+                      <div className="px-4 sm:px-7 py-4 text-sm text-[var(--sand-text)] [overflow-wrap:anywhere]">
                         {row.feature}
                       </div>
                       {(['free', 'pro', 'max'] as PlanKey[]).map((p) => (
                         <div
                           key={p}
                           className={cn(
-                            'flex items-center justify-center self-stretch px-3 sm:px-5 py-4 text-center',
+                            'flex items-center justify-center self-stretch px-1.5 sm:px-5 py-4 text-center',
                             p === 'pro' && 'bg-[var(--sand-soft)]/40',
                           )}
                         >

@@ -294,6 +294,10 @@ export function CodeEditor({
     );
   }
 
+  // On a phone the gutter is kept to the line numbers: at 350px wide, the
+  // default gutter (wide numbers plus a fold column) takes a fifth of the editor.
+  const narrow = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
+
   return (
     <Editor
       height="100%"
@@ -311,6 +315,10 @@ export function CodeEditor({
         // Don't box ordinary typographic characters (en dashes, curly quotes).
         unicodeHighlight: { ambiguousCharacters: false, invisibleCharacters: false },
         lineNumbers: 'on',
+        lineNumbersMinChars: narrow ? 2 : 5,
+        lineDecorationsWidth: narrow ? 8 : 10,
+        folding: !narrow,
+        glyphMargin: false,
         roundedSelection: false,
         scrollBeyondLastLine: false,
         automaticLayout: true,

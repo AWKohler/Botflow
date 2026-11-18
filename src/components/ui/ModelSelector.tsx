@@ -234,7 +234,8 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                 </span>
                 {/* Provider is plain text; only the plan requirement is a tag. */}
                 <span className="text-xs text-muted max-sm:text-[13px]">{providerLabel(modelId)}</span>
-                {tierBadge && (
+                {/* A locked row already says which plan it needs, beside its lock. */}
+                {tierBadge && !isTierLocked && (
                   <span className={cn(
                     'inline-flex items-center rounded-full border px-1.5 py-px text-[11px] font-medium',
                     // Plan tags are tinted so they never read as a provider tag.

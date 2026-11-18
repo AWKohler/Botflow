@@ -37,13 +37,15 @@ export function AccountPanel() {
   const [tab, setTab] = useState<TabId>("profile");
   // On a phone the section tabs are one scrolling row: keep the current one in view.
   const tabsRef = useRef<HTMLElement>(null);
+  const tabsShown = !isPending && !!session;
   useEffect(() => {
     const nav = tabsRef.current;
     const current = nav?.querySelector<HTMLElement>('[aria-current="page"]');
     if (!nav || !current || nav.scrollWidth <= nav.clientWidth) return;
-    nav.scrollTo({ left: current.offsetLeft - (nav.clientWidth - current.offsetWidth) / 2 });
+    // The current tab starts at the page gutter, or the row ends flush right.
+    nav.scrollTo({ left: current.offsetLeft - 24 });
     // Also when the page first renders its tabs (they are absent while the session loads).
-  }, [tab, isPending, session]);
+  }, [tab, tabsShown]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");

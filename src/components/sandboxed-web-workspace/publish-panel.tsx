@@ -17,7 +17,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { phoneSheetBackdropClass, phoneSheetBodyClass, phoneSheetClass, phoneSheetCloseClass, phoneSheetTitleClass, usePhoneSheetModal } from "@/components/ui/sheet";
+import { phoneSheetBackdropClass, phoneSheetBodyClass, phoneSheetClass, phoneSheetCloseClass, phoneSheetGrabberClass, phoneSheetTitleClass, usePhoneSheetModal } from "@/components/ui/sheet";
 import { buttonClass } from "@/components/ui/button";
 import { fieldClass, Select } from "@/components/ui/field";
 
@@ -413,6 +413,7 @@ export function SandboxPublishPanel({
         )}
         style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
       >
+        <div aria-hidden="true" className={phoneSheetGrabberClass} />
         <div className={cn("flex items-center justify-between border-b border-border px-4 py-3", phoneSheetTitleClass)}>
           <div className="flex items-center gap-2">
             <h3 id={titleId} className="text-sm font-semibold text-fg">Publish</h3>

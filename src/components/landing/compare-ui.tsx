@@ -242,7 +242,7 @@ export function CompareTable({ themName, groups }: { themName: string; groups: C
 
         <Reveal delay={120}>
           <div className="rounded-2xl border border-[var(--sand-border)] bg-[var(--sand-bg)] overflow-hidden">
-            <div className="grid grid-cols-[1.3fr_1fr_1fr] sm:grid-cols-[1.6fr_1fr_1fr] border-b border-[var(--sand-border)]">
+            <div className="grid grid-cols-[minmax(0,1.3fr)_repeat(2,minmax(0,1fr))] sm:grid-cols-[minmax(0,1.6fr)_repeat(2,minmax(0,1fr))] border-b border-[var(--sand-border)]">
               <div className="px-4 sm:px-7 py-5 text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]">
                 Feature
               </div>
@@ -256,7 +256,7 @@ export function CompareTable({ themName, groups }: { themName: string; groups: C
 
             {groups.map((group, gi) => (
               <div key={group.label}>
-                <div className="grid grid-cols-[1.3fr_1fr_1fr] sm:grid-cols-[1.6fr_1fr_1fr] border-b border-[var(--sand-border)] bg-[var(--sand-elevated)]/40">
+                <div className="grid grid-cols-[minmax(0,1.3fr)_repeat(2,minmax(0,1fr))] sm:grid-cols-[minmax(0,1.6fr)_repeat(2,minmax(0,1fr))] border-b border-[var(--sand-border)] bg-[var(--sand-elevated)]/40">
                   <div
                     className={cn(
                       serif.className,
@@ -275,7 +275,7 @@ export function CompareTable({ themName, groups }: { themName: string; groups: C
                     className={cn(
                       // Cells stretch to the row's height (and centre their own content),
                       // so the tinted column is one unbroken band whatever wraps.
-                      'grid grid-cols-[1.3fr_1fr_1fr] sm:grid-cols-[1.6fr_1fr_1fr]',
+                      'grid grid-cols-[minmax(0,1.3fr)_repeat(2,minmax(0,1fr))] sm:grid-cols-[minmax(0,1.6fr)_repeat(2,minmax(0,1fr))]',
                       (gi !== groups.length - 1 || ri !== group.rows.length - 1) &&
                         'border-b border-[var(--sand-border)]',
                     )}

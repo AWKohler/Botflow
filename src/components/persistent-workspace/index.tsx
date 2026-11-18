@@ -32,7 +32,7 @@ import {
 import { useWorkspacePoll, rateLimitDelayMs } from "@/components/sandboxed-web-workspace/use-workspace-poll";
 import { RevenueCatTab } from "./revenuecat-tab";
 import { REVENUECAT_ENABLED } from "@/lib/feature-flags";
-import { ChevronLeft, PanelLeft, Play, Save, Loader2, Database, Rocket, Smartphone, Tablet, RotateCw, ArrowUpRight, Globe } from "lucide-react";
+import { ChevronLeft, ChevronRight, PanelLeft, Play, Save, Loader2, Database, Rocket, Smartphone, Tablet, RotateCw, ArrowUpRight, Globe } from "lucide-react";
 import type { ProjectPlatform } from "@/lib/project-platform";
 import { DeviceFrame, type DeviceModelUI, type OrientationUI } from "./device-frame";
 import {
@@ -46,6 +46,8 @@ const PersistentTerminal = dynamic(
   () => import("./terminal").then((m) => m.PersistentTerminal),
   { ssr: false, loading: () => <div className="h-full w-full bg-elevated" /> },
 );
+
+const isWideWindow = () => !window.matchMedia("(max-width: 767px)").matches;
 
 type WorkspaceView = "preview" | "code" | "database" | "revenuecat";
 type SandboxStatus = "idle" | "booting" | "ready" | "error";
@@ -92,6 +94,10 @@ export function PersistentWorkspace({
   const [showSidebar, setShowSidebar] = useState(true);
   // Phones show one pane at a time: the chat, or the app (preview, code, …).
   const [mobilePane, setMobilePane] = useState<"chat" | "app">("chat");
+  // Until it is toggled (null), CSS decides: open on larger screens, folded on a
+  // phone, where it would take a third of the code view. No flash, and the
+  // server render matches.
+  const [terminalOpen, setTerminalOpen] = useState<boolean | null>(null);
   const [sidebarTab, setSidebarTab] = useState<"files" | "search" | "env" | "git">("files");
   const [currentView, setCurrentView] = useState<WorkspaceView>("code");
   // When a build-error row is clicked, we open the file and ask the editor to
@@ -849,9 +855,21 @@ export function PersistentWorkspace({
               </div>
             </div>
 
-            {/* Terminal */}
-            <div className="h-32 border-t border-border bg-surface md:h-44">
-              <PersistentTerminal projectId={projectId} ready={sandboxStatus === "ready"} />
+            {/* Terminal — folds away, like the web workspace's. Collapsed with a
+                class, not unmounted, so the session survives. */}
+            <div className="border-t border-border bg-surface">
+              <button
+                type="button"
+                onClick={() => setTerminalOpen((v) => !(v ?? isWideWindow()))}
+                aria-expanded={terminalOpen ?? undefined}
+                className="flex h-8 w-full items-center gap-1.5 px-3 text-xs font-medium text-muted transition-colors hover:text-fg pointer-coarse:h-10 pointer-coarse:text-[13px]"
+              >
+                <ChevronRight size={12} className={cn("transition-transform", terminalOpen === null ? "md:rotate-90" : terminalOpen && "rotate-90")} />
+                Terminal
+              </button>
+              <div className={cn("h-36", terminalOpen === null ? "max-md:hidden" : !terminalOpen && "hidden")}>
+                <PersistentTerminal projectId={projectId} ready={sandboxStatus === "ready"} />
+              </div>
             </div>
           </div>
 

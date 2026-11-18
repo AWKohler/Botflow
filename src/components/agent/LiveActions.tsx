@@ -32,6 +32,10 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
     )
   ), [fileActions]);
 
+  // On a phone the card is one line (the latest step) until it is opened: with
+  // the keyboard up, a five-row list would leave almost no room for the chat.
+  const [expanded, setExpanded] = useState<boolean | null>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = scrollRef.current;
@@ -46,15 +50,38 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
       if (first) el.style.maxHeight = `${el.scrollHeight - first.offsetTop}px`;
     }
     el.scrollTop = el.scrollHeight;
-  }, [actions.length]);
+  }, [actions.length, expanded]);
 
   if (!actions.length) return null;
 
+  const latest = actions[actions.length - 1];
+  const latestRunning = latest.status === 'invoked';
+  // null: not toggled yet, so CSS decides (a list on larger screens, one line on a phone).
+  const listHidden = expanded === null ? 'max-md:hidden' : !expanded && 'hidden';
+  const summaryHidden = expanded === null ? 'md:hidden' : expanded && 'hidden';
+
   return (
     <div className={cn('rounded-lg border border-border bg-elevated p-2 space-y-1', className)}>
-      <div className="flex items-center justify-between px-1">
-        <span className="text-xs font-medium text-muted">Activity</span>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2 px-1">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !(v ?? !window.matchMedia('(max-width: 767px)').matches))}
+          aria-expanded={expanded ?? undefined}
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium text-muted md:pointer-events-none pointer-coarse:min-h-8"
+        >
+          <ChevronRight
+            size={12}
+            className={cn('shrink-0 transition-transform md:hidden', expanded && 'rotate-90')}
+          />
+          <span className="shrink-0">Activity</span>
+          <span className={cn('flex min-w-0 items-center gap-1.5 font-normal', summaryHidden)}>
+            <span className="text-subtle">·</span>
+            {latestRunning && <Loader2 size={11} className="shrink-0 animate-spin" />}
+            <span className="truncate">{actionSummary(latest).title}</span>
+            {actions.length > 1 && <span className="shrink-0 tabular-nums text-subtle">+{actions.length - 1}</span>}
+          </span>
+        </button>
+        <div className="flex shrink-0 items-center gap-2">
           {totals.files > 0 && (
             <span className="text-[11px] text-muted tabular-nums">
               {totals.files} file{totals.files !== 1 ? 's' : ''}
@@ -64,7 +91,7 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
           )}
           {onClear && (
             <button
-              className="rounded-sm text-xs text-muted transition-colors hover:text-fg"
+              className="tap-44 rounded-sm text-xs text-muted transition-colors hover:text-fg"
               onClick={onClear}
               type="button"
             >
@@ -76,7 +103,7 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
 
       <div
         ref={scrollRef}
-        className="modern-scrollbar relative max-h-28 overflow-auto pl-1 pr-1"
+        className={cn('modern-scrollbar relative max-h-28 overflow-auto pl-1 pr-1', listHidden)}
       >
         {actions.map((a, i) => (
           <LiveActionStep key={a.toolCallId} action={a} isLast={i === actions.length - 1} />

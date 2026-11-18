@@ -881,14 +881,14 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               href="https://appstoreconnect.apple.com/access/integrations/api"
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 underline text-fg hover:text-fg"
+                              className="text-fg underline hover:text-fg"
                             >
                               App Store Connect → Users and Access → Integrations
-                              <ExternalLink className="h-3 w-3" />
+                              <ExternalLink className="ml-1 inline h-3 w-3 align-[-1px]" />
                             </a>
                             . First time, if it shows{' '}
                             <span className="font-medium text-fg">&ldquo;Request Access&rdquo;</span>{' '}
-                            instead of a key list, click it and accept the terms (Account
+                            instead of a key list, choose it and accept the terms (Account
                             Holder only). Then on the{' '}
                             <span className="font-medium text-fg">Team Keys</span> tab generate
                             a key with the <span className="font-medium text-fg">App Manager</span>{' '}

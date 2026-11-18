@@ -164,11 +164,10 @@ export function SandboxedWebWorkspace({
   const [githubRepoName, setGithubRepoName] = useState<string | null>(null);
   const [githubDefaultBranch, setGithubDefaultBranch] = useState<string | null>(null);
   const [mobilePane, setMobilePane] = useState<"chat" | "app">("chat");
-  const [terminalOpen, setTerminalOpen] = useState(true);
-  // On a phone the terminal starts folded away: open, it takes a third of the code view.
-  useEffect(() => {
-    if (window.matchMedia("(max-width: 767px)").matches) setTerminalOpen(false);
-  }, []);
+  // Until it is toggled (null), CSS decides: open on larger screens, folded on a
+  // phone, where it would take a third of the code view. No flash, and the
+  // server render matches.
+  const [terminalOpen, setTerminalOpen] = useState<boolean | null>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>("preview");
@@ -1779,15 +1778,15 @@ export function SandboxedWebWorkspace({
             <div className="border-t border-border bg-surface">
               <button
                 type="button"
-                onClick={() => setTerminalOpen((v) => !v)}
-                aria-expanded={terminalOpen}
+                onClick={() => setTerminalOpen((v) => !(v ?? !window.matchMedia("(max-width: 767px)").matches))}
+                aria-expanded={terminalOpen ?? undefined}
                 className="flex h-8 w-full items-center gap-1.5 px-3 text-xs font-medium text-muted transition-colors hover:text-fg pointer-coarse:h-10 pointer-coarse:text-[13px]"
               >
-                <ChevronRight size={12} className={cn("transition-transform", terminalOpen && "rotate-90")} />
+                <ChevronRight size={12} className={cn("transition-transform", terminalOpen === null ? "md:rotate-90" : terminalOpen && "rotate-90")} />
                 Terminal
               </button>
               {/* Collapsed with a class, not unmounted, so the session survives. */}
-              <div className={cn("h-40", !terminalOpen && "hidden")}>
+              <div className={cn("h-40", terminalOpen === null ? "max-md:hidden" : !terminalOpen && "hidden")}>
                 <PersistentTerminal projectId={projectId} ready={sandboxStatus === "ready"} />
               </div>
             </div>

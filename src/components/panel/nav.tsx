@@ -27,7 +27,7 @@ export function PanelNav({ activePath }: { activePath?: string } = {}) {
     const nav = navRef.current;
     const active = nav?.querySelector<HTMLElement>('[aria-current="page"]');
     if (!nav || !active || nav.scrollWidth <= nav.clientWidth) return;
-    nav.scrollTo({ left: active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2 });
+    nav.scrollTo({ left: active.offsetLeft - 20 });
   }, [pathname]);
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-bg/85 backdrop-blur-lg">

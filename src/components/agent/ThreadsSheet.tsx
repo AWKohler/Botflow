@@ -520,9 +520,10 @@ export function ThreadsSheet({
         aria-label="Chats"
         tabIndex={-1}
         className={cn(
-          'absolute inset-y-0 left-0 flex w-[86%] max-w-[340px] flex-col border-r border-border bg-bg shadow-2xl outline-none',
+          'absolute inset-y-0 left-0 flex w-[86%] max-w-[340px] flex-col border-r border-border bg-bg outline-none',
           'transition-transform duration-200 ease-out',
-          open ? 'translate-x-0' : '-translate-x-full',
+          // The shadow belongs to the open drawer; closed, it would spill onto the chat's left edge.
+          open ? 'translate-x-0 shadow-2xl' : '-translate-x-full',
         )}
       >
         <div className="flex items-center justify-between px-4 pb-2 pt-3.5">

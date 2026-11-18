@@ -50,8 +50,10 @@ export const viewport: Viewport = {
     { media: "(prefers-color-scheme: light)", color: "#fefefe" },
     { media: "(prefers-color-scheme: dark)", color: "#1b1815" },
   ],
-  // The on-screen keyboard shrinks the layout instead of covering it, so a
-  // full-height screen (the workspace chat) keeps its composer in view.
+  // Chrome on Android: the on-screen keyboard shrinks the layout instead of
+  // covering it, so a full-height screen (the workspace chat) keeps its
+  // composer in view. iOS Safari ignores this and scrolls the focused field
+  // into view itself.
   interactiveWidget: "resizes-content",
 };
 

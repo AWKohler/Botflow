@@ -2097,6 +2097,18 @@ export default function LandingV2() {
                               onClick={() => setShowConvexSelector(v => !v)}
                               className="shrink-0 inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm hover:border-transparent hover:bg-[var(--sand-accent)]/15 transition pointer-coarse:h-10 pointer-coarse:px-3"
                               title="Backend type"
+                              // On a phone the chip is the mark alone, so it is named here.
+                              aria-label={`Backend: ${
+                                convexBackendType === 'platform'
+                                  ? 'Managed'
+                                  : convexBackendType === 'user'
+                                    ? 'Your Convex'
+                                    : convexBackendType === 'muhkoo'
+                                      ? 'MuhKoo'
+                                      : 'No backend'
+                              }`}
+                              aria-haspopup="menu"
+                              aria-expanded={showConvexSelector}
                             >
                               {convexBackendType === 'platform' ? (
                                 // eslint-disable-next-line @next/next/no-img-element
@@ -2348,7 +2360,7 @@ export default function LandingV2() {
           <div className="mx-auto max-w-md px-8 pb-14">
             <WorkspaceMockup
               chatOnly
-              height={512}
+              height={468}
               messages={HERO_MESSAGES}
               previewSrc="https://bf-28ba0c04.pages.dev"
               creditPct={47}
@@ -2438,7 +2450,7 @@ export default function LandingV2() {
       <LineDivider />
       <section className="relative bg-[var(--sand-surface)]">
         <MarginBg />
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-32">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-16 pb-8 sm:py-32">
           <Reveal>
             <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-20">
               <SectionLabel>How it works</SectionLabel>

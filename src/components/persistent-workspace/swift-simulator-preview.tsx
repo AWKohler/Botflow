@@ -1095,14 +1095,16 @@ function ActiveSwiftSimulatorPreview({
       <div
         className={cn(
           "flex-shrink-0 items-center rounded-xl border border-border bg-elevated/60",
-          isPip ? "flex h-7 gap-1 px-1.5" : "flex h-9 gap-2 px-3",
+          // Phone: labels are dropped (each button keeps its title) and the
+          // controls wrap under the status, so the bar never runs off the side.
+          isPip ? "flex h-7 gap-1 px-1.5" : "flex h-9 gap-2 px-3 max-md:h-auto max-md:flex-wrap max-md:gap-y-1.5 max-md:px-2 max-md:py-1.5",
         )}
       >
         <StatusPill pill={pill} compact={isPip} />
-        <div className={cn("ml-auto flex items-center", isPip ? "gap-1" : "gap-1.5")}>
+        <div className={cn("ml-auto flex items-center", isPip ? "gap-1" : "gap-1.5 max-md:[&>button]:h-9 max-md:[&>button]:min-w-9 max-md:[&>button]:justify-center max-md:[&>button>span]:hidden max-md:[&>button>svg:last-child:not(:first-child)]:hidden max-md:[&>div>button]:h-9 max-md:[&>div>button]:min-w-9 max-md:[&>div>button]:justify-center max-md:[&>div>button>span]:hidden max-md:[&>div>button>svg:last-child:not(:first-child)]:hidden")}>
           {/* FPS counter — full mode only */}
           {!isPip && pill.kind === "live" && (
-            <span className="rounded-md bg-elevated px-2 py-0.5 font-mono text-[11px] text-muted">
+            <span className="rounded-md bg-elevated px-2 py-0.5 font-mono text-[11px] text-muted max-md:hidden">
               {fps} fps
             </span>
           )}

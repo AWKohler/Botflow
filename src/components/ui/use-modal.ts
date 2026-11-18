@@ -104,7 +104,13 @@ export function useModal<T extends HTMLElement>(open: boolean, onClose?: () => v
       const i = stack.lastIndexOf(panel);
       if (i >= 0) stack.splice(i, 1);
       for (const el of inerted) el.removeAttribute("inert");
-      if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
+      // On a touch screen, focusing a text field raises the keyboard; a sheet
+      // that closes should not do that on its own.
+      const raisesKeyboard =
+        !!opener &&
+        (opener.tagName === "TEXTAREA" || opener.tagName === "INPUT" || opener.isContentEditable) &&
+        window.matchMedia("(pointer: coarse)").matches;
+      if (opener && document.contains(opener) && !raisesKeyboard) opener.focus({ preventScroll: true });
     };
   }, [open]);
 

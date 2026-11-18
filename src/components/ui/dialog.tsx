@@ -14,8 +14,10 @@ const SIZES = {
   xl: "max-w-4xl",
 } as const;
 
+// On a phone the panel sits toward the top, so the on-screen keyboard (which
+// takes the lower half) does not cover a dialog's field or its actions.
 export const overlayClass =
-  "fixed inset-0 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]";
+  "fixed inset-0 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px] max-sm:items-start max-sm:pt-[max(1rem,9dvh)]";
 export const dialogPanelClass =
   "relative w-full rounded-2xl border border-border bg-bg text-fg shadow-2xl inset-shadow-bevel-top dark:border-border-strong";
 
@@ -70,7 +72,7 @@ export function Dialog({
         aria-labelledby={title ? titleId : undefined}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className={cn(dialogPanelClass, "flex max-h-[calc(100dvh-2rem)] flex-col outline-none", SIZES[size], className)}
+        className={cn(dialogPanelClass, "flex max-h-[calc(100dvh-2rem)] flex-col outline-none max-sm:max-h-[calc(100dvh-1rem-max(1rem,9dvh))]", SIZES[size], className)}
       >
         {(title || dismissable) && (
           <div className="flex items-start justify-between gap-4 px-6 pb-1 pt-5 max-sm:px-5">
