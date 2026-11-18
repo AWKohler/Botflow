@@ -1316,6 +1316,11 @@ export default function LandingV2() {
     isSwiftPlatformEnabled() &&
     (isBetaUser || userTier === 'pro' || userTier === 'max');
   const [hasConvexOAuth, setHasConvexOAuth] = useState<boolean | null>(null);
+  // Until the first settings fetch returns we do not know what is connected,
+  // so the hero shows placeholders rather than "Connect …" calls to action
+  // that would flip to "… connected" a moment later.
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const connectionsPending = Boolean(isSignedIn) && !settingsLoaded;
   const [convexBackendType, setConvexBackendType] = useState<'platform' | 'user' | 'none' | 'muhkoo'>(
     () => (isManagedConvexEnabled() ? 'platform' : 'none'),
   );
@@ -1618,7 +1623,10 @@ export default function LandingV2() {
       if (budgetData && typeof budgetData.convexProjectsLeft === 'number') {
         setProjectQuotaLeft(budgetData.convexProjectsLeft);
       }
-    } catch {}
+    } catch {
+    } finally {
+      setSettingsLoaded(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -1628,6 +1636,7 @@ export default function LandingV2() {
       setHasMoonshotKey(null);
       setHasFireworksKey(null);
       setHasConvexOAuth(null);
+      setSettingsLoaded(false);
       return;
     }
     void fetchUserSettings();
@@ -1938,7 +1947,8 @@ export default function LandingV2() {
                     <Swift className="h-3.5 w-3.5 sm:h-4 sm:w-4" style={{ color: SWIFT_ORANGE }} />
                     Swift
                     {!hasSwiftAccess && (
-                      <Lock className="h-3 w-3 sm:h-3.5 sm:w-3.5 opacity-90" />
+                      // Space is kept while the plan loads, so the tab does not change width.
+                      <Lock className={cn('h-3 w-3 sm:h-3.5 sm:w-3.5 opacity-90', connectionsPending && 'invisible')} />
                     )}
                   </button>
                 </div>
@@ -2041,6 +2051,9 @@ export default function LandingV2() {
                             always include Convex, so the selector stays hidden there. */}
                         {isSignedIn && (platform === 'web' || platform === 'sandboxed-web' || platform === 'swift') && (
                           <div ref={convexSelectorRef} className="relative shrink-0">
+                            {connectionsPending ? (
+                              <span className="block h-[30px] w-11 animate-pulse rounded-full bg-soft sm:h-[34px] sm:w-32" role="status" aria-label="Loading backend" />
+                            ) : (
                             <button
                               type="button"
                               onClick={() => setShowConvexSelector(v => !v)}
@@ -2070,6 +2083,7 @@ export default function LandingV2() {
                               </span>
                               <ChevronDown className="h-3 w-3 opacity-60" />
                             </button>
+                            )}
                             {showConvexSelector && (
                               <div className="absolute bottom-full mb-2 left-0 w-60 rounded-xl border border-[var(--sand-border)] bg-[var(--sand-surface)] shadow-lg overflow-hidden z-20">
                                 {managedConvexEnabled && (
@@ -2210,6 +2224,14 @@ export default function LandingV2() {
             {/* Provider pills */}
             <Reveal delay={350}>
               <div className="mt-4 flex flex-col items-center gap-3">
+                {connectionsPending ? (
+                  <div className="flex flex-col min-[390px]:flex-row items-center justify-center gap-2" role="status" aria-label="Loading connections">
+                    {process.env.NEXT_PUBLIC_ANTHROPIC_OAUTH_ENABLED === 'true' && (
+                      <span className="h-[34px] w-40 animate-pulse rounded-full bg-soft" />
+                    )}
+                    <span className="h-[34px] w-40 animate-pulse rounded-full bg-soft" />
+                  </div>
+                ) : (
                 <div className="flex flex-col min-[390px]:flex-row items-center justify-center gap-2">
                   {process.env.NEXT_PUBLIC_ANTHROPIC_OAUTH_ENABLED === 'true' && (
                     <button
@@ -2245,6 +2267,7 @@ export default function LandingV2() {
                     {isSignedIn && hasCodexOAuth && <Check className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden />}
                   </button>
                 </div>
+                )}
 
 
                 {/* <p className="text-[var(--sand-text-muted)] text-sm leading-none flex items-center gap-0">

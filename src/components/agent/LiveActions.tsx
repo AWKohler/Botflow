@@ -12,6 +12,8 @@ type Props = {
   className?: string;
 };
 
+const MAX_LIST_HEIGHT = 112;
+
 export function LiveActions({ actions: allActions, onClear, className }: Props) {
   // endTurn is a control-flow signal the agent calls to mark "done", not a
   // user-visible action. Never render it — defends against any stray 'invoked'
@@ -34,6 +36,15 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    // Show the latest rows, and only whole ones: when the list overflows, the
+    // box shrinks to the trailing rows that fit, so no half row (or a stub of
+    // its timeline line) is left peeking out under the heading.
+    el.style.maxHeight = `${MAX_LIST_HEIGHT}px`;
+    if (el.scrollHeight > MAX_LIST_HEIGHT) {
+      const rows = Array.from(el.children) as HTMLElement[];
+      const first = rows.find((r) => r.offsetTop >= el.scrollHeight - MAX_LIST_HEIGHT);
+      if (first) el.style.maxHeight = `${el.scrollHeight - first.offsetTop}px`;
+    }
     el.scrollTop = el.scrollHeight;
   }, [actions.length]);
 
@@ -63,10 +74,9 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
         </div>
       </div>
 
-      {/* A short fade at the top, so a row scrolled half out of view never shows as a stray fragment. */}
       <div
         ref={scrollRef}
-        className="modern-scrollbar max-h-28 overflow-auto pl-1 pr-1 [mask-image:linear-gradient(to_bottom,transparent_0,black_14px)]"
+        className="modern-scrollbar relative max-h-28 overflow-auto pl-1 pr-1"
       >
         {actions.map((a, i) => (
           <LiveActionStep key={a.toolCallId} action={a} isLast={i === actions.length - 1} />

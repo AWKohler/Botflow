@@ -228,8 +228,8 @@ export default function PanelUsersPage() {
         </table>
       </div>
       <p className="text-xs text-muted mt-3">
-        Revenue/mo is a live Stripe subscription where one is linked to the user,
-        otherwise the plan sticker price. Lifetime rev is real Stripe money, net of
+        Revenue/mo comes from the user&apos;s live Stripe subscription; a value marked
+        &ldquo;est.&rdquo; has no linked subscription and uses the plan&apos;s list price. Lifetime rev is real Stripe money, net of
         refunds. Margin = revenue − platform LLM cost this month; sandbox and Convex
         costs aren&apos;t metered per-user yet, so margin is an upper bound. Revenue from
         unrelated older products on the same Stripe account is excluded entirely.
@@ -283,9 +283,10 @@ function UserTableRow({
         </td>
         <td className="whitespace-nowrap px-2 py-2.5 text-right tabular-nums text-fg">
           {fmtUsd(row.monthRevenueUsd, { cents: true })}
-          {row.revenueBasis === 'stripe' && (
-            <span className="text-xs text-muted ml-1" title="from a live Stripe subscription">
-              live
+          {/* Stripe-backed is the norm and goes unmarked; only estimates are flagged. */}
+          {row.revenueBasis !== 'stripe' && row.monthRevenueUsd > 0 && (
+            <span className="text-xs text-muted ml-1" title="Estimated from the plan's list price: no Stripe subscription is linked">
+              est.
             </span>
           )}
         </td>

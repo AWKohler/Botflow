@@ -781,7 +781,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                       <p className="text-xs text-muted mb-4">
                         Use your own model keys. Each one is saved separately.
                         {(hasCodexOAuth || (ANTHROPIC_OAUTH_ENABLED && hasClaudeOAuth)) && (
-                          <> A key marked Fallback is only used if its subscription above is unavailable.</>
+                          <> A Fallback key is used only if its subscription above is unavailable.</>
                         )}
                       </p>
                       <div className="space-y-4">
