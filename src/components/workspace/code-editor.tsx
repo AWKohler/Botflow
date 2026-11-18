@@ -315,7 +315,7 @@ export function CodeEditor({
         // Don't box ordinary typographic characters (en dashes, curly quotes).
         unicodeHighlight: { ambiguousCharacters: false, invisibleCharacters: false },
         lineNumbers: 'on',
-        lineNumbersMinChars: narrow ? 2 : 5,
+        lineNumbersMinChars: narrow ? 3 : 5,
         lineDecorationsWidth: narrow ? 8 : 10,
         folding: !narrow,
         glyphMargin: false,
