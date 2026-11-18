@@ -42,7 +42,8 @@ export function AccountPanel() {
     const current = nav?.querySelector<HTMLElement>('[aria-current="page"]');
     if (!nav || !current || nav.scrollWidth <= nav.clientWidth) return;
     nav.scrollTo({ left: current.offsetLeft - (nav.clientWidth - current.offsetWidth) / 2 });
-  }, [tab]);
+    // Also when the page first renders its tabs (they are absent while the session loads).
+  }, [tab, isPending, session]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
