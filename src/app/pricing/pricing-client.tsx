@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
 import { PricingTable } from '@/components/auth';
 import { formatCredits, type PlanCredits } from '@/components/auth/pricing-table';
-import { Check, Plus, Minus } from 'lucide-react';
+import { Check } from 'lucide-react';
+import { FaqList } from '@/components/landing/compare-ui';
 import { cn } from '@/lib/utils';
 import {
   EditorialGrid,
@@ -189,50 +189,6 @@ const pricingTableAppearance = {
       '!bg-[var(--sand-accent)] !text-[var(--sand-accent-contrast)] !text-xs !font-semibold',
   },
 } as const;
-
-// ============================================================================
-// FAQ accordion item
-// ============================================================================
-
-function FaqItem({ q, a, index }: { q: string; a: string; index: number }) {
-  const [open, setOpen] = useState(index === 0);
-  return (
-    <Reveal delay={index * 60}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          'group w-full text-left transition-colors',
-          'border-b border-[var(--sand-border)] last:border-b-0',
-          'py-6 hover:bg-[var(--sand-surface)]/50',
-        )}
-      >
-        <div className="flex items-start justify-between gap-6 px-1">
-          <span className="text-base sm:text-lg font-medium text-[var(--sand-text)] leading-snug">
-            {q}
-          </span>
-          <span
-            aria-hidden
-            className="mt-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] text-[var(--sand-text-muted)] transition-transform duration-300"
-            style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
-          >
-            {open ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-          </span>
-        </div>
-        <div
-          className="grid overflow-hidden transition-[grid-template-rows] duration-300 ease-out px-1"
-          style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
-        >
-          <div className="min-h-0 overflow-hidden">
-            <p className="mt-3 max-w-3xl text-sm sm:text-base text-[var(--sand-text-muted)] leading-relaxed">
-              {a}
-            </p>
-          </div>
-        </div>
-      </button>
-    </Reveal>
-  );
-}
 
 // ============================================================================
 // Comparison cell renderer
@@ -480,11 +436,7 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
             </div>
           </Reveal>
 
-          <div className="border-t border-[var(--sand-border)]">
-            {faqs.map((f, i) => (
-              <FaqItem key={f.q} q={f.q} a={f.a} index={i} />
-            ))}
-          </div>
+          <FaqList faqs={faqs} />
         </div>
       </section>
 
