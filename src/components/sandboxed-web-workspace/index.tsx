@@ -1393,7 +1393,9 @@ export function SandboxedWebWorkspace({
         )}
 
         {/* Header */}
-        <div className="flex h-12 shrink-0 items-center gap-2 pl-2.5 pr-2.5 md:pl-0">
+        {/* A container: what the toolbar shows depends on the room this pane
+            has, not on the window (the chat column takes a fixed share of it). */}
+        <div className="@container flex h-12 shrink-0 items-center gap-2 pl-2.5 pr-2.5 md:pl-0">
           <Tabs
             options={
               [
@@ -1457,9 +1459,8 @@ export function SandboxedWebWorkspace({
             ) : (
               <Play size={13} className="text-success" fill="currentColor" />
             )}
-            {/* Between tablet and laptop widths the toolbar is short of room: the
-                label goes, the title stays. */}
-            <span className="hidden lg:inline">
+            {/* When the pane is short of room the label goes; the title stays. */}
+            <span className="hidden @[44rem]:inline">
               {isStartingServer
                 ? "Starting…"
                 : isDevServerRunning
@@ -1485,7 +1486,7 @@ export function SandboxedWebWorkspace({
           {currentView === "code" && selectedFile && (
             <div className="hidden min-w-0 items-center gap-1 text-[13px] md:flex">
               <span className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-elevated px-2 py-1 font-mono text-xs text-fg">
-                {selectedFile.split("/").pop()}
+                <span className="truncate">{selectedFile.split("/").pop()}</span>
                 {hasUnsavedChanges && (
                   <span
                     className="h-1.5 w-1.5 rounded-full bg-warning-solid"
@@ -1544,11 +1545,11 @@ export function SandboxedWebWorkspace({
                 aria-label="Edit"
               >
                 <MousePointer2 size={14} />
-                <span className="hidden lg:inline">Edit</span>
+                <span className="hidden @[44rem]:inline">Edit</span>
               </button>
             )}
             {currentView === "preview" && (
-              <div className="hidden h-8 min-w-28 max-w-[240px] flex-1 items-center gap-2 rounded-lg border border-control bg-bg px-2.5 inset-shadow-well transition-colors focus-within:border-accent lg:flex pointer-coarse:h-10">
+              <div className="hidden h-8 min-w-28 max-w-[240px] flex-1 items-center gap-2 rounded-lg border border-control bg-bg px-2.5 inset-shadow-well transition-colors focus-within:border-accent @[36rem]:flex pointer-coarse:h-10">
                 {/* Device menu: every size is named and one click away. */}
                 <div className="relative flex">
                   <button
@@ -1621,7 +1622,7 @@ export function SandboxedWebWorkspace({
               </div>
             )}
             <ShareControls projectId={projectId} />
-            <div className="hidden lg:block">
+            <div className="hidden @[36rem]:block">
               <UserButton />
             </div>
             <Button

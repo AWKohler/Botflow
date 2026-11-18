@@ -574,7 +574,7 @@ export function PersistentWorkspace({
         )}
 
         {/* Header */}
-        <div className="flex h-12 shrink-0 items-center gap-2 pl-2.5 pr-2.5 md:pl-0">
+        <div className="@container flex h-12 shrink-0 items-center gap-2 pl-2.5 pr-2.5 md:pl-0">
           {/* Up to four tabs: on a phone they scroll sideways rather than push the actions off. */}
           <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <Tabs
@@ -608,7 +608,7 @@ export function PersistentWorkspace({
           {currentView === "code" && selectedFile && (
             <div className="hidden min-w-0 items-center gap-1 text-[13px] md:flex">
               <span className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-elevated px-2 py-1 font-mono text-xs text-fg">
-                {selectedFile.split("/").pop()}
+                <span className="truncate">{selectedFile.split("/").pop()}</span>
                 {hasUnsavedChanges && (
                   <span className="h-1.5 w-1.5 rounded-full bg-warning-solid" title="Unsaved changes" />
                 )}
@@ -626,7 +626,7 @@ export function PersistentWorkspace({
           )}
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            <div className="hidden items-center gap-1.5 px-1 text-xs text-muted xl:flex">
+            <div className="hidden items-center gap-1.5 px-1 text-xs text-muted @[52rem]:flex">
               {sandboxStatus === "booting" ? (
                 <>
                   <Loader2 size={12} className="animate-spin" />
@@ -684,7 +684,7 @@ export function PersistentWorkspace({
             )}
 
             <ShareControls projectId={projectId} />
-            <div className="hidden lg:block">
+            <div className="hidden @[36rem]:block">
               <UserButton
                 afterSignOutUrl="/"
                 appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }}
