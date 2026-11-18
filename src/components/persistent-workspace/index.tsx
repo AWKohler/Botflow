@@ -548,7 +548,7 @@ export function PersistentWorkspace({
           instead of being covered by it. */}
       <div
         className={cn(
-          "relative z-30 min-h-0 w-full flex-1 flex-col md:flex md:w-96 md:flex-none md:shrink-0",
+          "relative z-30 min-h-0 w-full flex-1 flex-col md:flex md:w-80 md:flex-none md:shrink-0 lg:w-96",
           mobilePane === "chat" ? "flex" : "hidden",
         )}
       >
@@ -626,7 +626,7 @@ export function PersistentWorkspace({
           )}
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            <div className="hidden items-center gap-1.5 px-1 text-xs text-muted md:flex">
+            <div className="hidden items-center gap-1.5 px-1 text-xs text-muted xl:flex">
               {sandboxStatus === "booting" ? (
                 <>
                   <Loader2 size={12} className="animate-spin" />
@@ -684,7 +684,7 @@ export function PersistentWorkspace({
             )}
 
             <ShareControls projectId={projectId} />
-            <div className="hidden md:block">
+            <div className="hidden lg:block">
               <UserButton
                 afterSignOutUrl="/"
                 appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }}

@@ -1354,7 +1354,8 @@ export function SandboxedWebWorkspace({
           while the seed is still cloning, and tools fail. */}
       <div
         className={cn(
-          "relative z-30 min-h-0 w-full flex-1 flex-col md:flex md:w-96 md:flex-none md:shrink-0",
+          // A narrower chat column between tablet and laptop widths leaves the app pane its toolbar.
+          "relative z-30 min-h-0 w-full flex-1 flex-col md:flex md:w-80 md:flex-none md:shrink-0 lg:w-96",
           mobilePane === "chat" ? "flex" : "hidden",
         )}
       >
@@ -1456,7 +1457,9 @@ export function SandboxedWebWorkspace({
             ) : (
               <Play size={13} className="text-success" fill="currentColor" />
             )}
-            <span>
+            {/* Between tablet and laptop widths the toolbar is short of room: the
+                label goes, the title stays. */}
+            <span className="hidden lg:inline">
               {isStartingServer
                 ? "Starting…"
                 : isDevServerRunning
@@ -1514,7 +1517,7 @@ export function SandboxedWebWorkspace({
             </div>
           )}
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
             {currentView === "database" && hasBackend && (
               <Button
                 variant="secondary"
@@ -1532,19 +1535,20 @@ export function SandboxedWebWorkspace({
                 onClick={() => setEditMode((v) => !v)}
                 aria-pressed={editMode}
                 className={cn(
-                  "hidden h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors md:flex",
+                  "hidden h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors md:flex pointer-coarse:h-10",
                   editMode
                     ? "border-accent/40 bg-accent-soft text-accent"
                     : "border-border bg-linear-to-b from-bg to-surface text-muted shadow-xs inset-shadow-bevel hover:border-border-strong hover:text-fg dark:from-elevated dark:to-surface",
                 )}
                 title="Select an element in the preview to edit it"
+                aria-label="Edit"
               >
                 <MousePointer2 size={14} />
-                Edit
+                <span className="hidden lg:inline">Edit</span>
               </button>
             )}
             {currentView === "preview" && (
-              <div className="hidden h-8 min-w-[240px] items-center gap-2 rounded-lg border border-control bg-bg px-2.5 inset-shadow-well transition-colors focus-within:border-accent md:flex">
+              <div className="hidden h-8 min-w-28 max-w-[240px] flex-1 items-center gap-2 rounded-lg border border-control bg-bg px-2.5 inset-shadow-well transition-colors focus-within:border-accent lg:flex pointer-coarse:h-10">
                 {/* Device menu: every size is named and one click away. */}
                 <div className="relative flex">
                   <button
@@ -1617,7 +1621,7 @@ export function SandboxedWebWorkspace({
               </div>
             )}
             <ShareControls projectId={projectId} />
-            <div className="hidden md:block">
+            <div className="hidden lg:block">
               <UserButton />
             </div>
             <Button
