@@ -50,8 +50,9 @@ export function ShowcaseCard({ project, compact = false }: { project: ShowcasePr
             className="h-full w-full object-cover object-top"
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-subtle">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-subtle">
             <Icon className="h-7 w-7" strokeWidth={1.5} />
+            <span className="text-xs">No preview yet</span>
           </div>
         )}
 

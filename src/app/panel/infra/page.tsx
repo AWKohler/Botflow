@@ -78,6 +78,14 @@ interface InfraData {
   generatedAt: string;
 }
 
+// "failed" in the outbox means an attempt failed and will be retried;
+// "exhausted" means it gave up. Say so, and keep red for the one that gave up.
+function deliveryStatusLabel(status: string): string {
+  if (status === 'failed') return 'retrying';
+  if (status === 'exhausted') return 'failed';
+  return status;
+}
+
 function deliveryStatusKind(status: string): StatusKind {
   if (status === 'delivered') return 'good';
   if (status === 'pending') return 'neutral';
@@ -220,7 +228,7 @@ export default function PanelInfraPage() {
                 {webhooks.stripe.map((s) => (
                   <div key={`${s.status}-${s.mode}`} className="flex items-center justify-between">
                     <span className="flex items-center gap-2">
-                      <StatusPill kind={deliveryStatusKind(s.status)} label={s.status} />
+                      <StatusPill kind={deliveryStatusKind(s.status)} label={deliveryStatusLabel(s.status)} />
                       <span className="text-xs text-muted">{s.mode}</span>
                     </span>
                     <span className="text-sm tabular-nums text-fg">{fmtNum(s.count)}</span>
@@ -237,7 +245,7 @@ export default function PanelInfraPage() {
               <div className="space-y-1.5">
                 {webhooks.revenuecat.map((s) => (
                   <div key={s.status} className="flex items-center justify-between">
-                    <StatusPill kind={deliveryStatusKind(s.status)} label={s.status} />
+                    <StatusPill kind={deliveryStatusKind(s.status)} label={deliveryStatusLabel(s.status)} />
                     <span className="text-sm tabular-nums text-fg">{fmtNum(s.count)}</span>
                   </div>
                 ))}

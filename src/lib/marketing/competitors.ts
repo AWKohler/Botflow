@@ -441,7 +441,7 @@ export const COMPETITORS: Record<CompetitorSlug, Competitor> = {
         label: 'Code & shipping',
         rows: [
           { feature: 'You own the code', us: true, them: true },
-          { feature: 'GitHub', us: 'Real git in the workspace — branches, PRs', them: 'Two-way sync' },
+          { feature: 'GitHub', us: 'Real git — branches, PRs', them: 'Two-way sync' },
           { feature: 'One-click deploy', us: 'Cloudflare + custom domains', them: 'Lovable hosting + custom domains' },
           { feature: 'Visual click-to-edit', us: 'Basic (styling)', them: 'Full visual edits' },
           { feature: 'Team multiplayer', us: false, them: true },

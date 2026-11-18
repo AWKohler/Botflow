@@ -168,8 +168,8 @@ export default function PanelOverviewPage() {
               {fmtUsd(stripe.legacy.lifetimeNetUsd)} lifetime from{' '}
               {stripe.legacy.payingCustomers} customer
               {stripe.legacy.payingCustomers === 1 ? '' : 's'} on unrelated older products
-              {stripe.legacy.productNames.length > 0 && ` (${stripe.legacy.productNames.join(', ')})`}{' '}
-              that share this Stripe account. Whole-account lifetime net is{' '}
+              {stripe.legacy.productNames.length > 0 && `: ${stripe.legacy.productNames.join(', ')}`}.
+              They share this Stripe account. Whole-account lifetime net is{' '}
               {fmtUsd(stripe.accountTotals.lifetimeNetUsd)}.
             </p>
           )}
