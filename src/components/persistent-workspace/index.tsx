@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useToast } from "@/components/ui/toast";
 import { CodeEditor } from "@/components/workspace/code-editor";
 import { FileTree } from "@/components/workspace/file-tree";
@@ -31,7 +32,7 @@ import {
 import { useWorkspacePoll, rateLimitDelayMs } from "@/components/sandboxed-web-workspace/use-workspace-poll";
 import { RevenueCatTab } from "./revenuecat-tab";
 import { REVENUECAT_ENABLED } from "@/lib/feature-flags";
-import { PanelLeft, Play, Save, Loader2, Database, Rocket, Smartphone, Tablet, RotateCw, ArrowUpRight, Globe } from "lucide-react";
+import { ChevronLeft, PanelLeft, Play, Save, Loader2, Database, Rocket, Smartphone, Tablet, RotateCw, ArrowUpRight, Globe } from "lucide-react";
 import type { ProjectPlatform } from "@/lib/project-platform";
 import { DeviceFrame, type DeviceModelUI, type OrientationUI } from "./device-frame";
 import {
@@ -89,6 +90,8 @@ export function PersistentWorkspace({
   const [fileContent, setFileContent] = useState<string>("");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
+  // Phones show one pane at a time: the chat, or the app (preview, code, …).
+  const [mobilePane, setMobilePane] = useState<"chat" | "app">("chat");
   const [sidebarTab, setSidebarTab] = useState<"files" | "search" | "env" | "git">("files");
   const [currentView, setCurrentView] = useState<WorkspaceView>("code");
   // When a build-error row is clicked, we open the file and ask the editor to
@@ -406,6 +409,17 @@ export function PersistentWorkspace({
     }
   }, [projectId, files, toast]);
 
+  // On a phone the explorer covers the editor, so opening a file leaves the explorer.
+  const openFileFromExplorer = useCallback(
+    (filePath: string) => {
+      if (files[filePath]?.type === "file" && window.matchMedia("(max-width: 767px)").matches) {
+        setShowSidebar(false);
+      }
+      void handleFileSelect(filePath);
+    },
+    [files, handleFileSelect],
+  );
+
   /** Click-to-jump from the build Issues panel. Open the file in the editor
    * and ask Monaco to reveal `line`. Includes a path normalization step so
    * diagnostics emitted as `Sources/Foo.swift` match our file map's keys
@@ -470,7 +484,30 @@ export function PersistentWorkspace({
   }, [hasUnsavedChanges]);
 
   return (
-    <div className="flex h-screen bg-surface text-fg">
+    <div className="flex h-[100dvh] flex-col bg-surface text-fg md:flex-row">
+      {/* One row of chrome on phones, the same as the web workspace: where you
+          are (and the way back), the pane switch, and the chat's actions. */}
+      <div className="flex h-14 shrink-0 items-center gap-1 border-b border-border px-1.5 md:hidden">
+        <Link
+          href="/projects"
+          aria-label="Back to all projects"
+          className="flex h-11 min-w-0 flex-1 items-center gap-0.5 rounded-lg pl-1.5 pr-2 text-sm font-medium text-fg transition-colors hover:bg-elevated"
+        >
+          <ChevronLeft size={16} className="shrink-0 text-muted" />
+          <span className="truncate">{project?.name ?? "Projects"}</span>
+        </Link>
+        <Tabs
+          options={[
+            { value: "chat", text: "Chat" },
+            { value: "app", text: "App" },
+          ]}
+          selected={mobilePane}
+          onSelect={setMobilePane}
+          size="lg"
+        />
+        {/* The chat panel renders its "More" menu into this slot on phones. */}
+        <div id="workspace-chat-actions" className="flex w-11 shrink-0 justify-center" />
+      </div>
       {/* Owner-only (sharing permission table): other members see who the
           request is waiting on instead of a form they can't submit. */}
       {pendingOAuthRequest && !viewerIsOwner && hiddenOAuthRequestId !== pendingOAuthRequest.id && (
@@ -501,7 +538,12 @@ export function PersistentWorkspace({
       {/* Agent sidebar. `relative z-30` so the model-selector / backend popovers
           that overflow the w-96 column paint above the adjacent main panel
           instead of being covered by it. */}
-      <div className="relative z-30 flex w-96 shrink-0 flex-col">
+      <div
+        className={cn(
+          "relative z-30 min-h-0 w-full flex-1 flex-col md:flex md:w-96 md:flex-none md:shrink-0",
+          mobilePane === "chat" ? "flex" : "hidden",
+        )}
+      >
         <AgentPanel
           className="h-full"
           projectId={projectId}
@@ -511,20 +553,22 @@ export function PersistentWorkspace({
       </div>
 
       {/* Main column */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className={cn("min-h-0 min-w-0 flex-1 flex-col md:flex", mobilePane === "app" ? "flex" : "hidden")}>
         {/* Convex usage guardrail banner (paused: sticky red; warned: dismissible amber) */}
         {managedBackend && (
           <ConvexStatusBanner status={convexStatus} isOwner={viewerIsOwner} />
         )}
         {bootError && (
-          <div className="mr-2.5 mt-2 flex items-center gap-3 rounded-lg border border-danger-border bg-danger-soft px-3 py-2 text-[13px] text-danger">
+          <div className="ml-2.5 mr-2.5 mt-2 flex items-center gap-3 rounded-lg border border-danger-border bg-danger-soft px-3 py-2 text-[13px] text-danger md:ml-0">
             <span className="font-medium">The sandbox didn’t start</span>
             <span className="flex-1 truncate text-fg/80">{bootError}</span>
           </div>
         )}
 
         {/* Header */}
-        <div className="flex h-12 shrink-0 items-center gap-2 pr-2.5">
+        <div className="flex h-12 shrink-0 items-center gap-2 pl-2.5 pr-2.5 md:pl-0">
+          {/* Up to four tabs: on a phone they scroll sideways rather than push the actions off. */}
+          <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <Tabs
             options={
               [
@@ -537,6 +581,7 @@ export function PersistentWorkspace({
             selected={currentView}
             onSelect={setCurrentView}
           />
+          </div>
 
           {currentView === "code" && (
             <Button
@@ -545,13 +590,15 @@ export function PersistentWorkspace({
               onClick={() => setShowSidebar((v) => !v)}
               title={showSidebar ? "Hide explorer" : "Show explorer"}
               aria-label={showSidebar ? "Hide explorer" : "Show explorer"}
+              // Phone: the editor's own "Files" row does this job.
+              className="hidden md:inline-flex"
             >
               <PanelLeft size={16} />
             </Button>
           )}
 
           {currentView === "code" && selectedFile && (
-            <div className="flex min-w-0 items-center gap-1 text-[13px]">
+            <div className="hidden min-w-0 items-center gap-1 text-[13px] md:flex">
               <span className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-elevated px-2 py-1 font-mono text-xs text-fg">
                 {selectedFile.split("/").pop()}
                 {hasUnsavedChanges && (
@@ -570,8 +617,8 @@ export function PersistentWorkspace({
             </div>
           )}
 
-          <div className="ml-auto flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-1 text-xs text-muted">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <div className="hidden items-center gap-1.5 px-1 text-xs text-muted md:flex">
               {sandboxStatus === "booting" ? (
                 <>
                   <Loader2 size={12} className="animate-spin" />
@@ -613,6 +660,7 @@ export function PersistentWorkspace({
                   size="sm"
                   onClick={() => window.open(`/workspace/${projectId}/database`, "_blank")}
                   title="Open database in new tab"
+                  className="hidden md:inline-flex"
                 >
                   <ArrowUpRight size={14} />
                   Open in new tab
@@ -622,14 +670,18 @@ export function PersistentWorkspace({
 
             {/* Run on iPhone — Preview tab only, left of the user button. */}
             {platform === "swift" && currentView === "preview" && (
-              <IPhoneDeviceRunner projectId={projectId} />
+              <div className="hidden md:block">
+                <IPhoneDeviceRunner projectId={projectId} />
+              </div>
             )}
 
             <ShareControls projectId={projectId} />
-            <UserButton
-              afterSignOutUrl="/"
-              appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }}
-            />
+            <div className="hidden md:block">
+              <UserButton
+                afterSignOutUrl="/"
+                appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }}
+              />
+            </div>
 
             <Button
               variant="primary"
@@ -647,8 +699,9 @@ export function PersistentWorkspace({
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 min-h-0 relative bg-surface">
+        {/* Content. On a phone there is no sidebar to its left, so it is inset
+            from that edge by the same 10px as from the right. */}
+        <div className="relative ml-2.5 min-h-0 flex-1 bg-surface md:ml-0">
           {/* Code view — inset 10px from the bottom/right to match the
               Preview/Database/Payments cards (which use `pb-2.5 pr-2.5`); flush
               to the header (top) and agent sidebar (left). */}
@@ -660,8 +713,9 @@ export function PersistentWorkspace({
             )}
           >
             <div className="flex-1 min-h-0 flex">
+              {/* Phone: the explorer and the editor take turns at full width. */}
               {showSidebar && (
-                <div className="flex w-72 shrink-0 flex-col border-r border-border bg-surface">
+                <div className="flex w-full shrink-0 flex-col border-border bg-surface md:w-72 md:border-r">
                   <div className="border-b border-border p-2">
                     <Tabs
                       options={
@@ -688,7 +742,7 @@ export function PersistentWorkspace({
                         <FileTree
                           files={files}
                           selectedFile={selectedFile}
-                          onFileSelect={handleFileSelect}
+                          onFileSelect={openFileFromExplorer}
                         />
                       )
                     ) : sidebarTab === "search" ? (
@@ -696,7 +750,7 @@ export function PersistentWorkspace({
                         projectId={projectId}
                         onOpenFile={(path) => {
                           setCurrentView("code");
-                          handleFileSelect(path);
+                          openFileFromExplorer(path);
                         }}
                       />
                     ) : sidebarTab === "env" ? (
@@ -736,7 +790,33 @@ export function PersistentWorkspace({
                   </div>
                 </div>
               )}
-              <div className="flex-1 min-h-0 relative">
+              <div className={cn("min-h-0 min-w-0 flex-1 flex-col", showSidebar ? "hidden md:flex" : "flex")}>
+                {/* Phone: where you are, the way back to the file list, and Save. */}
+                <div className="flex h-11 shrink-0 items-center gap-1 border-b border-border bg-surface pl-1 pr-1.5 md:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowSidebar(true)}
+                    className="flex h-9 shrink-0 items-center gap-0.5 rounded-md pl-1 pr-2 text-sm font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
+                  >
+                    <ChevronLeft size={16} />
+                    Files
+                  </button>
+                  {selectedFile && (
+                    <>
+                      <span className="flex min-w-0 flex-1 items-center gap-2 font-mono text-[13px] text-fg">
+                        <span className="truncate">{selectedFile.split("/").pop()}</span>
+                        {hasUnsavedChanges && (
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning-solid" title="Unsaved changes" />
+                        )}
+                      </span>
+                      <Button variant="ghost" size="sm" onClick={handleSaveFile} disabled={!hasUnsavedChanges}>
+                        <Save size={14} />
+                        <span>Save</span>
+                      </Button>
+                    </>
+                  )}
+                </div>
+                <div className="relative min-h-0 flex-1">
                 <div className="absolute inset-0 bg-bg">
                   {selectedFile ? (
                     <CodeEditor
@@ -762,6 +842,7 @@ export function PersistentWorkspace({
                       />
                     </div>
                   )}
+                </div>
                 </div>
               </div>
             </div>
