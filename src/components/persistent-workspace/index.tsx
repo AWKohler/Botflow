@@ -1071,9 +1071,9 @@ function StoppedPreviewPlaceholder({
   return (
     <div className="absolute inset-0 flex flex-col gap-2 pb-2.5 pr-2.5">
       {/* Picker bar — choose the device/orientation before starting. */}
-      <div className="flex h-9 flex-shrink-0 items-center rounded-xl border border-border bg-elevated/60 px-3">
-        <span className="text-[11px] text-muted">
-          Preview stopped — pick a device, then press play
+      <div className="flex h-9 flex-shrink-0 items-center gap-2 rounded-xl border border-border bg-elevated/60 px-3 max-md:h-11 max-md:pr-1.5">
+        <span className="text-[11px] text-muted max-md:text-xs">
+          Preview stopped<span className="max-md:hidden"> — pick a device, then press play</span>
         </span>
         <div className="ml-auto flex items-center gap-1.5">
           <div className="flex items-center gap-0.5 rounded-md border border-border bg-elevated p-0.5">
@@ -1086,7 +1086,7 @@ function StoppedPreviewPlaceholder({
                 type="button"
                 onClick={() => pickDevice(id)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] transition",
+                  "flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] transition pointer-coarse:h-7 pointer-coarse:px-2.5 pointer-coarse:text-xs",
                   device === id ? "bg-accent text-bg" : "text-muted hover:text-fg",
                 )}
               >
@@ -1098,11 +1098,11 @@ function StoppedPreviewPlaceholder({
           <button
             type="button"
             onClick={toggleOrientation}
-            className="flex items-center gap-1.5 rounded-md border border-border bg-elevated px-2 py-1 text-[11px] text-muted hover:text-fg"
+            className="flex items-center gap-1.5 rounded-md border border-border bg-elevated px-2 py-1 text-[11px] text-muted hover:text-fg pointer-coarse:h-8 pointer-coarse:px-2.5 pointer-coarse:text-xs"
             title={`Rotate to ${orientation === "portrait" ? "landscape" : "portrait"}`}
           >
             <RotateCw size={12} />
-            <span className="capitalize">{orientation}</span>
+            <span className="capitalize max-[389px]:hidden">{orientation}</span>
           </button>
         </div>
       </div>

@@ -1453,6 +1453,8 @@ function formatTimer(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+// Shown on the device's screen, which is black in both themes: light text,
+// whatever the page theme.
 function CenterContent({
   pill,
   hasCalibration,
@@ -1463,11 +1465,11 @@ function CenterContent({
   if (pill.kind === "live") return null;
   if (pill.kind === "failed") {
     return (
-      <div className="max-w-sm px-6 text-center">
-        <p className="mb-2 font-semibold text-danger">Build failed</p>
-        <p className="text-xs text-muted">
+      <div className="max-w-sm px-5 text-center">
+        <p className="mb-2 font-semibold text-red-400">Build failed</p>
+        <p className="text-xs text-white/70">
           Expand the log below for xcodebuild output. Fix the error in the editor and
-          click <span className="text-fg/80">Refresh build</span>.
+          click <span className="text-white">Refresh build</span>.
         </p>
       </div>
     );
@@ -1475,8 +1477,8 @@ function CenterContent({
   if (pill.kind === "ended") {
     const inactive = pill.reason === "inactivity";
     return (
-      <div className="max-w-sm px-6 text-center text-muted">
-        <p className="mb-1 font-semibold">
+      <div className="max-w-sm px-5 text-center text-white/70">
+        <p className="mb-1 font-semibold text-white">
           {inactive ? "Closed for inactivity" : "Session ended"}
         </p>
         <p className="text-xs">
@@ -1488,8 +1490,8 @@ function CenterContent({
     );
   }
   return (
-    <div className="max-w-sm px-6 text-center text-muted">
-      <p className="mb-1 font-semibold">
+    <div className="max-w-sm px-5 text-center text-white/70">
+      <p className="mb-1 font-semibold text-white">
         {pill.kind === "starting" ? "Starting Swift preview" : "Working…"}
       </p>
       <p className="text-xs">
