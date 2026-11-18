@@ -120,7 +120,7 @@ function ProviderCard({
             href={DASHBOARDS[dashboardKey]}
             target="_blank"
             rel="noreferrer"
-            className="text-muted hover:text-fg"
+            className="tap-44 text-muted hover:text-fg"
             title="Open dashboard"
           >
             <ExternalLink className="w-3.5 h-3.5" />

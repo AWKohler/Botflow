@@ -197,7 +197,7 @@ export default function PanelUsersPage() {
                 >
                   <button
                     onClick={() => toggleSort(c.key)}
-                    className={cn('inline-flex items-center gap-1 hover:text-fg', NUMERIC.has(c.key) && 'flex-row-reverse')}
+                    className={cn('tap-44 inline-flex items-center gap-1 hover:text-fg', NUMERIC.has(c.key) && 'flex-row-reverse')}
                     title={c.title}
                   >
                     {c.label}

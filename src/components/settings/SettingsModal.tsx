@@ -45,7 +45,7 @@ const PROVIDERS: Array<{
 ];
 
 const connectionButtonClass =
-  'inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel disabled:bg-none disabled:bg-surface disabled:shadow-none disabled:inset-shadow-none dark:from-elevated dark:to-surface px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50';
+  'inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-lg border border-border pointer-coarse:h-10 pointer-coarse:px-3.5 pointer-coarse:text-sm bg-linear-to-b from-bg to-surface inset-shadow-bevel disabled:bg-none disabled:bg-surface disabled:shadow-none disabled:inset-shadow-none dark:from-elevated dark:to-surface px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50';
 
 /**
  * One connection row: what it is on the left, its state and its single action
@@ -532,7 +532,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
         <div className="rounded-xl border border-border p-6">
           <p className="mb-4 text-sm text-muted">You need to sign in to manage settings.</p>
           <SignInButton>
-            <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel disabled:bg-none disabled:bg-surface disabled:shadow-none disabled:inset-shadow-none dark:from-elevated dark:to-surface px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50">
+            <button className="inline-flex h-9 items-center pointer-coarse:h-11 gap-2 rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel disabled:bg-none disabled:bg-surface disabled:shadow-none disabled:inset-shadow-none dark:from-elevated dark:to-surface px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50">
               Sign in
             </button>
           </SignInButton>
@@ -732,13 +732,13 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               value={oauthCode}
                               onChange={e => setOauthCode(e.target.value)}
                               onKeyDown={e => { if (e.key === 'Enter') exchangeCode(); }}
-                              className="flex-1 rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
+                              className="flex-1 rounded-lg border border-control bg-bg px-3 h-9 text-sm pointer-coarse:h-11 text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               disabled={oauthStep === 'exchanging'}
                             />
                             <button
                               onClick={exchangeCode}
                               disabled={!oauthCode.trim() || oauthStep === 'exchanging'}
-                              className="inline-flex h-9 items-center gap-2 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none px-3.5 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
+                              className="inline-flex h-9 items-center pointer-coarse:h-11 gap-2 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none px-3.5 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                             >
                               {oauthStep === 'exchanging' ? (
                                 <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting…</>
@@ -800,14 +800,14 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                 value={keys[provider]}
                                 onChange={e => setKeys(prev => ({ ...prev, [provider]: e.target.value }))}
                                 onKeyDown={e => { if (e.key === 'Enter') saveKey(provider); }}
-                                className="flex-1 rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
+                                className="flex-1 rounded-lg border border-control bg-bg px-3 h-9 text-sm pointer-coarse:h-11 text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               />
                               {hasKey[provider] && (
                                 <button
                                   onClick={() => removeKey(provider)}
                                   disabled={removingKey === provider || savingKey === provider}
                                   title="Remove key"
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:border-danger-border hover:bg-danger-soft hover:text-danger disabled:opacity-40"
+                                  className="inline-flex h-9 w-9 items-center pointer-coarse:h-11 pointer-coarse:w-11 justify-center rounded-lg border border-border text-muted transition-colors hover:border-danger-border hover:bg-danger-soft hover:text-danger disabled:opacity-40"
                                 >
                                   {removingKey === provider
                                     ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -923,7 +923,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                 placeholder="e.g. 2X9R4HXF34"
                                 value={appleKeyIdInput}
                                 onChange={e => setAppleKeyIdInput(e.target.value)}
-                                className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
+                                className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm pointer-coarse:h-11 text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               />
                             </div>
                             <div>
@@ -933,7 +933,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                 placeholder="69a6de7e-…"
                                 value={appleIssuerIdInput}
                                 onChange={e => setAppleIssuerIdInput(e.target.value)}
-                                className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
+                                className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm pointer-coarse:h-11 text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               />
                             </div>
                           </div>
@@ -946,7 +946,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               placeholder="e.g. A1B2C3D4E5"
                               value={appleTeamIdInput}
                               onChange={e => setAppleTeamIdInput(e.target.value)}
-                              className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
+                              className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm pointer-coarse:h-11 text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                             />
                             <p className="mt-1 text-[11px] leading-4 text-muted">
                               To set it manually:{' '}
@@ -1047,7 +1047,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
             <button
               onClick={handleClose}
               aria-label="Close settings"
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-fg"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-fg pointer-coarse:h-10 pointer-coarse:w-10"
             >
               <X className="h-4 w-4" />
             </button>

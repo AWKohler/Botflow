@@ -120,7 +120,7 @@ function ToolStep({ toolName, state, content }: { toolName: string; state: strin
   return (
     <div>
       {/* Flex row — fixed height, circle is first item so line position is exact */}
-      <div className="flex items-center gap-2.5 h-7">
+      <div className="flex items-center gap-2.5 h-7 pointer-coarse:h-9">
         {/* Circle — 14px wide, opaque bg-surface hides the line behind it */}
         <div className="shrink-0 z-10 size-[14px] rounded-full border-[1.5px] border-border bg-surface flex items-center justify-center">
           {isDone && <Check size={8} className="text-muted" />}
@@ -129,7 +129,8 @@ function ToolStep({ toolName, state, content }: { toolName: string; state: strin
         {/* Clickable label */}
         <button
           type="button"
-          className="flex items-center gap-1 rounded-sm p-0 text-[13px] text-muted transition-colors hover:text-fg"
+          // The label fills the row's height, so the whole row is the target.
+          className="flex h-full items-center gap-1 rounded-sm p-0 text-[13px] text-muted transition-colors hover:text-fg pointer-coarse:text-sm"
           onClick={() => setOpen(v => !v)}
         >
           <span className="font-medium" title={toolName}>{formatToolName(toolName)}</span>
