@@ -16,7 +16,7 @@
  * member list is real.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useUser } from "@/components/auth";
 import { UserPlus, Mail, Crown, X, Check, Loader2 } from "lucide-react";
@@ -26,7 +26,7 @@ import { Button, buttonClass } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { SHARING_ENABLED } from "@/lib/feature-flags";
 import { cn } from "@/lib/utils";
-import { phoneSheetBackdropClass, phoneSheetBodyClass, phoneSheetClass, phoneSheetCloseClass, phoneSheetTitleClass } from "@/components/ui/sheet";
+import { phoneSheetBackdropClass, phoneSheetBodyClass, phoneSheetClass, phoneSheetCloseClass, phoneSheetTitleClass, usePhoneSheetModal } from "@/components/ui/sheet";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -301,6 +301,8 @@ function SharePopover({
   const [email, setEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [position, setPosition] = useState<AnchoredPosition | null>(null);
+  const sheet = usePhoneSheetModal<HTMLDivElement>(true);
+  const titleId = useId();
 
   const isOwner = state?.role === "owner";
 
@@ -393,19 +395,21 @@ function SharePopover({
   };
 
   return createPortal(
-    <>
+    <div>
       <div className={cn("fixed inset-0 z-40", phoneSheetBackdropClass)} onClick={onClose} />
       <div
-        // Anchored under its button; on a phone, a sheet from the bottom edge.
+        {...sheet.props}
+        aria-labelledby={titleId}
+        // Anchored under its button; on a phone, a modal sheet from the bottom edge.
         className={cn(
-          "fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-bg dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top shadow-xl",
+          "fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-bg outline-none dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top shadow-xl",
           phoneSheetClass,
         )}
         style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
       >
         {/* Same layout as the Publish popover: title row, divider, body. */}
         <div className={cn("flex items-center justify-between border-b border-border px-4 py-3", phoneSheetTitleClass)}>
-          <h3 className="text-sm font-semibold text-fg">Share project</h3>
+          <h3 id={titleId} className="text-sm font-semibold text-fg">Share project</h3>
           <button onClick={onClose} aria-label="Close" className={cn("rounded-md p-1.5 text-muted transition-colors hover:bg-elevated hover:text-fg", phoneSheetCloseClass)}>
             <X size={14} />
           </button>
@@ -590,7 +594,7 @@ function SharePopover({
 
         </div>
       </div>
-    </>,
+    </div>,
     document.body,
   );
 }

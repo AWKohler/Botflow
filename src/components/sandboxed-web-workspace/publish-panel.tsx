@@ -1,7 +1,7 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Loader2,
@@ -17,7 +17,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { phoneSheetBackdropClass, phoneSheetBodyClass, phoneSheetClass, phoneSheetCloseClass, phoneSheetTitleClass } from "@/components/ui/sheet";
+import { phoneSheetBackdropClass, phoneSheetBodyClass, phoneSheetClass, phoneSheetCloseClass, phoneSheetTitleClass, usePhoneSheetModal } from "@/components/ui/sheet";
 import { buttonClass } from "@/components/ui/button";
 import { fieldClass, Select } from "@/components/ui/field";
 
@@ -139,6 +139,9 @@ export function SandboxPublishPanel({
   const [cnameInput, setCnameInput] = useState<string>(customDomain ?? "");
   const [cnameBusy, setCnameBusy] = useState(false);
   const [cnameErr, setCnameErr] = useState<string | null>(null);
+
+  const sheet = usePhoneSheetModal<HTMLDivElement>(isOpen);
+  const titleId = useId();
 
   // Position panel under the anchor button
   useEffect(() => {
@@ -398,19 +401,21 @@ export function SandboxPublishPanel({
   );
 
   const panel = (
-    <>
+    <div>
       <div className={cn("fixed inset-0 z-40", phoneSheetBackdropClass)} onClick={onClose} />
       <div
-        // Anchored under its button; on a phone, a sheet from the bottom edge.
+        {...sheet.props}
+        aria-labelledby={titleId}
+        // Anchored under its button; on a phone, a modal sheet from the bottom edge.
         className={cn(
-          "fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-bg dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top shadow-xl",
+          "fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-bg outline-none dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top shadow-xl",
           phoneSheetClass,
         )}
         style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
       >
         <div className={cn("flex items-center justify-between border-b border-border px-4 py-3", phoneSheetTitleClass)}>
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-fg">Publish</h3>
+            <h3 id={titleId} className="text-sm font-semibold text-fg">Publish</h3>
             {state === "published" && (
               <span className="inline-flex items-center gap-1 rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
                 <Check size={10} /> Live
@@ -704,7 +709,7 @@ export function SandboxPublishPanel({
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 
   return createPortal(panel, document.body);

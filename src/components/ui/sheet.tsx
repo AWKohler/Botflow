@@ -46,6 +46,25 @@ export const phoneSheetCloseClass = "max-sm:flex max-sm:size-11 max-sm:items-cen
 export const phoneSheetBodyClass = "max-sm:max-h-[calc(85dvh-3.75rem)] max-sm:overflow-y-auto max-sm:overscroll-contain";
 
 /**
+ * The behaviour that goes with `phoneSheetClass`: while such a popover is a
+ * sheet (a phone), it is a modal — focus moves into it and stays there, the
+ * page behind is inert, and focus returns to the control that opened it. On
+ * larger screens it stays a plain anchored popover. Spread `props` on the
+ * panel and give it an accessible name.
+ *
+ * The panel and its click-away layer must share one wrapper element, because
+ * everything outside the panel's root is made inert.
+ */
+export function usePhoneSheetModal<T extends HTMLElement>(open: boolean) {
+  const isPhone = useIsPhone();
+  const ref = useModal<T>(open && isPhone);
+  return {
+    isPhone,
+    props: { ref, role: "dialog", "aria-modal": isPhone || undefined, tabIndex: -1 } as const,
+  };
+}
+
+/**
  * A panel that slides up from the bottom edge of a phone screen. On a phone a
  * long menu anchored to its button has nowhere to go: it runs under the header
  * or off the side. A sheet gives the same content the full width, a reachable

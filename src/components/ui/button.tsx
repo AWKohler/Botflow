@@ -63,6 +63,10 @@ const variants: Record<ButtonVariant, string> = {
 
 // On a touch screen every size is one step taller, so a button is never a
 // smaller target than a fingertip: 36px for the smallest, 44px for the default.
+// A caller's plain `h-8` does not undo this (it is a different variant), which
+// is the point: sizes set for a mouse should not shrink touch targets. Where a
+// control really must stay small on touch (inside a fixed-height row), say so
+// with an explicit `pointer-coarse:h-…` at the call site.
 const sizes: Record<ButtonSize, string> = {
   xs: "h-7 px-2.5 text-xs pointer-coarse:h-9 pointer-coarse:px-3 pointer-coarse:text-[13px]",
   sm: "h-8 px-3 text-[13px] pointer-coarse:h-10 pointer-coarse:px-3.5 pointer-coarse:text-sm",

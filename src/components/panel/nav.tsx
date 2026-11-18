@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useRef } from 'react';
 import { UserButton } from '@/components/auth';
 import { cn } from '@/lib/utils';
 import { BrandMark } from '@/components/site/SiteHeader';
@@ -20,6 +21,14 @@ const TABS = [
 export function PanelNav({ activePath }: { activePath?: string } = {}) {
   const current = usePathname();
   const pathname = activePath ?? current;
+  // Phone: the tabs are one scrolling row; keep the current one in view.
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const nav = navRef.current;
+    const active = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!nav || !active || nav.scrollWidth <= nav.clientWidth) return;
+    nav.scrollTo({ left: active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2 });
+  }, [pathname]);
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-bg/85 backdrop-blur-lg">
       {/* Phone: two rows — brand and account, then the tabs across the full
@@ -30,12 +39,13 @@ export function PanelNav({ activePath }: { activePath?: string } = {}) {
           <Badge>Admin</Badge>
         </Link>
         <nav
+          ref={navRef}
           aria-label="Admin"
           className={cn(
-            'flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-1',
+            'relative flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-1',
             'max-md:order-last max-md:-mx-6 max-md:w-[calc(100%+3rem)] max-md:border-t max-md:border-border max-md:px-5 max-md:py-1.5',
             // Faded at the right edge, where the row runs on.
-            'max-md:[mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)]',
+            'max-md:[mask-image:linear-gradient(to_right,transparent,black_1.25rem,black_calc(100%-2.5rem),transparent)]',
           )}
         >
           {TABS.map((t) => {

@@ -302,7 +302,7 @@ export function VisualEditorPanel({
         </div>
         <button
           onClick={onClose}
-          className="-mr-1.5 -mt-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg dark:hover:bg-soft"
+          className="-mr-1.5 -mt-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg dark:hover:bg-soft pointer-coarse:size-10 pointer-coarse:[&_svg]:size-[18px]"
           title="Close"
           aria-label="Close"
         >
@@ -324,17 +324,18 @@ export function VisualEditorPanel({
           )}
 
           <Section label="Classes">
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-2">
               {classes.length === 0 && <span className="text-xs text-muted">No classes yet</span>}
               {classes.map((c) => (
                 <span
                   key={c}
-                  className="inline-flex items-center gap-1 rounded-md border border-border bg-surface py-0.5 pl-1.5 pr-1 font-mono text-[11px] text-fg dark:bg-soft"
+// Touch: a taller chip whose remove button is a 36px target at its end.
+                  className="inline-flex items-center gap-1 rounded-md border border-border bg-surface py-0.5 pl-1.5 pr-1 font-mono text-[11px] text-fg dark:bg-soft pointer-coarse:h-9 pointer-coarse:gap-0 pointer-coarse:py-0 pointer-coarse:pl-2.5 pointer-coarse:pr-0 pointer-coarse:text-[13px]"
                 >
                   {c}
                   <button
                     onClick={() => removeClass(c)}
-                    className="rounded text-subtle transition-colors hover:text-danger"
+                    className="rounded text-subtle transition-colors hover:text-danger pointer-coarse:flex pointer-coarse:size-9 pointer-coarse:items-center pointer-coarse:justify-center pointer-coarse:[&_svg]:size-3.5"
                     title={`Remove ${c}`}
                     aria-label={`Remove ${c}`}
                   >
@@ -419,7 +420,8 @@ function Swatches({
   onPick: (token: string) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    // Touch: 40px swatches 8px apart, so a neighbouring colour is not hit by mistake.
+    <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-2">
       {swatches.map((s) => (
         <button
           key={s.token}
@@ -429,7 +431,7 @@ function Swatches({
           onClick={() => onPick(s.token)}
           className={cn(
             // A hairline inside the swatch keeps pale colours visible on a pale panel.
-            "h-6 w-6 rounded-md shadow-[inset_0_0_0_1px_rgb(0_0_0/0.12)] transition-shadow dark:shadow-[inset_0_0_0_1px_rgb(255_255_255/0.14)]",
+            "h-6 w-6 rounded-md shadow-[inset_0_0_0_1px_rgb(0_0_0/0.12)] transition-shadow dark:shadow-[inset_0_0_0_1px_rgb(255_255_255/0.14)] pointer-coarse:h-10 pointer-coarse:w-10 pointer-coarse:rounded-lg",
             active === s.token && "ring-2 ring-accent ring-offset-2 ring-offset-bg dark:ring-offset-elevated",
           )}
           style={{
