@@ -9,7 +9,7 @@
  * (docs/features/multi-agent-threads.md).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, ChevronDown, Pencil, Plus, Trash2, X as IconX } from 'lucide-react';
+import { Archive, ArchiveRestore, ChevronDown, MoreHorizontal, Pencil, Plus, Trash2, X as IconX } from 'lucide-react';
 import type { ThreadStatus, ThreadSummary } from '@/lib/agent/threads';
 import type { QueueItemSummary } from '@/lib/agent/thread-queue';
 import type { ThreadPerson } from '@/lib/agent/thread-presence';
@@ -268,6 +268,8 @@ interface ThreadRowProps {
 
 function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, onArchive, onDelete }: ThreadRowProps) {
   const [renaming, setRenaming] = useState(false);
+  // Touch screens: the row's actions sit behind one "More" button until asked for.
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [draft, setDraft] = useState(thread.title ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -356,13 +358,17 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
       {!renaming && (
         <div
           className={cn(
-            // Revealed on hover or keyboard focus (and always on touch screens,
-            // which can't hover). Hidden rather than transparent, so a resting
-            // row gives its whole width to the title.
-            'hidden shrink-0 items-center gap-0.5 group-hover/row:flex group-focus-within/row:flex [@media(hover:none)]:flex',
+            // Revealed on hover or keyboard focus. Hidden rather than
+            // transparent, so a resting row gives its whole width to the title.
+            // A touch screen can't hover: there the row shows one "More" button,
+            // which opens these, so Delete is never one stray tap from the title.
+            'shrink-0 items-center gap-0.5',
+            actionsOpen
+              ? 'flex'
+              : 'hidden [@media(hover:hover)]:group-hover/row:flex [@media(hover:hover)]:group-focus-within/row:flex',
           )}
         >
-          <RowAction label="Rename" onClick={() => setRenaming(true)}>
+          <RowAction label="Rename" onClick={() => { setActionsOpen(false); setRenaming(true); }}>
             <Pencil size={13} />
           </RowAction>
           <RowAction
@@ -375,6 +381,18 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
             <Trash2 size={13} />
           </RowAction>
         </div>
+      )}
+      {!renaming && (
+        <button
+          type="button"
+          onClick={() => setActionsOpen((v) => !v)}
+          aria-expanded={actionsOpen}
+          aria-label={actionsOpen ? 'Hide chat actions' : 'Chat actions'}
+          title={actionsOpen ? 'Hide actions' : 'Actions'}
+          className="hidden size-9 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-soft hover:text-fg [@media(hover:none)]:flex"
+        >
+          {actionsOpen ? <IconX size={15} /> : <MoreHorizontal size={16} />}
+        </button>
       )}
     </div>
   );

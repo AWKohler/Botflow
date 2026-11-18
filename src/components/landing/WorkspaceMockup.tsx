@@ -87,7 +87,7 @@ function MockTabs({ options, selected, onSelect }: { options: { value: string; t
           key={o.value}
           onClick={() => onSelect(o.value)}
           className={cn(
-            'h-7 rounded-md px-3 text-[13px] font-medium transition-[background-color,color,box-shadow] duration-150',
+            'h-7 rounded-md px-3 text-[13px] font-medium transition-[background-color,color,box-shadow] duration-150 pointer-coarse:h-9 pointer-coarse:px-3.5',
             selected === o.value ? 'bg-bg text-fg shadow-sm dark:bg-soft' : 'text-muted hover:text-fg',
           )}
         >
@@ -282,6 +282,9 @@ export function WorkspaceMockup({
 }: WorkspaceMockupProps) {
   const [currentView, setCurrentView] = useState<string>(defaultView);
   const [showSidebar, setShowSidebar] = useState(true);
+  // Phone version: Chat or App, like the real workspace on a phone.
+  const [phonePane, setPhonePane] = useState<'chat' | 'app'>('chat');
+  const showApp = chatOnly && phonePane === 'app';
   const scrollRef = useRef<HTMLDivElement>(null);
   // The chat shows the end of the conversation. Rather than scrolling to the
   // bottom (which leaves the first visible message cut in half), drop leading
@@ -363,15 +366,43 @@ export default function App() {
             <ChevronLeft size={16} className="shrink-0 text-muted" />
             <span className="truncate text-[13px] font-medium text-fg">{projectName}</span>
           </div>
-          <div className="flex shrink-0 items-center gap-3 text-muted">
-            <PanelLeft size={16} />
-            <SquarePen size={16} strokeWidth={1.75} />
-            <MoreHorizontal size={16} />
-          </div>
+          {chatOnly && (previewSrc || previewHtml) ? (
+            // The phone workspace's pane switch: the chat, or the app it built.
+            <div className="flex shrink-0 items-center gap-2 text-muted">
+              <MockTabs
+                options={[
+                  { value: 'chat', text: 'Chat' },
+                  { value: 'app', text: 'App' },
+                ]}
+                selected={phonePane}
+                onSelect={(v) => setPhonePane(v as 'chat' | 'app')}
+              />
+              <MoreHorizontal size={16} />
+            </div>
+          ) : (
+            <div className="flex shrink-0 items-center gap-3 text-muted">
+              <PanelLeft size={16} />
+              <SquarePen size={16} strokeWidth={1.75} />
+              <MoreHorizontal size={16} />
+            </div>
+          )}
         </div>
 
+        {/* Phone version, App pane: the app the agent built, at phone width. */}
+        {showApp && (
+          <div className="min-h-0 flex-1 px-2.5 pb-2.5">
+            <div className="h-full w-full overflow-hidden rounded-xl border border-border bg-bg">
+              {previewSrc ? (
+                <ScaledIframe src={previewSrc} virtualWidth={390} />
+              ) : (
+                <ScaledIframe srcDoc={previewHtml} virtualWidth={390} />
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Messages */}
-        <div className="relative flex min-h-0 flex-1 flex-col border-t border-border">
+        <div className={cn('relative min-h-0 flex-1 flex-col border-t border-border', showApp ? 'hidden' : 'flex')}>
         <div ref={scrollRef} className="flex-1 space-y-3 overflow-hidden px-3.5 py-3 text-sm">
           {messages.slice(firstShown).map((m, mi) => {
             if (m.role === 'user') {
@@ -413,7 +444,7 @@ export default function App() {
         </div>
 
         {/* Input area */}
-        <div className="mt-2 mx-2.5 mb-2.5">
+        <div className={cn('mt-2 mx-2.5 mb-2.5', showApp && 'hidden')}>
           <div className="flex flex-col rounded-xl border border-border bg-bg shadow-sm">
             <div className="px-3 pt-2.5">
               <div className="relative flex flex-1 items-center">

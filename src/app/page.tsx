@@ -2350,6 +2350,7 @@ export default function LandingV2() {
               chatOnly
               height={512}
               messages={HERO_MESSAGES}
+              previewSrc="https://bf-28ba0c04.pages.dev"
               creditPct={47}
               projectName="Flowsync"
               agentWorking={true}
