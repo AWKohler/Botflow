@@ -2166,7 +2166,7 @@ function AgentThreadPanel({
             {mobileMenuOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setMobileMenuOpen(false)} />
-                <Menu className="absolute right-0 top-full z-50 mt-1 w-56">
+                <Menu className="absolute right-0 top-full z-50 mt-1 w-60">
                   <MenuItem className="min-h-11" onClick={() => { setMobileMenuOpen(false); onNewChat(); }}>
                     <SquarePen size={16} strokeWidth={1.75} className="text-muted" />
                     New chat

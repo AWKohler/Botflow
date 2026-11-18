@@ -1132,7 +1132,7 @@ export function SandboxedWebWorkspace({
       {mobileMenuOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setMobileMenuOpen(false)} />
-          <Menu className="absolute right-0 top-full z-50 mt-1 w-56">
+          <Menu className="absolute right-0 top-full z-50 mt-1 w-64">
             <MenuItem
               disabled={isStartingServer || sandboxStatus !== "ready"}
               onClick={() => {
