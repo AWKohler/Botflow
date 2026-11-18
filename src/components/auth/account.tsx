@@ -901,7 +901,8 @@ export function AccountPanel() {
                     )}
                   </div>
                   {!subscription?.migrationPending && (
-                    <div className="flex flex-wrap gap-2">
+                    // Phone: the main action leads, at the card's left edge.
+                    <div className="flex flex-wrap gap-2 max-sm:w-full max-sm:flex-row-reverse max-sm:justify-end">
                       <Link href="/pricing" className={buttonClass({ variant: "ghost", size: "sm" })}>
                         Compare plans
                       </Link>

@@ -22,8 +22,10 @@ export function SectionHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-start justify-between gap-4", className)}>
-      <div className="min-w-0">
+    // The action drops under the title when there is not room for both (a phone),
+    // instead of squeezing the title into a narrow column.
+    <div className={cn("flex flex-wrap items-start justify-between gap-x-4 gap-y-3", className)}>
+      <div className="min-w-[min(100%,11rem)] flex-1">
         <h2 className="text-[15px] font-semibold leading-6 text-fg">{title}</h2>
         {description && <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{description}</p>}
       </div>

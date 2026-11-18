@@ -212,14 +212,15 @@ export function UsageTab() {
       {data.models.length > 0 && (
         <div>
           <h3 className="text-xs font-medium text-muted mb-2">This month by model</h3>
-          <div className="overflow-hidden rounded-lg border border-border">
+          {/* Phone: cached tokens are left to the summary above, so four columns fit. */}
+          <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-sm">
               <thead>
                 <tr className={tableHeadRowClass}>
                   <th className="text-left px-3 py-2 text-xs font-medium text-muted">Model</th>
                   <th className="text-right px-3 py-2 text-xs font-medium text-muted">Credits</th>
                   <th className="text-right px-3 py-2 text-xs font-medium text-muted">Tokens</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-muted">Cached tokens</th>
+                  <th className="hidden text-right px-3 py-2 text-xs font-medium text-muted sm:table-cell">Cached tokens</th>
                   <th className="text-right px-3 py-2 text-xs font-medium text-muted">Turns</th>
                 </tr>
               </thead>
@@ -231,7 +232,7 @@ export function UsageTab() {
                     </td>
                     <td className="px-3 py-2 text-right text-muted tabular-nums">{fmt(row.credits)}</td>
                     <td className="px-3 py-2 text-right text-muted tabular-nums">{fmt(row.tokensIn + row.tokensOut)}</td>
-                    <td className="px-3 py-2 text-right text-muted tabular-nums">
+                    <td className="hidden px-3 py-2 text-right text-muted tabular-nums sm:table-cell">
                       {row.cachedTokensRead > 0 ? fmt(row.cachedTokensRead) : '—'}
                     </td>
                     <td className="px-3 py-2 text-right text-muted tabular-nums">{row.turns}</td>
