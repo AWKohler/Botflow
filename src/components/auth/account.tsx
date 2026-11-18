@@ -350,7 +350,7 @@ export function AccountPanel() {
 
           {tab === "profile" && (
             <>
-              <Card className="p-6">
+              <Card className="p-5 sm:p-6">
                 <SectionHeader title="Profile" description="How you appear across Botflow." />
                 <div className="mt-5 flex items-center gap-4">
                   {session.user.image ? (
@@ -439,7 +439,7 @@ export function AccountPanel() {
                 </form>
               </Card>
 
-              <Card className="p-6">
+              <Card className="p-5 sm:p-6">
                 <SectionHeader title="Email addresses" description="Use any verified address to sign in." />
                 <ul className="mt-4 divide-y divide-border">
                   {emailAddresses.map((address) => (
@@ -596,7 +596,7 @@ export function AccountPanel() {
                 </Card>
               )}
 
-              <Card className="p-6">
+              <Card className="p-5 sm:p-6">
                 <SectionHeader title="Password" description="Changing your password signs out your other devices." />
                 <form
                   className="mt-5"
@@ -666,7 +666,7 @@ export function AccountPanel() {
                 </form>
               </Card>
 
-              <Card className="p-6">
+              <Card className="p-5 sm:p-6">
                 <SectionHeader title="Sign-in methods" description="Other ways to sign in to this account, besides your password." />
                 <ul className="mt-4 divide-y divide-border">
                   {(["google", "github"] as const).map((provider) => {
@@ -751,7 +751,7 @@ export function AccountPanel() {
                 </ul>
               </Card>
 
-              <Card className="p-6">
+              <Card className="p-5 sm:p-6">
                 <SectionHeader
                   title="Active devices"
                   description="Where your account is currently signed in."
@@ -838,7 +838,7 @@ export function AccountPanel() {
                 )}
               </Card>
 
-              <Card className="p-6">
+              <Card className="p-5 sm:p-6">
                 <SectionHeader
                   title="Delete account"
                   description="Permanently remove your account and stored integration secrets. You’ll confirm by email before anything is deleted."
@@ -863,7 +863,7 @@ export function AccountPanel() {
           )}
 
           {tab === "usage" && (
-            <Card className="p-6">
+            <Card className="p-5 sm:p-6">
               <SectionHeader title="Usage" description="How much of your plan's model credits you have used." />
               <div className="mt-5">
                 <UsageTab />
@@ -872,7 +872,7 @@ export function AccountPanel() {
           )}
 
           {tab === "connections" && (
-            <Card className="p-6">
+            <Card className="p-5 sm:p-6">
               <SectionHeader
                 title="Connections"
                 description="Subscriptions, accounts and API keys that Botflow can use on your behalf."
@@ -885,7 +885,7 @@ export function AccountPanel() {
 
           {tab === "billing" && (
             <>
-              <Card className="p-6">
+              <Card className="p-5 sm:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <p className="text-[13px] text-muted">Current plan</p>
@@ -973,7 +973,7 @@ export function AccountPanel() {
 
               {!subscription?.migrationPending && (
                 <>
-                  <Card className="p-6">
+                  <Card className="p-5 sm:p-6">
                     <SectionHeader
                       title="Payment methods"
                       action={
@@ -1045,7 +1045,7 @@ export function AccountPanel() {
                     )}
                   </Card>
 
-                  <Card className="p-6">
+                  <Card className="p-5 sm:p-6">
                     <SectionHeader title="Billing history" />
                     {billingDetails.invoices.length > 0 ? (
                       <ul className="mt-4 divide-y divide-border">

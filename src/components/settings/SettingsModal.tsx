@@ -852,7 +852,8 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                       </ConnectionHeader>
 
                       {appleConnected ? null : (
-                        <div className="mt-3 rounded-xl border border-border bg-surface p-4 space-y-3">
+                        // Phone: no box inside the card, so the instructions get the card's full width.
+                        <div className="mt-3 rounded-xl border border-border bg-surface p-4 space-y-3 max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:p-0">
                           {/* Free Apple IDs never see the Integrations page — lead
                               with the paid-membership requirement or the link below
                               dead-ends for anyone not enrolled. */}
