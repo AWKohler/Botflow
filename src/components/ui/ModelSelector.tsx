@@ -329,7 +329,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
       {/* Phone: a bottom sheet */}
       {open && isPhone && (
         <BottomSheet open onClose={() => setOpen(false)} title="Choose a model">
-          <div role="listbox" aria-label="Models" className="px-2 pb-1">
+          <div role="group" aria-label="Models" className="px-2 pb-1">
             {options}
           </div>
           {note('border-t border-border px-5 py-3 text-[13px] leading-relaxed text-muted')}
