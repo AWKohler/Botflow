@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useId, useState } from 'react';
+import { Fragment, useId, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Check, Minus, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CardSpotlight } from '@/components/landing/CardSpotlight';
@@ -701,19 +701,21 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
                   />
                 )}
 
-                <div className="grid grid-cols-[2.5rem_1fr] sm:grid-cols-[3.75rem_1fr] gap-5 sm:gap-8 items-start">
+                {/* Phone: the numeral sits beside the name and everything under
+                    it takes the card's full width. Wider: a numeral column. */}
+                <div className="grid grid-cols-[auto_1fr] items-start gap-x-4 sm:grid-cols-[3.75rem_1fr] sm:gap-x-8">
                   <span
                     className={cn(
                       serif.className,
-                      'block text-6xl sm:text-8xl font-normal leading-none select-none -mt-1',
+                      'block text-5xl sm:text-8xl font-normal leading-none select-none sm:row-span-2 sm:-mt-1',
                     )}
                     style={{ color: 'var(--sand-text-subtle)' }}
                   >
                     {i + 1}
                   </span>
 
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-3">
+                  <div className="min-w-0 self-center sm:self-start">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                       <h3 className={cn(serif.className, 'text-3xl sm:text-4xl tracking-tight')}>
                         {p.name}
                       </h3>
@@ -723,8 +725,10 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
                         </span>
                       )}
                     </div>
+                  </div>
 
-                    <p className="mt-3 text-base sm:text-lg text-[var(--sand-text-muted)] leading-relaxed">
+                  <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2">
+                    <p className="mt-4 text-base sm:mt-3 sm:text-lg text-[var(--sand-text-muted)] leading-relaxed">
                       {p.oneLiner}
                     </p>
 
@@ -780,7 +784,7 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
                         {p.compareSlug && !p.isBotflow && (
                           <Link
                             href={`/compare/botflow-vs-${p.compareSlug}`}
-                            className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--sand-accent)] hover:opacity-80 transition"
+                            className="inline-flex items-center gap-1.5 py-2 text-sm font-medium text-[var(--sand-accent)] hover:opacity-80 transition"
                           >
                             Full comparison
                             <ArrowRight className="h-3.5 w-3.5" />
@@ -800,7 +804,7 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
                               href={p.url}
                               target="_blank"
                               rel="noopener"
-                              className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--sand-text-muted)] hover:text-[var(--sand-text)] transition"
+                              className="inline-flex items-center gap-1.5 py-2 text-sm font-medium text-[var(--sand-text-muted)] hover:text-[var(--sand-text)] transition"
                             >
                               Visit site
                               <ArrowUpRight className="h-3.5 w-3.5" />
@@ -843,7 +847,33 @@ export function AltQuickTable({ profiles }: { profiles: AltProfile[] }) {
           </div>
         </Reveal>
 
-        <Reveal delay={100}>
+        {/* Phone: one card per product (a five-column table cannot be read at this width). */}
+        <Reveal delay={100} className="sm:hidden">
+          <ul className="overflow-hidden rounded-2xl border border-[var(--sand-border)] bg-[var(--sand-bg)]">
+            {profiles.map((p, i) => (
+              <li
+                key={p.key}
+                className={cn(
+                  'px-5 py-5',
+                  i !== 0 && 'border-t border-[var(--sand-border)]',
+                  p.isBotflow && 'bg-[var(--sand-accent)]/[0.04]',
+                )}
+              >
+                <h3 className="text-base font-semibold text-[var(--sand-text)]">{p.name}</h3>
+                <dl className="mt-3 grid grid-cols-[7.5rem_1fr] gap-x-4 gap-y-2 text-sm leading-snug">
+                  {cols.map((c) => (
+                    <Fragment key={c.key}>
+                      <dt className="text-[var(--sand-text-muted)]">{c.label}</dt>
+                      <dd className="text-[var(--sand-text)]">{p.facts[c.key]}</dd>
+                    </Fragment>
+                  ))}
+                </dl>
+              </li>
+            ))}
+          </ul>
+        </Reveal>
+
+        <Reveal delay={100} className="hidden sm:block">
           <div className="rounded-2xl border border-[var(--sand-border)] bg-[var(--sand-bg)] overflow-hidden overflow-x-auto modern-scrollbar">
             <table className="w-full min-w-[760px] table-fixed border-collapse text-left">
               <colgroup>

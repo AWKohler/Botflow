@@ -610,7 +610,7 @@ export function ShareControls({ projectId }: { projectId: string }) {
         ref={triggerRef}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "tap-44 flex h-8 w-8 items-center justify-center rounded-lg border border-border shadow-xs transition-colors",
+          "tap-44 flex h-8 w-8 items-center justify-center rounded-lg border border-border shadow-xs transition-colors pointer-coarse:h-10 pointer-coarse:w-10",
           "bg-linear-to-b inset-shadow-bevel dark:from-elevated dark:to-surface",
           open ? "from-elevated to-elevated text-fg" : "from-bg to-surface text-muted hover:border-border-strong hover:text-fg",
         )}
