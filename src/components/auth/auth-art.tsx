@@ -34,6 +34,7 @@ export function AuthArt() {
         <div aria-hidden="true" className="auth-art__wash absolute inset-0" />
         <div aria-hidden="true" className="auth-art__stroke auth-art__stroke--deep absolute" />
         <div aria-hidden="true" className="auth-art__stroke auth-art__stroke--light absolute" />
+        <div aria-hidden="true" className="auth-art__stroke auth-art__stroke--beam absolute" />
         <div aria-hidden="true" className="auth-art__grain absolute inset-0" />
         {!painted && <div aria-hidden="true" className="auth-art__weave absolute inset-0" />}
 

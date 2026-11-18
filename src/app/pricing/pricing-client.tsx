@@ -292,7 +292,7 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
             </Reveal>
 
             <Reveal delay={180}>
-              <p className="mt-6 text-lg sm:text-xl text-[var(--sand-text-muted)] max-w-2xl mx-auto leading-relaxed">
+              <p className="mt-6 text-lg sm:text-xl text-[var(--sand-text-muted)] max-w-2xl mx-auto leading-relaxed text-balance">
                 Start with a generous free tier. Upgrade when you need more
                 projects, more credits, or your apps go to production. Cancel
                 anytime — no surprises.

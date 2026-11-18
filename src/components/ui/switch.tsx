@@ -38,8 +38,11 @@ export function Switch({
       <span
         className={cn(
           "inline-block h-3.5 w-3.5 rounded-full shadow-sm transition-transform",
-          // Off: an ink knob on the pale track; on: white on the accent.
-          checked ? "translate-x-[18px] bg-white" : "translate-x-[2px] bg-muted",
+          // Off: a white knob with a hairline edge on the pale, outlined track
+          // (a soft grey knob in dark); on: white on the accent.
+          checked
+            ? "translate-x-[18px] bg-white"
+            : "translate-x-[2px] bg-white ring-1 ring-control dark:bg-muted dark:ring-0",
         )}
       />
     </button>

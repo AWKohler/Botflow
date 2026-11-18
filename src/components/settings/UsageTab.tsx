@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 import { tableHeadRowClass } from '@/components/ui/table';
 
 interface ModelRow {
@@ -116,9 +115,45 @@ export function UsageTab() {
   }, []);
 
   if (loading) {
+    // Placeholder in the shape of the loaded tab (two meters, the cache card,
+    // the model table), so nothing jumps when the numbers arrive.
+    const bar = 'animate-pulse rounded bg-soft';
     return (
-      <div className="py-10 flex items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-muted" />
+      <div className="space-y-6" aria-busy="true" aria-label="Loading usage">
+        <div>
+          <div className="grid gap-5 sm:grid-cols-2">
+            {[0, 1].map((i) => (
+              <div key={i}>
+                <div className="flex items-baseline justify-between gap-3">
+                  <div className={`${bar} h-4 w-20`} />
+                  <div className={`${bar} h-3 w-14`} />
+                </div>
+                <div className={`${bar} mt-2 h-1.5 w-full rounded-full`} />
+                <div className={`${bar} mt-2 h-3 w-28`} />
+              </div>
+            ))}
+          </div>
+          <div className={`${bar} mt-4 h-3 w-full max-w-xl`} />
+          <div className={`${bar} mt-2 h-3 w-2/5`} />
+        </div>
+        <div className="space-y-3 rounded-lg border border-border px-4 py-3.5">
+          <div className={`${bar} h-3 w-36`} />
+          <div className="flex gap-6">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className={`${bar} h-9 w-24`} />
+            ))}
+          </div>
+          <div className={`${bar} h-3 w-80 max-w-full`} />
+        </div>
+        <div>
+          <div className={`${bar} mb-2 h-3 w-32`} />
+          <div className="overflow-hidden rounded-lg border border-border">
+            <div className="h-9 border-b border-border bg-elevated/60" />
+            <div className="flex h-10 items-center px-3">
+              <div className={`${bar} h-3 w-40`} />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

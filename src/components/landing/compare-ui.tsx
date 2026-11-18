@@ -67,7 +67,7 @@ export function CompareHero({
           </Reveal>
 
           <Reveal delay={180}>
-            <p className="mt-6 text-lg sm:text-xl text-[var(--sand-text-muted)] max-w-2xl mx-auto leading-relaxed">
+            <p className="mt-6 text-lg sm:text-xl text-[var(--sand-text-muted)] max-w-2xl mx-auto leading-relaxed text-balance">
               {intro}
             </p>
           </Reveal>

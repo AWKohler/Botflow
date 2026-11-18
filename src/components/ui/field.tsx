@@ -8,6 +8,7 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
+import { ChevronDown } from "lucide-react";
 import { Input } from "./input";
 
 /**
@@ -36,7 +37,15 @@ TextArea.displayName = "TextArea";
 
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
   ({ className, ...props }, ref) => (
-    <select ref={ref} className={cn(fieldClass, "h-9 pr-8", className)} {...props} />
+    // The browser's own arrow is replaced by the same thin chevron used everywhere else.
+    <span className="relative block w-full">
+      <select ref={ref} className={cn(fieldClass, "h-9 appearance-none pr-8", className)} {...props} />
+      <ChevronDown
+        aria-hidden="true"
+        className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted"
+        strokeWidth={1.75}
+      />
+    </span>
   ),
 );
 Select.displayName = "Select";

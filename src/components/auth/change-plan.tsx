@@ -6,7 +6,8 @@ import {
   type PaidPlan,
   type BillingInterval,
 } from "@/lib/billing/plans";
-import { fieldClass, primaryClass } from "./sign-in";
+import { primaryClass } from "./sign-in";
+import { Select } from "@/components/ui/field";
 interface Quote {
   token: string;
   plan: PaidPlan;
@@ -113,8 +114,8 @@ export function ChangePlanModal({
       >
         <label className="block text-[13px] font-medium">
           Plan
-          <select
-            className={fieldClass}
+          <Select
+            className="mt-1.5 font-normal"
             value={plan}
             disabled={busy}
             onChange={(e) => {
@@ -127,12 +128,12 @@ export function ChangePlanModal({
                 {BILLING_PLANS[p].name}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="block text-[13px] font-medium">
           Billing period
-          <select
-            className={fieldClass}
+          <Select
+            className="mt-1.5 font-normal"
             value={interval}
             disabled={busy}
             onChange={(e) => {
@@ -142,7 +143,7 @@ export function ChangePlanModal({
           >
             <option value="month">Monthly</option>
             <option value="year">Annually</option>
-          </select>
+          </Select>
         </label>
         {quote && (
           <div className="rounded-lg border border-border bg-surface p-4 text-sm">

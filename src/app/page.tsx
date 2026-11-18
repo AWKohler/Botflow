@@ -2757,7 +2757,7 @@ export default function LandingV2() {
           </p>
           <div className="mt-6 flex flex-col gap-2.5 sm:flex-row-reverse">
             <SignInButton mode="modal" appearance={landingSignInModalAppearance}>
-              <button className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50">
+              <button className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50">
                 Sign in / Sign up
               </button>
             </SignInButton>
@@ -2835,7 +2835,7 @@ export default function LandingV2() {
                       <button
                         onClick={handleConnectConvex}
                         disabled={convexConnecting}
-                        className="mt-3 w-full inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
+                        className="mt-3 w-full inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                       >
                         {convexConnecting ? (
                           <><div className="h-4 w-4 animate-spin rounded-full border-2 border-bg/30 border-t-bg" /> Connecting&hellip;</>
@@ -2906,7 +2906,7 @@ export default function LandingV2() {
                           void saveBackendPreference('user');
                           setProjectStep('name');
                         }}
-                        className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
+                        className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                       >
                         Continue
                         <ArrowRight className="ml-1.5 h-4 w-4" />
@@ -2948,7 +2948,7 @@ export default function LandingV2() {
               <div className="mt-6 flex flex-row-reverse gap-2.5">
                 <button
                   onClick={handleCreateProject}
-                  className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
+                  className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                 >
                   Create project
                 </button>

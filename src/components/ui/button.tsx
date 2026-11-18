@@ -35,7 +35,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 const base =
   "inline-flex shrink-0 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium " +
   "transition-[background-color,border-color,color,box-shadow,opacity] duration-150 " +
-  "disabled:pointer-events-none disabled:opacity-50";
+  // A control that can't be pressed is flat: no shadow, no bevel, no lit wash.
+  "disabled:pointer-events-none disabled:opacity-50 disabled:bg-none disabled:shadow-none disabled:inset-shadow-none";
 
 // Raised variants carry a bevel: a hairline of light inside the top edge and
 // of shade inside the bottom edge (see the --bevel-* tokens in globals.css).
@@ -50,7 +51,7 @@ const variants: Record<ButtonVariant, string> = {
   // A faint top-to-bottom shade plus the surface bevel; hover and press swap
   // the gradient stops, since a background colour would sit under it.
   secondary:
-    "border border-border bg-linear-to-b from-bg to-surface text-fg shadow-xs inset-shadow-bevel " +
+    "border border-border bg-linear-to-b from-bg to-surface text-fg shadow-xs inset-shadow-bevel disabled:bg-surface " +
     "hover:border-border-strong hover:from-surface hover:to-elevated active:from-elevated active:to-elevated " +
     "dark:from-elevated dark:to-surface dark:hover:from-soft dark:hover:to-elevated dark:active:from-elevated dark:active:to-elevated",
   outline: "border border-border bg-transparent text-fg hover:border-border-strong hover:bg-elevated",

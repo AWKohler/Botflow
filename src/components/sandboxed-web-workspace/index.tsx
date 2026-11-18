@@ -98,7 +98,7 @@ const PREVIEW_DEVICES = [
   { id: "tablet", label: "Tablet", hint: "768 px", icon: Tablet },
   { id: "mobile", label: "Phone", hint: "375 px", icon: Smartphone },
   { id: "responsive", label: "All sizes", hint: "Side by side", icon: AppWindow },
-  { id: "figma", label: "Still frames", hint: "Captured", icon: Frame },
+  { id: "figma", label: "Snapshots", hint: "3 sizes, static", icon: Frame },
 ] as const;
 
 interface SandboxedWebWorkspaceProps {
@@ -1557,7 +1557,8 @@ export function SandboxedWebWorkspace({
                               setDeviceMenuOpen(false);
                             }}
                           >
-                            <d.icon size={15} className="text-muted" />
+                            {/* The tablet is drawn on its side, so it can't be mistaken for the phone. */}
+                            <d.icon size={15} className={cn("text-muted", d.id === "tablet" && "rotate-90")} />
                             <span className="flex-1">{d.label}</span>
                             <span className="text-xs tabular-nums text-subtle">{d.hint}</span>
                             <Check size={14} className={cn("text-fg", previewDevice !== d.id && "invisible")} />

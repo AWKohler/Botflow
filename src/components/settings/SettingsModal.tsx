@@ -1,7 +1,7 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useModal } from '@/components/ui/use-modal';
 import { SignedIn, SignedOut, SignInButton } from '@/components/auth';
@@ -45,7 +45,7 @@ const PROVIDERS: Array<{
 ];
 
 const connectionButtonClass =
-  'inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50';
+  'inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel disabled:bg-none disabled:bg-surface disabled:shadow-none disabled:inset-shadow-none dark:from-elevated dark:to-surface px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50';
 
 /**
  * One connection row: what it is on the left, its state and its single action
@@ -519,6 +519,22 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
   // Escape closes, focus returns to the opener.
   const panelRef = useModal<HTMLDivElement>(open && variant === 'modal', handleClose);
   const titleId = useId();
+  // Whether the dialog body has more below the fold (drives the bottom fade).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const updateMore = () => {
+    const el = scrollRef.current;
+    if (el) setHasMore(el.scrollHeight - el.scrollTop - el.clientHeight > 8);
+  };
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!open || !el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(updateMore);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    updateMore();
+    return () => ro.disconnect();
+  }, [open, activeTab, loading]);
 
   if (!open) return null;
 
@@ -528,7 +544,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
         <div className="rounded-xl border border-border p-6">
           <p className="mb-4 text-sm text-muted">You need to sign in to manage settings.</p>
           <SignInButton>
-            <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50">
+            <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel disabled:bg-none disabled:bg-surface disabled:shadow-none disabled:inset-shadow-none dark:from-elevated dark:to-surface px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50">
               Sign in
             </button>
           </SignInButton>
@@ -543,7 +559,23 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
             {activeTab === 'connections' && (
               <>
                 {loading ? (
-                  <div className="flex items-center justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted" /></div>
+                  <div className="divide-y divide-border" aria-busy="true" aria-label="Loading connections">
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="flex items-start justify-between gap-4 py-5 first:pt-0">
+                        <div className="min-w-0 flex-1">
+                          <div className="h-4 w-40 animate-pulse rounded bg-soft" />
+                          <div className="mt-2 h-3 w-4/5 max-w-md animate-pulse rounded bg-soft" />
+                        </div>
+                        <div className="h-8 w-24 animate-pulse rounded-lg bg-soft" />
+                      </div>
+                    ))}
+                    <div className="space-y-4 pt-5">
+                      <div className="h-4 w-24 animate-pulse rounded bg-soft" />
+                      {[0, 1].map((i) => (
+                        <div key={i} className="h-9 w-full animate-pulse rounded-lg bg-soft" />
+                      ))}
+                    </div>
+                  </div>
                 ) : loadFailed ? (
                   <div className="flex flex-col items-center gap-3 py-10 text-center">
                     <p className="text-sm text-muted">Your connections couldn&apos;t be loaded.</p>
@@ -718,7 +750,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                             <button
                               onClick={exchangeCode}
                               disabled={!oauthCode.trim() || oauthStep === 'exchanging'}
-                              className="inline-flex h-9 items-center gap-2 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-3.5 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
+                              className="inline-flex h-9 items-center gap-2 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none px-3.5 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                             >
                               {oauthStep === 'exchanging' ? (
                                 <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting…</>
@@ -985,7 +1017,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="relative flex max-h-[min(42rem,calc(100dvh-2rem-8vh))] min-h-[min(30rem,calc(100dvh-2rem-8vh))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl outline-none"
+        className="relative flex max-h-[min(42rem,calc(100dvh-2rem-8vh))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl inset-shadow-bevel-top outline-none dark:border-border-strong"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-6">
@@ -1033,10 +1065,18 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
             </button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-          {body}
-          {/* A soft fade at the bottom edge signals that the list continues. */}
-          <div aria-hidden="true" className="pointer-events-none sticky -bottom-5 -mb-5 h-16 bg-gradient-to-t from-bg via-bg/80 to-transparent" />
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div ref={scrollRef} onScroll={updateMore} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+            {body}
+          </div>
+          {/* A soft fade at the bottom edge while there is more to scroll to; it
+              takes no space, so short tabs end with the same padding as they start. */}
+          {hasMore && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-bg via-bg/80 to-transparent"
+            />
+          )}
         </div>
       </div>
     </div>,

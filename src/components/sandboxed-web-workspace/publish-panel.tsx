@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buttonClass } from "@/components/ui/button";
-import { fieldClass } from "@/components/ui/field";
+import { fieldClass, Select } from "@/components/ui/field";
 
 type PublishState = "idle" | "building" | "published" | "error";
 type DomainStatus = "pending" | "active" | "error" | null;
@@ -570,17 +570,17 @@ export function SandboxPublishPanel({
                     ) : (
                       <>
                         <div className="grid grid-cols-[1fr_auto] gap-2">
-                          <select
+                          <Select
+                            aria-label="Domain"
                             value={selectedDomainId}
                             onChange={(e) => setSelectedDomainId(e.target.value)}
-                            className={cn(fieldClass, "h-9")}
                           >
                             {managedOptions.map(d => (
                               <option key={d.id} value={d.id} disabled={d.status !== "active"}>
                                 {d.apexDomain}{d.status !== "active" ? " (pending)" : ""}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         </div>
                         <div className="flex items-center gap-2">
                           <Input

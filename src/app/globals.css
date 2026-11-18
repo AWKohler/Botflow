@@ -327,6 +327,16 @@ body {
     background: #f7f0e0;
     opacity: 0.8;
 }
+.auth-art__stroke--beam {
+    /* A diagonal beam of cool light across the pale upper half. */
+    right: -25%;
+    top: 12%;
+    width: 105%;
+    height: 22%;
+    transform: rotate(-16deg);
+    background: linear-gradient(90deg, rgb(169 184 255 / 0) 0%, rgb(169 184 255 / 0.75) 45%, rgb(255 255 255 / 0.6) 70%, rgb(255 255 255 / 0) 100%);
+    filter: blur(34px);
+}
 .auth-art__grain {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5  0 0 0 0 .5  0 0 0 0 .5  0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     mix-blend-mode: overlay;
@@ -341,8 +351,9 @@ body {
 }
 .auth-art__prompt {
     color: #1c1c1a;
-    background: rgb(255 255 255 / 0.62);
-    border: 1px solid rgb(255 255 255 / 0.55);
+    /* Opaque enough that the weave never shows behind the text. */
+    background: rgb(255 255 255 / 0.9);
+    border: 1px solid rgb(255 255 255 / 0.7);
     box-shadow:
         inset 0 1px 0 0 rgb(255 255 255 / 0.7),
         0 1px 2px rgb(15 22 61 / 0.12),
@@ -377,9 +388,12 @@ body {
         background: #14110f;
         opacity: 0.9;
     }
+    :root:not([data-theme="light"]) .auth-art__stroke--beam {
+        background: linear-gradient(90deg, rgb(90 118 240 / 0) 0%, rgb(90 118 240 / 0.5) 50%, rgb(168 185 255 / 0.35) 75%, rgb(168 185 255 / 0) 100%);
+    }
     :root:not([data-theme="light"]) .auth-art__prompt {
         color: #f3efe6;
-        background: rgb(20 18 16 / 0.5);
+        background: rgb(22 20 18 / 0.82);
         border-color: rgb(255 255 255 / 0.14);
         box-shadow:
             inset 0 1px 0 0 rgb(255 255 255 / 0.12),
@@ -393,16 +407,19 @@ body {
     }
 }
 
-/* Headings never leave a single word alone on the last line. */
-h1,
-h2,
-h3 {
-    text-wrap: balance;
-}
+/* In the base layer, so a utility class on an element can still override them. */
+@layer base {
+    /* Headings never leave a single word alone on the last line. */
+    h1,
+    h2,
+    h3 {
+        text-wrap: balance;
+    }
 
-/* Paragraphs avoid ending on a single short word. */
-p {
-    text-wrap: pretty;
+    /* Paragraphs avoid ending on a single short word. */
+    p {
+        text-wrap: pretty;
+    }
 }
 
 /* Touch screens: grow a control's hit area to 44px without changing how it

@@ -457,7 +457,7 @@ function TokenSelect({
       aria-label={label}
       value={value}
       onChange={(e) => e.target.value && onChange(e.target.value)}
-      className="h-8 px-2 font-mono text-xs"
+      className="h-8 pl-2 font-mono text-xs"
     >
       <option value="">—</option>
       {group.map((g) => (

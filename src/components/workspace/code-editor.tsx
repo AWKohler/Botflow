@@ -320,7 +320,8 @@ export function CodeEditor({
         readOnly: disabled,
         guides: {
           bracketPairs: true,
-          bracketPairsHorizontal: true,
+          // No horizontal bracket lines: they underline every object and array row.
+          bracketPairsHorizontal: false,
           highlightActiveBracketPair: true,
           indentation: true,
         },

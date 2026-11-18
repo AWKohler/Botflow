@@ -2207,7 +2207,11 @@ function AgentThreadPanel({
 
       {/* Messages — v6 parts-based rendering. Segments from prior agents
           stay visible but visually de-emphasized; a divider marks the boundary. */}
-      <div ref={scrollRef} className="modern-scrollbar min-w-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-1.5 py-3">
+      <div
+        ref={scrollRef}
+        // A short fade under the header, so a line scrolled half out of view is never cut off hard.
+        className="modern-scrollbar min-w-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-1.5 py-3 [mask-image:linear-gradient(to_bottom,transparent_0,black_18px)]"
+      >
         {messages.map((m, idx) => {
           const mySeg = segmentByMessageIdRef.current.get(m.id) ?? currentSegmentId ?? null;
           const prevSeg = idx > 0

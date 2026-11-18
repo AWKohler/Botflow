@@ -257,7 +257,7 @@ export function QuestionPrompt({
           type="button"
           onClick={handleSubmit}
           disabled={!canSubmit || disabled}
-          className="h-7 rounded-md bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-3 text-xs font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-7 rounded-md bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none px-3 text-xs font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {clampedIndex < total ? "Next" : "Send"}
         </button>
