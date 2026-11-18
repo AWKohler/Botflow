@@ -398,7 +398,7 @@ function RowAction({
       title={label}
       aria-label={label}
       className={cn(
-        'flex size-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-soft',
+        'flex size-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-soft pointer-coarse:size-9 pointer-coarse:[&_svg]:size-4',
         danger ? 'hover:text-danger' : 'hover:text-fg',
       )}
     >
@@ -513,7 +513,7 @@ export function ThreadsSheet({
             type="button"
             onClick={onClose}
             aria-label="Close chats"
-            className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg"
+            className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg pointer-coarse:size-10"
           >
             <IconX size={15} />
           </button>
@@ -524,7 +524,7 @@ export function ThreadsSheet({
           <button
             type="button"
             onClick={onNewChat}
-            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
+            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel pointer-coarse:h-11 pointer-coarse:text-[15px] dark:from-elevated dark:to-surface text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
           >
             <Plus size={15} />
             New chat

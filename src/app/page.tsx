@@ -568,7 +568,7 @@
 //       <section className="relative">
 //         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
 //           <Reveal>
-//             <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+//             <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-20">
 //               <SectionLabel>Features</SectionLabel>
 //               <h2
 //                 className={cn(
@@ -632,7 +632,7 @@
 //       <section className="relative bg-[var(--sand-surface)]">
 //         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
 //           <Reveal>
-//             <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+//             <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-20">
 //               <SectionLabel>How it works</SectionLabel>
 //               <h2
 //                 className={cn(
@@ -755,7 +755,7 @@
 //       <section className="relative bg-[var(--sand-surface)]">
 //         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
 //           <Reveal>
-//             <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+//             <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-20">
 //               <SectionLabel>Infrastructure</SectionLabel>
 //               <h2
 //                 className={cn(
@@ -1289,6 +1289,44 @@ interface LandingPendingImage {
   file: File;
   localUrl: string;
 }
+
+// The conversation shown in the hero's workspace mockup (both sizes).
+const HERO_MESSAGES: React.ComponentProps<typeof WorkspaceMockup>['messages'] = [
+  {
+    role: 'user',
+    content:
+      'Build me Flowsync, a finance dashboard landing page: dark and premium, with a 3D hero, account cards and a recent transactions feed.',
+  },
+  {
+    role: 'assistant',
+    content:
+      "I'll build the Flowsync landing page: a Three.js hero, USD/EUR account cards, a live transactions feed, and an AI forecasting panel.",
+    toolCalls: [
+      { name: 'writeFile', detail: 'src/App.tsx', done: true },
+      { name: 'writeFile', detail: 'src/components/Hero.tsx', done: true },
+      { name: 'writeFile', detail: 'convex/schema.ts', done: true },
+      { name: 'startDevServer', done: true },
+    ],
+  },
+  {
+    role: 'assistant',
+    content:
+      'Flowsync is live — the 3D hero animates on load, and the dashboard shows account balances with a recent activity log.',
+  },
+  {
+    role: 'user',
+    content: "Add a testimonials section with finance leaders, and a ‘Book a Free Demo’ CTA.",
+  },
+  {
+    role: 'assistant',
+    content: "Adding a ‘Loved by finance teams’ testimonials grid and a Book a Free Demo call-to-action.",
+    toolCalls: [
+      { name: 'readFile', detail: 'src/App.tsx', done: true },
+      { name: 'writeFile', detail: 'src/components/Activity.tsx', done: true },
+      { name: 'writeFile', detail: 'src/components/Forecast.tsx', done: false },
+    ],
+  },
+];
 
 export default function LandingV2() {
   const router = useRouter();
@@ -2290,46 +2328,11 @@ export default function LandingV2() {
           </div>
         </div>
 
-        {/* HERO MOCKUP — hidden on mobile, not enough room to render well */}
+        {/* HERO MOCKUP — the whole workspace from tablet width up. */}
         <Reveal delay={450} className="hidden md:block">
           <div className="mx-auto max-w-7xl px-6 sm:px-8 pb-16 sm:pb-24">
             <WorkspaceMockup
-              messages={[
-                {
-                  role: 'user',
-                  content:
-                    'Build me Flowsync, a finance dashboard landing page: dark and premium, with a 3D hero, account cards and a recent transactions feed.',
-                },
-                {
-                  role: 'assistant',
-                  content:
-                    "I'll build the Flowsync landing page: a Three.js hero, USD/EUR account cards, a live transactions feed, and an AI forecasting panel.",
-                  toolCalls: [
-                    { name: 'writeFile', detail: 'src/App.tsx', done: true },
-                    { name: 'writeFile', detail: 'src/components/Hero.tsx', done: true },
-                    { name: 'writeFile', detail: 'convex/schema.ts', done: true },
-                    { name: 'startDevServer', done: true },
-                  ],
-                },
-                {
-                  role: 'assistant',
-                  content:
-                    'Flowsync is live — the 3D hero animates on load, and the dashboard shows account balances with a recent activity log.',
-                },
-                {
-                  role: 'user',
-                  content: "Add a testimonials section with finance leaders, and a ‘Book a Free Demo’ CTA.",
-                },
-                {
-                  role: 'assistant',
-                  content: "Adding a ‘Loved by finance teams’ testimonials grid and a Book a Free Demo call-to-action.",
-                  toolCalls: [
-                    { name: 'readFile', detail: 'src/App.tsx', done: true },
-                    { name: 'writeFile', detail: 'src/components/Activity.tsx', done: true },
-                    { name: 'writeFile', detail: 'src/components/Forecast.tsx', done: false },
-                  ],
-                },
-              ]}
+              messages={HERO_MESSAGES}
               previewSrc="https://bf-28ba0c04.pages.dev"
               creditPct={47}
               projectName="Flowsync"
@@ -2337,6 +2340,21 @@ export default function LandingV2() {
               defaultView="preview"
               modelName="Claude Opus 5.5"
               className="shadow-[0_8px_60px_-12px_rgba(0,0,0,0.25)]"
+            />
+          </div>
+        </Reveal>
+        {/* On a phone the workspace opens on the chat, so that is what is shown. */}
+        <Reveal delay={450} className="md:hidden">
+          <div className="mx-auto max-w-md px-8 pb-14">
+            <WorkspaceMockup
+              chatOnly
+              height={452}
+              messages={HERO_MESSAGES}
+              creditPct={47}
+              projectName="Flowsync"
+              agentWorking={true}
+              modelName="Claude Opus 5.5"
+              className="shadow-[0_8px_40px_-12px_rgba(0,0,0,0.22)]"
             />
           </div>
         </Reveal>
@@ -2348,9 +2366,9 @@ export default function LandingV2() {
       <LineDivider />
       <section className="relative">
         <MarginHatch />
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-32">
           <Reveal>
-            <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+            <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-20">
               <SectionLabel>Features</SectionLabel>
               <h2
                 className={cn(
@@ -2419,9 +2437,9 @@ export default function LandingV2() {
       <LineDivider />
       <section className="relative bg-[var(--sand-surface)]">
         <MarginBg />
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-32">
           <Reveal>
-            <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+            <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-20">
               <SectionLabel>How it works</SectionLabel>
               <h2
                 className={cn(
@@ -2470,7 +2488,7 @@ export default function LandingV2() {
       {/* ================================================================ */}
       {/* <LineDivider />
       <section className="relative">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-32">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             <Reveal>
               <div>
@@ -2594,9 +2612,9 @@ export default function LandingV2() {
       {/* INTEGRATIONS                                                     */}
       {/* ================================================================ */}
       {/* <section className="relative bg-[var(--sand-surface)]">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-32">
           <Reveal>
-            <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+            <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-20">
               <SectionLabel>Infrastructure</SectionLabel>
               <h2
                 className={cn(
@@ -2699,7 +2717,7 @@ export default function LandingV2() {
           <LineDivider />
           <section className="relative bg-[var(--sand-surface)]">
             <MarginBg />
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-32">
               <Reveal>
                 <div className="text-center max-w-4xl mx-auto">
                   <SectionLabel>Showcase</SectionLabel>

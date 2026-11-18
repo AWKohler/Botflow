@@ -428,7 +428,7 @@ export default function ConvexPage() {
       {/* ================================================================ */}
       <LineDivider />
       <section id="showcase" className="relative">
-        <div className="mx-auto max-w-7xl px-6 sm:px-6 lg:px-10 xl:px-14 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-6 sm:px-6 lg:px-10 xl:px-14 py-16 sm:py-32">
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-12 lg:gap-14 items-center">
             {/* Mockup — agent panel hidden, database view front-and-center. Hidden on mobile (too cramped to fit). */}
             <Reveal delay={150} className="hidden lg:block lg:col-span-3 lg:order-1">
@@ -498,7 +498,7 @@ export default function ConvexPage() {
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative">
-        <div className="mx-auto max-w-7xl px-6 sm:px-6 lg:px-10 xl:px-14 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-6 sm:px-6 lg:px-10 xl:px-14 py-16 sm:py-32">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-start">
             <Reveal>
               <SectionLabel>Built for AI-first development</SectionLabel>
@@ -539,9 +539,9 @@ export default function ConvexPage() {
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative bg-[var(--sand-surface)]">
-        <div className="mx-auto max-w-7xl px-6 sm:px-6 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-6 sm:px-6 py-16 sm:py-32">
           <Reveal>
-            <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+            <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-20">
               <SectionLabel>In the box</SectionLabel>
               <h2
                 className={cn(
@@ -605,7 +605,7 @@ export default function ConvexPage() {
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative">
-        <div className="mx-auto max-w-7xl px-6 sm:px-6 lg:px-10 xl:px-14 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-6 sm:px-6 lg:px-10 xl:px-14 py-16 sm:py-32">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             <Reveal>
               <SectionLabel>Less to pay for, less to debug</SectionLabel>
@@ -683,7 +683,7 @@ export default function ConvexPage() {
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative bg-[var(--sand-surface)]">
-        <div className="mx-auto max-w-7xl px-6 sm:px-6 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-6 sm:px-6 py-16 sm:py-32">
           <Reveal>
             <div className="max-w-3xl mx-auto text-center">
               <SectionLabel>{MANAGED_CONVEX ? 'Power-user option' : 'Your Convex account'}</SectionLabel>

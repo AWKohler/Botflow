@@ -314,7 +314,7 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
           </Reveal>
 
           <Reveal delay={120}>
-            <p className="mt-8 text-center text-xs text-[var(--sand-text-muted)]">
+            <p className="mt-8 px-2 text-center text-xs text-[var(--sand-text-muted)] sm:px-0">
               Every plan includes the full IDE and AI agent, your own model keys, a real-time
               backend with scheduled jobs, one-click deploy, GitHub sync and encrypted secrets.
               Prices in USD.

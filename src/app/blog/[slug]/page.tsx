@@ -184,7 +184,7 @@ export default async function BlogPostPage({ params }: Props) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbsJsonLd) }}
       />
 
-      <article className="mx-auto max-w-3xl px-4 pt-12 pb-24 sm:px-6 sm:pt-20">
+      <article className="mx-auto max-w-3xl px-6 pt-10 pb-20 sm:pt-20 sm:pb-24">
         <Reveal>
           <Link
             href="/blog"
@@ -255,7 +255,7 @@ export default async function BlogPostPage({ params }: Props) {
 
       {related.length > 0 && (
         <section className="border-t border-[var(--sand-border)]">
-          <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
+          <div className="mx-auto max-w-7xl px-6 py-16 sm:py-20">
             <SectionLabel>Keep reading</SectionLabel>
             <div className="mt-8 grid grid-cols-1 gap-x-10 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
               {related.map((p) => (

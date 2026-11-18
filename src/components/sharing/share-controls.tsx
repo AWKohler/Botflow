@@ -535,7 +535,7 @@ function SharePopover({
                   return (
                     <button
                       onClick={() => setConfirmingId(m.id)}
-                      className="text-muted hover:text-danger p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                      className="tap-44 text-muted hover:text-danger p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 pointer-coarse:opacity-100"
                       title={selfLeave ? "Leave project" : "Remove access"}
                       aria-label={selfLeave ? "Leave project" : "Remove access"}
                     >

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/components/auth";
 import "./globals.css";
@@ -42,6 +42,17 @@ export const metadata: Metadata = {
       "Create full-stack web apps by chatting with AI. Botflow runs a real Node.js environment in your browser — no setup, no deploys, just ship.",
     images: ["/og-image.png"],
   },
+};
+
+export const viewport: Viewport = {
+  // The browser's own chrome (status bar, address bar) takes the page colour.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fefefe" },
+    { media: "(prefers-color-scheme: dark)", color: "#1b1815" },
+  ],
+  // The on-screen keyboard shrinks the layout instead of covering it, so a
+  // full-height screen (the workspace chat) keeps its composer in view.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

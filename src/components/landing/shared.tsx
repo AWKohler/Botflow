@@ -264,7 +264,7 @@ export function ClosingCta({
     <section className="relative">
       <MarginHatch />
       {/* Flat on purpose: the same quiet band on every page, no tinted wash. */}
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-32">
         <Reveal>
           <div className="mx-auto max-w-2xl text-center px-2 sm:px-0">
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>

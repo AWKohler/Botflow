@@ -2636,7 +2636,7 @@ function AgentThreadPanel({
                 <button
                   type="button"
                   onClick={() => handleRemoveImage(img.id)}
-                  className="absolute -top-1.5 -right-1.5 flex items-center justify-center size-4 rounded-full bg-surface border border-border text-muted hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="tap-44 absolute -top-1.5 -right-1.5 flex items-center justify-center size-4 rounded-full bg-surface border border-border text-muted hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity pointer-coarse:size-5 pointer-coarse:opacity-100"
                   aria-label="Remove image"
                 >
                   <IconX size={10} />

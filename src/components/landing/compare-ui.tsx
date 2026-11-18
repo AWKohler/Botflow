@@ -345,7 +345,7 @@ export function StrengthsSplit({
           </div>
         </Reveal>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 lg:gap-10">
+        <div className="grid grid-cols-1 gap-14 px-2 sm:px-0 lg:grid-cols-2 lg:gap-10">
           <div className="lg:pr-8 lg:border-r lg:border-[var(--sand-border)]">
             <Reveal>
               <p className="mb-7 text-[11px] font-medium uppercase tracking-[0.2em] text-[var(--sand-text-muted)]">
@@ -386,7 +386,7 @@ export function DeepDives({ dives }: { dives: DeepDive[] }) {
           </div>
         </Reveal>
 
-        <div className="space-y-16 sm:space-y-20">
+        <div className="space-y-14 px-2 sm:space-y-20 sm:px-0">
           {dives.map((dive, i) => (
             <Reveal key={dive.title} delay={60}>
               {/* Fixed numeral column, so every section's text starts on the same line. */}
@@ -522,7 +522,7 @@ export function FaqItem({ q, a, index }: { q: string; a: string; index: number }
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
           aria-controls={id}
-          className="group flex w-full items-start justify-between gap-6 rounded-md pt-6 pb-3 text-left"
+          className="group flex w-full items-start justify-between gap-6 rounded-md px-2 pt-6 pb-3 text-left sm:px-0"
         >
           <span className="text-base sm:text-lg font-medium text-[var(--sand-text)] leading-snug">
             {q}
@@ -542,7 +542,7 @@ export function FaqItem({ q, a, index }: { q: string; a: string; index: number }
         style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
       >
         <div className="min-h-0 overflow-hidden">
-          <p className="max-w-3xl pb-3 pr-12 text-sm sm:text-base text-[var(--sand-text-muted)] leading-relaxed">
+          <p className="max-w-3xl px-2 pb-3 text-[15px] sm:px-0 sm:pr-12 sm:text-base text-[var(--sand-text-muted)] leading-relaxed">
             {a}
           </p>
         </div>

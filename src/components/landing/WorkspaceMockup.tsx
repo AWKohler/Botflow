@@ -69,6 +69,10 @@ export interface WorkspaceMockupProps {
   className?: string;
   /** Hide the left-side agent panel entirely — useful when the chrome around the chat would distract from the main surface. */
   hideAgentPanel?: boolean;
+  /** Phone version: the chat alone at full width, the way the workspace opens on a phone. */
+  chatOnly?: boolean;
+  /** Height in px. Defaults to 600. */
+  height?: number;
 }
 
 // ============================================================================
@@ -273,6 +277,8 @@ export function WorkspaceMockup({
   modelName = 'GPT-6.1 Sol',
   className,
   hideAgentPanel = false,
+  chatOnly = false,
+  height = 600,
 }: WorkspaceMockupProps) {
   const [currentView, setCurrentView] = useState<string>(defaultView);
   const [showSidebar, setShowSidebar] = useState(true);
@@ -343,13 +349,13 @@ export default function App() {
         'flex overflow-hidden rounded-xl border border-border bg-surface text-fg shadow-2xl',
         className,
       )}
-      style={{ height: 600 }}
+      style={{ height }}
     >
       {/* ================================================================ */}
       {/* Agent Sidebar                                                    */}
       {/* ================================================================ */}
       {!hideAgentPanel && (
-      <div className="flex w-80 shrink-0 flex-col bg-surface">
+      <div className={cn('flex shrink-0 flex-col bg-surface', chatOnly ? 'w-full' : 'w-80')}>
         {/* Agent header */}
         <div className="flex h-12 items-center justify-between px-3.5 text-sm">
           {/* Mirrors the real chat header: project on the left, three actions on the right. */}
@@ -441,6 +447,7 @@ export default function App() {
       {/* ================================================================ */}
       {/* Main Content Area                                                */}
       {/* ================================================================ */}
+      {!chatOnly && (
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <div className="flex h-12 shrink-0 items-center gap-2 pr-2.5">
@@ -601,6 +608,7 @@ export default function App() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
