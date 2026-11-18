@@ -297,6 +297,7 @@ export function CodeEditor({
   return (
     <Editor
       height="100%"
+      loading={<span className="text-[13px] text-muted">Loading editor…</span>}
       language={language}
       value={value}
       onChange={disabled ? undefined : handleChange}

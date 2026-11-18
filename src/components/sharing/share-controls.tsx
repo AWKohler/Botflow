@@ -450,7 +450,7 @@ function SharePopover({
             People with access
           </div>
           {!state && failed && (
-            <div className="flex items-center justify-between gap-3 px-1 py-1.5">
+            <div className="flex items-center justify-between gap-3 py-1.5">
               <p className="text-[13px] text-muted">Couldn&apos;t load who has access.</p>
               <Button variant="secondary" size="xs" onClick={() => void reload()}>
                 Try again
@@ -460,14 +460,14 @@ function SharePopover({
           {/* Placeholder rows while the list loads — never a made-up person. */}
           {!state && !failed &&
             [0, 1].map((i) => (
-              <div key={i} className="flex items-center gap-2.5 px-1 py-1" aria-hidden={i > 0} aria-busy="true" aria-label={i === 0 ? "Loading people" : undefined}>
+              <div key={i} className="flex items-center gap-2.5 py-1" aria-hidden={i > 0} aria-busy="true" aria-label={i === 0 ? "Loading people" : undefined}>
                 <span className="size-[26px] shrink-0 animate-pulse rounded-full bg-soft" />
                 <span className={cn("h-3 animate-pulse rounded bg-soft", i === 0 ? "w-36" : "w-28")} />
               </div>
             ))}
           {/* Owner row. */}
           {state && (
-            <div className="flex items-center gap-2.5 px-1 py-1">
+            <div className="flex items-center gap-2.5 py-1">
               <AvatarDisc
                 id={user?.id ?? "owner"}
                 name={isOwner ? (user?.fullName ?? "You") : "Project owner"}
@@ -483,7 +483,7 @@ function SharePopover({
             </div>
           )}
           {state?.members.map((m) => (
-            <div key={m.id} className="flex items-center gap-2.5 px-1 py-1 group">
+            <div key={m.id} className="flex items-center gap-2.5 py-1 group">
               <AvatarDisc id={m.userId ?? m.email} name={m.name} imageUrl={m.imageUrl} size={26} />
               <span className="min-w-0 flex-1">
                 <span className="block text-sm text-fg truncate">{m.name}</span>
@@ -542,7 +542,7 @@ function SharePopover({
             </div>
           ))}
           {state && state.members.length === 0 && (
-            <p className="text-xs text-muted px-1 py-1">
+            <p className="text-xs text-muted py-1">
               {isOwner ? "Only you so far." : "No other collaborators yet."}
             </p>
           )}
