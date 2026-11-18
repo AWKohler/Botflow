@@ -39,7 +39,7 @@ export const phoneSheetClass =
   "max-sm:rounded-b-none max-sm:rounded-t-2xl max-sm:border-x-0 max-sm:border-b-0 " +
   "max-sm:pb-[env(safe-area-inset-bottom)] max-sm:motion-safe:animate-[sheet-up_0.24s_cubic-bezier(0.2,0.8,0.2,1)]";
 export const phoneSheetBackdropClass =
-  "max-sm:bg-black/40 max-sm:backdrop-blur-[2px] max-sm:motion-safe:animate-[sheet-fade_0.18s_ease-out]";
+  "max-sm:touch-none max-sm:bg-black/40 max-sm:backdrop-blur-[2px] max-sm:motion-safe:animate-[sheet-fade_0.18s_ease-out]";
 /** Title row and scrolling body of such a popover, sized for a phone. */
 export const phoneSheetTitleClass = "max-sm:pl-5 max-sm:pr-2 max-sm:py-2 max-sm:[&_h3]:text-base";
 export const phoneSheetCloseClass = "max-sm:flex max-sm:size-11 max-sm:items-center max-sm:justify-center max-sm:[&_svg]:size-5";
@@ -82,7 +82,8 @@ export function BottomSheet({
 
   return createPortal(
     <div
-      className="fixed inset-0 flex items-end bg-black/40 backdrop-blur-[2px] motion-safe:animate-[sheet-fade_0.18s_ease-out]"
+      // touch-none: a drag on the dimmed area (or the sheet's title) must not scroll the page behind.
+      className="fixed inset-0 flex touch-none items-end bg-black/40 backdrop-blur-[2px] motion-safe:animate-[sheet-fade_0.18s_ease-out]"
       style={{ zIndex }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
