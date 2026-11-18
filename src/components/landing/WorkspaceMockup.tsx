@@ -416,7 +416,7 @@ export default function App() {
             </div>
             <div className="flex items-center gap-1.5 px-3 pb-2.5">
               <span className="ml-auto text-xs font-medium text-muted">{modelName}</span>
-              <div className="flex size-7 items-center justify-center rounded-full bg-fg text-bg opacity-30">
+              <div className="flex size-7 items-center justify-center rounded-full bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-bg opacity-30">
                 <ArrowUp size={16} />
               </div>
             </div>

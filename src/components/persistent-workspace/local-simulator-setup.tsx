@@ -48,7 +48,7 @@ export function LocalSimulatorSetup({ onReady }: { onReady: () => void }) {
         {error && <p role="alert" className="text-sm text-warning">{error}</p>}
         <div className="flex flex-wrap gap-2">
           <button onClick={check} disabled={checking} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-fg disabled:opacity-50">{checking && <Loader2 size={14} className="animate-spin" />}{checking ? "Checking this Mac…" : "Check setup"}</button>
-          {health?.ready && <button onClick={onReady} disabled={checking} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-fg px-3 text-[13px] font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50">Start local preview</button>}
+          {health?.ready && <button onClick={onReady} disabled={checking} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-3 text-[13px] font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50">Start local preview</button>}
         </div>
       </>}
     </div>

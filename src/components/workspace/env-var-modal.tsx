@@ -156,7 +156,7 @@ export function EnvVarModal({
                 value={value}
                 onChange={(e) => { setValue(e.target.value); setError(null); }}
                 placeholder="Paste the value here"
-                className="h-9 w-full rounded-lg border border-control bg-bg pl-3 pr-9 font-mono text-[13px] text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:font-sans placeholder:text-subtle hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
+                className="h-9 w-full rounded-lg border border-control bg-bg pl-3 pr-9 font-mono text-[13px] text-fg inset-shadow-well outline-none transition-[border-color,box-shadow] placeholder:font-sans placeholder:text-subtle hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                 autoComplete="off"
                 spellCheck={false}
                 autoFocus
@@ -197,7 +197,7 @@ export function EnvVarModal({
           <button
             onClick={handleSave}
             disabled={saving || !value.trim()}
-            className="flex items-center gap-2 bg-fg text-bg text-sm font-medium rounded-lg px-4 h-9 shadow-xs hover:bg-fg/88 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-bg text-sm font-medium rounded-lg px-4 h-9 shadow-xs hover:bg-fg/88 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? (
               <>

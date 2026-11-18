@@ -59,7 +59,7 @@ export function OwnerOnlyRequest({ subject, onHide, onSkip }: OwnerOnlyRequestPr
           )}
           <button
             onClick={onHide}
-            className="rounded-lg bg-fg px-4 h-9 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
+            className="rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-4 h-9 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
           >
             OK
           </button>

@@ -253,7 +253,7 @@ export function PublicWorkspace({ data, isSignedIn }: PublicWorkspaceProps) {
 
               <button
                 onClick={handleCopyLink}
-                className="hidden h-8 w-8 items-center justify-center rounded-lg border border-border bg-bg text-muted shadow-xs transition-colors hover:border-border-strong hover:text-fg sm:inline-flex"
+                className="hidden h-8 w-8 items-center justify-center rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface text-muted shadow-xs transition-colors hover:border-border-strong hover:text-fg sm:inline-flex"
                 title="Copy share link"
                 aria-label="Copy share link"
               >
@@ -263,7 +263,7 @@ export function PublicWorkspace({ data, isSignedIn }: PublicWorkspaceProps) {
               {hasSource && (
                 <button
                   onClick={handleUseAsTemplate}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-fg px-3.5 h-8 text-[13px] font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-3.5 h-8 text-[13px] font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
                 >
                   <Sparkles className="h-4 w-4" />
                   Use as template
@@ -272,7 +272,7 @@ export function PublicWorkspace({ data, isSignedIn }: PublicWorkspaceProps) {
 
               <SignedOut>
                 <SignInButton>
-                  <button className="hidden h-8 items-center gap-1.5 rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated md:inline-flex">
+                  <button className="hidden h-8 items-center gap-1.5 rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated md:inline-flex">
                     Log in
                   </button>
                 </SignInButton>

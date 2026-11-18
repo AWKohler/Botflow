@@ -4,7 +4,7 @@ import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes } from "reac
 /** Popover surface shared by every dropdown menu and floating panel. */
 /** In dark mode shadows barely show, so the surface itself is one step lighter with a stronger edge. */
 export const popoverClass =
-  "rounded-xl border border-border bg-bg shadow-lg dark:border-border-strong dark:bg-elevated";
+  "rounded-xl border border-border bg-bg shadow-lg inset-shadow-bevel-top dark:border-border-strong dark:bg-elevated";
 
 export const Menu = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (

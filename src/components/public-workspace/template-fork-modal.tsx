@@ -165,7 +165,7 @@ export function TemplateForkModal({
                       <a
                         href="/pricing"
                         onClick={(e) => e.stopPropagation()}
-                        className="mt-2 inline-flex items-center gap-1 rounded-lg bg-fg px-2.5 py-1 text-[11px] font-medium text-bg hover:opacity-90"
+                        className="mt-2 inline-flex items-center gap-1 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-2.5 py-1 text-[11px] font-medium text-bg hover:opacity-90"
                       >
                         Upgrade to Pro
                       </a>
@@ -205,13 +205,13 @@ export function TemplateForkModal({
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3.5">
-          <button onClick={onClose} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50">
+          <button onClick={onClose} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50">
             Cancel
           </button>
           <button
             onClick={submit}
             disabled={!canSubmit}
-            className="inline-flex items-center gap-2 rounded-lg bg-fg px-3.5 h-9 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-3.5 h-9 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {needsConnect ? "Connect Convex first" : "Create project"}

@@ -17,7 +17,7 @@ const SIZES = {
 export const overlayClass =
   "fixed inset-0 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]";
 export const dialogPanelClass =
-  "relative w-full rounded-2xl border border-border bg-bg text-fg shadow-2xl";
+  "relative w-full rounded-2xl border border-border bg-bg text-fg shadow-2xl inset-shadow-bevel-top dark:border-border-strong";
 
 /**
  * Standard modal: dimmed backdrop, one panel style, a title row with a close

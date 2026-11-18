@@ -56,6 +56,17 @@
     --shadow-rgb: 38 32 22;
     --shadow-strength: 1;
 
+    /* Bevel: raised controls are lit from above. A hairline of light inside
+       the top edge (following the radius) and a hairline of shade inside the
+       bottom edge give them physical depth without any visible gradient.
+       "ink" is the primary fill, "solid" a coloured fill, "surface" a raised
+       neutral surface (secondary buttons, selected tabs, menus). */
+    --bevel-ink: rgb(255 255 255 / 0.2);
+    --bevel-ink-base: rgb(0 0 0 / 0.28);
+    --bevel-solid: rgb(255 255 255 / 0.24);
+    --bevel-surface: rgb(255 255 255 / 0.95);
+    --bevel-surface-base: rgb(38 32 22 / 0.06);
+
     /* App Layout Vars */
     --background: var(--sand-bg);
     --foreground: var(--sand-text);
@@ -101,6 +112,14 @@
 
     --font-sans: var(--font-geist-sans);
     --font-mono: var(--font-geist-mono);
+
+    /* Inner edges (compose with the outer shadows below). */
+    --inset-shadow-bevel-ink: inset 0 1px 0 0 var(--bevel-ink), inset 0 -1px 0 0 var(--bevel-ink-base);
+    --inset-shadow-bevel-solid: inset 0 1px 0 0 var(--bevel-solid), inset 0 -1px 0 0 rgb(0 0 0 / 0.14);
+    --inset-shadow-bevel: inset 0 1px 0 0 var(--bevel-surface), inset 0 -1px 0 0 var(--bevel-surface-base);
+    --inset-shadow-bevel-top: inset 0 1px 0 0 var(--bevel-surface);
+    /* The opposite of a bevel: a control you type into sits slightly below the surface. */
+    --inset-shadow-well: inset 0 1px 2px 0 rgb(var(--shadow-rgb) / calc(0.05 * var(--shadow-strength)));
 
     --shadow-2xs: 0 1px 0 rgb(var(--shadow-rgb) / calc(0.04 * var(--shadow-strength)));
     --shadow-xs: 0 1px 2px rgb(var(--shadow-rgb) / calc(0.05 * var(--shadow-strength)));
@@ -160,6 +179,14 @@
 
         --shadow-rgb: 0 0 0;
         --shadow-strength: 4;
+
+        /* In dark the primary fill is light, and neutral surfaces take the
+           classic 8–10% white top edge. */
+        --bevel-ink: rgb(255 255 255 / 0.7);
+        --bevel-ink-base: rgb(0 0 0 / 0.14);
+        --bevel-solid: rgb(255 255 255 / 0.2);
+        --bevel-surface: rgb(255 255 255 / 0.1);
+        --bevel-surface-base: rgb(0 0 0 / 0.22);
 
         --background: var(--sand-bg);
         --foreground: var(--sand-text);
@@ -265,6 +292,105 @@ body {
     background-size: 200px 200px;
     opacity: 0.3;
     pointer-events: none;
+}
+
+/* ── Sign-in artwork: a painting in the brand's colours on woven canvas ── */
+.auth-art__wash {
+    /* Warm paper running into cobalt and then ink, along a soft diagonal. */
+    background:
+        radial-gradient(75% 60% at 12% 8%, #f6efdf 0%, rgb(246 239 223 / 0) 70%),
+        radial-gradient(60% 45% at 78% 30%, rgb(222 228 255 / 0.9) 0%, rgb(222 228 255 / 0) 72%),
+        radial-gradient(95% 75% at 100% 100%, #0f163d 0%, rgb(15 22 61 / 0) 62%),
+        radial-gradient(70% 55% at 22% 96%, #2a45c4 0%, rgb(42 69 196 / 0) 70%),
+        linear-gradient(158deg, #efe7d6 0%, #dcdcf2 26%, #a9b8ff 43%, #4a6cf2 60%, #2238a8 78%, #141c4d 100%);
+}
+/* Two broad, soft strokes give the wash a horizon and some movement. */
+.auth-art__stroke {
+    border-radius: 50%;
+    filter: blur(46px);
+}
+.auth-art__stroke--deep {
+    left: -30%;
+    right: -30%;
+    bottom: -34%;
+    height: 78%;
+    transform: rotate(-16deg);
+    background: linear-gradient(180deg, #3558ee 0%, #1f329e 45%, #101a48 100%);
+    opacity: 0.92;
+}
+.auth-art__stroke--light {
+    left: -10%;
+    top: -18%;
+    width: 85%;
+    height: 52%;
+    transform: rotate(-16deg);
+    background: #f7f0e0;
+    opacity: 0.8;
+}
+.auth-art__grain {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5  0 0 0 0 .5  0 0 0 0 .5  0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode: overlay;
+    opacity: 0.55;
+}
+/* Shown only where the browser cannot paint the panel onto a real canvas. */
+.auth-art__weave {
+    background-image:
+        repeating-linear-gradient(0deg, rgb(0 0 0 / 0.07) 0 1px, transparent 1px 3px),
+        repeating-linear-gradient(90deg, rgb(255 255 255 / 0.09) 0 1px, transparent 1px 3px);
+    mix-blend-mode: soft-light;
+}
+.auth-art__prompt {
+    color: #1c1c1a;
+    background: rgb(255 255 255 / 0.62);
+    border: 1px solid rgb(255 255 255 / 0.55);
+    box-shadow:
+        inset 0 1px 0 0 rgb(255 255 255 / 0.7),
+        0 1px 2px rgb(15 22 61 / 0.12),
+        0 14px 40px -12px rgb(15 22 61 / 0.45);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+}
+.auth-art__send {
+    color: #fff;
+    background: #1c1c1a;
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.18), 0 1px 2px rgb(0 0 0 / 0.25);
+}
+.auth-art__hint {
+    color: rgb(255 255 255 / 0.72);
+    letter-spacing: 0.01em;
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .auth-art__wash {
+        /* The same painting at night: warm black into cobalt, lit from below. */
+        background:
+            radial-gradient(75% 60% at 12% 8%, #15120f 0%, rgb(21 18 15 / 0) 70%),
+            radial-gradient(60% 45% at 78% 30%, rgb(46 58 124 / 0.75) 0%, rgb(46 58 124 / 0) 72%),
+            radial-gradient(95% 75% at 100% 100%, #a8b9ff 0%, rgb(168 185 255 / 0) 60%),
+            radial-gradient(70% 55% at 22% 96%, #3c57d6 0%, rgb(60 87 214 / 0) 70%),
+            linear-gradient(158deg, #171411 0%, #181a2c 26%, #20295c 43%, #2f47b8 62%, #5b78f2 80%, #8ea4ff 100%);
+    }
+    :root:not([data-theme="light"]) .auth-art__stroke--deep {
+        background: linear-gradient(180deg, #3a55d8 0%, #6e88f6 55%, #b4c2ff 100%);
+        opacity: 0.85;
+    }
+    :root:not([data-theme="light"]) .auth-art__stroke--light {
+        background: #14110f;
+        opacity: 0.9;
+    }
+    :root:not([data-theme="light"]) .auth-art__prompt {
+        color: #f3efe6;
+        background: rgb(20 18 16 / 0.5);
+        border-color: rgb(255 255 255 / 0.14);
+        box-shadow:
+            inset 0 1px 0 0 rgb(255 255 255 / 0.12),
+            0 1px 2px rgb(0 0 0 / 0.3),
+            0 14px 40px -12px rgb(0 0 0 / 0.6);
+    }
+    :root:not([data-theme="light"]) .auth-art__send {
+        color: #1c1c1a;
+        background: #f3efe6;
+        box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.7), 0 1px 2px rgb(0 0 0 / 0.3);
+    }
 }
 
 /* Headings never leave a single word alone on the last line. */

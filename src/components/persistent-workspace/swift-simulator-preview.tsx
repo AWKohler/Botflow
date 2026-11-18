@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Camera,
   CameraOff,
+  Check,
   ChevronDown,
   ChevronUp,
   Loader2,
@@ -14,6 +15,7 @@ import {
   Square,
   Tablet,
 } from "lucide-react";
+import { Menu, MenuItem } from "@/components/ui/menu";
 import {
   SwiftStreamClient,
   type SimBuildStatus,
@@ -1130,24 +1132,23 @@ function ActiveSwiftSimulatorPreview({
                   className="fixed inset-0 z-[60]"
                   onClick={() => setDeviceMenuOpen(false)}
                 />
-                <div className="absolute right-0 z-[61] mt-1 w-40 overflow-hidden rounded-md border border-border bg-elevated shadow-lg">
+                <Menu className="absolute right-0 z-[61] mt-1 w-44">
                   {([
                     { id: "iPhone-16-Pro" as DeviceModelUI, label: provider === "local" ? "iPhone" : "iPhone 17 Pro", Icon: Smartphone },
                     { id: "iPad-Pro" as DeviceModelUI, label: "iPad Pro", Icon: Tablet },
                   ]).map(({ id, label, Icon }) => (
-                    <button
+                    <MenuItem
                       key={id}
+                      role="menuitemradio"
+                      aria-checked={id === deviceModel}
                       onClick={() => switchDevice(id)}
-                      className={cn(
-                        "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] hover:bg-surface",
-                        id === deviceModel ? "text-accent" : "text-fg/80",
-                      )}
                     >
-                      <Icon size={13} />
-                      <span>{label}</span>
-                    </button>
+                      <Icon size={14} className="text-muted" />
+                      <span className="flex-1">{label}</span>
+                      <Check size={14} className={cn("text-fg", id !== deviceModel && "invisible")} />
+                    </MenuItem>
                   ))}
-                </div>
+                </Menu>
               </>
             )}
           </div>

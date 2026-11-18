@@ -209,8 +209,8 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
                 open && 'bg-elevated text-fg',
               )
             : isSm
-              ? 'max-w-[180px] rounded-md border border-border bg-bg px-2 py-1 text-xs text-muted shadow-xs hover:border-border-strong'
-              : 'pointer-events-auto max-w-[120px] rounded-full border border-border bg-bg px-3 py-1.5 text-xs font-medium text-fg shadow-xs hover:border-border-strong hover:bg-elevated sm:max-w-[200px] sm:text-sm',
+              ? 'max-w-[180px] rounded-md border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-2 py-1 text-xs text-muted shadow-xs hover:border-border-strong'
+              : 'pointer-events-auto max-w-[120px] rounded-full border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-3 py-1.5 text-xs font-medium text-fg shadow-xs hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated sm:max-w-[200px] sm:text-sm',
         )}
       >
         {leading != null && (
@@ -237,7 +237,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
           ref={dropdownRef}
           className={cn(
             // A column: the list scrolls if it must, the note below it never does.
-            'absolute z-50 flex max-h-[calc(100dvh-7rem)] min-w-[min(288px,calc(100vw-16px))] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-xl border border-border bg-bg shadow-lg dark:border-border-strong dark:bg-elevated',
+            'absolute z-50 flex max-h-[calc(100dvh-7rem)] min-w-[min(288px,calc(100vw-16px))] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-xl border border-border bg-bg shadow-lg dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top',
             // 'up' opens above the trigger (bottom toolbars like the landing
             // prompt box, where a downward menu is clipped by the hero's
             // overflow-hidden); 'down' opens below (top toolbars like the agent

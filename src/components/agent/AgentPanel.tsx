@@ -238,11 +238,11 @@ function GaugeWithTooltip({
       {hovered && (
         <div
           ref={tooltipRef}
-          className="pointer-events-none absolute bottom-full right-0 z-50 mb-1.5 w-max max-w-[min(240px,calc(100vw-16px))] rounded-lg border border-border bg-bg dark:border-border-strong dark:bg-elevated px-3 py-2 shadow-lg"
+          className="pointer-events-none absolute bottom-full right-0 z-50 mb-1.5 w-max max-w-[min(280px,calc(100vw-16px))] rounded-lg border border-border bg-bg dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top px-3 py-2 shadow-lg"
         >
-          <div className="text-[11px] font-medium text-fg">{label}</div>
+          <div className="text-xs font-medium text-fg">{label}</div>
           {lines.map((line, i) => (
-            <div key={i} className="text-[11px] text-muted leading-relaxed">{line}</div>
+            <div key={i} className="text-xs leading-relaxed text-muted tabular-nums">{line}</div>
           ))}
         </div>
       )}
@@ -2740,7 +2740,7 @@ function AgentThreadPanel({
                 <button
                   id="chatinput-queue-button"
                   type="submit"
-                  className="flex size-11 items-center justify-center rounded-full bg-fg text-bg md:size-7 transition-opacity duration-150 ease-out hover:opacity-85"
+                  className="flex size-11 items-center justify-center rounded-full bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-bg md:size-7 transition-opacity duration-150 ease-out hover:opacity-85"
                   title="Queue message"
                   aria-label="Queue message"
                 >
@@ -2752,7 +2752,7 @@ function AgentThreadPanel({
                   id="chatinput-stop-button"
                   type="button"
                   className={cn(
-                    'flex size-11 items-center justify-center rounded-full bg-fg text-bg md:size-7 transition-opacity duration-150 ease-out hover:opacity-85'
+                    'flex size-11 items-center justify-center rounded-full bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-bg md:size-7 transition-opacity duration-150 ease-out hover:opacity-85'
                   )}
                   onClick={() => {
                     // Explicit user stop — auto-continue must not undo it.
@@ -2799,7 +2799,7 @@ function AgentThreadPanel({
                   id="chatinput-send-message-button"
                   type="submit"
                   className={cn(
-                    'flex size-11 items-center justify-center rounded-full bg-fg text-bg md:size-7 transition-opacity duration-150 ease-out hover:opacity-85',
+                    'flex size-11 items-center justify-center rounded-full bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-bg md:size-7 transition-opacity duration-150 ease-out hover:opacity-85',
                     !input.trim() && pendingImages.length === 0 ? 'opacity-30 disabled:cursor-not-allowed' : ''
                   )}
                   disabled={!input.trim() && pendingImages.length === 0}

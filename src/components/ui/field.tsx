@@ -15,7 +15,7 @@ import { Input } from "./input";
  * every text input, select and textarea in the app.
  */
 export const fieldClass =
-  "w-full rounded-lg border border-control bg-bg px-3 text-sm text-fg shadow-xs outline-none " +
+  "w-full rounded-lg border border-control bg-bg px-3 text-sm text-fg inset-shadow-well outline-none " +
   "placeholder:text-subtle transition-[border-color,box-shadow] duration-150 " +
   "hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/20 " +
   "disabled:cursor-not-allowed disabled:opacity-60";

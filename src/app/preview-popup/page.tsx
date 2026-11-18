@@ -9,8 +9,8 @@ function PreviewPopup() {
 
   if (!url) {
     return (
-      <div className="h-screen flex items-center justify-center bg-neutral-950 text-neutral-400 text-sm">
-        No preview URL provided.
+      <div className="flex h-screen items-center justify-center bg-bg px-6 text-center text-sm text-muted">
+        Nothing to show yet. Open this window from a project&apos;s preview.
       </div>
     );
   }

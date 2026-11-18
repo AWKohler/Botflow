@@ -774,7 +774,7 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
                         {p.isBotflow ? (
                           <Link
                             href="/sign-up"
-                            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--sand-text)] px-4 text-sm font-medium text-[var(--sand-bg)] shadow-xs transition-opacity hover:opacity-90"
+                            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--sand-text)] bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-4 text-sm font-medium text-[var(--sand-bg)] shadow-xs transition-opacity hover:opacity-90"
                           >
                             Start building free
                             <ArrowRight className="h-3.5 w-3.5" />

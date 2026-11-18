@@ -4,7 +4,8 @@ import { Input } from "@/components/ui/input";
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import html2canvas from "html2canvas";
 import Image from "next/image";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClass } from "@/components/ui/button";
+import { Menu, MenuItem } from "@/components/ui/menu";
 import {
   RefreshCw,
   ExternalLink,
@@ -12,6 +13,7 @@ import {
   Smartphone,
   Tablet,
   RotateCcw,
+  Check,
   ChevronDown,
   Play,
   X,
@@ -1029,7 +1031,7 @@ export function Preview({
                   href="https://apps.apple.com/us/app/expo-go/id982107779"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex h-7 items-center rounded-lg border border-border bg-bg px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated"
+                  className="inline-flex h-7 items-center rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
                   title="Download on the App Store"
                 >
                   App Store
@@ -1038,7 +1040,7 @@ export function Preview({
                   href="https://play.google.com/store/apps/details?id=host.exp.exponent&hl=en_US&pli=1"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex h-7 items-center rounded-lg border border-border bg-bg px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated"
+                  className="inline-flex h-7 items-center rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
                   title="Get it on Google Play"
                 >
                   Google Play
@@ -1401,32 +1403,35 @@ export function Preview({
             <div className="relative">
               <button
                 onClick={() => setIsPortDropdownOpen(!isPortDropdownOpen)}
-                className="flex items-center gap-1 px-2 py-1 bg-elevated hover:bg-elevated/80 rounded text-sm text-muted border border-border"
+                aria-haspopup="menu"
+                aria-expanded={isPortDropdownOpen}
+                className={buttonClass({ variant: "secondary", size: "sm", className: "gap-1 font-mono text-xs" })}
               >
                 <span>:{activePreview.port}</span>
-                <ChevronDown size={14} />
+                <ChevronDown size={13} className="text-muted" />
               </button>
 
               {isPortDropdownOpen && (
-                <div className="absolute top-full left-0 mt-1 bg-elevated border border-border rounded shadow-lg z-50">
-                  {previews.map((preview, index) => (
-                    <button
-                      key={preview.port}
-                      onClick={() => {
-                        onActivePreviewChange(index);
-                        setIsPortDropdownOpen(false);
-                      }}
-                      className={cn(
-                        "block w-full px-3 py-2 text-left text-sm hover:bg-soft",
-                        index === activePreviewIndex
-                          ? "text-accent"
-                          : "text-muted",
-                      )}
-                    >
-                      Port {preview.port}
-                    </button>
-                  ))}
-                </div>
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsPortDropdownOpen(false)} />
+                  <Menu className="absolute left-0 top-full z-50 mt-1 w-40">
+                    <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted">Port</div>
+                    {previews.map((preview, index) => (
+                      <MenuItem
+                        key={preview.port}
+                        role="menuitemradio"
+                        aria-checked={index === activePreviewIndex}
+                        onClick={() => {
+                          onActivePreviewChange(index);
+                          setIsPortDropdownOpen(false);
+                        }}
+                      >
+                        <span className="flex-1 font-mono text-xs">{preview.port}</span>
+                        <Check size={14} className={cn("text-fg", index !== activePreviewIndex && "invisible")} />
+                      </MenuItem>
+                    ))}
+                  </Menu>
+                </>
               )}
             </div>
           )}
@@ -1558,7 +1563,7 @@ export function Preview({
                 href="https://apps.apple.com/us/app/expo-go/id982107779"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-7 items-center rounded-lg border border-border bg-bg px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated"
+                className="inline-flex h-7 items-center rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
                 title="Download on the App Store"
               >
                 App Store
@@ -1567,7 +1572,7 @@ export function Preview({
                 href="https://play.google.com/store/apps/details?id=host.exp.exponent&hl=en_US&pli=1"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-7 items-center rounded-lg border border-border bg-bg px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated"
+                className="inline-flex h-7 items-center rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
                 title="Get it on Google Play"
               >
                 Google Play

@@ -121,7 +121,7 @@ export function StaggerButton({
       href={href}
       className={cn(
         // Ink, like every other primary button — the accent is kept for links and emphasis.
-        'group relative inline-flex h-12 items-center gap-2 overflow-hidden rounded-xl bg-[var(--sand-text)] px-6 text-base font-medium shadow-sm transition-opacity hover:opacity-90',
+        'group relative inline-flex h-12 items-center gap-2 overflow-hidden rounded-xl bg-[var(--sand-text)] bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-6 text-base font-medium shadow-sm transition-opacity hover:opacity-90',
         className,
       )}
     >
@@ -242,7 +242,7 @@ export function MarginBg() {
 
 /** Class for the outlined button that sits beside a primary StaggerButton. */
 export const marketingSecondaryClass =
-  'inline-flex h-12 items-center gap-2 rounded-xl border border-[var(--sand-border-strong)] bg-[var(--sand-bg)] px-6 text-base font-medium text-[var(--sand-text)] shadow-xs transition-colors hover:bg-[var(--sand-elevated)]';
+  'inline-flex h-12 items-center gap-2 rounded-xl border border-[var(--sand-border-strong)] bg-linear-to-b from-bg to-surface px-6 text-base font-medium text-[var(--sand-text)] shadow-xs inset-shadow-bevel transition-colors hover:from-surface hover:to-elevated dark:from-elevated dark:to-surface dark:hover:from-soft dark:hover:to-elevated';
 
 // ============================================================================
 // Closing band — the one way every marketing page ends

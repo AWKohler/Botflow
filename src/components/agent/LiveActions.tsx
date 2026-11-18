@@ -63,7 +63,11 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
         </div>
       </div>
 
-      <div ref={scrollRef} className="modern-scrollbar max-h-28 overflow-auto pl-1 pr-1">
+      {/* A short fade at the top, so a row scrolled half out of view never shows as a stray fragment. */}
+      <div
+        ref={scrollRef}
+        className="modern-scrollbar max-h-28 overflow-auto pl-1 pr-1 [mask-image:linear-gradient(to_bottom,transparent_0,black_14px)]"
+      >
         {actions.map((a, i) => (
           <LiveActionStep key={a.toolCallId} action={a} isLast={i === actions.length - 1} />
         ))}

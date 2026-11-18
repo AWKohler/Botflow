@@ -1,10 +1,13 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { twMerge } from "tailwind-merge";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Select, TextInput } from "@/components/ui/field";
+import { popoverClass } from "@/components/ui/menu";
+import { Tabs } from "@/components/ui/tabs";
 import type { BfSelection, BfBox } from "@/components/workspace/preview";
 
 interface VisualEditorPanelProps {
@@ -269,64 +272,72 @@ export function VisualEditorPanel({
   return (
     <div
       ref={panelRef}
-      className="fixed z-[70] flex flex-col rounded-xl border border-border bg-elevated shadow-2xl text-sm overflow-hidden"
+      role="dialog"
+      aria-label="Edit element"
+      className={cn(popoverClass, "fixed z-[70] flex flex-col overflow-hidden text-sm shadow-xl")}
       style={{ left: pos.left, top: pos.top, width: PANEL_WIDTH, maxHeight: pos.maxHeight }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface/60">
-        <span className="px-1.5 py-0.5 rounded bg-accent/15 text-accent text-xs font-semibold">
-          {selection.tag}
-        </span>
-        <span className="flex-1 truncate text-xs text-muted" title={selection.loc ?? ""}>
-          {selection.loc ?? "no source mapping"}
-        </span>
-        <span className="text-[11px] text-muted min-w-[42px] text-right">
-          {status === "saving" && "Saving…"}
-          {status === "saved" && "Saved"}
-          {status === "error" && <span className="text-danger">Error</span>}
-        </span>
-        <button onClick={onClose} className="text-muted hover:text-fg" title="Close">
+      {/* Header: what is selected, where it lives, and whether it is saved. */}
+      <div className="flex items-start gap-2 border-b border-border px-3.5 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="text-[13px] font-semibold text-fg">Edit element</h3>
+            <Badge tone="accent" className="font-mono">{selection.tag}</Badge>
+            <span className="ml-auto text-[11px] text-muted" aria-live="polite">
+              {status === "saving" && "Saving…"}
+              {status === "saved" && <span className="text-success">Saved</span>}
+              {status === "error" && <span className="text-danger">Not saved</span>}
+            </span>
+          </div>
+          <p className="mt-1 truncate font-mono text-[11px] text-muted" title={selection.loc ?? ""}>
+            {selection.loc ?? "No source file for this element"}
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="-mr-1.5 -mt-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg dark:hover:bg-soft"
+          title="Close"
+          aria-label="Close"
+        >
           <X size={15} />
         </button>
       </div>
 
       {!editable ? (
-        <div className="p-4 text-xs text-muted">
-          This element has no source mapping (it may come from a library or a
-          dynamic component). Try selecting a nearby element, or use the agent.
+        <div className="p-4 text-[13px] leading-relaxed text-muted">
+          This element can&apos;t be edited here: it comes from a library or is generated at run time. Select an
+          element near it, or ask the agent to change it.
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto modern-scrollbar p-3 space-y-4">
+        <div className="modern-scrollbar flex-1 space-y-4 overflow-y-auto p-3.5">
           {errorMsg && (
-            <div className="rounded-md border border-danger-border bg-danger-soft px-2 py-1 text-[11px] text-danger">
+            <div className="rounded-md border border-danger-border bg-danger-soft px-2.5 py-1.5 text-xs text-danger">
               {errorMsg}
             </div>
           )}
 
-          {/* Tailwind classes */}
-          <Section label="Tailwind classes">
+          <Section label="Classes">
             <div className="flex flex-wrap gap-1.5">
-              {classes.length === 0 && (
-                <span className="text-xs text-muted">No classes</span>
-              )}
+              {classes.length === 0 && <span className="text-xs text-muted">No classes yet</span>}
               {classes.map((c) => (
                 <span
                   key={c}
-                  className="group inline-flex items-center gap-1 rounded bg-soft px-1.5 py-0.5 text-xs text-fg border border-border"
+                  className="inline-flex items-center gap-1 rounded-md border border-border bg-surface py-0.5 pl-1.5 pr-1 font-mono text-[11px] text-fg dark:bg-soft"
                 >
                   {c}
                   <button
                     onClick={() => removeClass(c)}
-                    className="text-muted hover:text-danger"
-                    title="Remove"
+                    className="rounded text-subtle transition-colors hover:text-danger"
+                    title={`Remove ${c}`}
+                    aria-label={`Remove ${c}`}
                   >
                     <X size={11} />
                   </button>
                 </span>
               ))}
             </div>
-            <Input
+            <TextInput
               value={addInput}
               onChange={(e) => setAddInput(e.target.value)}
               onKeyDown={(e) => {
@@ -336,58 +347,45 @@ export function VisualEditorPanel({
                 }
               }}
               onBlur={commitAddInput}
-              placeholder="Add classes…"
-              className="mt-2 w-full rounded-md border border-control bg-bg px-2 py-1 text-xs text-fg outline-none transition-[border-color,box-shadow] focus:border-accent focus:ring-3 focus:ring-accent/15"
+              placeholder="Add a class"
+              aria-label="Add a class"
+              className="mt-2 h-8 font-mono text-xs"
             />
           </Section>
 
-          {/* Background */}
           <Section label="Background">
             <Swatches swatches={BG_SWATCHES} active={current(BG_SWATCHES.map((s) => s.token))} onPick={applyBackground} />
           </Section>
 
-          {/* Text color */}
-          <Section label="Text color">
+          <Section label="Text colour">
             <Swatches swatches={TEXT_SWATCHES} active={current(TEXT_SWATCHES.map((s) => s.token))} onPick={applyToken} />
           </Section>
 
-          {/* Font size + weight */}
           <div className="grid grid-cols-2 gap-3">
             <Section label="Font size">
-              <Select group={FONT_SIZES} value={current(FONT_SIZES)} onChange={applyToken} />
+              <TokenSelect group={FONT_SIZES} value={current(FONT_SIZES)} onChange={applyToken} label="Font size" />
             </Section>
             <Section label="Weight">
-              <Select group={WEIGHTS} value={current(WEIGHTS)} onChange={applyToken} />
+              <TokenSelect group={WEIGHTS} value={current(WEIGHTS)} onChange={applyToken} label="Weight" />
             </Section>
           </div>
 
-          {/* Align */}
-          <Section label="Text align">
-            <div className="flex gap-1">
-              {ALIGN.map((a) => (
-                <button
-                  key={a}
-                  onClick={() => applyToken(a)}
-                  className={cn(
-                    "flex-1 rounded border px-2 py-1 text-xs capitalize",
-                    current(ALIGN) === a
-                      ? "border-accent text-accent bg-accent/10"
-                      : "border-border text-muted hover:text-fg",
-                  )}
-                >
-                  {a.replace("text-", "")}
-                </button>
-              ))}
-            </div>
+          <Section label="Alignment">
+            <Tabs
+              size="sm"
+              stretch
+              options={ALIGN.map((a) => ({ value: a, text: a.replace("text-", "").replace(/^./, (ch) => ch.toUpperCase()) }))}
+              selected={current(ALIGN)}
+              onSelect={applyToken}
+            />
           </Section>
 
-          {/* Padding + radius */}
           <div className="grid grid-cols-2 gap-3">
             <Section label="Padding">
-              <Select group={PADDING} value={current(PADDING)} onChange={applyToken} />
+              <TokenSelect group={PADDING} value={current(PADDING)} onChange={applyToken} label="Padding" />
             </Section>
-            <Section label="Radius">
-              <Select group={RADIUS} value={current(RADIUS)} onChange={applyToken} />
+            <Section label="Corner radius">
+              <TokenSelect group={RADIUS} value={current(RADIUS)} onChange={applyToken} label="Corner radius" />
             </Section>
           </div>
         </div>
@@ -399,9 +397,7 @@ export function VisualEditorPanel({
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[11px] font-medium uppercase tracking-wide text-muted mb-1.5">
-        {label}
-      </div>
+      <div className="mb-1.5 text-[11px] font-medium text-muted">{label}</div>
       {children}
     </div>
   );
@@ -422,10 +418,13 @@ function Swatches({
         <button
           key={s.token}
           title={s.token}
+          aria-label={s.token}
+          aria-pressed={active === s.token}
           onClick={() => onPick(s.token)}
           className={cn(
-            "h-6 w-6 rounded border",
-            active === s.token ? "ring-2 ring-accent border-accent" : "border-border",
+            // A hairline inside the swatch keeps pale colours visible on a pale panel.
+            "h-6 w-6 rounded-md shadow-[inset_0_0_0_1px_rgb(0_0_0/0.12)] transition-shadow dark:shadow-[inset_0_0_0_1px_rgb(255_255_255/0.14)]",
+            active === s.token && "ring-2 ring-accent ring-offset-2 ring-offset-bg dark:ring-offset-elevated",
           )}
           style={{
             backgroundColor: s.hex === "transparent" ? undefined : s.hex,
@@ -442,20 +441,23 @@ function Swatches({
   );
 }
 
-function Select({
+function TokenSelect({
   group,
   value,
   onChange,
+  label,
 }: {
   group: string[];
   value: string;
   onChange: (token: string) => void;
+  label: string;
 }) {
   return (
-    <select
+    <Select
+      aria-label={label}
       value={value}
       onChange={(e) => e.target.value && onChange(e.target.value)}
-      className="w-full rounded-md border border-control bg-bg px-2 py-1 text-xs text-fg outline-none transition-[border-color,box-shadow] focus:border-accent focus:ring-3 focus:ring-accent/15"
+      className="h-8 px-2 font-mono text-xs"
     >
       <option value="">—</option>
       {group.map((g) => (
@@ -463,6 +465,6 @@ function Select({
           {g}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }

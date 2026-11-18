@@ -108,7 +108,7 @@ export function BackendGlyphInfo({
           ref={tooltipRef}
           role="tooltip"
           className={cn(
-            "pointer-events-none absolute z-50 w-60 max-w-[calc(100vw-16px)] rounded-lg border border-border bg-surface dark:border-border-strong dark:bg-elevated p-2.5 text-left font-normal shadow-xl",
+            "pointer-events-none absolute z-50 w-60 max-w-[calc(100vw-16px)] rounded-lg border border-border bg-bg dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top p-2.5 text-left font-normal shadow-xl",
             tooltipPlacement === "above-end" ? "right-0 bottom-full mb-2.5" : "left-0 top-full mt-2",
           )}
         >
@@ -218,7 +218,7 @@ function Popover({ title, body, onClose }: { title: string; body: string; onClos
   return (
     <div
       ref={ref}
-      className="absolute left-0 top-full mt-1 z-50 w-80 max-w-[calc(100vw-16px)] rounded-xl border border-border bg-surface dark:border-border-strong dark:bg-elevated shadow-lg p-3 text-sm"
+      className="absolute left-0 top-full mt-1 z-50 w-80 max-w-[calc(100vw-16px)] rounded-xl border border-border bg-bg dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top shadow-lg p-3 text-sm"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="font-semibold text-fg">{title}</div>

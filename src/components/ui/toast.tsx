@@ -46,7 +46,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             <div
               key={t.id}
               role="status"
-              className="fade-in-up pointer-events-auto flex min-w-[260px] max-w-[380px] items-start gap-2.5 rounded-xl border border-border bg-bg px-3.5 py-3 shadow-lg"
+              className="fade-in-up pointer-events-auto flex min-w-[260px] max-w-[380px] items-start gap-2.5 rounded-xl border border-border bg-bg px-3.5 py-3 shadow-lg inset-shadow-bevel-top dark:border-border-strong dark:bg-elevated"
             >
               <span
                 aria-hidden="true"

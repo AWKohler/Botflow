@@ -146,14 +146,14 @@ export function ConvexPausedModal({
           {isOwner && (
             <a
               href={SUPPORT_MAILTO}
-              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-fg px-3 text-[13px] font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-3 text-[13px] font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
             >
               Contact us
             </a>
           )}
           <button
             onClick={onClose}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50"
           >
             Dismiss
           </button>

@@ -35,7 +35,7 @@ import { AgentPanel } from "@/components/agent/AgentPanel";
 import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabOption } from "@/components/ui/tabs";
-import { Menu, MenuItem } from "@/components/ui/menu";
+import { Menu, MenuItem, popoverClass } from "@/components/ui/menu";
 import Link from "next/link";
 import { UserButton } from "@/components/auth";
 import { ShareControls } from "@/components/sharing/share-controls";
@@ -59,6 +59,8 @@ import {
   ChevronRight,
   ExternalLink,
   Globe,
+  Check,
+  ChevronDown,
   MoreHorizontal,
   MousePointer2,
   RefreshCw,
@@ -89,6 +91,15 @@ import { SandboxPublishPanel } from "./publish-panel";
 type WorkspaceView = "preview" | "code" | "database" | "stripe";
 type SandboxStatus = "idle" | "booting" | "ready" | "error";
 type FileEntry = { type: "file" | "folder" };
+
+/** Sizes the preview can be shown at, in the order of the menu. */
+const PREVIEW_DEVICES = [
+  { id: "desktop", label: "Desktop", hint: "Full width", icon: Monitor },
+  { id: "tablet", label: "Tablet", hint: "768 px", icon: Tablet },
+  { id: "mobile", label: "Phone", hint: "375 px", icon: Smartphone },
+  { id: "responsive", label: "All sizes", hint: "Side by side", icon: AppWindow },
+  { id: "figma", label: "Still frames", hint: "Captured", icon: Frame },
+] as const;
 
 interface SandboxedWebWorkspaceProps {
   projectId: string;
@@ -165,6 +176,7 @@ export function SandboxedWebWorkspace({
   const [previewDevice, setPreviewDevice] = useState<
     "desktop" | "tablet" | "mobile" | "responsive" | "figma"
   >("desktop");
+  const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
   const [previewReloadKey, setPreviewReloadKey] = useState(0);
   const [editMode, setEditMode] = useState(false);
   const [isDevServerRunning, setIsDevServerRunning] = useState(false);
@@ -1156,6 +1168,8 @@ export function SandboxedWebWorkspace({
     </div>
   );
 
+  const ActiveDeviceIcon = PREVIEW_DEVICES.find((d) => d.id === previewDevice)?.icon ?? Monitor;
+
   // ── Render ───────────────────────────────────────────────────────────
   return (
     <div className="flex h-[100dvh] flex-col bg-surface text-fg md:flex-row">
@@ -1261,7 +1275,7 @@ export function SandboxedWebWorkspace({
         />
       )}
       {checkoutHandoffUrl && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120] w-[min(440px,calc(100vw-2rem))] rounded-xl border border-border bg-bg text-fg shadow-xl">
+        <div className={cn(popoverClass, "fixed bottom-6 left-1/2 z-[120] w-[min(440px,calc(100vw-2rem))] -translate-x-1/2 text-fg shadow-xl")}>
           <div className="px-4 py-3 space-y-2.5">
             <div className="text-sm font-medium">Open Stripe Checkout in a new tab</div>
             <p className="text-xs leading-relaxed text-muted">
@@ -1281,7 +1295,7 @@ export function SandboxedWebWorkspace({
                   window.open(checkoutHandoffUrl, "_blank", "noopener,noreferrer");
                   setCheckoutHandoffUrl(null);
                 }}
-                className="flex h-7 items-center gap-1.5 rounded-md bg-fg px-3 text-xs font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
+                className="flex h-7 items-center gap-1.5 rounded-md bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-3 text-xs font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
               >
                 Open Checkout
                 <ExternalLink size={13} />
@@ -1291,7 +1305,7 @@ export function SandboxedWebWorkspace({
         </div>
       )}
       {authHandoff && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120] w-[min(440px,calc(100vw-2rem))] rounded-xl border border-border bg-bg text-fg shadow-xl">
+        <div className={cn(popoverClass, "fixed bottom-6 left-1/2 z-[120] w-[min(440px,calc(100vw-2rem))] -translate-x-1/2 text-fg shadow-xl")}>
           <div className="px-4 py-3 space-y-2.5">
             <div className="text-sm font-medium">Finish signing in in a new tab</div>
             <p className="text-xs leading-relaxed text-muted">
@@ -1312,7 +1326,7 @@ export function SandboxedWebWorkspace({
                   window.open(authHandoff.url, "_blank", "noopener,noreferrer");
                   setAuthHandoff(null);
                 }}
-                className="flex h-7 items-center gap-1.5 rounded-md bg-fg px-3 text-xs font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
+                className="flex h-7 items-center gap-1.5 rounded-md bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-3 text-xs font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
               >
                 Open app
                 <ExternalLink size={13} />
@@ -1505,7 +1519,7 @@ export function SandboxedWebWorkspace({
                   "hidden h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors md:flex",
                   editMode
                     ? "border-accent/40 bg-accent-soft text-accent"
-                    : "border-border bg-bg text-muted shadow-xs hover:border-border-strong hover:text-fg",
+                    : "border-border bg-linear-to-b from-bg to-surface text-muted shadow-xs inset-shadow-bevel hover:border-border-strong hover:text-fg dark:from-elevated dark:to-surface",
                 )}
                 title="Select an element in the preview to edit it"
               >
@@ -1514,31 +1528,45 @@ export function SandboxedWebWorkspace({
               </button>
             )}
             {currentView === "preview" && (
-              <div className="hidden h-8 min-w-[240px] items-center gap-2 rounded-lg border border-border-strong bg-bg px-2.5 shadow-xs transition-colors focus-within:border-accent md:flex">
-                <button
-                  onClick={() =>
-                    setPreviewDevice((prev) =>
-                      prev === "desktop"
-                        ? "tablet"
-                        : prev === "tablet"
-                          ? "mobile"
-                          : prev === "mobile"
-                            ? "responsive"
-                            : prev === "responsive"
-                              ? "figma"
-                              : "desktop",
-                    )
-                  }
-                  className="rounded text-muted transition-colors hover:text-fg"
-                  title={`Device: ${previewDevice}`}
-                  aria-label={`Preview device: ${previewDevice}. Click to change`}
-                >
-                  {previewDevice === "desktop" && <Monitor size={15} />}
-                  {previewDevice === "tablet" && <Tablet size={15} />}
-                  {previewDevice === "mobile" && <Smartphone size={15} />}
-                  {previewDevice === "responsive" && <AppWindow size={15} />}
-                  {previewDevice === "figma" && <Frame size={15} />}
-                </button>
+              <div className="hidden h-8 min-w-[240px] items-center gap-2 rounded-lg border border-control bg-bg px-2.5 inset-shadow-well transition-colors focus-within:border-accent md:flex">
+                {/* Device menu: every size is named and one click away. */}
+                <div className="relative flex">
+                  <button
+                    onClick={() => setDeviceMenuOpen((v) => !v)}
+                    className="-ml-1 flex h-6 items-center gap-0.5 rounded-md px-1 text-muted transition-colors hover:bg-elevated hover:text-fg"
+                    title="Preview size"
+                    aria-label={`Preview size: ${PREVIEW_DEVICES.find((d) => d.id === previewDevice)?.label}`}
+                    aria-haspopup="menu"
+                    aria-expanded={deviceMenuOpen}
+                  >
+                    <ActiveDeviceIcon size={15} />
+                    <ChevronDown size={11} className="opacity-70" />
+                  </button>
+                  {deviceMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setDeviceMenuOpen(false)} />
+                      <Menu className="absolute left-0 top-full z-50 mt-2 w-52">
+                        <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted">Preview size</div>
+                        {PREVIEW_DEVICES.map((d) => (
+                          <MenuItem
+                            key={d.id}
+                            role="menuitemradio"
+                            aria-checked={previewDevice === d.id}
+                            onClick={() => {
+                              setPreviewDevice(d.id);
+                              setDeviceMenuOpen(false);
+                            }}
+                          >
+                            <d.icon size={15} className="text-muted" />
+                            <span className="flex-1">{d.label}</span>
+                            <span className="text-xs tabular-nums text-subtle">{d.hint}</span>
+                            <Check size={14} className={cn("text-fg", previewDevice !== d.id && "invisible")} />
+                          </MenuItem>
+                        ))}
+                      </Menu>
+                    </>
+                  )}
+                </div>
                 <Input
                   aria-label="Preview path"
                   className="min-w-0 flex-1 bg-transparent font-mono text-xs text-fg outline-none placeholder:text-subtle"

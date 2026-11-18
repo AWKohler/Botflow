@@ -201,7 +201,7 @@ export function QuestionPrompt({
                 className={cn(
                   "inline-flex h-5 min-w-5 items-center justify-center rounded-[5px] border px-1 text-[11px] font-medium",
                   checked
-                    ? "border-fg bg-fg text-bg"
+                    ? "border-fg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-bg"
                     : "border-border-strong bg-transparent text-muted",
                 )}
               >
@@ -223,7 +223,7 @@ export function QuestionPrompt({
               className={cn(
                 "inline-flex h-5 min-w-5 items-center justify-center rounded-[5px] border px-1 text-[11px] font-medium",
                 selectedIds.includes(QUESTION_CUSTOM_ID)
-                  ? "border-fg bg-fg text-bg"
+                  ? "border-fg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-bg"
                   : "border-border-strong bg-transparent text-muted",
               )}
             >
@@ -257,7 +257,7 @@ export function QuestionPrompt({
           type="button"
           onClick={handleSubmit}
           disabled={!canSubmit || disabled}
-          className="h-7 rounded-md bg-fg px-3 text-xs font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-7 rounded-md bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-3 text-xs font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {clampedIndex < total ? "Next" : "Send"}
         </button>

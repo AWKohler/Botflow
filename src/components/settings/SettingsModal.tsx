@@ -45,7 +45,7 @@ const PROVIDERS: Array<{
 ];
 
 const connectionButtonClass =
-  'inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-lg border border-border bg-bg px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50';
+  'inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50';
 
 /**
  * One connection row: what it is on the left, its state and its single action
@@ -528,7 +528,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
         <div className="rounded-xl border border-border p-6">
           <p className="mb-4 text-sm text-muted">You need to sign in to manage settings.</p>
           <SignInButton>
-            <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-bg px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated disabled:opacity-50">
+            <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50">
               Sign in
             </button>
           </SignInButton>
@@ -712,13 +712,13 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               value={oauthCode}
                               onChange={e => setOauthCode(e.target.value)}
                               onKeyDown={e => { if (e.key === 'Enter') exchangeCode(); }}
-                              className="flex-1 rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
+                              className="flex-1 rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               disabled={oauthStep === 'exchanging'}
                             />
                             <button
                               onClick={exchangeCode}
                               disabled={!oauthCode.trim() || oauthStep === 'exchanging'}
-                              className="inline-flex h-9 items-center gap-2 rounded-lg bg-fg px-3.5 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
+                              className="inline-flex h-9 items-center gap-2 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-3.5 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                             >
                               {oauthStep === 'exchanging' ? (
                                 <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting…</>
@@ -780,7 +780,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                 value={keys[provider]}
                                 onChange={e => setKeys(prev => ({ ...prev, [provider]: e.target.value }))}
                                 onKeyDown={e => { if (e.key === 'Enter') saveKey(provider); }}
-                                className="flex-1 rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
+                                className="flex-1 rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               />
                               {hasKey[provider] && (
                                 <button
@@ -903,7 +903,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                 placeholder="e.g. 2X9R4HXF34"
                                 value={appleKeyIdInput}
                                 onChange={e => setAppleKeyIdInput(e.target.value)}
-                                className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
+                                className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               />
                             </div>
                             <div>
@@ -913,7 +913,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                 placeholder="69a6de7e-…"
                                 value={appleIssuerIdInput}
                                 onChange={e => setAppleIssuerIdInput(e.target.value)}
-                                className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
+                                className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               />
                             </div>
                           </div>
@@ -926,7 +926,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               placeholder="e.g. A1B2C3D4E5"
                               value={appleTeamIdInput}
                               onChange={e => setAppleTeamIdInput(e.target.value)}
-                              className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg shadow-xs outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
+                              className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                             />
                             <p className="mt-1 text-[11px] leading-4 text-muted">
                               To set it manually:{' '}
@@ -991,7 +991,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
         <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3 sm:gap-5">
             <h2 id={titleId} className="shrink-0 text-base font-semibold text-fg">Settings</h2>
-            <div role="tablist" className="flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5 dark:bg-bg">
+            <div role="tablist" className="flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5 inset-shadow-well dark:bg-bg">
               {(
                 [
                   ['usage', 'Usage'],
@@ -1006,7 +1006,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                   className={cn(
                     'h-7 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-[background-color,color,box-shadow] sm:px-3',
                     id === 'connections' && 'hidden sm:block',
-                    activeTab === id ? 'bg-bg text-fg shadow-sm ring-1 ring-border-strong/50 dark:bg-soft dark:ring-border-strong' : 'text-muted hover:text-fg',
+                    activeTab === id ? 'bg-bg text-fg shadow-sm inset-shadow-bevel-top ring-1 ring-border-strong/50 dark:bg-soft dark:ring-border-strong' : 'text-muted hover:text-fg',
                   )}
                 >
                   {label}

@@ -37,19 +37,27 @@ const base =
   "transition-[background-color,border-color,color,box-shadow,opacity] duration-150 " +
   "disabled:pointer-events-none disabled:opacity-50";
 
-const INK = "bg-fg text-bg shadow-xs hover:bg-fg/88 active:bg-fg/80";
+// Raised variants carry a bevel: a hairline of light inside the top edge and
+// of shade inside the bottom edge (see the --bevel-* tokens in globals.css).
+// A faint wash of light over the top half rounds the surface under that edge.
+const LIT = "bg-linear-to-b from-white/[0.09] to-white/0";
+const INK = `bg-fg ${LIT} text-bg shadow-xs inset-shadow-bevel-ink hover:bg-fg/88 active:bg-fg/80`;
 
 const variants: Record<ButtonVariant, string> = {
   default: INK,
   primary: INK,
-  accent: "bg-accent text-accent-foreground shadow-xs hover:bg-accent/90 active:bg-accent/85",
+  accent: `bg-accent ${LIT} text-accent-foreground shadow-xs inset-shadow-bevel-solid hover:bg-accent/90 active:bg-accent/85`,
+  // A faint top-to-bottom shade plus the surface bevel; hover and press swap
+  // the gradient stops, since a background colour would sit under it.
   secondary:
-    "border border-border bg-bg text-fg shadow-xs hover:border-border-strong hover:bg-elevated active:bg-soft/70",
+    "border border-border bg-linear-to-b from-bg to-surface text-fg shadow-xs inset-shadow-bevel " +
+    "hover:border-border-strong hover:from-surface hover:to-elevated active:from-elevated active:to-elevated " +
+    "dark:from-elevated dark:to-surface dark:hover:from-soft dark:hover:to-elevated dark:active:from-elevated dark:active:to-elevated",
   outline: "border border-border bg-transparent text-fg hover:border-border-strong hover:bg-elevated",
   ghost: "text-muted hover:bg-elevated hover:text-fg",
-  danger: "bg-danger-solid text-white shadow-xs hover:bg-danger-solid/90 active:bg-danger-solid/85",
+  danger: `bg-danger-solid ${LIT} text-white shadow-xs inset-shadow-bevel-solid hover:bg-danger-solid/90 active:bg-danger-solid/85`,
   "danger-outline": "border border-danger-border bg-transparent text-danger hover:bg-danger-soft",
-  success: "bg-success-solid text-white shadow-xs hover:bg-success-solid/90 active:bg-success-solid/85",
+  success: `bg-success-solid ${LIT} text-white shadow-xs inset-shadow-bevel-solid hover:bg-success-solid/90 active:bg-success-solid/85`,
 };
 
 const sizes: Record<ButtonSize, string> = {

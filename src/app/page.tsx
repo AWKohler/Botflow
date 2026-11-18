@@ -2182,7 +2182,7 @@ export default function LandingV2() {
                           onClick={() => start(true)}
                           disabled={!canSend}
                           className={cn(
-                            'shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--sand-text)] text-[var(--sand-bg)] shadow-md transition',
+                            'shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--sand-text)] bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-[var(--sand-bg)] shadow-md transition',
                             !canSend ? 'opacity-40 cursor-not-allowed' : 'hover:opacity-80',
                           )}
                         >
@@ -2194,7 +2194,7 @@ export default function LandingV2() {
                           onClick={() => start(false)}
                           // Same resting look as the signed-in button: quiet until there is a prompt.
                           className={cn(
-                            'shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--sand-text)] text-[var(--sand-bg)] shadow-md transition',
+                            'shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--sand-text)] bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-[var(--sand-bg)] shadow-md transition',
                             prompt.trim() ? 'hover:opacity-80' : 'opacity-40 hover:opacity-60',
                           )}
                         >
@@ -2757,13 +2757,13 @@ export default function LandingV2() {
           </p>
           <div className="mt-6 flex flex-col gap-2.5 sm:flex-row-reverse">
             <SignInButton mode="modal" appearance={landingSignInModalAppearance}>
-              <button className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50">
+              <button className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50">
                 Sign in / Sign up
               </button>
             </SignInButton>
             <button
               onClick={closeAuthDialog}
-              className="flex-1 inline-flex h-10 items-center justify-center rounded-lg border border-border bg-bg px-4 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated"
+              className="flex-1 inline-flex h-10 items-center justify-center rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-4 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
             >
               Cancel
             </button>
@@ -2835,7 +2835,7 @@ export default function LandingV2() {
                       <button
                         onClick={handleConnectConvex}
                         disabled={convexConnecting}
-                        className="mt-3 w-full inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
+                        className="mt-3 w-full inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                       >
                         {convexConnecting ? (
                           <><div className="h-4 w-4 animate-spin rounded-full border-2 border-bg/30 border-t-bg" /> Connecting&hellip;</>
@@ -2906,7 +2906,7 @@ export default function LandingV2() {
                           void saveBackendPreference('user');
                           setProjectStep('name');
                         }}
-                        className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
+                        className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                       >
                         Continue
                         <ArrowRight className="ml-1.5 h-4 w-4" />
@@ -2915,7 +2915,7 @@ export default function LandingV2() {
                     <button
                       onClick={closeProjectModal}
                       className={cn(
-                        'inline-flex h-10 items-center justify-center rounded-lg border border-border bg-bg px-4 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated',
+                        'inline-flex h-10 items-center justify-center rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-4 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated',
                         hasConvexOAuth ? '' : 'flex-1',
                       )}
                     >
@@ -2940,7 +2940,7 @@ export default function LandingV2() {
                     if (e.key === 'Enter') handleCreateProject();
                   }}
                   placeholder="My new project"
-                  className="h-10 w-full rounded-lg border border-control bg-bg px-3 text-sm text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
+                  className="h-10 w-full rounded-lg border border-control bg-bg px-3 text-sm text-fg inset-shadow-well outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                   autoFocus
                   data-autofocus
                 />
@@ -2948,13 +2948,13 @@ export default function LandingV2() {
               <div className="mt-6 flex flex-row-reverse gap-2.5">
                 <button
                   onClick={handleCreateProject}
-                  className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
+                  className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                 >
                   Create project
                 </button>
                 <button
                   onClick={closeProjectModal}
-                  className="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-bg px-4 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated"
+                  className="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-4 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
                 >
                   Cancel
                 </button>

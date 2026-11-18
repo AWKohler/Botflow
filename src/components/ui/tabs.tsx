@@ -26,7 +26,7 @@ export function Tabs<T extends string>({ options, selected, onSelect, className,
     <div
       role="tablist"
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5 dark:bg-bg",
+        "inline-flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5 inset-shadow-well dark:bg-bg",
         expand && "flex w-full",
         className,
       )}
@@ -45,7 +45,7 @@ export function Tabs<T extends string>({ options, selected, onSelect, className,
               size === "sm" ? "h-6 px-2.5 text-xs" : size === "lg" ? "h-9 px-5 text-sm" : "h-7 px-3 text-[13px]",
               expand && "flex-1",
               active
-                ? "bg-bg text-fg shadow-sm ring-1 ring-border-strong/50 dark:bg-soft dark:ring-border-strong"
+                ? "bg-bg text-fg shadow-sm inset-shadow-bevel-top ring-1 ring-border-strong/50 dark:bg-soft dark:ring-border-strong"
                 : "text-muted hover:text-fg",
             )}
           >

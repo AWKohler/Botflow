@@ -523,7 +523,7 @@ export function ThreadsSheet({
           <button
             type="button"
             onClick={onNewChat}
-            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-bg text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:bg-elevated"
+            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
           >
             <Plus size={15} />
             New chat

@@ -468,7 +468,7 @@ export function OAuthProviderModal({
             onClick={handleSave}
             disabled={saving || missing || hasValidationErrors || !convexSiteUrl}
             aria-describedby={error ? errorId : undefined}
-            className="flex items-center gap-2 bg-fg text-bg text-sm font-medium rounded-lg px-4 h-9 shadow-xs hover:bg-fg/88 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-bg text-sm font-medium rounded-lg px-4 h-9 shadow-xs hover:bg-fg/88 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? (
               <>
