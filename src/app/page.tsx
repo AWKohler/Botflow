@@ -2348,7 +2348,7 @@ export default function LandingV2() {
           <div className="mx-auto max-w-md px-8 pb-14">
             <WorkspaceMockup
               chatOnly
-              height={452}
+              height={512}
               messages={HERO_MESSAGES}
               creditPct={47}
               projectName="Flowsync"
