@@ -274,7 +274,13 @@ export function VisualEditorPanel({
       ref={panelRef}
       role="dialog"
       aria-label="Edit element"
-      className={cn(popoverClass, "fixed z-[70] flex flex-col overflow-hidden text-sm shadow-xl")}
+      className={cn(
+        popoverClass,
+        "fixed z-[70] flex flex-col overflow-hidden text-sm shadow-xl",
+        // Phone: docked across the bottom half of the screen (these win over the
+        // measured position below), so the element being edited stays in view above it.
+        "max-sm:bottom-2! max-sm:left-2! max-sm:right-2! max-sm:top-auto! max-sm:w-auto! max-sm:max-h-[52dvh]!",
+      )}
       style={{ left: pos.left, top: pos.top, width: PANEL_WIDTH, maxHeight: pos.maxHeight }}
       onMouseDown={(e) => e.stopPropagation()}
     >
