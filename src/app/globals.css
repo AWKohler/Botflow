@@ -423,19 +423,52 @@ body {
 }
 
 /* Touch screens: grow a control's hit area to 44px without changing how it
-   looks. For controls that are not themselves absolutely positioned. */
-@media (pointer: coarse) {
-    .tap-44 {
-        position: relative;
+   looks. In the components layer, so a positioning utility on the control
+   (absolute, fixed, sticky) still wins over `position: relative`. Not for
+   controls that clip their content (overflow-hidden cuts the area off). */
+@layer components {
+    @media (pointer: coarse) {
+        .tap-44 {
+            position: relative;
+        }
+        .tap-44::after {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: max(100%, 44px);
+            height: max(100%, 44px);
+            transform: translate(-50%, -50%);
+        }
     }
-    .tap-44::after {
-        content: "";
-        position: absolute;
-        left: 50%;
-        top: 50%;
-        width: max(100%, 44px);
-        height: max(100%, 44px);
-        transform: translate(-50%, -50%);
+}
+
+/* iOS zooms the page in when a focused field's text is smaller than 16px and
+   does not zoom back out. On touch screens every text field is 16px. */
+@media (pointer: coarse) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+    textarea,
+    select {
+        font-size: 16px;
+    }
+}
+
+/* Bottom sheet entrance (phones). */
+@keyframes sheet-up {
+    from {
+        transform: translateY(100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+@keyframes sheet-fade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
     }
 }
 

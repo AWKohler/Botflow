@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Menu, X } from 'lucide-react';
+import { ChevronRight, Menu, X } from 'lucide-react';
 import { SignedIn, SignedOut, UserButton, useUser } from '@/components/auth';
 import { buttonClass } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -69,6 +69,14 @@ export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => setMenuOpen(false), [pathname]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
 
   const links = isSignedIn ? MEMBER_LINKS : VISITOR_LINKS;
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
@@ -128,6 +136,7 @@ export function SiteHeader() {
               className={buttonClass({ variant: 'ghost', size: 'icon-sm', className: 'md:hidden' })}
               aria-label={menuOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={menuOpen}
+              aria-controls="site-mobile-nav"
             >
               {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </button>
@@ -135,31 +144,49 @@ export function SiteHeader() {
         </div>
 
         {menuOpen && (
-          <nav aria-label="Mobile" className="relative border-t border-border bg-bg px-6 py-3 md:hidden">
-            <ul className="flex flex-col">
-              {links.map((link) => (
-                <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    aria-current={isActive(link.href) ? 'page' : undefined}
-                    className={cn(
-                      'block rounded-md px-2 py-2.5 text-[15px] font-medium',
-                      isActive(link.href) ? 'text-fg' : 'text-muted',
-                    )}
-                  >
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
+          <>
+            {/* The menu drops over the page instead of pushing it down; a tap
+                on the dimmed page behind closes it. (Positioned from the header:
+                its backdrop blur makes it the containing block.) */}
+            <div
+              aria-hidden="true"
+              className="absolute inset-x-0 top-full h-dvh bg-black/25 md:hidden"
+              onClick={() => setMenuOpen(false)}
+            />
+            <nav
+              id="site-mobile-nav"
+              aria-label="Mobile"
+              className="absolute inset-x-0 top-full border-y border-border bg-bg px-6 pb-5 pt-1 shadow-lg md:hidden"
+            >
+              <ul className="divide-y divide-border">
+                {links.map((link) => (
+                  <li key={link.href}>
+                    <Link
+                      href={link.href}
+                      aria-current={isActive(link.href) ? 'page' : undefined}
+                      className={cn(
+                        'flex h-[52px] items-center justify-between text-base font-medium',
+                        isActive(link.href) ? 'text-fg' : 'text-muted',
+                      )}
+                    >
+                      {link.label}
+                      <ChevronRight aria-hidden="true" className="h-4 w-4 text-subtle" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
               <SignedOut>
-                <li>
-                  <Link href="/sign-in" className="block rounded-md px-2 py-2.5 text-[15px] font-medium text-muted">
+                <div className="mt-4 grid grid-cols-2 gap-2.5">
+                  <Link href="/sign-in" className={buttonClass({ variant: 'secondary', size: 'lg' })}>
                     Log in
                   </Link>
-                </li>
+                  <Link href="/sign-up" className={buttonClass({ variant: 'primary', size: 'lg' })}>
+                    Get started
+                  </Link>
+                </div>
               </SignedOut>
-            </ul>
-          </nav>
+            </nav>
+          </>
         )}
       </header>
 

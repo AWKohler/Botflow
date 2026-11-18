@@ -1,6 +1,6 @@
 "use client";
 import Image from "next/image";
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth/client";
 import { safeRedirect } from "@/lib/auth/policy";
 import { AuthForm } from "./sign-in";
@@ -166,15 +166,33 @@ export function UserButton(_props: {
   void _props;
   const { user } = useUser();
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Close on a press anywhere else, or Escape. (A full-screen catcher element
+  // would not work here: inside the blurred header, `fixed` only covers the header.)
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
   if (!user) return null;
   return (
-    <div className="relative text-fg">
+    <div ref={rootRef} className="relative text-fg">
       <button
         aria-label="Open user menu"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-border bg-elevated text-[13px] font-medium uppercase text-fg transition-colors hover:border-border-strong"
+        className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-border bg-elevated text-[13px] font-medium uppercase text-fg transition-colors hover:border-border-strong pointer-coarse:h-10 pointer-coarse:w-10"
       >
         {user.imageUrl ? (
           <Image
@@ -191,15 +209,10 @@ export function UserButton(_props: {
       </button>
       {open && (
         <>
-          <button
-            aria-label="Close user menu"
-            className="fixed inset-0 z-40 cursor-default"
-            onClick={() => setOpen(false)}
-          />
-          <Menu className="absolute right-0 top-10 z-50 w-64">
-            <div className="px-2.5 pb-2 pt-1.5">
-              <p className="truncate text-[13px] font-medium text-fg">{user.fullName}</p>
-              <p className="truncate text-xs text-muted">
+          <Menu className="absolute right-0 top-full z-50 mt-2 w-64">
+            <div className="px-2.5 pb-2 pt-1.5 pointer-coarse:px-3">
+              <p className="truncate text-[13px] font-medium text-fg pointer-coarse:text-[15px]">{user.fullName}</p>
+              <p className="truncate text-xs text-muted pointer-coarse:text-[13px]">
                 {user.primaryEmailAddress?.emailAddress}
               </p>
             </div>

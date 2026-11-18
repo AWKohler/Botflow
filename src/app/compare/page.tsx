@@ -55,7 +55,7 @@ export default function CompareHubPage() {
         {/* ============================================================== */}
         <section className="relative overflow-hidden hero-grid">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-16 sm:pt-24 pb-12 sm:pb-16">
-            <div className="max-w-3xl mx-auto text-center">
+            <div className="max-w-3xl mx-auto text-center px-2 sm:px-0">
               <Reveal>
                 <SectionLabel>Us vs them</SectionLabel>
               </Reveal>
@@ -95,7 +95,7 @@ export default function CompareHubPage() {
         <section className="relative">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-24">
             <Reveal>
-              <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
+              <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16 px-2 sm:px-0">
                 <SectionLabel>Head to head</SectionLabel>
                 <h2 className={cn(serif.className, 'text-4xl sm:text-5xl tracking-tight')}>
                   The <em className={serif.className}>comparisons</em>
@@ -162,7 +162,7 @@ export default function CompareHubPage() {
         <section className="relative bg-[var(--sand-surface)]">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-24">
             <Reveal>
-              <div className="text-center max-w-2xl mx-auto mb-12">
+              <div className="text-center max-w-2xl mx-auto mb-12 px-2 sm:px-0">
                 <SectionLabel>Roundups</SectionLabel>
                 <h2 className={cn(serif.className, 'text-4xl sm:text-5xl tracking-tight')}>
                   Alternatives, <em className={serif.className}>ranked honestly</em>

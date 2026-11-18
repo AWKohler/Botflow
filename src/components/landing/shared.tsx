@@ -266,7 +266,7 @@ export function ClosingCta({
       {/* Flat on purpose: the same quiet band on every page, no tinted wash. */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
         <Reveal>
-          <div className="mx-auto max-w-2xl text-center">
+          <div className="mx-auto max-w-2xl text-center px-2 sm:px-0">
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>
               {heading}
               {em && (
@@ -335,23 +335,25 @@ function FooterColumn({
 }) {
   return (
     <div>
-      <p className="mb-4 text-[11px] font-medium uppercase tracking-[0.2em] text-[var(--sand-text-muted)]">
+      <p className="mb-[11px] text-[11px] font-medium uppercase tracking-[0.2em] text-[var(--sand-text-muted)] pointer-coarse:mb-1.5">
         {title}
       </p>
-      <ul className="space-y-2.5">
+      {/* Each link carries the row spacing as its own padding, so the whole
+          row is the target: 30px with a mouse, 40px on a touch screen. */}
+      <ul className="flex flex-col items-start">
         {links.map((l) => (
           <li key={l.href}>
             {l.external ? (
               <a
                 href={l.href}
-                className="text-sm text-[var(--sand-text-muted)] hover:text-[var(--sand-accent)] transition"
+                className="inline-block py-[5px] text-sm text-[var(--sand-text-muted)] hover:text-[var(--sand-accent)] transition pointer-coarse:py-2.5 pointer-coarse:text-[15px]"
               >
                 {l.label}
               </a>
             ) : (
               <Link
                 href={l.href}
-                className="text-sm text-[var(--sand-text-muted)] hover:text-[var(--sand-accent)] transition"
+                className="inline-block py-[5px] text-sm text-[var(--sand-text-muted)] hover:text-[var(--sand-accent)] transition pointer-coarse:py-2.5 pointer-coarse:text-[15px]"
               >
                 {l.label}
               </Link>
@@ -398,7 +400,7 @@ export function LandingFooter() {
             </p>
             <a
               href="mailto:awkohler@botflow.io"
-              className="mt-4 inline-block text-sm text-[var(--sand-text-muted)] hover:text-[var(--sand-accent)] transition"
+              className="mt-2 inline-block py-2 text-sm text-[var(--sand-text-muted)] hover:text-[var(--sand-accent)] transition"
             >
               awkohler@botflow.io
             </a>

@@ -23,7 +23,7 @@ export const fieldClass =
 
 export const TextInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
-    <Input ref={ref} className={cn(fieldClass, "h-9", className)} {...props} />
+    <Input ref={ref} className={cn(fieldClass, "h-9 pointer-coarse:h-11", className)} {...props} />
   ),
 );
 TextInput.displayName = "TextInput";
@@ -39,7 +39,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
   ({ className, ...props }, ref) => (
     // The browser's own arrow is replaced by the same thin chevron used everywhere else.
     <span className="relative block w-full">
-      <select ref={ref} className={cn(fieldClass, "h-9 appearance-none pr-8", className)} {...props} />
+      <select ref={ref} className={cn(fieldClass, "h-9 appearance-none pr-8 pointer-coarse:h-11", className)} {...props} />
       <ChevronDown
         aria-hidden="true"
         className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted"

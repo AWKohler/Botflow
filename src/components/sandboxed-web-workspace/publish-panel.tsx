@@ -17,6 +17,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { phoneSheetBackdropClass, phoneSheetBodyClass, phoneSheetClass, phoneSheetCloseClass, phoneSheetTitleClass } from "@/components/ui/sheet";
 import { buttonClass } from "@/components/ui/button";
 import { fieldClass, Select } from "@/components/ui/field";
 
@@ -398,12 +399,16 @@ export function SandboxPublishPanel({
 
   const panel = (
     <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className={cn("fixed inset-0 z-40", phoneSheetBackdropClass)} onClick={onClose} />
       <div
-        className="fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-bg dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top shadow-xl"
+        // Anchored under its button; on a phone, a sheet from the bottom edge.
+        className={cn(
+          "fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-bg dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top shadow-xl",
+          phoneSheetClass,
+        )}
         style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
       >
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className={cn("flex items-center justify-between border-b border-border px-4 py-3", phoneSheetTitleClass)}>
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold text-fg">Publish</h3>
             {state === "published" && (
@@ -412,12 +417,12 @@ export function SandboxPublishPanel({
               </span>
             )}
           </div>
-          <button onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-muted transition-colors hover:bg-elevated hover:text-fg">
+          <button onClick={onClose} aria-label="Close" className={cn("rounded-md p-1.5 text-muted transition-colors hover:bg-elevated hover:text-fg", phoneSheetCloseClass)}>
             <X size={14} />
           </button>
         </div>
 
-        <div className="max-h-[calc(100vh-120px)] overflow-y-auto">
+        <div className={cn("max-h-[calc(100vh-120px)] overflow-y-auto", phoneSheetBodyClass)}>
           {state === "idle" && (
             <div className="p-4">
               <p className="mb-4 text-[13px] leading-relaxed text-muted">

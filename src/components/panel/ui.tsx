@@ -196,7 +196,7 @@ export function Section({
 }) {
   return (
     <section className={cn('mb-8', className)}>
-      <div className="flex items-baseline gap-2 mb-3">
+      <div className="mb-3 flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
         <h2 className="text-[15px] font-semibold text-fg">{title}</h2>
         {hint && <span className="text-xs text-muted">{hint}</span>}
       </div>
@@ -376,23 +376,25 @@ export function HBarList({
 }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
-    <div className="space-y-2">
+    <div className="space-y-3.5 sm:space-y-2">
       {rows.map((r) => (
-        <div key={r.label} className="flex items-center gap-3">
-          <div className="w-40 shrink-0 truncate text-sm text-fg" title={r.label}>
+        // Phone: label and value on one line, the bar under them, the note under that.
+        // Wider: one row of four columns.
+        <div key={r.label} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 sm:flex sm:gap-3">
+          <div className="truncate text-sm text-fg sm:w-40 sm:shrink-0" title={r.label}>
             {r.label}
           </div>
-          <div className="flex-1 h-4 rounded-[4px] bg-soft/50 overflow-hidden">
+          <div className="order-3 col-span-2 h-2.5 overflow-hidden rounded-[4px] bg-soft/50 sm:order-none sm:h-4 sm:flex-1">
             <div
               className="h-full rounded-[4px] bg-accent/70"
               style={{ width: `${(r.value / max) * 100}%` }}
             />
           </div>
-          <div className="w-20 shrink-0 text-right text-sm tabular-nums text-fg">
+          <div className="text-right text-sm tabular-nums text-fg sm:w-20 sm:shrink-0">
             {formatValue(r.value)}
           </div>
           {r.sub !== undefined && (
-            <div className="w-36 shrink-0 whitespace-nowrap text-right text-xs text-muted tabular-nums">
+            <div className="order-4 col-span-2 text-xs tabular-nums text-muted sm:order-none sm:w-36 sm:shrink-0 sm:whitespace-nowrap sm:text-right">
               {r.sub}
             </div>
           )}

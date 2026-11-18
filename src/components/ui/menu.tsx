@@ -15,6 +15,8 @@ Menu.displayName = "Menu";
 
 export const menuItemClass =
   "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] text-fg transition-colors " +
+  // Touch screens: a 44px row with larger text.
+  "pointer-coarse:min-h-11 pointer-coarse:px-3 pointer-coarse:text-[15px] " +
   "hover:bg-elevated dark:hover:bg-soft disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent";
 
 export const MenuItem = forwardRef<

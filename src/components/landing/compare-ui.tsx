@@ -46,7 +46,7 @@ export function CompareHero({
   return (
     <section className="relative overflow-hidden hero-grid">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-16 sm:pt-24 pb-12 sm:pb-16">
-        <div className="max-w-3xl mx-auto text-center">
+        <div className="max-w-3xl mx-auto text-center px-2 sm:px-0">
           <Reveal>
             <SectionLabel>{label}</SectionLabel>
           </Reveal>
@@ -140,7 +140,7 @@ export function GlanceCards({
     <section className="relative">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-20">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-12">
+          <div className="text-center max-w-2xl mx-auto mb-12 px-2 sm:px-0">
             <SectionLabel>At a glance</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl tracking-tight')}>
               Two tools, <em className={serif.className}>two bets</em>
@@ -232,7 +232,7 @@ export function CompareTable({ themName, groups }: { themName: string; groups: C
     <section className="relative">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 py-16 sm:py-20">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-12">
+          <div className="text-center max-w-2xl mx-auto mb-12 px-2 sm:px-0">
             <SectionLabel>Feature by feature</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl tracking-tight')}>
               Botflow vs {themName}, <em className={serif.className}>in detail</em>
@@ -337,7 +337,7 @@ export function StrengthsSplit({
       <MarginBg />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-28">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-16">
+          <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-16 px-2 sm:px-0">
             <SectionLabel>Credit where due</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>
               Where each one <em className={serif.className}>shines</em>
@@ -378,7 +378,7 @@ export function DeepDives({ dives }: { dives: DeepDive[] }) {
       <MarginHatch />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-28">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-20">
+          <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-20 px-2 sm:px-0">
             <SectionLabel>The differences that matter</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>
               Beyond the <em className={serif.className}>checkboxes</em>
@@ -442,7 +442,7 @@ export function VerdictCards({
     <section className="relative">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 py-16 sm:py-24">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
+          <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16 px-2 sm:px-0">
             <SectionLabel>The verdict</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>
               So, which <em className={serif.className}>one?</em>
@@ -568,7 +568,7 @@ export function FaqSection({ faqs }: { faqs: Faq[] }) {
     <section className="relative">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 py-16 sm:py-24">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
+          <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16 px-2 sm:px-0">
             <SectionLabel>FAQ</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>
               Questions, <em className={serif.className}>answered</em>
@@ -631,7 +631,7 @@ export function WhySwitchCards({ name, items }: { name: string; items: Strength[
     <section className="relative">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-20">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-12">
+          <div className="text-center max-w-2xl mx-auto mb-12 px-2 sm:px-0">
             <SectionLabel>Why people look</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl tracking-tight')}>
               Why builders outgrow <em className={serif.className}>{name}</em>
@@ -677,7 +677,7 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
       <MarginBg />
       <div className="mx-auto max-w-5xl px-4 sm:px-6 py-20 sm:py-28">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-20">
+          <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-20 px-2 sm:px-0">
             <SectionLabel>The alternatives</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>
               Ranked, with <em className={serif.className}>reasons</em>
@@ -835,7 +835,7 @@ export function AltQuickTable({ profiles }: { profiles: AltProfile[] }) {
     <section className="relative">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 py-16 sm:py-20">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-12">
+          <div className="text-center max-w-2xl mx-auto mb-12 px-2 sm:px-0">
             <SectionLabel>Quick reference</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl tracking-tight')}>
               The facts, <em className={serif.className}>side by side</em>

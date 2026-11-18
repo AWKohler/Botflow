@@ -128,11 +128,12 @@ export default function PanelOverviewPage() {
         <Section title="Needs attention">
           <div className="space-y-2">
             {alerts.map((a) => (
-              <Card key={a.label} className="flex items-center gap-3 py-3">
+              // Phone: the pill sits above the text, and the detail takes its own line.
+              <Card key={a.label} className="flex flex-col items-start gap-2 py-3 sm:flex-row sm:items-center sm:gap-3">
                 <StatusPill kind={a.severity} label={a.severity === 'serious' ? 'Serious' : 'Warning'} />
                 <div>
-                  <span className="text-sm font-medium text-fg">{a.label}</span>
-                  <span className="text-sm text-muted ml-2">{a.detail}</span>
+                  <span className="block text-sm font-medium text-fg sm:inline">{a.label}</span>
+                  <span className="block text-sm text-muted sm:ml-2 sm:inline">{a.detail}</span>
                 </div>
               </Card>
             ))}

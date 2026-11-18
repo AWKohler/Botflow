@@ -42,7 +42,12 @@ export function Tabs<T extends string>({ options, selected, onSelect, className,
             onClick={() => onSelect(option.value)}
             className={cn(
               "tap-44 rounded-md font-medium transition-[background-color,color,box-shadow] duration-150",
-              size === "sm" ? "h-6 px-2.5 text-xs" : size === "lg" ? "h-9 px-5 text-sm" : "h-7 px-3 text-[13px]",
+              // Taller on touch screens, like buttons.
+              size === "sm"
+                ? "h-6 px-2.5 text-xs pointer-coarse:h-8 pointer-coarse:px-3 pointer-coarse:text-[13px]"
+                : size === "lg"
+                  ? "h-9 px-5 text-sm pointer-coarse:h-10 pointer-coarse:text-[15px]"
+                  : "h-7 px-3 text-[13px] pointer-coarse:h-9 pointer-coarse:px-3.5 pointer-coarse:text-sm",
               expand && "flex-1",
               active
                 ? "bg-bg text-fg shadow-sm inset-shadow-bevel-top ring-1 ring-border-strong/50 dark:bg-soft dark:ring-border-strong"

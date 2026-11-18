@@ -482,6 +482,17 @@ export function SandboxedWebWorkspace({
     [projectId, files, toast, imageBlobUrl],
   );
 
+  // On a phone the explorer covers the editor, so opening a file leaves the explorer.
+  const openFileFromExplorer = useCallback(
+    (filePath: string) => {
+      if (files[filePath]?.type === "file" && window.matchMedia("(max-width: 767px)").matches) {
+        setShowSidebar(false);
+      }
+      void handleFileSelect(filePath);
+    },
+    [files, handleFileSelect],
+  );
+
   useEffect(() => {
     if (!gitTabAllowed && sidebarTab === "git") setSidebarTab("files");
   }, [gitTabAllowed, sidebarTab]);
@@ -1458,6 +1469,8 @@ export function SandboxedWebWorkspace({
               onClick={() => setShowSidebar(!showSidebar)}
               title={showSidebar ? "Hide explorer" : "Show explorer"}
               aria-label={showSidebar ? "Hide explorer" : "Show explorer"}
+              // Phone: the editor's own "Files" row does this job.
+              className="hidden md:inline-flex"
             >
               <PanelLeft size={16} />
             </Button>
@@ -1635,8 +1648,11 @@ export function SandboxedWebWorkspace({
             )}
           >
             <div className="flex-1 min-h-0 flex">
+              {/* Phone: the explorer and the editor take turns at full width
+                  (side by side, the editor is a sliver). Opening a file shows
+                  the editor; "Files" brings the explorer back. */}
               {showSidebar && (
-                <div className="flex w-72 shrink-0 flex-col border-r border-border bg-surface">
+                <div className="flex w-full shrink-0 flex-col border-border bg-surface md:w-72 md:border-r">
                   <div className="border-b border-border p-2">
                     <Tabs
                       options={
@@ -1657,14 +1673,14 @@ export function SandboxedWebWorkspace({
                       <FileTree
                         files={files}
                         selectedFile={selectedFile}
-                        onFileSelect={handleFileSelect}
+                        onFileSelect={openFileFromExplorer}
                       />
                     ) : sidebarTab === "search" ? (
                       <FileSearch
                         projectId={projectId}
                         onOpenFile={(path) => {
                           setCurrentView("code");
-                          handleFileSelect(path);
+                          openFileFromExplorer(path);
                         }}
                       />
                     ) : sidebarTab === "env" ? (
@@ -1690,7 +1706,50 @@ export function SandboxedWebWorkspace({
                   </div>
                 </div>
               )}
-              <div className="flex-1 min-h-0 relative">
+              <div className={cn("min-h-0 min-w-0 flex-1 flex-col", showSidebar ? "hidden md:flex" : "flex")}>
+                {/* Phone: where you are, the way back to the file list, and Save
+                    (the top toolbar has no room for them). */}
+                <div className="flex h-11 shrink-0 items-center gap-1 border-b border-border bg-surface pl-1 pr-1.5 md:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowSidebar(true)}
+                    className="flex h-9 shrink-0 items-center gap-0.5 rounded-md pl-1 pr-2 text-sm font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
+                  >
+                    <ChevronLeft size={16} />
+                    Files
+                  </button>
+                  {selectedFile && (
+                    <>
+                      <span className="flex min-w-0 flex-1 items-center gap-2 font-mono text-[13px] text-fg">
+                        <span className="truncate">{selectedFile.split("/").pop()}</span>
+                        {hasUnsavedChanges && (
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning-solid" title="Unsaved changes" />
+                        )}
+                      </span>
+                      {saveConflict && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void handleFileSelect(selectedFile)}
+                          className="text-warning hover:bg-warning-soft hover:text-warning"
+                        >
+                          Reload
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void handleSaveFile(saveConflict)}
+                        disabled={!hasUnsavedChanges && !saveConflict}
+                        className={cn(saveConflict && "text-warning hover:bg-warning-soft hover:text-warning")}
+                      >
+                        <Save size={14} />
+                        <span>{saveConflict ? "Overwrite" : "Save"}</span>
+                      </Button>
+                    </>
+                  )}
+                </div>
+                <div className="relative min-h-0 flex-1">
                 <div className="absolute inset-0 bg-bg">
                   {imageBlobUrl ? (
                     <ImageViewer
@@ -1706,6 +1765,7 @@ export function SandboxedWebWorkspace({
                       filename={selectedFile}
                     />
                   )}
+                </div>
                 </div>
               </div>
             </div>

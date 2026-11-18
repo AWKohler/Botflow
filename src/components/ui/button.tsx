@@ -61,13 +61,15 @@ const variants: Record<ButtonVariant, string> = {
   success: `bg-success-solid ${LIT} text-white shadow-xs inset-shadow-bevel-solid hover:bg-success-solid/90 active:bg-success-solid/85`,
 };
 
+// On a touch screen every size is one step taller, so a button is never a
+// smaller target than a fingertip: 36px for the smallest, 44px for the default.
 const sizes: Record<ButtonSize, string> = {
-  xs: "h-7 px-2.5 text-xs",
-  sm: "h-8 px-3 text-[13px]",
-  default: "h-9 px-3.5 text-sm",
-  lg: "h-11 px-5 text-[15px]",
-  icon: "h-9 w-9",
-  "icon-sm": "h-8 w-8",
+  xs: "h-7 px-2.5 text-xs pointer-coarse:h-9 pointer-coarse:px-3 pointer-coarse:text-[13px]",
+  sm: "h-8 px-3 text-[13px] pointer-coarse:h-10 pointer-coarse:px-3.5 pointer-coarse:text-sm",
+  default: "h-9 px-3.5 text-sm pointer-coarse:h-11 pointer-coarse:px-4 pointer-coarse:text-[15px]",
+  lg: "h-11 px-5 text-[15px] pointer-coarse:h-12 pointer-coarse:text-base",
+  icon: "h-9 w-9 pointer-coarse:h-11 pointer-coarse:w-11",
+  "icon-sm": "h-8 w-8 pointer-coarse:h-10 pointer-coarse:w-10",
 };
 
 export function buttonClass(

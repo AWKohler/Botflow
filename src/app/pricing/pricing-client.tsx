@@ -230,7 +230,7 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
       {/* ================================================================ */}
       <section className="relative overflow-hidden hero-grid">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-16 sm:pt-24 pb-12 sm:pb-16">
-          <div className="max-w-3xl mx-auto text-center">
+          <div className="max-w-3xl mx-auto text-center px-2 sm:px-0">
             <Reveal>
               <SectionLabel>Pricing</SectionLabel>
             </Reveal>
@@ -330,7 +330,7 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
       <section className="relative bg-[var(--sand-surface)]">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-28">
           <Reveal>
-            <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
+            <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16 px-2 sm:px-0">
               <SectionLabel>Compare</SectionLabel>
               <h2
                 className={cn(
@@ -422,7 +422,7 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
       <section className="relative">
         <div className="mx-auto max-w-4xl px-4 sm:px-6 py-20 sm:py-28">
           <Reveal>
-            <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
+            <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16 px-2 sm:px-0">
               <SectionLabel>FAQ</SectionLabel>
               <h2
                 className={cn(

@@ -22,12 +22,20 @@ export function PanelNav({ activePath }: { activePath?: string } = {}) {
   const pathname = activePath ?? current;
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-bg/85 backdrop-blur-lg">
-      <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-6 sm:px-10">
-        <Link href="/projects" aria-label="Back to Botflow" className="flex shrink-0 items-center gap-2.5 rounded-md">
+      {/* Phone: two rows — brand and account, then the tabs across the full
+          width (beside the brand they had room for about one letter). */}
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-6 px-6 sm:px-10 md:h-14 md:flex-nowrap md:justify-start">
+        <Link href="/projects" aria-label="Back to Botflow" className="flex h-14 shrink-0 items-center gap-2.5 rounded-md">
           <BrandMark />
           <Badge>Admin</Badge>
         </Link>
-        <nav aria-label="Admin" className="flex flex-1 items-center gap-1 overflow-x-auto">
+        <nav
+          aria-label="Admin"
+          className={cn(
+            'flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-1',
+            'max-md:order-last max-md:-mx-6 max-md:w-[calc(100%+3rem)] max-md:border-t max-md:border-border max-md:px-5 max-md:py-1.5',
+          )}
+        >
           {TABS.map((t) => {
             const active =
               t.href === '/panel' ? pathname === '/panel' : pathname.startsWith(t.href);
@@ -37,7 +45,7 @@ export function PanelNav({ activePath }: { activePath?: string } = {}) {
                 href={t.href}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  'flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors pointer-coarse:py-2.5',
                   active ? 'bg-elevated text-fg' : 'text-muted hover:text-fg',
                 )}
               >

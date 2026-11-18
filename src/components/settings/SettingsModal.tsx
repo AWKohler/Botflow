@@ -63,12 +63,13 @@ function ConnectionHeader({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4">
+    // Phone: the status and button sit under the description, which keeps its full width.
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <div className="min-w-0">
         <h3 className="text-sm font-semibold text-fg">{title}</h3>
-        <p className="mt-0.5 max-w-prose text-xs leading-5 text-muted">{description}</p>
+        <p className="mt-0.5 max-w-prose text-xs leading-5 text-muted max-sm:text-[13px]">{description}</p>
       </div>
-      <div className="flex shrink-0 items-center gap-2.5">
+      <div className="flex shrink-0 items-center gap-2.5 max-sm:flex-row-reverse max-sm:justify-end">
         {connected && (
           <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-success">
             <CheckCircle2 className="h-3.5 w-3.5" /> Connected
@@ -131,21 +132,8 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
 
   useEffect(() => {
     if (!open) return;
-    // Connections stays a larger-screen task (its sign-in flows need a second
-    // window), so on a phone the dialog falls back to Usage.
-    const isMobile = variant === 'modal' && typeof window !== 'undefined' && window.innerWidth < 640;
-    setActiveTab(defaultTab === 'connections' && isMobile ? 'usage' : defaultTab);
-  }, [open, defaultTab, variant]);
-
-  // If screen resizes to mobile while connections is active, switch away
-  useEffect(() => {
-    if (activeTab !== 'connections' || variant !== 'modal') return;
-    const check = () => {
-      if (window.innerWidth < 640) setActiveTab('usage');
-    };
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, [activeTab, variant]);
+    setActiveTab(defaultTab);
+  }, [open, defaultTab]);
 
   useEffect(() => {
     if (!open) return;
@@ -1037,7 +1025,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                   onClick={() => setActiveTab(id)}
                   className={cn(
                     'h-7 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-[background-color,color,box-shadow] sm:px-3',
-                    id === 'connections' && 'hidden sm:block',
+                    'pointer-coarse:h-9 pointer-coarse:px-3 pointer-coarse:text-sm',
                     activeTab === id ? 'bg-bg text-fg shadow-sm inset-shadow-bevel-top ring-1 ring-border-strong/50 dark:bg-soft dark:ring-border-strong' : 'text-muted hover:text-fg',
                   )}
                 >

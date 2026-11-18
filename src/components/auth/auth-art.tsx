@@ -61,3 +61,24 @@ export function AuthArt() {
     </div>
   );
 }
+
+/**
+ * The same painting as a short band, for the top of the phone layout: paint
+ * and weave only. No live canvas (there is no pointer to paint with, and a
+ * phone should not run a WebGL surface for decoration) and no prompt box,
+ * which above a real form would read as a field.
+ */
+export function AuthArtBand({ className }: { className?: string }) {
+  return (
+    <div aria-hidden="true" className={`auth-art relative overflow-hidden rounded-2xl border border-border ${className ?? ""}`}>
+      <div className="auth-art__painting relative h-full w-full overflow-hidden">
+        <div className="auth-art__wash absolute inset-0" />
+        <div className="auth-art__stroke auth-art__stroke--deep absolute" />
+        <div className="auth-art__stroke auth-art__stroke--light absolute" />
+        <div className="auth-art__stroke auth-art__stroke--beam absolute" />
+        <div className="auth-art__grain absolute inset-0" />
+        <div className="auth-art__weave absolute inset-0" />
+      </div>
+    </div>
+  );
+}

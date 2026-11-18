@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { authClient } from "@/lib/auth/client";
@@ -35,6 +35,14 @@ interface Session {
 export function AccountPanel() {
   const { data: session, isPending } = authClient.useSession();
   const [tab, setTab] = useState<TabId>("profile");
+  // On a phone the section tabs are one scrolling row: keep the current one in view.
+  const tabsRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const nav = tabsRef.current;
+    const current = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!nav || !current || nav.scrollWidth <= nav.clientWidth) return;
+    nav.scrollTo({ left: current.offsetLeft - (nav.clientWidth - current.offsetWidth) / 2 });
+  }, [tab]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -254,12 +262,11 @@ export function AccountPanel() {
       </AppShell>
     );
 
-  const tabs: { id: TabId; label: string; icon: typeof UserRound; desktopOnly?: boolean }[] = [
+  const tabs: { id: TabId; label: string; icon: typeof UserRound }[] = [
     { id: "profile", label: "Profile", icon: UserRound },
     { id: "security", label: "Security", icon: ShieldCheck },
     { id: "usage", label: "Usage", icon: Gauge },
-    // Connecting accounts needs a second window, so it stays a larger-screen task.
-    { id: "connections", label: "Connections", icon: Plug, desktopOnly: true },
+    { id: "connections", label: "Connections", icon: Plug },
     { id: "billing", label: "Plan and billing", icon: CreditCard },
   ];
   const socialAccounts = accounts.filter((a) => a.providerId !== "credential");
@@ -290,19 +297,31 @@ export function AccountPanel() {
         />
       )}
 
-      <div className="grid gap-8 md:grid-cols-[200px_minmax(0,760px)] md:gap-12">
-        <aside>
+      {/* minmax(0,…) on the phone column too: a bare track grows to fit the
+          tab row and pushes the whole page wider than the screen. */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 md:grid-cols-[200px_minmax(0,760px)] md:gap-12">
+        <aside className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
           <p className="mt-1.5 text-sm text-muted">Your account, usage, connections and plan.</p>
-          <nav aria-label="Settings sections" className="-mx-1 mt-6 flex gap-1 overflow-x-auto px-1 md:mx-0 md:flex-col md:overflow-visible md:px-0">
+          {/* Phone: one row that scrolls sideways, bled to the screen edges and
+              faded where it runs on, so it reads as "there is more". */}
+          <nav
+            ref={tabsRef}
+            aria-label="Settings sections"
+            className={cn(
+              "mt-5 flex gap-1 md:mt-6 md:flex-col",
+              "max-md:-mx-6 max-md:overflow-x-auto max-md:px-6 max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden",
+              "max-md:[mask-image:linear-gradient(to_right,transparent,black_1.25rem,black_calc(100%-2.5rem),transparent)]",
+            )}
+          >
             {tabs.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 aria-current={tab === t.id ? "page" : undefined}
                 className={cn(
-                  "shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors",
-                  t.desktopOnly ? "hidden sm:flex" : "flex",
+                  "flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors",
+                  "pointer-coarse:min-h-11 pointer-coarse:text-[15px]",
                   tab === t.id ? "bg-elevated text-fg" : "text-muted hover:bg-elevated/60 hover:text-fg",
                 )}
                 onClick={() => {

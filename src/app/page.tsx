@@ -1885,7 +1885,7 @@ export default function LandingV2() {
                     onClick={() => setPlatform('sandboxed-web')}
                     title="Build a web app"
                     className={cn(
-                      'relative inline-flex items-center gap-1.5 rounded-t-xl px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-medium transition',
+                      'relative inline-flex items-center gap-1.5 rounded-t-xl px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-medium transition pointer-coarse:px-3.5 pointer-coarse:py-2.5 pointer-coarse:text-sm',
                       platform !== 'swift'
                         ? 'bg-[var(--sand-elevated)] text-[var(--sand-text)]'
                         : 'bg-[var(--sand-surface)] text-[var(--sand-text-muted)] hover:text-[var(--sand-text)]',
@@ -1921,7 +1921,7 @@ export default function LandingV2() {
                     aria-disabled={!hasSwiftAccess}
                     title={hasSwiftAccess ? 'Build a native Swift app' : 'Swift requires Pro or Max'}
                     className={cn(
-                      'relative inline-flex items-center gap-1.5 rounded-t-xl px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-medium transition',
+                      'relative inline-flex items-center gap-1.5 rounded-t-xl px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-medium transition pointer-coarse:px-3.5 pointer-coarse:py-2.5 pointer-coarse:text-sm',
                       platform === 'swift'
                         ? 'bg-[var(--sand-elevated)]'
                         : 'bg-[var(--sand-surface)]',
@@ -1992,7 +1992,7 @@ export default function LandingV2() {
                             <button
                               type="button"
                               onClick={() => handleRemoveImage(img.id)}
-                              className="absolute -top-1.5 -right-1.5 flex items-center justify-center size-4 rounded-full bg-[var(--sand-elevated)] border border-[var(--sand-border)] text-[var(--sand-text-muted)] hover:text-[var(--sand-text)] opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="tap-44 absolute -top-1.5 -right-1.5 flex items-center justify-center size-4 rounded-full bg-[var(--sand-elevated)] border border-[var(--sand-border)] text-[var(--sand-text-muted)] hover:text-[var(--sand-text)] opacity-0 group-hover:opacity-100 transition-opacity pointer-coarse:size-5 pointer-coarse:opacity-100"
                               aria-label="Remove image"
                             >
                               <IconX size={10} />
@@ -2007,7 +2007,7 @@ export default function LandingV2() {
                           <button
                             type="button"
                             onClick={() => setShowPlusPopover(v => !v)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] shadow-sm hover:border-transparent hover:bg-[var(--sand-accent)]/15 transition"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] shadow-sm hover:border-transparent hover:bg-[var(--sand-accent)]/15 transition pointer-coarse:h-10 pointer-coarse:w-10"
                             aria-label="Attach"
                           >
                             <Plus className="h-4 w-4 text-[var(--sand-text)]" />
@@ -2019,7 +2019,7 @@ export default function LandingV2() {
                                 onClick={() => { setShowPlusPopover(false); fileInputRef.current?.click(); }}
                                 disabled={!modelSupportsImages(model)}
                                 className={cn(
-                                  'flex w-full items-center gap-2.5 px-3 py-2 text-sm transition',
+                                  'flex w-full items-center gap-2.5 px-3 py-2 text-sm transition pointer-coarse:min-h-11 pointer-coarse:text-[15px]',
                                   modelSupportsImages(model)
                                     ? 'text-[var(--sand-text)] hover:bg-[var(--sand-elevated)] cursor-pointer'
                                     : 'text-[var(--sand-text-muted)] cursor-not-allowed',
@@ -2052,12 +2052,12 @@ export default function LandingV2() {
                         {isSignedIn && (platform === 'web' || platform === 'sandboxed-web' || platform === 'swift') && (
                           <div ref={convexSelectorRef} className="relative shrink-0">
                             {connectionsPending ? (
-                              <span className="block h-[30px] w-11 animate-pulse rounded-full bg-soft sm:h-[34px] sm:w-32" role="status" aria-label="Loading backend" />
+                              <span className="block h-[30px] w-11 animate-pulse rounded-full bg-soft sm:h-[34px] sm:w-32 pointer-coarse:h-10 pointer-coarse:w-14" role="status" aria-label="Loading backend" />
                             ) : (
                             <button
                               type="button"
                               onClick={() => setShowConvexSelector(v => !v)}
-                              className="shrink-0 inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm hover:border-transparent hover:bg-[var(--sand-accent)]/15 transition"
+                              className="shrink-0 inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm hover:border-transparent hover:bg-[var(--sand-accent)]/15 transition pointer-coarse:h-10 pointer-coarse:px-3"
                               title="Backend type"
                             >
                               {convexBackendType === 'platform' ? (
@@ -2196,7 +2196,7 @@ export default function LandingV2() {
                           onClick={() => start(true)}
                           disabled={!canSend}
                           className={cn(
-                            'shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--sand-text)] bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-[var(--sand-bg)] shadow-md transition',
+                            'shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--sand-text)] bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-[var(--sand-bg)] shadow-md transition pointer-coarse:h-11 pointer-coarse:w-11',
                             !canSend ? 'opacity-40 cursor-not-allowed' : 'hover:opacity-80',
                           )}
                         >
@@ -2208,7 +2208,7 @@ export default function LandingV2() {
                           onClick={() => start(false)}
                           // Same resting look as the signed-in button: quiet until there is a prompt.
                           className={cn(
-                            'shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--sand-text)] bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-[var(--sand-bg)] shadow-md transition',
+                            'shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--sand-text)] bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-[var(--sand-bg)] shadow-md transition pointer-coarse:h-11 pointer-coarse:w-11',
                             prompt.trim() ? 'hover:opacity-80' : 'opacity-40 hover:opacity-60',
                           )}
                         >
@@ -2227,9 +2227,9 @@ export default function LandingV2() {
                 {connectionsPending ? (
                   <div className="flex flex-col min-[390px]:flex-row items-center justify-center gap-2" role="status" aria-label="Loading connections">
                     {process.env.NEXT_PUBLIC_ANTHROPIC_OAUTH_ENABLED === 'true' && (
-                      <span className="h-[34px] w-40 animate-pulse rounded-full bg-soft" />
+                      <span className="h-[34px] w-40 animate-pulse rounded-full bg-soft pointer-coarse:h-[42px]" />
                     )}
-                    <span className="h-[34px] w-40 animate-pulse rounded-full bg-soft" />
+                    <span className="h-[34px] w-40 animate-pulse rounded-full bg-soft pointer-coarse:h-[42px]" />
                   </div>
                 ) : (
                 <div className="flex flex-col min-[390px]:flex-row items-center justify-center gap-2">
@@ -2238,7 +2238,7 @@ export default function LandingV2() {
                       type="button"
                       onClick={handleProviderAuthClick}
                       className={cn(
-                        'inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium transition',
+                        'inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium transition pointer-coarse:py-2.5',
                         // Connected is a status, not a call to action: no fill, no shadow, a tick.
                         isSignedIn && hasClaudeOAuth
                           ? 'border-transparent text-[var(--sand-text-muted)] hover:text-[var(--sand-text)]'
@@ -2255,7 +2255,7 @@ export default function LandingV2() {
                     type="button"
                     onClick={handleProviderAuthClick}
                     className={cn(
-                        'inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium transition',
+                        'inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium transition pointer-coarse:py-2.5',
                         // Connected is a status, not a call to action: no fill, no shadow, a tick.
                         isSignedIn && hasCodexOAuth
                           ? 'border-transparent text-[var(--sand-text-muted)] hover:text-[var(--sand-text)]'
