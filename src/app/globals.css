@@ -488,6 +488,12 @@ body {
     }
 }
 
+/* On touch devices Monaco floats a "show keyboard" glyph over the code. Tapping
+   the editor already brings the keyboard up, so the glyph is only clutter. */
+.monaco-editor .iPadShowKeyboard {
+    display: none !important;
+}
+
 /* Monaco editor adjustments */
 .monaco-editor {
     font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace !important;
