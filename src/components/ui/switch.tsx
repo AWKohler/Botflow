@@ -28,7 +28,8 @@ export function Switch({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        "relative inline-flex h-5 w-9 shrink-0 cursor-pointer appearance-none items-center rounded-full border p-0 transition-colors",
+        // tap-44: a 44px hit area on touch screens around the 20px track.
+        "tap-44 relative inline-flex h-5 w-9 shrink-0 cursor-pointer appearance-none items-center rounded-full border p-0 transition-colors",
         "disabled:cursor-not-allowed disabled:opacity-60",
         "inset-shadow-well",
         checked ? "border-accent bg-accent" : "border-control bg-soft",

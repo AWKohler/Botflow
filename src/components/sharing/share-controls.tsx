@@ -441,6 +441,7 @@ function SharePopover({
               <Button
                 variant={email.trim() ? "primary" : "secondary"}
                 size="sm"
+                className="pointer-coarse:h-11"
                 disabled={!state || inviting || !email.trim()}
                 onClick={() => void submitInvite()}
               >
