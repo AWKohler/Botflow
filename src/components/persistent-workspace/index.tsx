@@ -431,6 +431,8 @@ export function PersistentWorkspace({
       const candidates = [path.startsWith("/") ? path : `/${path}`, path];
       const target = candidates.find((p) => files[p]?.type === "file") ?? candidates[0];
       setCurrentView("code");
+      // On a phone the explorer covers the editor: step aside so the file shows.
+      if (window.matchMedia("(max-width: 767px)").matches) setShowSidebar(false);
       await handleFileSelect(target);
       setRevealLine(line);
       setRevealNonce((n) => n + 1);
