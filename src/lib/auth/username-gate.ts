@@ -1,8 +1,10 @@
 /**
- * Sign-up gate for machine-generated usernames (UUIDs, hashes, random
- * character strings). Behind USERNAME_GATE_ENABLED=true.
+ * Sign-up gate for machine-generated account names/usernames (UUIDs, hashes,
+ * random character strings like "aPveyXtWPlzzRzvHwYbEuGT"). Behind
+ * USERNAME_GATE_ENABLED=true.
  *
- * When a new account's username is flagged, the user row is created already
+ * The sign-up form only sends `name`, so that is what is normally checked; a
+ * `username`, when present, is checked too. When either is flagged, the user row is created already
  * banned (banReason = USERNAME_GATE_BAN_REASON) and no verification OTP is
  * ever emailed to it. Nothing about this is surfaced to the requester: sign-up
  * responds exactly as it would for a legitimate account.
@@ -17,7 +19,7 @@ export const USERNAME_GATE_BAN_REASON = "auto:username-gate";
 const MODEL = "gpt-6-luna";
 // Kept terse on purpose: ~40 input tokens + a 1-letter answer per sign-up.
 const INSTRUCTIONS =
-  "Username check. Reply G if it is random gibberish (UUID, hash, random chars), else N.";
+  "Account name check. Reply G if it is random gibberish (UUID, hash, random chars), else N.";
 
 const UUID_RE =
   /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i;
@@ -64,22 +66,35 @@ export async function isGibberishUsername(
 }
 
 type NewUser = Record<string, unknown> & {
+  name?: string | null;
   username?: string | null;
   displayUsername?: string | null;
 };
 
 /**
  * databaseHooks.user.create.before handler. Returns the user marked banned
- * when the username is flagged, otherwise undefined (no change).
+ * when its name or username is flagged, otherwise undefined (no change).
  */
 export async function gateNewUser<T extends NewUser>(
   user: T,
   classify?: (u: string) => Promise<boolean>,
 ): Promise<{ data: T & { banned: true; banReason: string } } | undefined> {
   if (!usernameGateEnabled()) return;
-  const name = user.displayUsername || user.username;
-  if (!name || !(await isGibberishUsername(name, classify))) return;
-  console.info(`[username-gate] silently banned new sign-up "${name}"`);
+  const candidates = [
+    ...new Set(
+      [user.name, user.displayUsername || user.username]
+        .map((v) => v?.trim())
+        .filter((v): v is string => !!v),
+    ),
+  ];
+  let flagged: string | undefined;
+  for (const c of candidates)
+    if (await isGibberishUsername(c, classify)) {
+      flagged = c;
+      break;
+    }
+  if (!flagged) return;
+  console.info(`[username-gate] silently banned new sign-up "${flagged}"`);
   return {
     data: { ...user, banned: true, banReason: USERNAME_GATE_BAN_REASON },
   };

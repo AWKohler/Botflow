@@ -41,8 +41,17 @@ test("other usernames defer to the model, and model failures fail open", async (
 test("the gate is a no-op when the flag is off", async () => {
   process.env.USERNAME_GATE_ENABLED = "false";
   const classify = vi.fn(async () => true);
-  expect(await gateNewUser({ username: "x7f3k9qzp2mv" }, classify)).toBeUndefined();
+  expect(await gateNewUser({ name: "aPveyXtWPlzzRzvHwYbEuGT" }, classify)).toBeUndefined();
   expect(classify).not.toHaveBeenCalled();
+});
+
+test("the name is checked even when there is no username (the real sign-up form)", async () => {
+  const seen: string[] = [];
+  const classify = async (u: string) => (seen.push(u), u === "aPveyXtWPlzzRzvHwYbEuGT");
+  const res = await gateNewUser({ name: "aPveyXtWPlzzRzvHwYbEuGT", email: "a@b.c" }, classify);
+  expect(res?.data.banned).toBe(true);
+  expect(seen).toEqual(["aPveyXtWPlzzRzvHwYbEuGT"]);
+  expect(await gateNewUser({ name: "Nancy Sayers" }, classify)).toBeUndefined();
 });
 
 test("only gate bans suppress email", () => {
@@ -89,21 +98,21 @@ function makeAuth(classify: (u: string) => Promise<boolean>) {
   return { auth, db, sent };
 }
 
+// Same fields the real sign-up form sends: no username.
 async function signUp(auth: ReturnType<typeof makeAuth>["auth"], name: string) {
   return auth.api.signUpEmail({
     body: {
-      email: `${name}@example.com`,
+      email: `${name.replace(/\s/g, "")}@example.com`,
       password: "correct-horse-battery",
       name,
-      username: name,
     },
   });
 }
 
 test("a flagged sign-up is created banned, gets no OTP, and sees a normal response", async () => {
   const { auth, db, sent } = makeAuth(async () => true);
-  const res = await signUp(auth, "x7f3k9qzp2mv");
-  expect(res.user.email).toBe("x7f3k9qzp2mv@example.com");
+  const res = await signUp(auth, "aPveyXtWPlzzRzvHwYbEuGT");
+  expect(res.user.email).toBe("apveyxtwplzzrzvhwybeugt@example.com");
   const row = db.user[0] as { banned: boolean; banReason: string; role: string };
   expect(row.banned).toBe(true);
   expect(row.banReason).toBe(USERNAME_GATE_BAN_REASON);
@@ -112,14 +121,14 @@ test("a flagged sign-up is created banned, gets no OTP, and sees a normal respon
 
   // Asking for the code again is also silently dropped.
   await auth.api.sendVerificationOTP({
-    body: { email: "x7f3k9qzp2mv@example.com", type: "email-verification" },
+    body: { email: "apveyxtwplzzrzvhwybeugt@example.com", type: "email-verification" },
   });
   expect(sent).toEqual([]);
 });
 
 test("a normal sign-up is untouched and gets its OTP", async () => {
   const { auth, db, sent } = makeAuth(async () => false);
-  await signUp(auth, "aronne_k");
+  await signUp(auth, "Nancy Sayers");
   expect((db.user[0] as { banned?: boolean }).banned).not.toBe(true);
-  expect(sent).toEqual([{ email: "aronne_k@example.com", type: "email-verification" }]);
+  expect(sent).toEqual([{ email: "nancysayers@example.com", type: "email-verification" }]);
 });
