@@ -229,7 +229,7 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
       {/* HERO                                                             */}
       {/* ================================================================ */}
       <section className="relative overflow-hidden hero-grid">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-16 sm:pt-24 pb-12 sm:pb-16">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-16 sm:pt-24 pb-4 sm:pb-16">
           <div className="max-w-3xl mx-auto text-center px-2 sm:px-0">
             <Reveal>
               <SectionLabel>Pricing</SectionLabel>
