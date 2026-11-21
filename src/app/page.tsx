@@ -1012,6 +1012,7 @@ import { SettingsModal } from '@/components/settings/SettingsModal';
 import { useToast } from '@/components/ui/toast';
 import { useModal } from '@/components/ui/use-modal';
 import { ModelSelector } from '@/components/ui/ModelSelector';
+import { chipClass, raisedSurfaceClass } from '@/components/ui/button';
 import { DEFAULT_MODEL_ID, modelSupportsImages, resolveModelId, type ModelId } from '@/lib/agent/models';
 import { processImageForUpload } from '@/lib/image-processing';
 import { checkDeviceSupport } from '@/lib/device';
@@ -2046,7 +2047,7 @@ export default function LandingV2() {
                           <button
                             type="button"
                             onClick={() => setShowPlusPopover(v => !v)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] shadow-sm hover:border-transparent hover:bg-[var(--sand-accent)]/15 transition pointer-coarse:h-10 pointer-coarse:w-10"
+                            className={cn(chipClass, 'w-8 px-0 pointer-coarse:w-10 pointer-coarse:px-0')}
                             aria-label="Attach"
                           >
                             <Plus className="h-4 w-4 text-[var(--sand-text)]" />
@@ -2091,12 +2092,12 @@ export default function LandingV2() {
                         {isSignedIn && (platform === 'web' || platform === 'sandboxed-web' || platform === 'swift') && (
                           <div ref={convexSelectorRef} className="relative shrink-0">
                             {connectionsPending ? (
-                              <span className="block h-[30px] w-11 animate-pulse rounded-full bg-soft sm:h-[34px] sm:w-32 pointer-coarse:h-10 pointer-coarse:w-14" role="status" aria-label="Loading backend" />
+                              <span className="block h-8 w-11 animate-pulse rounded-full bg-soft sm:w-32 pointer-coarse:h-10 pointer-coarse:w-14" role="status" aria-label="Loading backend" />
                             ) : (
                             <button
                               type="button"
                               onClick={() => setShowConvexSelector(v => !v)}
-                              className="shrink-0 inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm hover:border-transparent hover:bg-[var(--sand-accent)]/15 transition pointer-coarse:h-10 pointer-coarse:px-3"
+                              className={cn(chipClass, 'px-2.5 sm:gap-2 sm:px-3 pointer-coarse:px-3 pointer-coarse:max-[359px]:px-2')}
                               title="Backend type"
                               // On a phone the chip is the mark alone, so it is named here.
                               aria-label={`Backend: ${
@@ -2132,7 +2133,7 @@ export default function LandingV2() {
                                   ? 'MuhKoo'
                                   : 'No backend'}
                               </span>
-                              <ChevronDown className="h-3 w-3 opacity-60" />
+                              <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
                             </button>
                             )}
                             {showConvexSelector && (
@@ -2293,7 +2294,7 @@ export default function LandingV2() {
                         // Connected is a status, not a call to action: no fill, no shadow, a tick.
                         isSignedIn && hasClaudeOAuth
                           ? 'border-transparent text-[var(--sand-text-muted)] hover:text-[var(--sand-text)]'
-                          : 'border-[var(--sand-border)] bg-[var(--sand-elevated)] shadow-sm hover:bg-[var(--sand-surface)]',
+                          : raisedSurfaceClass,
                       )}
                     >
                       <Anthropic className="h-4 w-4 shrink-0" />
@@ -2310,7 +2311,7 @@ export default function LandingV2() {
                         // Connected is a status, not a call to action: no fill, no shadow, a tick.
                         isSignedIn && hasCodexOAuth
                           ? 'border-transparent text-[var(--sand-text-muted)] hover:text-[var(--sand-text)]'
-                          : 'border-[var(--sand-border)] bg-[var(--sand-elevated)] shadow-sm hover:bg-[var(--sand-surface)]',
+                          : raisedSurfaceClass,
                       )}
                   >
                     <OpenAI className="h-4 w-4 shrink-0" />

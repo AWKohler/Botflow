@@ -76,6 +76,20 @@ const sizes: Record<ButtonSize, string> = {
   "icon-sm": "h-8 w-8 pointer-coarse:h-10 pointer-coarse:w-10",
 };
 
+/** The raised surface of the secondary button, for controls that are not a Button. */
+export const raisedSurfaceClass = variants.secondary;
+
+/**
+ * A pill-shaped control: the chips in a composer's bottom row (attach, model,
+ * backend). One class so they share a surface, a height and a type size; an
+ * icon-only chip adds its own width and drops the padding.
+ */
+export const chipClass = cn(
+  base,
+  raisedSurfaceClass,
+  "h-8 rounded-full px-3 text-xs sm:text-sm pointer-coarse:h-10 pointer-coarse:px-3.5 pointer-coarse:text-sm",
+);
+
 export function buttonClass(
   opts: { variant?: ButtonVariant; size?: ButtonSize; className?: string } = {},
 ) {
