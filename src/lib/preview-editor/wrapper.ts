@@ -186,6 +186,18 @@ const EDITOR_RUNTIME = `
     } else if (d.type === "BF_EDITOR_RESELECT") {
       var r = findByLoc(d.loc);
       if (r) { selectedEl = r; post(Object.assign({ type: "BF_EDITOR_SELECTED" }, describe(r))); }
+    } else if (d.type === "BF_EDITOR_REVEAL") {
+      // The parent's edit panel covers the lower part of the preview (a phone):
+      // bring the element into the top d.height px that stay visible.
+      var v = findByLoc(d.loc);
+      if (v) {
+        var vr = v.getBoundingClientRect();
+        var free = typeof d.height === "number" && d.height > 0 ? d.height : window.innerHeight;
+        if (vr.top < 0 || vr.bottom > free) {
+          var gap = Math.max(12, (free - vr.height) / 2);
+          window.scrollTo({ top: Math.max(0, window.scrollY + vr.top - gap), behavior: "smooth" });
+        }
+      }
     }
   });
 

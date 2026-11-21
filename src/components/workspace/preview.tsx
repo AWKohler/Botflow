@@ -746,6 +746,13 @@ export function Preview({
           setSelection(sel);
           setSelectedBox(toParentBox(sel.rect));
           onElementSelected?.(sel);
+          // On a phone the edit panel docks over the lower half of the screen
+          // (see VisualEditorPanel): ask the page to bring the element into
+          // the part of the preview that stays visible above it.
+          if (sel.loc && iframeRef.current && window.matchMedia("(max-width: 639px)").matches) {
+            const visible = window.innerHeight * 0.48 - 8 - iframeRef.current.getBoundingClientRect().top;
+            postToIframe({ type: "BF_EDITOR_REVEAL", loc: sel.loc, height: Math.max(80, visible) });
+          }
           break;
         }
         case "BF_EDITOR_RECT": {
