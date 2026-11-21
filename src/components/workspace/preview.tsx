@@ -706,6 +706,38 @@ export function Preview({
     iframeRef.current?.contentWindow?.postMessage(msg, "*");
   }, []);
 
+  // On a phone the edit panel docks over the lower part of the screen (see
+  // VisualEditorPanel): ask the page to bring the selected element into the
+  // part of the preview that stays visible above it. The panel's real top
+  // edge is measured once it has been laid out.
+  const revealAbovePanel = useCallback(
+    (loc: string) => {
+      if (!iframeRef.current || !window.matchMedia("(max-width: 639px)").matches) return;
+      requestAnimationFrame(() => {
+        const frame = iframeRef.current;
+        if (!frame) return;
+        const panel = document.querySelector('[role="dialog"][aria-label="Edit element"]');
+        const panelTop = panel ? panel.getBoundingClientRect().top : window.innerHeight * 0.48;
+        postToIframe({
+          type: "BF_EDITOR_REVEAL",
+          loc,
+          height: Math.max(60, panelTop - 8 - frame.getBoundingClientRect().top),
+        });
+      });
+    },
+    [postToIframe],
+  );
+
+  // The panel gets shorter when the on-screen keyboard opens: reveal again.
+  const selectedLoc = selection?.loc ?? null;
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!selectedLoc || !vv) return;
+    const again = () => window.setTimeout(() => revealAbovePanel(selectedLoc), 60);
+    vv.addEventListener("resize", again);
+    return () => vv.removeEventListener("resize", again);
+  }, [selectedLoc, revealAbovePanel]);
+
   // Enable/disable the in-iframe runtime when editMode flips.
   useEffect(() => {
     postToIframe({ type: editMode ? "BF_EDITOR_ENABLE" : "BF_EDITOR_DISABLE" });
@@ -749,17 +781,7 @@ export function Preview({
           // On a phone the edit panel docks over the lower half of the screen
           // (see VisualEditorPanel): ask the page to bring the element into
           // the part of the preview that stays visible above it.
-          if (sel.loc && iframeRef.current && window.matchMedia("(max-width: 639px)").matches) {
-            const frameTop = iframeRef.current.getBoundingClientRect().top;
-            const loc = sel.loc;
-            // Once the panel has been laid out, its real top edge says how much
-            // of the preview stays visible (it is shorter when the keyboard is up).
-            requestAnimationFrame(() => {
-              const panel = document.querySelector('[role="dialog"][aria-label="Edit element"]');
-              const panelTop = panel ? panel.getBoundingClientRect().top : window.innerHeight * 0.48;
-              postToIframe({ type: "BF_EDITOR_REVEAL", loc, height: Math.max(60, panelTop - 8 - frameTop) });
-            });
-          }
+          if (sel.loc) revealAbovePanel(sel.loc);
           break;
         }
         case "BF_EDITOR_RECT": {
@@ -774,7 +796,7 @@ export function Preview({
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [postToIframe, toParentBox, onElementSelected]);
+  }, [postToIframe, toParentBox, onElementSelected, revealAbovePanel]);
 
   // Fetch HTML snapshot content
   useEffect(() => {

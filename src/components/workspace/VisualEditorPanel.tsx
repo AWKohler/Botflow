@@ -260,7 +260,13 @@ export function VisualEditorPanel({
   useLayoutEffect(() => {
     const el = panelRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(reposition);
+    const ro = new ResizeObserver(() => {
+      reposition();
+      // The panel gets shorter when the on-screen keyboard opens: keep the
+      // field being typed in inside its scrolling body.
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && el.contains(active)) active.scrollIntoView({ block: "nearest" });
+    });
     ro.observe(el);
     window.addEventListener("resize", reposition);
     return () => {
