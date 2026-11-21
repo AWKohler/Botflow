@@ -271,6 +271,8 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
   const [renaming, setRenaming] = useState(false);
   // Touch screens: the row's actions sit behind one "More" button until asked for.
   const [actionsOpen, setActionsOpen] = useState(false);
+  // A row near the bottom of the screen opens its menu upward.
+  const [menuUp, setMenuUp] = useState(false);
   const [draft, setDraft] = useState(thread.title ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -383,7 +385,10 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
       {!renaming && (
         <button
           type="button"
-          onClick={() => setActionsOpen((v) => !v)}
+          onClick={(e) => {
+            setMenuUp(e.currentTarget.getBoundingClientRect().bottom > window.innerHeight - 200);
+            setActionsOpen((v) => !v);
+          }}
           aria-haspopup="menu"
           aria-expanded={actionsOpen}
           aria-label="Chat actions"
@@ -396,7 +401,7 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
       {actionsOpen && !renaming && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setActionsOpen(false)} />
-          <Menu className="absolute right-2 top-full z-20 -mt-1 w-48">
+          <Menu className={cn('absolute right-2 z-20 w-48', menuUp ? 'bottom-full -mb-1' : 'top-full -mt-1')}>
             <MenuItem onClick={() => { setActionsOpen(false); setRenaming(true); }}>
               <Pencil size={15} className="text-muted" />
               Rename

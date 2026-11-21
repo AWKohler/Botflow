@@ -17,8 +17,8 @@ export function AuthShell({ children }: { children: ReactNode }) {
           </Link>
         </div>
         {/* Phone: the painting from the larger layout, as a band above the form. */}
-        <AuthArtBand className="mx-4 h-28 shrink-0 md:hidden" />
-        <div className="flex flex-1 items-start justify-center px-2 pb-12 pt-8 md:items-center md:pb-16 md:pt-0">
+        <AuthArtBand className="mx-4 h-20 shrink-0 md:hidden" />
+        <div className="flex flex-1 items-start justify-center px-2 pb-12 pt-4 md:items-center md:pb-16 md:pt-0">
           <div className="w-full max-w-md">{children}</div>
         </div>
       </div>

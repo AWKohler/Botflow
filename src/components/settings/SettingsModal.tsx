@@ -92,8 +92,10 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
   const phone = useMediaQuery('(max-width: 639px)');
   const [keysOpenChoice, setKeysOpen] = useState<boolean | null>(null);
   const [appleOpenChoice, setAppleOpen] = useState<boolean | null>(null);
-  const keysOpen = keysOpenChoice ?? !phone;
-  const appleOpen = appleOpenChoice ?? !phone;
+  // Off a phone there are no toggles, so both are always open: a section
+  // folded on a phone can never stay hidden after a rotation.
+  const keysOpen = phone ? (keysOpenChoice ?? false) : true;
+  const appleOpen = phone ? (appleOpenChoice ?? false) : true;
   // A failed load must never read as "nothing is connected".
   const [loadFailed, setLoadFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -1042,13 +1044,16 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="relative flex max-h-[min(42rem,calc(100dvh-2rem-8vh))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl inset-shadow-bevel-top outline-none dark:border-border-strong"
+        // Ends above the on-screen keyboard (see KeyboardInset), so a focused key field is never behind it.
+        className="relative flex max-h-[min(42rem,calc(100dvh-2rem-8vh-var(--keyboard-inset,0px)))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl inset-shadow-bevel-top outline-none dark:border-border-strong"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-6">
-          <div className="flex min-w-0 items-center gap-3 sm:gap-5">
+        {/* On the narrowest phones the title and Close share the first row and
+            the tabs take a second, full-width one (side by side they overflow 320px). */}
+        <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-2.5 border-b border-border px-4 py-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3 max-[389px]:contents sm:gap-5">
             <h2 id={titleId} className="shrink-0 text-base font-semibold text-fg">Settings</h2>
-            <div role="tablist" className="flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5 inset-shadow-well dark:bg-bg">
+            <div role="tablist" className="flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5 inset-shadow-well dark:bg-bg max-[389px]:order-3 max-[389px]:w-full max-[389px]:[&>button]:flex-1">
               {(
                 [
                   ['usage', 'Usage'],
