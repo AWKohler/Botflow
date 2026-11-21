@@ -450,6 +450,9 @@ body {
     textarea,
     select {
         font-size: 16px;
+        /* A field scrolled into view (focus, the keyboard opening) keeps clear
+           of the edge of its panel and of any fade over it. */
+        scroll-margin-block: 2.5rem;
     }
 }
 
