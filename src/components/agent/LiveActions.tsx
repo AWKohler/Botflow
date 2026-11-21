@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { NARROW_QUERY, useMediaQuery } from '@/components/ui/use-media-query';
 import { formatToolName } from '@/lib/agent/tool-labels';
 import type { ToolCallData } from '@/lib/agent/ui-types';
 import { ChevronDown, ChevronRight, Loader2, Check } from 'lucide-react';
@@ -35,6 +36,10 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
   // On a phone the card is one line (the latest step) until it is opened: with
   // the keyboard up, a five-row list would leave almost no room for the chat.
   const [expanded, setExpanded] = useState<boolean | null>(null);
+  const narrow = useMediaQuery(NARROW_QUERY);
+  // Crossing between the phone and the wider layout (a rotated phone) returns
+  // the card to that layout's default, so it can never be left folded where it has no toggle.
+  useEffect(() => setExpanded(null), [narrow]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -65,8 +70,10 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
       <div className="flex items-center justify-between gap-2 px-1">
         <button
           type="button"
-          onClick={() => setExpanded((v) => !(v ?? !window.matchMedia('(max-width: 767px)').matches))}
-          aria-expanded={expanded ?? undefined}
+          // A toggle on a phone only; on wider screens the list is always open.
+          onClick={() => narrow && setExpanded((v) => !(v ?? false))}
+          aria-expanded={narrow ? (expanded ?? false) : undefined}
+          tabIndex={narrow ? undefined : -1}
           className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium text-muted md:pointer-events-none pointer-coarse:min-h-8"
         >
           <ChevronRight

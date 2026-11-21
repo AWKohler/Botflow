@@ -2,9 +2,10 @@
 
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
-import { useId, useSyncExternalStore, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { buttonClass } from "./button";
+import { useMediaQuery } from "./use-media-query";
 import { useModal } from "./use-modal";
 
 // Below Tailwind's `sm`. This is the width at which an anchored 420px popover
@@ -12,23 +13,13 @@ import { useModal } from "./use-modal";
 // at a time earlier (below `md`), where those popovers still fit.
 const PHONE_QUERY = "(max-width: 639px)";
 
-function subscribePhone(onChange: () => void) {
-  const query = window.matchMedia(PHONE_QUERY);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-}
-
 /**
  * True on a phone-width window (below Tailwind's `sm`). False on the server
  * and for the first client render, so use it for things that only appear
  * after an interaction (an open menu), never for the page's first paint.
  */
 export function useIsPhone() {
-  return useSyncExternalStore(
-    subscribePhone,
-    () => window.matchMedia(PHONE_QUERY).matches,
-    () => false,
-  );
+  return useMediaQuery(PHONE_QUERY);
 }
 
 /**

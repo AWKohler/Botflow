@@ -15,6 +15,7 @@ import { ShareControls } from "@/components/sharing/share-controls";
 import { FileCode2 } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
+import { NARROW_QUERY, useMediaQuery } from "@/components/ui/use-media-query";
 import { FileSearch } from "./file-search";
 import { SandboxGitHubPanel } from "@/components/sandboxed-web-workspace/github-panel";
 import { SwiftSimulatorPreview } from "./swift-simulator-preview";
@@ -47,7 +48,6 @@ const PersistentTerminal = dynamic(
   { ssr: false, loading: () => <div className="h-full w-full bg-elevated" /> },
 );
 
-const isWideWindow = () => !window.matchMedia("(max-width: 767px)").matches;
 
 type WorkspaceView = "preview" | "code" | "database" | "revenuecat";
 type SandboxStatus = "idle" | "booting" | "ready" | "error";
@@ -98,6 +98,7 @@ export function PersistentWorkspace({
   // phone, where it would take a third of the code view. No flash, and the
   // server render matches.
   const [terminalOpen, setTerminalOpen] = useState<boolean | null>(null);
+  const narrow = useMediaQuery(NARROW_QUERY);
   const [sidebarTab, setSidebarTab] = useState<"files" | "search" | "env" | "git">("files");
   const [currentView, setCurrentView] = useState<WorkspaceView>("code");
   // When a build-error row is clicked, we open the file and ask the editor to
@@ -418,12 +419,12 @@ export function PersistentWorkspace({
   // On a phone the explorer covers the editor, so opening a file leaves the explorer.
   const openFileFromExplorer = useCallback(
     (filePath: string) => {
-      if (files[filePath]?.type === "file" && window.matchMedia("(max-width: 767px)").matches) {
+      if (files[filePath]?.type === "file" && narrow) {
         setShowSidebar(false);
       }
       void handleFileSelect(filePath);
     },
-    [files, handleFileSelect],
+    [files, handleFileSelect, narrow],
   );
 
   /** Click-to-jump from the build Issues panel. Open the file in the editor
@@ -438,12 +439,12 @@ export function PersistentWorkspace({
       const target = candidates.find((p) => files[p]?.type === "file") ?? candidates[0];
       setCurrentView("code");
       // On a phone the explorer covers the editor: step aside so the file shows.
-      if (window.matchMedia("(max-width: 767px)").matches) setShowSidebar(false);
+      if (narrow) setShowSidebar(false);
       await handleFileSelect(target);
       setRevealLine(line);
       setRevealNonce((n) => n + 1);
     },
-    [files, handleFileSelect],
+    [files, handleFileSelect, narrow],
   );
 
   const handleContentChange = useCallback((next: string) => {
@@ -860,8 +861,8 @@ export function PersistentWorkspace({
             <div className="border-t border-border bg-surface">
               <button
                 type="button"
-                onClick={() => setTerminalOpen((v) => !(v ?? isWideWindow()))}
-                aria-expanded={terminalOpen ?? undefined}
+                onClick={() => setTerminalOpen((v) => !(v ?? !narrow))}
+                aria-expanded={terminalOpen ?? !narrow}
                 className="flex h-8 w-full items-center gap-1.5 px-3 text-xs font-medium text-muted transition-colors hover:text-fg pointer-coarse:h-10 pointer-coarse:text-[13px]"
               >
                 <ChevronRight size={12} className={cn("transition-transform", terminalOpen === null ? "md:rotate-90" : terminalOpen && "rotate-90")} />

@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { ChevronRight, Menu, X } from 'lucide-react';
 import { SignedIn, SignedOut, UserButton, useUser } from '@/components/auth';
 import { buttonClass } from '@/components/ui/button';
+import { NARROW_QUERY, useMediaQuery } from '@/components/ui/use-media-query';
 import { cn } from '@/lib/utils';
 
 const EXPLORE_ENABLED = process.env.NEXT_PUBLIC_HIDE_EXPLORE !== 'true';
@@ -69,6 +70,12 @@ export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => setMenuOpen(false), [pathname]);
+  // The menu belongs to the phone layout. Leaving it (a rotated phone, a
+  // widened window) closes the menu, which also releases the scroll lock.
+  const narrow = useMediaQuery(NARROW_QUERY);
+  useEffect(() => {
+    if (!narrow) setMenuOpen(false);
+  }, [narrow]);
   useEffect(() => {
     if (!menuOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -163,7 +170,9 @@ export function SiteHeader() {
             <nav
               id="site-mobile-nav"
               aria-label="Mobile"
-              className="absolute inset-x-0 top-full border-y border-border bg-bg px-6 pb-5 pt-1 shadow-lg md:hidden"
+              // No taller than the screen under the header: on a short window
+              // (landscape, large text) the menu scrolls instead of losing its last rows.
+              className="absolute inset-x-0 top-full max-h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain border-y border-border bg-bg px-6 pb-5 pt-1 shadow-lg md:hidden"
             >
               <ul className="divide-y divide-border">
                 {links.map((link) => (

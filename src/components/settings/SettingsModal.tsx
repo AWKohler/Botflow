@@ -4,9 +4,10 @@ import { Input } from "@/components/ui/input";
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useModal } from '@/components/ui/use-modal';
+import { useMediaQuery } from '@/components/ui/use-media-query';
 import { SignedIn, SignedOut, SignInButton } from '@/components/auth';
 import { useToast } from '@/components/ui/toast';
-import { X, ExternalLink, AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
+import { X, ChevronDown, ExternalLink, AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { buttonClass } from '@/components/ui/button';
 import { UsageTab } from './UsageTab';
@@ -85,6 +86,14 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>(defaultTab);
   const [loading, setLoading] = useState(true);
+  // On a phone the two long parts of Connections (the API key list and the
+  // Apple setup steps) are folded until asked for, so the page scans as a
+  // short list of accounts. null: not toggled, so the screen size decides.
+  const phone = useMediaQuery('(max-width: 639px)');
+  const [keysOpenChoice, setKeysOpen] = useState<boolean | null>(null);
+  const [appleOpenChoice, setAppleOpen] = useState<boolean | null>(null);
+  const keysOpen = keysOpenChoice ?? !phone;
+  const appleOpen = appleOpenChoice ?? !phone;
   // A failed load must never read as "nothing is connected".
   const [loadFailed, setLoadFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -98,6 +107,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
   });
   // Server-controlled flag (USE_TOGETHER_KIMI): gates the Together AI key input.
   const [useTogetherKimi, setUseTogetherKimi] = useState(false);
+  const savedKeyCount = PROVIDERS.filter((p) => (p.provider !== 'together' || useTogetherKimi) && hasKey[p.provider]).length;
   const [hasClaudeOAuth, setHasClaudeOAuth] = useState(false);
   const [hasCodexOAuth, setHasCodexOAuth] = useState(false);
   const [hasConvexOAuth, setHasConvexOAuth] = useState(false);
@@ -765,8 +775,28 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
 
                     {/* ── BYOK API Keys ── */}
                     <div>
-                      <h3 className="text-sm font-semibold text-fg mb-1">API keys</h3>
-                      <p className="text-xs text-muted mb-4">
+                      {phone ? (
+                        <button
+                          type="button"
+                          onClick={() => setKeysOpen(!keysOpen)}
+                          aria-expanded={keysOpen}
+                          className="flex min-h-11 w-full items-center justify-between gap-3 text-left"
+                        >
+                          <span>
+                            <span className="block text-sm font-semibold text-fg">API keys</span>
+                            {!keysOpen && (
+                              <span className="mt-0.5 block text-[13px] text-muted">
+                                {savedKeyCount === 0 ? 'Use your own model keys. None saved.' : `${savedKeyCount} saved`}
+                              </span>
+                            )}
+                          </span>
+                          <ChevronDown className={cn('h-4 w-4 shrink-0 text-muted transition-transform', keysOpen && 'rotate-180')} />
+                        </button>
+                      ) : (
+                        <h3 className="text-sm font-semibold text-fg mb-1">API keys</h3>
+                      )}
+                      {keysOpen && (<>
+                      <p className="text-xs text-muted mb-4 max-sm:mt-1 max-sm:text-[13px]">
                         Use your own model keys. Each one is saved separately.
                         {(hasCodexOAuth || (ANTHROPIC_OAUTH_ENABLED && hasClaudeOAuth)) && (
                           <> A Fallback key is used only if its subscription above is unavailable.</>
@@ -829,6 +859,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                           </div>
                         ))}
                       </div>
+                      </>)}
                     </div>
 
                     {/* ── Apple Developer (App Store Connect) section ── */}
@@ -849,9 +880,14 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                             ) : 'Disconnect'}
                           </button>
                         )}
+                        {!appleConnected && phone && (
+                          <button onClick={() => setAppleOpen(!appleOpen)} aria-expanded={appleOpen} className={connectionButtonClass}>
+                            {appleOpen ? 'Hide steps' : 'Set up'}
+                          </button>
+                        )}
                       </ConnectionHeader>
 
-                      {appleConnected ? null : (
+                      {appleConnected || !appleOpen ? null : (
                         // Phone: no box inside the card, so the instructions get the card's full width.
                         <div className="mt-3 rounded-xl border border-border bg-surface p-4 space-y-3 max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:p-0">
                           {/* Free Apple IDs never see the Integrations page — lead

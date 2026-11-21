@@ -16,6 +16,7 @@ import type { ThreadPerson } from '@/lib/agent/thread-presence';
 import { MODEL_CONFIGS, type ModelId } from '@/lib/agent/models';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
+import { Menu, MenuItem, MenuSeparator } from '@/components/ui/menu';
 
 export type { ThreadSummary, QueueItemSummary, ThreadPerson };
 
@@ -360,15 +361,12 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
           className={cn(
             // Revealed on hover or keyboard focus. Hidden rather than
             // transparent, so a resting row gives its whole width to the title.
-            // A touch screen can't hover: there the row shows one "More" button,
-            // which opens these, so Delete is never one stray tap from the title.
-            'shrink-0 items-center gap-0.5',
-            actionsOpen
-              ? 'flex'
-              : 'hidden [@media(hover:hover)]:group-hover/row:flex [@media(hover:hover)]:group-focus-within/row:flex',
+            // A touch screen can't hover: there the row has one "More" button
+            // that opens a labelled menu instead (below).
+            'hidden shrink-0 items-center gap-0.5 [@media(hover:hover)]:group-hover/row:flex [@media(hover:hover)]:group-focus-within/row:flex',
           )}
         >
-          <RowAction label="Rename" onClick={() => { setActionsOpen(false); setRenaming(true); }}>
+          <RowAction label="Rename" onClick={() => setRenaming(true)}>
             <Pencil size={13} />
           </RowAction>
           <RowAction
@@ -386,13 +384,34 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
         <button
           type="button"
           onClick={() => setActionsOpen((v) => !v)}
+          aria-haspopup="menu"
           aria-expanded={actionsOpen}
-          aria-label={actionsOpen ? 'Hide chat actions' : 'Chat actions'}
-          title={actionsOpen ? 'Hide actions' : 'Actions'}
+          aria-label="Chat actions"
+          title="Actions"
           className="hidden size-9 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-soft hover:text-fg [@media(hover:none)]:flex"
         >
-          {actionsOpen ? <IconX size={15} /> : <MoreHorizontal size={16} />}
+          <MoreHorizontal size={16} />
         </button>
+      )}
+      {actionsOpen && !renaming && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setActionsOpen(false)} />
+          <Menu className="absolute right-2 top-full z-20 -mt-1 w-48">
+            <MenuItem onClick={() => { setActionsOpen(false); setRenaming(true); }}>
+              <Pencil size={15} className="text-muted" />
+              Rename
+            </MenuItem>
+            <MenuItem onClick={() => { setActionsOpen(false); onArchive(!thread.archived); }}>
+              {thread.archived ? <ArchiveRestore size={15} className="text-muted" /> : <Archive size={15} className="text-muted" />}
+              {thread.archived ? 'Unarchive' : 'Archive'}
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem tone="danger" onClick={() => { setActionsOpen(false); onDelete(); }}>
+              <Trash2 size={15} />
+              Delete
+            </MenuItem>
+          </Menu>
+        </>
       )}
     </div>
   );

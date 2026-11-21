@@ -3,6 +3,7 @@
 import { Editor, BeforeMount, OnMount } from '@monaco-editor/react';
 import { FileCode2 } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
+import { NARROW_QUERY, useMediaQuery } from '@/components/ui/use-media-query';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { useEffect, useRef, useState } from 'react';
 
@@ -54,6 +55,9 @@ export function CodeEditor({
 }: CodeEditorProps) {
   const [themeName, setThemeName] = useState<'sand-light' | 'sand-dark'>('sand-light');
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+  // On a phone the gutter is kept to the line numbers: at 350px wide, the
+  // default gutter (wide numbers plus a fold column) takes a fifth of the editor.
+  const narrow = useMediaQuery(NARROW_QUERY);
 
   // React to revealLine changes — center the requested line and place the
   // cursor there. revealNonce makes repeat-clicks of the same line still
@@ -293,10 +297,6 @@ export function CodeEditor({
       </div>
     );
   }
-
-  // On a phone the gutter is kept to the line numbers: at 350px wide, the
-  // default gutter (wide numbers plus a fold column) takes a fifth of the editor.
-  const narrow = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
 
   return (
     <Editor

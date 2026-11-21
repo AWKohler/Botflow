@@ -69,6 +69,7 @@ import {
 import type { PreviewInfo } from "@/lib/preview-store";
 import { buildPreviewUrl } from "@/lib/preview-url";
 import { cn } from "@/lib/utils";
+import { NARROW_QUERY, useMediaQuery } from "@/components/ui/use-media-query";
 import {
   normalizeBackendType,
   projectUsesConvex,
@@ -168,6 +169,7 @@ export function SandboxedWebWorkspace({
   // phone, where it would take a third of the code view. No flash, and the
   // server render matches.
   const [terminalOpen, setTerminalOpen] = useState<boolean | null>(null);
+  const narrow = useMediaQuery(NARROW_QUERY);
   const [projectName, setProjectName] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>("preview");
@@ -488,12 +490,12 @@ export function SandboxedWebWorkspace({
   // On a phone the explorer covers the editor, so opening a file leaves the explorer.
   const openFileFromExplorer = useCallback(
     (filePath: string) => {
-      if (files[filePath]?.type === "file" && window.matchMedia("(max-width: 767px)").matches) {
+      if (files[filePath]?.type === "file" && narrow) {
         setShowSidebar(false);
       }
       void handleFileSelect(filePath);
     },
-    [files, handleFileSelect],
+    [files, handleFileSelect, narrow],
   );
 
   useEffect(() => {
@@ -1783,8 +1785,8 @@ export function SandboxedWebWorkspace({
             <div className="border-t border-border bg-surface">
               <button
                 type="button"
-                onClick={() => setTerminalOpen((v) => !(v ?? !window.matchMedia("(max-width: 767px)").matches))}
-                aria-expanded={terminalOpen ?? undefined}
+                onClick={() => setTerminalOpen((v) => !(v ?? !narrow))}
+                aria-expanded={terminalOpen ?? !narrow}
                 className="flex h-8 w-full items-center gap-1.5 px-3 text-xs font-medium text-muted transition-colors hover:text-fg pointer-coarse:h-10 pointer-coarse:text-[13px]"
               >
                 <ChevronRight size={12} className={cn("transition-transform", terminalOpen === null ? "md:rotate-90" : terminalOpen && "rotate-90")} />
