@@ -1188,7 +1188,8 @@ export function SandboxedWebWorkspace({
 
   // ── Render ───────────────────────────────────────────────────────────
   return (
-    <div className="flex h-[100dvh] flex-col bg-surface text-fg md:flex-row">
+    // Fills the screen above the on-screen keyboard (see KeyboardInset).
+    <div data-fills-screen className="flex h-[calc(100dvh-var(--keyboard-inset,0px))] flex-col bg-surface text-fg md:flex-row">
       {/* Small screens show one pane at a time; this bar switches between them. */}
       {/* One row of chrome on phones: where you are (and the way back), the
           pane switch, and the chat's actions. */}

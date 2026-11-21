@@ -72,7 +72,7 @@ export function Dialog({
         aria-labelledby={title ? titleId : undefined}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className={cn(dialogPanelClass, "flex max-h-[calc(100dvh-2rem)] flex-col outline-none max-sm:max-h-[calc(100dvh-1rem-max(1rem,9dvh))]", SIZES[size], className)}
+        className={cn(dialogPanelClass, "flex max-h-[calc(100dvh-2rem)] flex-col outline-none max-sm:max-h-[calc(100dvh-1rem-max(1rem,9dvh)-var(--keyboard-inset,0px))]", SIZES[size], className)}
       >
         {(title || dismissable) && (
           <div className="flex items-start justify-between gap-4 px-6 pb-1 pt-5 max-sm:px-5">

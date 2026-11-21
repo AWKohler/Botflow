@@ -29,7 +29,8 @@ export function useIsPhone() {
  * the side of the screen. Put `phoneSheetBackdropClass` on its click-away layer.
  */
 export const phoneSheetClass =
-  "max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto! max-sm:right-0! max-sm:w-full max-sm:max-w-none " +
+  // Sits on the on-screen keyboard when one is up (see KeyboardInset).
+  "max-sm:inset-x-0 max-sm:bottom-[var(--keyboard-inset,0px)] max-sm:top-auto! max-sm:right-0! max-sm:w-full max-sm:max-w-none " +
   "max-sm:rounded-b-none max-sm:rounded-t-2xl max-sm:border-x-0 max-sm:border-b-0 " +
   "max-sm:pb-[env(safe-area-inset-bottom)] max-sm:motion-safe:animate-[sheet-up_0.24s_cubic-bezier(0.2,0.8,0.2,1)]";
 export const phoneSheetBackdropClass =
@@ -39,7 +40,8 @@ export const phoneSheetGrabberClass = "mx-auto mt-2 hidden h-1 w-9 shrink-0 roun
 /** Title row and scrolling body of such a popover, sized for a phone. */
 export const phoneSheetTitleClass = "max-sm:pl-5 max-sm:pr-2 max-sm:pb-2 max-sm:pt-1 max-sm:[&_h3]:text-base";
 export const phoneSheetCloseClass = "max-sm:flex max-sm:size-11 max-sm:items-center max-sm:justify-center max-sm:[&_svg]:size-5";
-export const phoneSheetBodyClass = "max-sm:max-h-[calc(85dvh-4.25rem)] max-sm:overflow-y-auto max-sm:overscroll-contain";
+export const phoneSheetBodyClass =
+  "max-sm:max-h-[calc(min(85dvh,100dvh-var(--keyboard-inset,0px)-1rem)-4.25rem)] max-sm:overflow-y-auto max-sm:overscroll-contain";
 
 /**
  * The behaviour that goes with `phoneSheetClass`: while such a popover is a
@@ -100,7 +102,7 @@ export function BottomSheet({
   return createPortal(
     <div
       // touch-none: a drag on the dimmed area (or the sheet's title) must not scroll the page behind.
-      className="fixed inset-0 flex touch-none items-end bg-black/40 backdrop-blur-[2px] motion-safe:animate-[sheet-fade_0.18s_ease-out]"
+      className="fixed inset-0 flex touch-none items-end bg-black/40 pb-[var(--keyboard-inset,0px)] backdrop-blur-[2px] motion-safe:animate-[sheet-fade_0.18s_ease-out]"
       style={{ zIndex }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -114,7 +116,7 @@ export function BottomSheet({
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
         className={cn(
-          "flex max-h-[85dvh] w-full flex-col rounded-t-2xl border-t border-border bg-bg text-fg shadow-2xl outline-none",
+          "flex max-h-[min(85dvh,calc(100dvh-var(--keyboard-inset,0px)-1rem))] w-full flex-col rounded-t-2xl border-t border-border bg-bg text-fg shadow-2xl outline-none",
           "inset-shadow-bevel-top dark:border-border-strong dark:bg-elevated",
           "pb-[env(safe-area-inset-bottom)] motion-safe:animate-[sheet-up_0.24s_cubic-bezier(0.2,0.8,0.2,1)]",
           className,

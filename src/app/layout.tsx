@@ -4,6 +4,7 @@ import { AuthProvider } from "@/components/auth";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
 import { Analytics } from "@vercel/analytics/next";
+import { KeyboardInset } from "@/components/site/KeyboardInset";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,8 +53,8 @@ export const viewport: Viewport = {
   ],
   // Chrome on Android: the on-screen keyboard shrinks the layout instead of
   // covering it, so a full-height screen (the workspace chat) keeps its
-  // composer in view. iOS Safari ignores this and scrolls the focused field
-  // into view itself.
+  // composer in view. iOS Safari ignores this; there <KeyboardInset /> does
+  // the same job by publishing the keyboard's height.
   interactiveWidget: "resizes-content",
 };
 
@@ -68,6 +69,7 @@ export default function RootLayout({
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         >
+          <KeyboardInset />
           <ToastProvider>{children}</ToastProvider>
           <Analytics />
         </body>

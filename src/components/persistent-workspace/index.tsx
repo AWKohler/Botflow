@@ -493,7 +493,8 @@ export function PersistentWorkspace({
   }, [hasUnsavedChanges]);
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-surface text-fg md:flex-row">
+    // Fills the screen above the on-screen keyboard (see KeyboardInset).
+    <div data-fills-screen className="flex h-[calc(100dvh-var(--keyboard-inset,0px))] flex-col bg-surface text-fg md:flex-row">
       {/* One row of chrome on phones, the same as the web workspace: where you
           are (and the way back), the pane switch, and the chat's actions. */}
       <div className="flex h-14 shrink-0 items-center gap-1 border-b border-border px-1.5 md:hidden">
