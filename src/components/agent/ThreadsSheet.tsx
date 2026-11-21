@@ -386,7 +386,10 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
         <button
           type="button"
           onClick={(e) => {
-            setMenuUp(e.currentTarget.getBoundingClientRect().bottom > window.innerHeight - 200);
+            // Against the drawer's own bottom edge (it is shorter when the keyboard is up).
+            const drawer = e.currentTarget.closest('[role="dialog"]');
+            const floor = drawer ? drawer.getBoundingClientRect().bottom : window.innerHeight;
+            setMenuUp(e.currentTarget.getBoundingClientRect().bottom > floor - 180);
             setActionsOpen((v) => !v);
           }}
           aria-haspopup="menu"

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronRight, Menu, X } from 'lucide-react';
 import { SignedIn, SignedOut, UserButton, useUser } from '@/components/auth';
 import { buttonClass } from '@/components/ui/button';
@@ -68,6 +68,7 @@ export function SiteHeader() {
   const pathname = usePathname() ?? '/';
   const { isSignedIn, isLoaded } = useUser();
   const [menuOpen, setMenuOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
 
   useEffect(() => setMenuOpen(false), [pathname]);
   // The menu belongs to the phone layout. Leaving it (a rotated phone, a
@@ -82,12 +83,22 @@ export function SiteHeader() {
       if (e.key === 'Escape') setMenuOpen(false);
     };
     document.addEventListener('keydown', onKey);
-    // The page behind does not scroll while the menu is open.
+    // The page behind does not scroll while the menu is open, and cannot be
+    // tabbed into or read: everything beside the header is inert.
     const { overflow } = document.documentElement.style;
     document.documentElement.style.overflow = 'hidden';
+    const inerted: Element[] = [];
+    for (let el: Element | null = headerRef.current; el && el !== document.body; el = el.parentElement) {
+      for (const sibling of Array.from(el.parentElement?.children ?? [])) {
+        if (sibling === el || sibling.hasAttribute('inert') || sibling.tagName === 'SCRIPT' || sibling.tagName === 'STYLE') continue;
+        sibling.setAttribute('inert', '');
+        inerted.push(sibling);
+      }
+    }
     return () => {
       document.removeEventListener('keydown', onKey);
       document.documentElement.style.overflow = overflow;
+      for (const el of inerted) el.removeAttribute('inert');
     };
   }, [menuOpen]);
 
@@ -96,7 +107,7 @@ export function SiteHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-border bg-bg/85 backdrop-blur-lg">
+      <header ref={headerRef} className="sticky top-0 z-50 border-b border-border bg-bg/85 backdrop-blur-lg">
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 select-none overflow-hidden">
           <div className="absolute inset-y-0 left-0 w-4 sm:w-6" style={HATCH_STYLE} />
           <div className="absolute inset-y-0 right-0 w-4 sm:w-6" style={HATCH_STYLE} />

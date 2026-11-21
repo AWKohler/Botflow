@@ -1198,7 +1198,7 @@ function ActiveSwiftSimulatorPreview({
             className={cn(
               "flex items-center rounded-md border border-border bg-elevated text-muted hover:text-fg",
               "disabled:cursor-not-allowed disabled:opacity-40",
-              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] @max-[40rem]:h-9 @max-[40rem]:px-2.5 @max-[40rem]:text-xs",
+              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] @max-[40rem]:h-10 @max-[40rem]:px-3 @max-[40rem]:text-xs",
             )}
             title="Tar the sandbox and rebuild"
           >
@@ -1272,7 +1272,7 @@ function ActiveSwiftSimulatorPreview({
                 aria-expanded={moreOpen}
                 aria-label="More simulator controls"
                 title="More"
-                className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-fg"
+                className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-fg"
               >
                 <MoreHorizontal size={16} />
               </button>
@@ -1323,7 +1323,7 @@ function ActiveSwiftSimulatorPreview({
               onClick={handleStop}
               className={cn(
                 "flex items-center rounded-md border border-border bg-elevated text-muted hover:text-danger",
-                isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] @max-[40rem]:h-9 @max-[40rem]:px-2.5 @max-[40rem]:text-xs",
+                isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] @max-[40rem]:h-10 @max-[40rem]:px-3 @max-[40rem]:text-xs",
               )}
               title="Stop the simulator"
             >

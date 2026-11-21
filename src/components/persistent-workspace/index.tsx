@@ -1073,7 +1073,7 @@ function StoppedPreviewPlaceholder({
   return (
     <div className="absolute inset-0 flex flex-col gap-2 pb-2.5 pr-2.5">
       {/* Picker bar — choose the device/orientation before starting. */}
-      <div className="flex h-9 flex-shrink-0 items-center gap-2 rounded-xl border border-border bg-elevated/60 px-3 max-md:h-11 max-md:pr-1.5">
+      <div className="flex h-9 flex-shrink-0 items-center gap-2 rounded-xl border border-border bg-elevated/60 px-3 max-md:h-12 max-md:pr-1">
         <span className="text-[11px] text-muted max-md:text-xs">
           Preview stopped<span className="max-md:hidden"> — pick a device, then press play</span>
         </span>
@@ -1088,7 +1088,7 @@ function StoppedPreviewPlaceholder({
                 type="button"
                 onClick={() => pickDevice(id)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] transition pointer-coarse:h-7 pointer-coarse:px-2.5 pointer-coarse:text-xs",
+                  "flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] transition pointer-coarse:h-9 pointer-coarse:px-3 pointer-coarse:text-xs",
                   // The same raised neutral chip as every other segmented control.
                   device === id
                     ? "bg-bg text-fg shadow-sm ring-1 ring-border-strong/50 dark:bg-soft dark:ring-border-strong"
@@ -1103,7 +1103,7 @@ function StoppedPreviewPlaceholder({
           <button
             type="button"
             onClick={toggleOrientation}
-            className="flex items-center gap-1.5 rounded-md border border-border bg-elevated px-2 py-1 text-[11px] text-muted hover:text-fg pointer-coarse:h-8 pointer-coarse:px-2.5 pointer-coarse:text-xs"
+            className="flex items-center gap-1.5 rounded-md border border-border bg-elevated px-2 py-1 text-[11px] text-muted hover:text-fg pointer-coarse:h-10 pointer-coarse:px-3 pointer-coarse:text-xs"
             title={`Rotate to ${orientation === "portrait" ? "landscape" : "portrait"}`}
           >
             <RotateCw size={12} />

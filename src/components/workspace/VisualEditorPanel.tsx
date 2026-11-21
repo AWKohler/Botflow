@@ -291,8 +291,9 @@ export function VisualEditorPanel({
         // measured position below), so the element being edited stays in view above it.
         // With the keyboard up it is shorter still: the two header rows and a
         // strip of the preview (17rem in all) stay visible above it — but never
-        // shorter than its own header plus one field (a small phone).
-        "max-sm:bottom-[calc(0.5rem+var(--keyboard-inset,0px))]! max-sm:left-2! max-sm:right-2! max-sm:top-auto! max-sm:w-auto! max-sm:max-h-[max(9rem,min(52dvh,calc(100dvh-var(--keyboard-inset,0px)-17rem)))]!",
+        // shorter than its own header plus a field and a row of chips (11.5rem).
+        // On a short phone the preview strip is what gives way.
+        "max-sm:bottom-[calc(0.5rem+var(--keyboard-inset,0px))]! max-sm:left-2! max-sm:right-2! max-sm:top-auto! max-sm:w-auto! max-sm:max-h-[max(11.5rem,min(52dvh,calc(100dvh-var(--keyboard-inset,0px)-17rem)))]!",
       )}
       style={{ left: pos.left, top: pos.top, width: PANEL_WIDTH, maxHeight: pos.maxHeight }}
       onMouseDown={(e) => e.stopPropagation()}
