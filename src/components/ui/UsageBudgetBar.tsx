@@ -39,8 +39,8 @@ export function UsageBudgetBar({ model }: Props) {
   return (
     <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
       isAtLimit
-        ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-800/40 dark:bg-red-900/20 dark:text-red-400'
-        : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-400'
+        ? 'border-danger-border bg-danger-soft text-danger'
+        : 'border-warning-border bg-warning-soft text-warning'
     }`}>
       <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
       <div className="flex-1 min-w-0">

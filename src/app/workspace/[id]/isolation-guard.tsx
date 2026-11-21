@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, AlertTriangle } from 'lucide-react';
+import { buttonClass } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { PersistentWorkspace } from '@/components/persistent-workspace';
 import { SandboxedWebWorkspace } from '@/components/sandboxed-web-workspace';
 import type { ProjectPlatform, BackendType } from '@/lib/project-platform';
@@ -90,36 +92,37 @@ function WebContainerMigrationGate({
 
   if (status === 'error') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--sand-bg)] text-[var(--sand-text)] px-4">
-        <div className="max-w-md text-center space-y-5 p-8 rounded-2xl border border-border bg-white shadow-sm">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-100">
-            <AlertTriangle className="h-7 w-7 text-amber-600" />
-          </div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Upgrade didn&apos;t finish</h1>
-          <p className="text-sm text-neutral-600 leading-relaxed">
-            We hit a snag moving this project to the new sandbox runtime. Your files are safe — you can try again.
-          </p>
-          {error && <p className="text-xs text-neutral-400 break-words">{error}</p>}
-          <button
-            onClick={() => { startedRef.current = true; run(); }}
-            className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 transition"
-          >
-            Try again
-          </button>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-bg px-6 text-fg">
+        <EmptyState
+          icon={AlertTriangle}
+          tone="danger"
+          title="The upgrade didn’t finish"
+          description={
+            <>
+              Something went wrong moving this project to the new sandbox runtime. Your files are safe.
+              {error && <span className="mt-2 block break-words text-xs text-subtle">{error}</span>}
+            </>
+          }
+          action={
+            <button
+              onClick={() => { startedRef.current = true; run(); }}
+              className={buttonClass({ variant: 'primary' })}
+            >
+              Try again
+            </button>
+          }
+        />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--sand-bg)] text-[var(--sand-text)] px-4">
-      <div className="max-w-md text-center space-y-5 p-8 rounded-2xl border border-border bg-white shadow-sm">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-neutral-100">
-          <Loader2 className="h-7 w-7 text-neutral-500 animate-spin" />
-        </div>
-        <h1 className="text-2xl font-semibold text-neutral-900">Upgrading this project…</h1>
-        <p className="text-sm text-neutral-600 leading-relaxed">
-          We&apos;re moving this project to Botflow&apos;s faster sandbox runtime. This only happens once and takes a moment.
+    <div className="flex min-h-screen items-center justify-center bg-bg px-6 text-fg">
+      <div className="flex max-w-sm flex-col items-center text-center">
+        <Loader2 className="mb-4 h-5 w-5 animate-spin text-muted" />
+        <h1 className="text-[15px] font-semibold">Upgrading this project…</h1>
+        <p className="mt-1.5 text-sm leading-relaxed text-muted">
+          We’re moving it to Botflow’s faster sandbox runtime. This happens once and only takes a moment.
         </p>
       </div>
     </div>

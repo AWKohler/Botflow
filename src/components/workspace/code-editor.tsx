@@ -1,6 +1,9 @@
 'use client';
 
 import { Editor, BeforeMount, OnMount } from '@monaco-editor/react';
+import { FileCode2 } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
+import { NARROW_QUERY, useMediaQuery } from '@/components/ui/use-media-query';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { useEffect, useRef, useState } from 'react';
 
@@ -19,24 +22,24 @@ interface CodeEditorProps {
 
 // Sand design token values (mirrored from globals.css)
 const DARK = {
-  bg:       '#1d1a16',
-  surface:  '#23201b',
-  elevated: '#2b2722',
-  border:   '#3a342e',
+  bg:       '#1b1815',
+  surface:  '#221f1b',
+  elevated: '#2a2621',
+  border:   '#35302a',
   text:     '#ede6db',
-  muted:    '#b8ada1',
-  subtle:   '#6b6259',
-  accent:   '#d89b6a',
-  accentDim:'#c07a4c',
+  muted:    '#b5ab9f',
+  subtle:   '#9a9186',
+  accent:   '#8aa6ff',
+  accentDim:'#6f8ef0',
 };
 const LIGHT = {
   bg:       '#fefefe',
-  surface:  '#fcfbf8',
-  elevated: '#f8f4ed',
-  border:   '#eceae4',
-  text:     '#2f2f31',
-  muted:    '#3f3f46',
-  subtle:   '#b0a898',
+  surface:  '#fbfaf7',
+  elevated: '#f6f3ec',
+  border:   '#e9e6df',
+  text:     '#27272a',
+  muted:    '#5f5e5a',
+  subtle:   '#737169',
   accent:   '#1d52f1',
   accentDim:'#1740c8',
 };
@@ -52,6 +55,9 @@ export function CodeEditor({
 }: CodeEditorProps) {
   const [themeName, setThemeName] = useState<'sand-light' | 'sand-dark'>('sand-light');
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+  // On a phone the gutter is kept to the line numbers: at 350px wide, the
+  // default gutter (wide numbers plus a fold column) takes a fifth of the editor.
+  const narrow = useMediaQuery(NARROW_QUERY);
 
   // React to revealLine changes — center the requested line and place the
   // cursor there. revealNonce makes repeat-clicks of the same line still
@@ -79,7 +85,7 @@ export function CodeEditor({
       inherit: true,
       colors: {
         // Core
-        'editor.background':                    DARK.elevated,
+        'editor.background':                    DARK.bg,
         'editor.foreground':                    DARK.text,
         'editorCursor.foreground':              DARK.accent,
         'editorLineNumber.foreground':          DARK.subtle,
@@ -158,7 +164,7 @@ export function CodeEditor({
       base: 'vs',
       inherit: true,
       colors: {
-        'editor.background':                     LIGHT.elevated,
+        'editor.background':                     LIGHT.bg,
         'editor.foreground':                     LIGHT.text,
         'editorCursor.foreground':               LIGHT.accent,
         'editorLineNumber.foreground':           LIGHT.subtle,
@@ -282,14 +288,12 @@ export function CodeEditor({
 
   if (!filename) {
     return (
-      <div className="h-full flex items-center justify-center bg-elevated/90 backdrop-blur-sm">
-        <div className="text-center text-muted bolt-fade-in">
-          <div className="text-6xl mb-6 opacity-60">📁</div>
-          <h3 className="text-xl font-semibold mb-3 text-fg">No File Selected</h3>
-          <p className="text-sm text-muted max-w-md">
-            Choose a file from the explorer to start editing, or create a new file to get started with your project.
-          </p>
-        </div>
+      <div className="flex h-full items-center justify-center bg-bg">
+        <EmptyState
+          icon={FileCode2}
+          title="No file open"
+          description="Pick a file from the explorer to view or edit it."
+        />
       </div>
     );
   }
@@ -297,6 +301,7 @@ export function CodeEditor({
   return (
     <Editor
       height="100%"
+      loading={<span className="text-[13px] text-muted">Loading editor…</span>}
       language={language}
       value={value}
       onChange={disabled ? undefined : handleChange}
@@ -306,7 +311,14 @@ export function CodeEditor({
       options={{
         minimap: { enabled: false },
         fontSize: 14,
+        lineHeight: 21,
+        // Don't box ordinary typographic characters (en dashes, curly quotes).
+        unicodeHighlight: { ambiguousCharacters: false, invisibleCharacters: false },
         lineNumbers: 'on',
+        lineNumbersMinChars: narrow ? 3 : 5,
+        lineDecorationsWidth: narrow ? 8 : 10,
+        folding: !narrow,
+        glyphMargin: !narrow,
         roundedSelection: false,
         scrollBeyondLastLine: false,
         automaticLayout: true,
@@ -317,7 +329,8 @@ export function CodeEditor({
         readOnly: disabled,
         guides: {
           bracketPairs: true,
-          bracketPairsHorizontal: true,
+          // No horizontal bracket lines: they underline every object and array row.
+          bracketPairsHorizontal: false,
           highlightActiveBracketPair: true,
           indentation: true,
         },
@@ -345,7 +358,8 @@ export function CodeEditor({
         occurrencesHighlight: 'singleFile',
         overviewRulerBorder: false,
         overviewRulerLanes: 3,
-        padding: { top: 12, bottom: 12 },
+        // Phone: room to scroll the last lines clear of the corner keyboard control.
+        padding: { top: 12, bottom: narrow ? 56 : 12 },
         parameterHints: { enabled: !disabled },
         quickSuggestionsDelay: 10,
         renderControlCharacters: false,

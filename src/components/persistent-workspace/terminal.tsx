@@ -33,7 +33,7 @@ export function PersistentTerminal({ projectId, ready, cwd = "/vercel/sandbox" }
 
     const term = new XTerm({
       theme: {
-        background: getComputedStyle(document.documentElement).getPropertyValue("--sand-elevated").trim() || "#2b2722",
+        background: getComputedStyle(document.documentElement).getPropertyValue("--sand-surface").trim() || "#221f1b",
         foreground: getComputedStyle(document.documentElement).getPropertyValue("--sand-text").trim() || "#ede6db",
         cursor: "#c07a4c",
         selectionBackground: "#c07a4c40",
@@ -351,7 +351,7 @@ export function PersistentTerminal({ projectId, ready, cwd = "/vercel/sandbox" }
   }, [ready]);
 
   return (
-    <div className="h-full w-full flex flex-col bg-elevated">
+    <div className="h-full w-full flex flex-col bg-surface">
       <div ref={containerRef} className="flex-1 p-2" style={{ minHeight: 0 }} />
     </div>
   );

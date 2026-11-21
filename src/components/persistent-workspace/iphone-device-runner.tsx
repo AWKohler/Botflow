@@ -264,9 +264,9 @@ export function IPhoneDeviceRunner({ projectId }: IPhoneDeviceRunnerProps) {
           className={cn(
             "h-1.5 w-1.5 rounded-full",
             status === "online" && devices.length > 0
-              ? "bg-green-500"
+              ? "bg-success-solid"
               : status === "checking"
-                ? "bg-blue-500"
+                ? "bg-info-solid"
                 : "bg-muted",
           )}
         />
@@ -365,7 +365,7 @@ export function IPhoneDeviceRunner({ projectId }: IPhoneDeviceRunnerProps) {
 
           <div className="border-t border-border p-3">
             {devModeBlocked && (
-              <div className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+              <div className="mb-2 rounded-md border border-warning-border bg-warning-soft p-2 text-[11px] leading-snug text-warning">
                 Developer Mode is {selectedDevice?.developerMode === "restricted" ? "restricted on this device" : "off"} on{" "}
                 <span className="font-medium">{selectedDevice?.name}</span>. Open the Botflow
                 Companion app and click <span className="font-medium">Enable Developer Mode</span>,
@@ -427,11 +427,11 @@ function StatusIcon({
   hasDevices: boolean;
 }) {
   if (status === "checking") {
-    return <Loader2 size={16} className="shrink-0 animate-spin text-blue-500" />;
+    return <Loader2 size={16} className="shrink-0 animate-spin text-info" />;
   }
 
   if (status === "online" && hasDevices) {
-    return <CheckCircle2 size={16} className="shrink-0 text-green-500" />;
+    return <CheckCircle2 size={16} className="shrink-0 text-success" />;
   }
 
   if (status === "online") {
@@ -612,7 +612,7 @@ function CompanionSetupGuide({ error, onRetry }: { error: string | null; onRetry
   return (
     <div className="space-y-3">
       <div className="flex items-start gap-2 rounded-md border border-border bg-elevated/60 p-3">
-        <AlertCircle size={16} className="mt-0.5 shrink-0 text-yellow-500" />
+        <AlertCircle size={16} className="mt-0.5 shrink-0 text-warning" />
         <div className="min-w-0">
           <div className="text-sm font-medium text-fg">Botflow Companion not running</div>
           <div className="mt-1 text-xs leading-5 text-muted">
@@ -629,7 +629,7 @@ function CompanionSetupGuide({ error, onRetry }: { error: string | null; onRetry
         className="block"
         onClick={handleDownloadClick}
       >
-        <Button className="w-full gap-2 font-semibold">
+        <Button className="w-full gap-2">
           <Download size={15} />
           Download Botflow Companion ({osLabel})
         </Button>

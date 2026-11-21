@@ -35,12 +35,14 @@ import { AgentPanel } from "@/components/agent/AgentPanel";
 import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabOption } from "@/components/ui/tabs";
+import { Menu, MenuItem, popoverClass } from "@/components/ui/menu";
+import Link from "next/link";
 import { UserButton } from "@/components/auth";
 import { ShareControls } from "@/components/sharing/share-controls";
 
 const PersistentTerminal = dynamic(
   () => import("@/components/persistent-workspace/terminal").then((m) => m.PersistentTerminal),
-  { ssr: false, loading: () => <div className="h-full w-full bg-elevated" /> },
+  { ssr: false, loading: () => <div className="h-full w-full bg-surface" /> },
 );
 import {
   PanelLeft,
@@ -53,13 +55,22 @@ import {
   AppWindow,
   Frame,
   ArrowUpRight,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
+  Globe,
+  Check,
+  ChevronDown,
+  MoreHorizontal,
   MousePointer2,
   RefreshCw,
+  RotateCw,
 } from "lucide-react";
 import type { PreviewInfo } from "@/lib/preview-store";
 import { buildPreviewUrl } from "@/lib/preview-url";
 import { cn } from "@/lib/utils";
+import { NARROW_QUERY, useMediaQuery } from "@/components/ui/use-media-query";
+import { scrollRowFade, useScrollRow } from "@/components/ui/use-scroll-row";
 import {
   normalizeBackendType,
   projectUsesConvex,
@@ -78,11 +89,19 @@ import { OwnerOnlyRequest } from "@/components/workspace/owner-only-request";
 import { StripeTab, StripeModeToggle } from "@/components/sandboxed-web-workspace/stripe-tab";
 import { SandboxGitHubPanel } from "./github-panel";
 import { SandboxPublishPanel } from "./publish-panel";
-import { Globe } from "lucide-react";
 
 type WorkspaceView = "preview" | "code" | "database" | "stripe";
 type SandboxStatus = "idle" | "booting" | "ready" | "error";
 type FileEntry = { type: "file" | "folder" };
+
+/** Sizes the preview can be shown at, in the order of the menu. */
+const PREVIEW_DEVICES = [
+  { id: "desktop", label: "Desktop", hint: "Full width", icon: Monitor },
+  { id: "tablet", label: "Tablet", hint: "768 px", icon: Tablet },
+  { id: "mobile", label: "Phone", hint: "375 px", icon: Smartphone },
+  { id: "responsive", label: "All sizes", hint: "Side by side", icon: AppWindow },
+  { id: "figma", label: "Snapshots", hint: "Static", icon: Frame },
+] as const;
 
 interface SandboxedWebWorkspaceProps {
   projectId: string;
@@ -146,7 +165,16 @@ export function SandboxedWebWorkspace({
   const [githubRepoOwner, setGithubRepoOwner] = useState<string | null>(null);
   const [githubRepoName, setGithubRepoName] = useState<string | null>(null);
   const [githubDefaultBranch, setGithubDefaultBranch] = useState<string | null>(null);
+  const [mobilePane, setMobilePane] = useState<"chat" | "app">("chat");
+  // Until it is toggled (null), CSS decides: open on larger screens, folded on a
+  // phone, where it would take a third of the code view. No flash, and the
+  // server render matches.
+  const [terminalOpen, setTerminalOpen] = useState<boolean | null>(null);
+  const narrow = useMediaQuery(NARROW_QUERY);
+  const [projectName, setProjectName] = useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>("preview");
+  const viewTabs = useScrollRow<HTMLDivElement>(currentView);
 
   // ── Preview / dev server ─────────────────────────────────────────────
   const [previews, setPreviews] = useState<PreviewInfo[]>([]);
@@ -155,6 +183,7 @@ export function SandboxedWebWorkspace({
   const [previewDevice, setPreviewDevice] = useState<
     "desktop" | "tablet" | "mobile" | "responsive" | "figma"
   >("desktop");
+  const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
   const [previewReloadKey, setPreviewReloadKey] = useState(0);
   const [editMode, setEditMode] = useState(false);
   const [isDevServerRunning, setIsDevServerRunning] = useState(false);
@@ -242,6 +271,7 @@ export function SandboxedWebWorkspace({
         if (!initialBackendType && typeof proj?.backendType === "string") {
           setBackendType(normalizeBackendType(proj.backendType));
         }
+        if (typeof proj?.name === "string") setProjectName(proj.name);
         if (proj?.authConfigured === true) setHasAuth(true);
         if (proj?.viewerRole === "editor") setViewerIsOwner(false);
         if (proj?.editorsManageBackend === true) setEditorsManageBackend(true);
@@ -349,8 +379,11 @@ export function SandboxedWebWorkspace({
         // sentence (e.g. the at-capacity message) rather than raw JSON.
         let msg = `Failed to start sandbox (status ${sessionRes.status})`;
         try {
-          const body = (await sessionRes.json()) as { error?: string };
-          if (body?.error) msg = body.error;
+          const body = (await sessionRes.json()) as { error?: string; message?: string };
+          // Some errors carry a code in `error` and the sentence in `message`
+          // (rate limits do); show the sentence, never the bare code.
+          if (body?.message) msg = body.message;
+          else if (body?.error) msg = body.error;
         } catch { /* non-JSON body — keep the status fallback */ }
         const err = new Error(msg) as Error & { atCapacity?: boolean };
         err.atCapacity = sessionRes.status === 503;
@@ -454,6 +487,17 @@ export function SandboxedWebWorkspace({
       }
     },
     [projectId, files, toast, imageBlobUrl],
+  );
+
+  // On a phone the explorer covers the editor, so opening a file leaves the explorer.
+  const openFileFromExplorer = useCallback(
+    (filePath: string) => {
+      if (files[filePath]?.type === "file" && narrow) {
+        setShowSidebar(false);
+      }
+      void handleFileSelect(filePath);
+    },
+    [files, handleFileSelect, narrow],
   );
 
   useEffect(() => {
@@ -1072,9 +1116,110 @@ export function SandboxedWebWorkspace({
     }
   }, [projectId, isStartingServer, toast]);
 
+  // Phone: the app pane's actions. Shown in the top bar, in the same place as
+  // the chat pane's More menu, so there is one More button per pane.
+  const appMoreMenu = (
+    <div className="relative">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="App actions"
+        title="App actions"
+        className="size-11 text-muted"
+        aria-haspopup="menu"
+        aria-expanded={mobileMenuOpen}
+        onClick={() => setMobileMenuOpen((v) => !v)}
+      >
+        <MoreHorizontal size={18} />
+      </Button>
+      {mobileMenuOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setMobileMenuOpen(false)} />
+          <Menu className="absolute right-0 top-full z-50 mt-1 w-64">
+            <MenuItem
+              disabled={isStartingServer || sandboxStatus !== "ready"}
+              onClick={() => {
+                setMobileMenuOpen(false);
+                void handleStartDevServer();
+              }}
+            >
+              <RotateCw size={15} className="text-muted" />
+              {isDevServerRunning ? "Restart dev server" : "Start dev server"}
+            </MenuItem>
+            {currentView === "preview" && (
+              <>
+                <MenuItem
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setPreviewReloadKey((k) => k + 1);
+                  }}
+                >
+                  <RefreshCw size={15} className="text-muted" />
+                  Refresh preview
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    const baseUrl = previews[activePreviewIndex]?.baseUrl;
+                    if (!baseUrl) return;
+                    const path = previewPath.startsWith("/") ? previewPath : "/" + previewPath;
+                    window.open(buildPreviewUrl(baseUrl, path), "_blank", "noopener,noreferrer");
+                  }}
+                >
+                  <ArrowUpRight size={15} className="text-muted" />
+                  Open preview in a new tab
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setEditMode((v) => !v);
+                  }}
+                >
+                  <MousePointer2 size={15} className="text-muted" />
+                  {editMode ? "Stop editing" : "Edit visually"}
+                </MenuItem>
+              </>
+            )}
+          </Menu>
+        </>
+      )}
+    </div>
+  );
+
+  const ActiveDeviceIcon = PREVIEW_DEVICES.find((d) => d.id === previewDevice)?.icon ?? Monitor;
+
   // ── Render ───────────────────────────────────────────────────────────
   return (
-    <div className="h-screen flex bolt-bg text-fg">
+    // Fills the screen above the on-screen keyboard (see KeyboardInset).
+    <div data-fills-screen className="flex h-[calc(100dvh-var(--keyboard-inset,0px))] flex-col bg-surface text-fg md:flex-row">
+      {/* Small screens show one pane at a time; this bar switches between them. */}
+      {/* One row of chrome on phones: where you are (and the way back), the
+          pane switch, and the chat's actions. */}
+      <div className="flex h-14 shrink-0 items-center gap-1 border-b border-border px-1.5 md:hidden">
+        <Link
+          href="/projects"
+          aria-label="Back to all projects"
+          className="flex h-11 min-w-0 flex-1 items-center gap-0.5 rounded-lg pl-1.5 pr-2 text-sm font-medium text-fg transition-colors hover:bg-elevated"
+        >
+          <ChevronLeft size={16} className="shrink-0 text-muted" />
+          <span className="truncate">{projectName ?? "Projects"}</span>
+        </Link>
+        <Tabs
+          options={[
+            { value: "chat", text: "Chat" },
+            { value: "app", text: "App" },
+          ]}
+          selected={mobilePane}
+          onSelect={setMobilePane}
+          size="lg"
+        />
+        {/* The chat panel renders its "More" menu into this slot on phones. */}
+        <div
+          id="workspace-chat-actions"
+          className={cn("w-11 shrink-0 justify-center", mobilePane === "chat" ? "flex" : "hidden")}
+        />
+        {mobilePane === "app" && <div className="flex w-11 shrink-0 justify-center">{appMoreMenu}</div>}
+      </div>
       {/* Convex paused modal — once per workspace-open while paused. Render
           re-gated on managed+paused so a mid-session BYOC transfer or unpause
           closes it rather than stranding stale managed-hosting copy. */}
@@ -1149,10 +1294,10 @@ export function SandboxedWebWorkspace({
         />
       )}
       {checkoutHandoffUrl && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120] w-[min(440px,calc(100vw-2rem))] rounded-xl border border-border bg-neutral-900 text-white shadow-2xl">
+        <div className={cn(popoverClass, "fixed bottom-6 left-1/2 z-[120] w-[min(440px,calc(100vw-2rem))] -translate-x-1/2 text-fg shadow-xl")}>
           <div className="px-4 py-3 space-y-2.5">
             <div className="text-sm font-medium">Open Stripe Checkout in a new tab</div>
-            <p className="text-xs leading-relaxed text-neutral-300">
+            <p className="text-xs leading-relaxed text-muted">
               Stripe Checkout can&apos;t load inside the preview window. Click below to
               open it in a new tab. (In your published app it opens normally —
               this only happens in the preview.)
@@ -1160,7 +1305,7 @@ export function SandboxedWebWorkspace({
             <div className="flex items-center justify-end gap-2 pt-0.5">
               <button
                 onClick={() => setCheckoutHandoffUrl(null)}
-                className="text-xs font-medium px-3 py-1.5 rounded-md text-neutral-300 hover:bg-white/10 transition-colors"
+                className="rounded-md px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
               >
                 Dismiss
               </button>
@@ -1169,7 +1314,7 @@ export function SandboxedWebWorkspace({
                   window.open(checkoutHandoffUrl, "_blank", "noopener,noreferrer");
                   setCheckoutHandoffUrl(null);
                 }}
-                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity"
+                className="flex h-7 items-center gap-1.5 rounded-md bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-3 text-xs font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
               >
                 Open Checkout
                 <ExternalLink size={13} />
@@ -1179,10 +1324,10 @@ export function SandboxedWebWorkspace({
         </div>
       )}
       {authHandoff && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120] w-[min(440px,calc(100vw-2rem))] rounded-xl border border-border bg-neutral-900 text-white shadow-2xl">
+        <div className={cn(popoverClass, "fixed bottom-6 left-1/2 z-[120] w-[min(440px,calc(100vw-2rem))] -translate-x-1/2 text-fg shadow-xl")}>
           <div className="px-4 py-3 space-y-2.5">
             <div className="text-sm font-medium">Finish signing in in a new tab</div>
-            <p className="text-xs leading-relaxed text-neutral-300">
+            <p className="text-xs leading-relaxed text-muted">
               Sign-in can&apos;t complete inside the preview window. Click below to
               open your app in a new tab and continue — you&apos;ll be signed in
               there. (In your published app it works normally; this only happens
@@ -1191,7 +1336,7 @@ export function SandboxedWebWorkspace({
             <div className="flex items-center justify-end gap-2 pt-0.5">
               <button
                 onClick={() => setAuthHandoff(null)}
-                className="text-xs font-medium px-3 py-1.5 rounded-md text-neutral-300 hover:bg-white/10 transition-colors"
+                className="rounded-md px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
               >
                 Dismiss
               </button>
@@ -1200,7 +1345,7 @@ export function SandboxedWebWorkspace({
                   window.open(authHandoff.url, "_blank", "noopener,noreferrer");
                   setAuthHandoff(null);
                 }}
-                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity"
+                className="flex h-7 items-center gap-1.5 rounded-md bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-3 text-xs font-medium text-bg shadow-xs transition-colors hover:bg-fg/88"
               >
                 Open app
                 <ExternalLink size={13} />
@@ -1212,7 +1357,13 @@ export function SandboxedWebWorkspace({
       {/* Agent sidebar. Hold the initial prompt until the sandbox is ready —
           otherwise the agent fires its first turn against an empty filesystem
           while the seed is still cloning, and tools fail. */}
-      <div className="w-96 flex flex-col bg-elevated/70 backdrop-blur-sm relative z-30">
+      <div
+        className={cn(
+          // A narrower chat column between tablet and laptop widths leaves the app pane its toolbar.
+          "relative z-30 min-h-0 w-full flex-1 flex-col md:flex md:w-80 md:flex-none md:shrink-0 lg:w-96",
+          mobilePane === "chat" ? "flex" : "hidden",
+        )}
+      >
         <AgentPanel
           className="h-full"
           projectId={projectId}
@@ -1222,17 +1373,19 @@ export function SandboxedWebWorkspace({
       </div>
 
       {/* Main column */}
-      <div className="flex-1 flex flex-col">
+      <div
+        className={cn(
+          "min-h-0 min-w-0 flex-1 flex-col md:flex",
+          mobilePane === "app" ? "flex" : "hidden",
+        )}
+      >
         {bootError && (
-          <div className="px-4 py-2 bg-red-900/80 border-b border-red-700 text-white text-xs flex items-center gap-3">
-            <span className="font-semibold">Sandbox failed to start</span>
-            <span className="opacity-80 flex-1 truncate">{bootError}</span>
-            <button
-              onClick={() => void bootSandbox()}
-              className="px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-white text-xs font-medium"
-            >
-              Retry
-            </button>
+          <div className="ml-2.5 mr-2.5 mt-2 flex items-center gap-3 rounded-lg border border-danger-border bg-danger-soft px-3 py-2 text-[13px] text-danger md:ml-0">
+            <span className="font-medium">The sandbox didn’t start</span>
+            <span className="flex-1 truncate text-fg/80">{bootError}</span>
+            <Button variant="danger-outline" size="xs" onClick={() => void bootSandbox()}>
+              Try again
+            </Button>
           </div>
         )}
 
@@ -1245,7 +1398,20 @@ export function SandboxedWebWorkspace({
         )}
 
         {/* Header */}
-        <div className="h-12 flex items-center pr-2.5 gap-4 bg-surface backdrop-blur-sm">
+        {/* A container: what the toolbar shows depends on the room this pane
+            has, not on the window (the chat column takes a fixed share of it). */}
+        <div className="@container flex h-12 shrink-0 items-center gap-2 pl-2.5 pr-2.5 md:pl-0">
+          {/* Up to four tabs (a backend adds Database, payments adds Stripe): in a
+              narrow pane they scroll sideways rather than push Share and Publish off. */}
+          <div
+            ref={viewTabs.ref}
+            // The current tab is kept in view and the row fades where it runs on;
+            // the vertical padding leaves room for a tab's focus ring.
+            className={cn(
+              "-my-1 min-w-0 shrink overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+              scrollRowFade(viewTabs.more),
+            )}
+          >
           <Tabs
             options={
               [
@@ -1262,6 +1428,7 @@ export function SandboxedWebWorkspace({
             selected={currentView}
             onSelect={setCurrentView}
           />
+          </div>
 
           {currentView === "stripe" && (
             <StripeModeToggle
@@ -1299,22 +1466,20 @@ export function SandboxedWebWorkspace({
             size="sm"
             onClick={handleStartDevServer}
             disabled={isStartingServer || sandboxStatus !== "ready"}
-            className={cn(
-              "flex items-center gap-2 font-bold text-md",
-              isDevServerRunning
-                ? "text-green-400 hover:text-green-300 hover:bg-green-400/10"
-                : "text-green-400 hover:text-green-300 hover:bg-green-400/10",
-            )}
             title={isDevServerRunning ? "Restart dev server" : "Start dev server"}
+            className="hidden md:inline-flex"
           >
             {isStartingServer ? (
-              <Loader2 size={16} className="animate-spin" />
+              <Loader2 size={14} className="animate-spin" />
+            ) : isDevServerRunning ? (
+              <RotateCw size={14} />
             ) : (
-              <Play size={16} fill="currentColor" />
+              <Play size={13} className="text-success" fill="currentColor" />
             )}
-            <span>
+            {/* When the pane is short of room the label goes; the title stays. */}
+            <span className="hidden @[44rem]:inline">
               {isStartingServer
-                ? "Starting..."
+                ? "Starting…"
                 : isDevServerRunning
                   ? "Restart"
                   : "Start"}
@@ -1324,23 +1489,24 @@ export function SandboxedWebWorkspace({
           {currentView === "code" && (
             <Button
               variant="ghost"
-              size="sm"
+              size="icon-sm"
               onClick={() => setShowSidebar(!showSidebar)}
-              className="text-muted hover:text-fg bolt-hover"
               title={showSidebar ? "Hide explorer" : "Show explorer"}
+              aria-label={showSidebar ? "Hide explorer" : "Show explorer"}
+              // Phone: the editor's own "Files" row does this job.
+              className="hidden md:inline-flex"
             >
               <PanelLeft size={16} />
             </Button>
           )}
 
           {currentView === "code" && selectedFile && (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted">/</span>
-              <span className="text-fg font-medium bg-elevated/70 px-2 py-1 rounded flex items-center gap-2">
-                {selectedFile.split("/").pop()}
+            <div className="hidden min-w-0 items-center gap-1 text-[13px] md:flex">
+              <span className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-elevated px-2 py-1 font-mono text-xs text-fg">
+                <span className="truncate">{selectedFile.split("/").pop()}</span>
                 {hasUnsavedChanges && (
                   <span
-                    className="w-2 h-2 rounded-full bg-orange-500"
+                    className="h-1.5 w-1.5 rounded-full bg-warning-solid"
                     title="Unsaved changes"
                   />
                 )}
@@ -1350,7 +1516,7 @@ export function SandboxedWebWorkspace({
                   variant="ghost"
                   size="sm"
                   onClick={() => selectedFile && void handleFileSelect(selectedFile)}
-                  className="text-amber-600 hover:text-amber-700 bolt-hover"
+                  className="text-warning hover:bg-warning-soft hover:text-warning"
                   title="Discard your buffer and load the file's current content"
                 >
                   Reload
@@ -1360,68 +1526,89 @@ export function SandboxedWebWorkspace({
                 variant="ghost"
                 size="sm"
                 onClick={() => void handleSaveFile(saveConflict)}
-                className={cn("bolt-hover", saveConflict ? "text-amber-600 hover:text-amber-700" : "text-muted hover:text-fg")}
+                className={cn(saveConflict && "text-warning hover:bg-warning-soft hover:text-warning")}
                 title={saveConflict ? "Write your buffer over the changed file" : "Save file"}
               >
-                <Save size={16} />
-                <span className="ml-1">{saveConflict ? "Overwrite" : "Save"}</span>
+                <Save size={14} />
+                <span>{saveConflict ? "Overwrite" : "Save"}</span>
               </Button>
             </div>
           )}
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 @max-[36rem]:flex-none">
             {currentView === "database" && hasBackend && (
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => window.open(`/workspace/${projectId}/database`, "_blank")}
-                className="flex items-center gap-1.5 text-sm text-muted hover:text-fg border border-border rounded-md px-3 py-1 bolt-hover"
                 title="Open database in new tab"
+                className="hidden md:inline-flex"
               >
                 <ArrowUpRight size={14} />
                 Open in new tab
-              </button>
+              </Button>
             )}
             {currentView === "preview" && (
               <button
                 onClick={() => setEditMode((v) => !v)}
+                aria-pressed={editMode}
                 className={cn(
-                  "flex items-center gap-1.5 text-sm border rounded-full px-3 py-1 transition-colors",
+                  "hidden h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors md:flex pointer-coarse:h-10",
                   editMode
-                    ? "border-accent text-accent bg-accent/10"
-                    : "border-border text-muted hover:text-fg",
+                    ? "border-accent/40 bg-accent-soft text-accent"
+                    : "border-border bg-linear-to-b from-bg to-surface text-muted shadow-xs inset-shadow-bevel hover:border-border-strong hover:text-fg dark:from-elevated dark:to-surface",
                 )}
-                title="Toggle visual edit mode"
+                title="Select an element in the preview to edit it"
+                aria-label="Edit"
               >
-                <MousePointer2 size={15} />
-                Edit
+                <MousePointer2 size={14} />
+                <span className="hidden @[44rem]:inline">Edit</span>
               </button>
             )}
             {currentView === "preview" && (
-              <div className="flex items-center gap-2 border border-border rounded-full px-3 py-1 min-w-[220px]">
-                <button
-                  onClick={() =>
-                    setPreviewDevice((prev) =>
-                      prev === "desktop"
-                        ? "tablet"
-                        : prev === "tablet"
-                          ? "mobile"
-                          : prev === "mobile"
-                            ? "responsive"
-                            : prev === "responsive"
-                              ? "figma"
-                              : "desktop",
-                    )
-                  }
-                  className="text-muted hover:text-fg"
-                  title={`Device: ${previewDevice}`}
-                >
-                  {previewDevice === "desktop" && <Monitor size={16} />}
-                  {previewDevice === "tablet" && <Tablet size={16} />}
-                  {previewDevice === "mobile" && <Smartphone size={16} />}
-                  {previewDevice === "responsive" && <AppWindow size={16} />}
-                  {previewDevice === "figma" && <Frame size={16} />}
-                </button>
+              <div className="hidden h-8 min-w-28 max-w-[240px] flex-1 items-center gap-2 rounded-lg border border-control bg-bg px-2.5 inset-shadow-well transition-colors focus-within:border-accent @[36rem]:flex pointer-coarse:h-10">
+                {/* Device menu: every size is named and one click away. */}
+                <div className="relative flex">
+                  <button
+                    onClick={() => setDeviceMenuOpen((v) => !v)}
+                    className="-ml-1 flex h-6 items-center gap-0.5 rounded-md px-1 text-muted transition-colors hover:bg-elevated hover:text-fg"
+                    title="Preview size"
+                    aria-label={`Preview size: ${PREVIEW_DEVICES.find((d) => d.id === previewDevice)?.label}`}
+                    aria-haspopup="menu"
+                    aria-expanded={deviceMenuOpen}
+                  >
+                    <ActiveDeviceIcon size={15} />
+                    <ChevronDown size={11} className="opacity-70" />
+                  </button>
+                  {deviceMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setDeviceMenuOpen(false)} />
+                      <Menu className="absolute left-0 top-full z-50 mt-2 w-60">
+                        <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted">Preview size</div>
+                        {PREVIEW_DEVICES.map((d) => (
+                          <MenuItem
+                            key={d.id}
+                            role="menuitemradio"
+                            aria-checked={previewDevice === d.id}
+                            onClick={() => {
+                              setPreviewDevice(d.id);
+                              setDeviceMenuOpen(false);
+                            }}
+                          >
+                            {/* The tablet is drawn on its side, so it can't be mistaken for the phone. */}
+                            <d.icon size={15} className={cn("shrink-0 text-muted", d.id === "tablet" && "rotate-90")} />
+                            <span className="flex-1">{d.label}</span>
+                            <span className="whitespace-nowrap text-xs tabular-nums text-subtle">{d.hint}</span>
+                            <Check size={14} className={cn("shrink-0 text-fg", previewDevice !== d.id && "invisible")} />
+                          </MenuItem>
+                        ))}
+                      </Menu>
+                    </>
+                  )}
+                </div>
                 <Input
-                  className="flex-1 bg-transparent outline-none text-sm text-fg placeholder:text-muted"
+                  aria-label="Preview path"
+                  className="min-w-0 flex-1 bg-transparent font-mono text-xs text-fg outline-none placeholder:text-subtle"
                   value={previewPath}
                   onChange={(e) => setPreviewPath(e.target.value)}
                   placeholder="/"
@@ -1435,41 +1622,42 @@ export function SandboxedWebWorkspace({
                       : "/" + previewPath;
                     window.open(buildPreviewUrl(baseUrl, path), "_blank", "noopener,noreferrer");
                   }}
-                  className="text-muted hover:text-fg"
+                  className="rounded text-muted transition-colors hover:text-fg"
                   title="Open preview in new tab"
+                  aria-label="Open preview in new tab"
                 >
-                  <ArrowUpRight size={16} />
+                  <ArrowUpRight size={15} />
                 </button>
                 <button
                   onClick={() => setPreviewReloadKey((k) => k + 1)}
-                  className="text-muted hover:text-fg"
+                  className="rounded text-muted transition-colors hover:text-fg"
                   title="Refresh preview"
+                  aria-label="Refresh preview"
                 >
-                  <RefreshCw size={15} />
+                  <RefreshCw size={14} />
                 </button>
               </div>
             )}
             <ShareControls projectId={projectId} />
-            <UserButton />
-            <div className="relative">
-              <Button
-                ref={publishBtnRef}
-                variant="default"
-                size="sm"
-                className={cn(
-                  "font-bold text-sm text-white",
-                  cloudflareProjectName && "bg-green-600 hover:bg-green-700",
-                )}
-                onClick={() => setPublishOpen((v) => !v)}
-                title={cloudflareProjectName ? "Manage deployment" : "Publish to Cloudflare Pages"}
-              >
-                <Globe size={14} className="mr-1.5" />
-                {cloudflareProjectName ? "Published" : "Publish"}
-              </Button>
-              {cloudflareProjectName && (
-                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500 border-2 border-surface pointer-events-none" />
-              )}
+            <div className="hidden @[36rem]:block">
+              <UserButton />
             </div>
+            <Button
+              ref={publishBtnRef}
+              variant={cloudflareProjectName ? "secondary" : "primary"}
+              size="sm"
+              className="tap-44"
+              onClick={() => setPublishOpen((v) => !v)}
+              title={cloudflareProjectName ? "Manage deployment" : "Publish to Cloudflare Pages"}
+            >
+              {cloudflareProjectName ? (
+                <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-success-solid" />
+              ) : (
+                <Globe size={14} />
+              )}
+              {/* In the narrowest panes (a 320px phone) the mark alone; the title names it. */}
+              <span className="@max-[19rem]:sr-only">{cloudflareProjectName ? "Published" : "Publish"}</span>
+            </Button>
           </div>
         </div>
 
@@ -1480,21 +1668,24 @@ export function SandboxedWebWorkspace({
               header (top) and agent sidebar (left). */}
           <div
             className={cn(
-              "absolute top-0 left-0 right-2.5 bottom-2.5",
+              "absolute bottom-2.5 left-2.5 right-2.5 top-0 md:left-0",
               currentView === "code" ? "flex flex-col" : "hidden",
-              "rounded-xl border border-border overflow-hidden",
+              "overflow-hidden rounded-xl border border-border bg-bg",
             )}
           >
             <div className="flex-1 min-h-0 flex">
+              {/* Phone: the explorer and the editor take turns at full width
+                  (side by side, the editor is a sliver). Opening a file shows
+                  the editor; "Files" brings the explorer back. */}
               {showSidebar && (
-                <div className="w-80 bolt-border border-r flex flex-col backdrop-blur-sm">
-                  <div className="p-2 bolt-border border-b">
+                <div className="flex w-full shrink-0 flex-col border-border bg-surface md:w-72 md:border-r">
+                  <div className="border-b border-border p-2">
                     <Tabs
                       options={
                         [
                           { value: "files", text: "Files" },
                           { value: "search", text: "Search" },
-                          { value: "env", text: "ENV" },
+                          { value: "env", text: "Env" },
                           ...(gitTabAllowed ? [{ value: "git", text: "Git" }] : []),
                         ] as TabOption<"files" | "search" | "env" | "git">[]
                       }
@@ -1508,14 +1699,14 @@ export function SandboxedWebWorkspace({
                       <FileTree
                         files={files}
                         selectedFile={selectedFile}
-                        onFileSelect={handleFileSelect}
+                        onFileSelect={openFileFromExplorer}
                       />
                     ) : sidebarTab === "search" ? (
                       <FileSearch
                         projectId={projectId}
                         onOpenFile={(path) => {
                           setCurrentView("code");
-                          handleFileSelect(path);
+                          openFileFromExplorer(path);
                         }}
                       />
                     ) : sidebarTab === "env" ? (
@@ -1541,8 +1732,51 @@ export function SandboxedWebWorkspace({
                   </div>
                 </div>
               )}
-              <div className="flex-1 min-h-0 relative">
-                <div className="absolute inset-0 bg-elevated/90 backdrop-blur-sm">
+              <div className={cn("min-h-0 min-w-0 flex-1 flex-col", showSidebar ? "hidden md:flex" : "flex")}>
+                {/* Phone: where you are, the way back to the file list, and Save
+                    (the top toolbar has no room for them). */}
+                <div className="flex h-11 shrink-0 items-center gap-1 border-b border-border bg-surface pl-1 pr-1.5 md:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowSidebar(true)}
+                    className="flex h-11 shrink-0 items-center gap-0.5 rounded-md pl-1.5 pr-2.5 text-sm font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
+                  >
+                    <ChevronLeft size={16} />
+                    Files
+                  </button>
+                  {selectedFile && (
+                    <>
+                      <span className="flex min-w-0 flex-1 items-center gap-2 font-mono text-[13px] text-fg">
+                        <span className="truncate">{selectedFile.split("/").pop()}</span>
+                        {hasUnsavedChanges && (
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning-solid" title="Unsaved changes" />
+                        )}
+                      </span>
+                      {saveConflict && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void handleFileSelect(selectedFile)}
+                          className="text-warning hover:bg-warning-soft hover:text-warning"
+                        >
+                          Reload
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void handleSaveFile(saveConflict)}
+                        disabled={!hasUnsavedChanges && !saveConflict}
+                        className={cn(saveConflict && "text-warning hover:bg-warning-soft hover:text-warning")}
+                      >
+                        <Save size={14} />
+                        <span>{saveConflict ? "Overwrite" : "Save"}</span>
+                      </Button>
+                    </>
+                  )}
+                </div>
+                <div className="relative min-h-0 flex-1">
+                <div className="absolute inset-0 bg-bg">
                   {imageBlobUrl ? (
                     <ImageViewer
                       src={imageBlobUrl}
@@ -1558,13 +1792,26 @@ export function SandboxedWebWorkspace({
                     />
                   )}
                 </div>
+                </div>
               </div>
             </div>
 
             {/* Terminal — always mounted, persists across tab switches.
                 Wired to the sandbox via /api/projects/:id/sandbox/exec. */}
-            <div className="h-64 bolt-border border-t bg-elevated backdrop-blur-sm">
-              <PersistentTerminal projectId={projectId} ready={sandboxStatus === "ready"} />
+            <div className="border-t border-border bg-surface">
+              <button
+                type="button"
+                onClick={() => setTerminalOpen((v) => !(v ?? !narrow))}
+                aria-expanded={terminalOpen ?? !narrow}
+                className="flex h-8 w-full items-center gap-1.5 px-3 text-xs font-medium text-muted transition-colors hover:text-fg pointer-coarse:h-10 pointer-coarse:text-[13px]"
+              >
+                <ChevronRight size={12} className={cn("transition-transform", terminalOpen === null ? "md:rotate-90" : terminalOpen && "rotate-90")} />
+                Terminal
+              </button>
+              {/* Collapsed with a class, not unmounted, so the session survives. */}
+              <div className={cn("h-40", terminalOpen === null ? "max-md:hidden" : !terminalOpen && "hidden")}>
+                <PersistentTerminal projectId={projectId} ready={sandboxStatus === "ready"} />
+              </div>
             </div>
           </div>
 
@@ -1628,7 +1875,7 @@ export function SandboxedWebWorkspace({
           {/* Preview view */}
           <div
             className={cn(
-              "absolute inset-0 pb-2.5 pr-2.5",
+              "absolute inset-0 pb-2.5 pl-2.5 pr-2.5 md:pl-0",
               currentView === "preview" ? "block" : "hidden",
             )}
           >

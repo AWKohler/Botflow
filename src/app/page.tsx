@@ -568,7 +568,7 @@
 //       <section className="relative">
 //         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
 //           <Reveal>
-//             <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+//             <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-20">
 //               <SectionLabel>Features</SectionLabel>
 //               <h2
 //                 className={cn(
@@ -632,7 +632,7 @@
 //       <section className="relative bg-[var(--sand-surface)]">
 //         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
 //           <Reveal>
-//             <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+//             <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-20">
 //               <SectionLabel>How it works</SectionLabel>
 //               <h2
 //                 className={cn(
@@ -755,7 +755,7 @@
 //       <section className="relative bg-[var(--sand-surface)]">
 //         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
 //           <Reveal>
-//             <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+//             <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-20">
 //               <SectionLabel>Infrastructure</SectionLabel>
 //               <h2
 //                 className={cn(
@@ -988,7 +988,6 @@
 
 import { Input } from "@/components/ui/input";
 import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { SignedIn, SignedOut, SignInButton, useUser } from '@/components/auth';
 import {
@@ -1011,6 +1010,7 @@ import {
 } from 'lucide-react';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { useToast } from '@/components/ui/toast';
+import { useModal } from '@/components/ui/use-modal';
 import { ModelSelector } from '@/components/ui/ModelSelector';
 import { DEFAULT_MODEL_ID, modelSupportsImages, resolveModelId, type ModelId } from '@/lib/agent/models';
 import { processImageForUpload } from '@/lib/image-processing';
@@ -1022,7 +1022,7 @@ import { ModelCloud } from '@/components/landing/ModelCloud';
 import { AuthProviderArc } from '@/components/landing/AuthProviderArc';
 import { FeatureBento } from '@/components/landing/FeatureBento';
 import { MobileFeatureGrid } from '@/components/landing/MobileFeatureGrid';
-import { LandingFooter, LandingNav, MarginHatch, MarginBg } from '@/components/landing/shared';
+import { ClosingCta, LandingFooter, LandingNav, MarginHatch, MarginBg } from '@/components/landing/shared';
 import { LandingShowcase } from '@/components/showcase/LandingShowcase';
 import { Convex } from '@/components/icons/convex';
 import { Anthropic } from '@/components/icons/anthropic';
@@ -1136,51 +1136,6 @@ function SectionLabel({ children }: { children: ReactNode }) {
     >
       {children}
     </span>
-  );
-}
-
-// ============================================================================
-// Character-stagger button — text slides up on hover, shadow reveals copy
-// ============================================================================
-
-function StaggerButton({
-  text,
-  href,
-  className,
-}: {
-  text: string;
-  href: string;
-  className?: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        'group relative inline-flex items-center gap-2 overflow-hidden rounded-xl bg-[var(--sand-accent)] px-6 py-3 text-base font-medium shadow-lg',
-        className,
-      )}
-    >
-      <span className="relative flex overflow-hidden">
-        {text.split('').map((char, i) => (
-          <span
-            key={i}
-            className="inline-block transition-transform duration-300 group-hover:-translate-y-[1.5em]"
-            style={{
-              transitionDelay: `${i * 12}ms`,
-              transitionTimingFunction: 'ease',
-              textShadow: '0 1.5em 0 currentColor',
-              color: 'var(--sand-accent-contrast)',
-            }}
-          >
-            {char === ' ' ? '\u00A0' : char}
-          </span>
-        ))}
-      </span>
-      <ArrowRight
-        className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5"
-        style={{ color: 'var(--sand-accent-contrast)' }}
-      />
-    </Link>
   );
 }
 
@@ -1335,6 +1290,44 @@ interface LandingPendingImage {
   localUrl: string;
 }
 
+// The conversation shown in the hero's workspace mockup (both sizes).
+const HERO_MESSAGES: React.ComponentProps<typeof WorkspaceMockup>['messages'] = [
+  {
+    role: 'user',
+    content:
+      'Build me Flowsync, a finance dashboard landing page: dark and premium, with a 3D hero, account cards and a recent transactions feed.',
+  },
+  {
+    role: 'assistant',
+    content:
+      "I'll build the Flowsync landing page: a Three.js hero, USD/EUR account cards, a live transactions feed, and an AI forecasting panel.",
+    toolCalls: [
+      { name: 'writeFile', detail: 'src/App.tsx', done: true },
+      { name: 'writeFile', detail: 'src/components/Hero.tsx', done: true },
+      { name: 'writeFile', detail: 'convex/schema.ts', done: true },
+      { name: 'startDevServer', done: true },
+    ],
+  },
+  {
+    role: 'assistant',
+    content:
+      'Flowsync is live — the 3D hero animates on load, and the dashboard shows account balances with a recent activity log.',
+  },
+  {
+    role: 'user',
+    content: "Add a testimonials section with finance leaders, and a ‘Book a Free Demo’ CTA.",
+  },
+  {
+    role: 'assistant',
+    content: "Adding a ‘Loved by finance teams’ testimonials grid and a Book a Free Demo call-to-action.",
+    toolCalls: [
+      { name: 'readFile', detail: 'src/App.tsx', done: true },
+      { name: 'writeFile', detail: 'src/components/Activity.tsx', done: true },
+      { name: 'writeFile', detail: 'src/components/Forecast.tsx', done: false },
+    ],
+  },
+];
+
 export default function LandingV2() {
   const router = useRouter();
   const { isSignedIn, user } = useUser();
@@ -1361,6 +1354,11 @@ export default function LandingV2() {
     isSwiftPlatformEnabled() &&
     (isBetaUser || userTier === 'pro' || userTier === 'max');
   const [hasConvexOAuth, setHasConvexOAuth] = useState<boolean | null>(null);
+  // Until the first settings fetch returns we do not know what is connected,
+  // so the hero shows placeholders rather than "Connect …" calls to action
+  // that would flip to "… connected" a moment later.
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const connectionsPending = Boolean(isSignedIn) && !settingsLoaded;
   const [convexBackendType, setConvexBackendType] = useState<'platform' | 'user' | 'none' | 'muhkoo'>(
     () => (isManagedConvexEnabled() ? 'platform' : 'none'),
   );
@@ -1368,7 +1366,7 @@ export default function LandingV2() {
   const [convexConnecting, setConvexConnecting] = useState(false);
   const convexSelectorRef = useRef<HTMLDivElement>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsDefaultTab, setSettingsDefaultTab] = useState<'usage' | 'connections' | 'subscription'>('usage');
+  const [settingsDefaultTab, setSettingsDefaultTab] = useState<'usage' | 'connections'>('usage');
   // Provider sign-in pills: signed-in users jump to the Connections settings tab
   // (to link Claude/ChatGPT); signed-out users are sent to login first.
   const handleProviderAuthClick = useCallback(() => {
@@ -1381,6 +1379,9 @@ export default function LandingV2() {
   }, [isSignedIn, router]);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [projectStep, setProjectStep] = useState<null | 'convex' | 'name'>(null);
+  // Modal behaviour (focus in and contained, page inert, focus restored) for the two dialogs below.
+  const authDialogRef = useModal<HTMLDivElement>(showAuthDialog, () => setShowAuthDialog(false));
+  const projectDialogRef = useModal<HTMLDivElement>(projectStep !== null);
   const [projectQuotaLeft, setProjectQuotaLeft] = useState<number | null>(null);
   const [pendingImages, setPendingImages] = useState<LandingPendingImage[]>([]);
   const [showPlusPopover, setShowPlusPopover] = useState(false);
@@ -1660,7 +1661,10 @@ export default function LandingV2() {
       if (budgetData && typeof budgetData.convexProjectsLeft === 'number') {
         setProjectQuotaLeft(budgetData.convexProjectsLeft);
       }
-    } catch {}
+    } catch {
+    } finally {
+      setSettingsLoaded(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -1670,6 +1674,7 @@ export default function LandingV2() {
       setHasMoonshotKey(null);
       setHasFireworksKey(null);
       setHasConvexOAuth(null);
+      setSettingsLoaded(false);
       return;
     }
     void fetchUserSettings();
@@ -1904,7 +1909,8 @@ export default function LandingV2() {
 
             {/* Prompt box */}
             <Reveal delay={250} className="relative z-40">
-              <div className="w-full mt-8">
+              {/* Phone: inset a little, so the box's border does not sit on the margin rails. */}
+              <div className="mt-8 w-full max-sm:px-1.5">
                 {/* Platform tabs — sit on top of the prompt box; the selected
                     tab's accent color frames the box. Web is the default; Swift
                     is available to Pro/Max and beta users (shows a lock until
@@ -1918,7 +1924,7 @@ export default function LandingV2() {
                     onClick={() => setPlatform('sandboxed-web')}
                     title="Build a web app"
                     className={cn(
-                      'relative inline-flex items-center gap-1.5 rounded-t-xl px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-medium transition',
+                      'relative inline-flex items-center gap-1.5 rounded-t-xl px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-medium transition pointer-coarse:px-3.5 pointer-coarse:py-2.5 pointer-coarse:text-sm',
                       platform !== 'swift'
                         ? 'bg-[var(--sand-elevated)] text-[var(--sand-text)]'
                         : 'bg-[var(--sand-surface)] text-[var(--sand-text-muted)] hover:text-[var(--sand-text)]',
@@ -1954,11 +1960,12 @@ export default function LandingV2() {
                     aria-disabled={!hasSwiftAccess}
                     title={hasSwiftAccess ? 'Build a native Swift app' : 'Swift requires Pro or Max'}
                     className={cn(
-                      'relative inline-flex items-center gap-1.5 rounded-t-xl px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-medium transition',
+                      'relative inline-flex items-center gap-1.5 rounded-t-xl px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-medium transition pointer-coarse:px-3.5 pointer-coarse:py-2.5 pointer-coarse:text-sm',
                       platform === 'swift'
                         ? 'bg-[var(--sand-elevated)]'
                         : 'bg-[var(--sand-surface)]',
-                      platform !== 'swift' && !hasSwiftAccess && 'text-[var(--sand-text-muted)]',
+                      // Unselected, it is as quiet as the Web tab; only the Swift mark keeps its colour.
+                      platform !== 'swift' && 'text-[var(--sand-text-muted)] hover:text-[var(--sand-text)]',
                     )}
                     style={
                       platform === 'swift'
@@ -1973,14 +1980,14 @@ export default function LandingV2() {
                         : {
                             borderColor: promptFrameColor,
                             borderBottomWidth: promptFrameWidth,
-                            ...(hasSwiftAccess ? { color: SWIFT_ORANGE } : {}),
                           }
                     }
                   >
-                    <Swift className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    <Swift className="h-3.5 w-3.5 sm:h-4 sm:w-4" style={{ color: SWIFT_ORANGE }} />
                     Swift
                     {!hasSwiftAccess && (
-                      <Lock className="h-3 w-3 sm:h-3.5 sm:w-3.5 opacity-90" />
+                      // Space is kept while the plan loads, so the tab does not change width.
+                      <Lock className={cn('h-3 w-3 sm:h-3.5 sm:w-3.5 opacity-90', connectionsPending && 'invisible')} />
                     )}
                   </button>
                 </div>
@@ -2024,7 +2031,7 @@ export default function LandingV2() {
                             <button
                               type="button"
                               onClick={() => handleRemoveImage(img.id)}
-                              className="absolute -top-1.5 -right-1.5 flex items-center justify-center size-4 rounded-full bg-[var(--sand-elevated)] border border-[var(--sand-border)] text-[var(--sand-text-muted)] hover:text-[var(--sand-text)] opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="tap-44 absolute -top-1.5 -right-1.5 flex items-center justify-center size-4 rounded-full bg-[var(--sand-elevated)] border border-[var(--sand-border)] text-[var(--sand-text-muted)] hover:text-[var(--sand-text)] opacity-0 group-hover:opacity-100 transition-opacity pointer-coarse:size-5 pointer-coarse:opacity-100"
                               aria-label="Remove image"
                             >
                               <IconX size={10} />
@@ -2039,7 +2046,7 @@ export default function LandingV2() {
                           <button
                             type="button"
                             onClick={() => setShowPlusPopover(v => !v)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] shadow-sm hover:border-transparent hover:bg-[var(--sand-accent)]/15 transition"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] shadow-sm hover:border-transparent hover:bg-[var(--sand-accent)]/15 transition pointer-coarse:h-10 pointer-coarse:w-10"
                             aria-label="Attach"
                           >
                             <Plus className="h-4 w-4 text-[var(--sand-text)]" />
@@ -2051,7 +2058,7 @@ export default function LandingV2() {
                                 onClick={() => { setShowPlusPopover(false); fileInputRef.current?.click(); }}
                                 disabled={!modelSupportsImages(model)}
                                 className={cn(
-                                  'flex w-full items-center gap-2.5 px-3 py-2 text-sm transition',
+                                  'flex w-full items-center gap-2.5 px-3 py-2 text-sm transition pointer-coarse:min-h-11 pointer-coarse:text-[15px]',
                                   modelSupportsImages(model)
                                     ? 'text-[var(--sand-text)] hover:bg-[var(--sand-elevated)] cursor-pointer'
                                     : 'text-[var(--sand-text-muted)] cursor-not-allowed',
@@ -2083,18 +2090,34 @@ export default function LandingV2() {
                             always include Convex, so the selector stays hidden there. */}
                         {isSignedIn && (platform === 'web' || platform === 'sandboxed-web' || platform === 'swift') && (
                           <div ref={convexSelectorRef} className="relative shrink-0">
+                            {connectionsPending ? (
+                              <span className="block h-[30px] w-11 animate-pulse rounded-full bg-soft sm:h-[34px] sm:w-32 pointer-coarse:h-10 pointer-coarse:w-14" role="status" aria-label="Loading backend" />
+                            ) : (
                             <button
                               type="button"
                               onClick={() => setShowConvexSelector(v => !v)}
-                              className="shrink-0 inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm hover:border-transparent hover:bg-[var(--sand-accent)]/15 transition"
+                              className="shrink-0 inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm hover:border-transparent hover:bg-[var(--sand-accent)]/15 transition pointer-coarse:h-10 pointer-coarse:px-3"
                               title="Backend type"
+                              // On a phone the chip is the mark alone, so it is named here.
+                              aria-label={`Backend: ${
+                                convexBackendType === 'platform'
+                                  ? 'Managed'
+                                  : convexBackendType === 'user'
+                                    ? 'Your Convex'
+                                    : convexBackendType === 'muhkoo'
+                                      ? 'MuhKoo'
+                                      : 'No backend'
+                              }`}
+                              aria-haspopup="menu"
+                              aria-expanded={showConvexSelector}
                             >
                               {convexBackendType === 'platform' ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src="/convex-color.svg" className="h-3.5 w-3.5" alt="" />
                               ) : convexBackendType === 'user' ? (
+                                // White mark: flipped to ink in light mode so it is not washed out.
                                 // eslint-disable-next-line @next/next/no-img-element
-                                <img src="/convex-white.svg" className="h-3.5 w-3.5" alt="" />
+                                <img src="/convex-white.svg" className="h-3.5 w-3.5 invert dark:invert-0" alt="" />
                               ) : convexBackendType === 'muhkoo' ? (
                                 <KeyRound className="h-3.5 w-3.5" />
                               ) : (
@@ -2107,10 +2130,11 @@ export default function LandingV2() {
                                   ? 'Your Convex'
                                   : convexBackendType === 'muhkoo'
                                   ? 'MuhKoo'
-                                  : 'No Backend'}
+                                  : 'No backend'}
                               </span>
                               <ChevronDown className="h-3 w-3 opacity-60" />
                             </button>
+                            )}
                             {showConvexSelector && (
                               <div className="absolute bottom-full mb-2 left-0 w-60 rounded-xl border border-[var(--sand-border)] bg-[var(--sand-surface)] shadow-lg overflow-hidden z-20">
                                 {managedConvexEnabled && (
@@ -2122,8 +2146,7 @@ export default function LandingV2() {
                                         title: 'Pro plan required',
                                         description: 'Botflow-managed Convex is included on Pro and Max. Free projects can use Bring Your Own Convex or No Backend.',
                                       });
-                                      setSettingsDefaultTab('subscription');
-                                      setShowSettings(true);
+                                      window.open('/pricing', '_blank', 'noopener,noreferrer');
                                       setShowConvexSelector(false);
                                       return;
                                     }
@@ -2142,7 +2165,7 @@ export default function LandingV2() {
                                     <div className="flex items-center gap-1.5 font-medium text-[var(--sand-text)]">
                                       <span>Botflow Managed</span>
                                       {managedBackendLocked && (
-                                        <span className="inline-flex items-center rounded-full bg-[var(--sand-accent)]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--sand-text)]">
+                                        <span className="inline-flex items-center rounded-full border border-accent/25 bg-accent-soft px-1.5 py-px text-[11px] font-medium text-accent">
                                           Pro
                                         </span>
                                       )}
@@ -2203,7 +2226,7 @@ export default function LandingV2() {
                                     <div className="min-w-0 flex-1">
                                       <div className="flex items-center gap-1.5 font-medium text-[var(--sand-text)]">
                                         <span>MuhKoo</span>
-                                        <span className="inline-flex items-center rounded-full bg-[var(--sand-accent)]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--sand-text)]">
+                                        <span className="inline-flex items-center rounded-full border border-accent/25 bg-accent-soft px-1.5 py-px text-[11px] font-medium text-accent">
                                           Beta
                                         </span>
                                       </div>
@@ -2224,7 +2247,7 @@ export default function LandingV2() {
                           onClick={() => start(true)}
                           disabled={!canSend}
                           className={cn(
-                            'shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--sand-text)] text-[var(--sand-bg)] shadow-md transition',
+                            'shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--sand-text)] bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-[var(--sand-bg)] shadow-md transition pointer-coarse:h-11 pointer-coarse:w-11',
                             !canSend ? 'opacity-40 cursor-not-allowed' : 'hover:opacity-80',
                           )}
                         >
@@ -2234,7 +2257,11 @@ export default function LandingV2() {
                       <SignedOut>
                         <button
                           onClick={() => start(false)}
-                          className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--sand-text)] text-[var(--sand-bg)] shadow-md hover:opacity-80 transition"
+                          // Same resting look as the signed-in button: quiet until there is a prompt.
+                          className={cn(
+                            'shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--sand-text)] bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-[var(--sand-bg)] shadow-md transition pointer-coarse:h-11 pointer-coarse:w-11',
+                            prompt.trim() ? 'hover:opacity-80' : 'opacity-40 hover:opacity-60',
+                          )}
                         >
                           <ArrowUp className="h-5 w-5" />
                         </button>
@@ -2248,26 +2275,50 @@ export default function LandingV2() {
             {/* Provider pills */}
             <Reveal delay={350}>
               <div className="mt-4 flex flex-col items-center gap-3">
+                {connectionsPending ? (
+                  <div className="flex flex-col min-[390px]:flex-row items-center justify-center gap-2" role="status" aria-label="Loading connections">
+                    {process.env.NEXT_PUBLIC_ANTHROPIC_OAUTH_ENABLED === 'true' && (
+                      <span className="h-[34px] w-40 animate-pulse rounded-full bg-soft pointer-coarse:h-[42px]" />
+                    )}
+                    <span className="h-[34px] w-40 animate-pulse rounded-full bg-soft pointer-coarse:h-[42px]" />
+                  </div>
+                ) : (
                 <div className="flex flex-col min-[390px]:flex-row items-center justify-center gap-2">
                   {process.env.NEXT_PUBLIC_ANTHROPIC_OAUTH_ENABLED === 'true' && (
                     <button
                       type="button"
                       onClick={handleProviderAuthClick}
-                      className="inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
+                      className={cn(
+                        'inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium transition pointer-coarse:py-2.5',
+                        // Connected is a status, not a call to action: no fill, no shadow, a tick.
+                        isSignedIn && hasClaudeOAuth
+                          ? 'border-transparent text-[var(--sand-text-muted)] hover:text-[var(--sand-text)]'
+                          : 'border-[var(--sand-border)] bg-[var(--sand-elevated)] shadow-sm hover:bg-[var(--sand-surface)]',
+                      )}
                     >
                       <Anthropic className="h-4 w-4 shrink-0" />
-                      Sign in with Claude
+                      {/* Signed-in people connect a subscription; they don't sign in again. */}
+                      {!isSignedIn ? 'Sign in with Claude' : hasClaudeOAuth ? 'Claude connected' : 'Connect Claude'}
+                      {isSignedIn && hasClaudeOAuth && <Check className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden />}
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={handleProviderAuthClick}
-                    className="inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
+                    className={cn(
+                        'inline-flex cursor-pointer items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-full border px-3 sm:px-3.5 py-1.5 text-[13px] sm:text-sm font-medium transition pointer-coarse:py-2.5',
+                        // Connected is a status, not a call to action: no fill, no shadow, a tick.
+                        isSignedIn && hasCodexOAuth
+                          ? 'border-transparent text-[var(--sand-text-muted)] hover:text-[var(--sand-text)]'
+                          : 'border-[var(--sand-border)] bg-[var(--sand-elevated)] shadow-sm hover:bg-[var(--sand-surface)]',
+                      )}
                   >
                     <OpenAI className="h-4 w-4 shrink-0" />
-                    Sign in with ChatGPT
+                    {!isSignedIn ? 'Sign in with ChatGPT' : hasCodexOAuth ? 'ChatGPT connected' : 'Connect ChatGPT'}
+                    {isSignedIn && hasCodexOAuth && <Check className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden />}
                   </button>
                 </div>
+                )}
 
 
                 {/* <p className="text-[var(--sand-text-muted)] text-sm leading-none flex items-center gap-0">
@@ -2290,54 +2341,34 @@ export default function LandingV2() {
           </div>
         </div>
 
-        {/* HERO MOCKUP — hidden on mobile, not enough room to render well */}
+        {/* HERO MOCKUP — the whole workspace from tablet width up. */}
         <Reveal delay={450} className="hidden md:block">
           <div className="mx-auto max-w-7xl px-6 sm:px-8 pb-16 sm:pb-24">
             <WorkspaceMockup
-              messages={[
-                {
-                  role: 'user',
-                  content:
-                    'Build me Flowsync — a finance dashboard SaaS landing page. Dark, premium feel with a 3D hero visual, multi-currency account cards, a recent transactions feed, and a smart forecasting section.',
-                },
-                {
-                  role: 'assistant',
-                  content:
-                    "I'll build the Flowsync landing page: a Three.js hero, USD/EUR account cards, a live transactions feed, and an AI forecasting panel.",
-                  toolCalls: [
-                    { name: 'writeFile', done: true },
-                    { name: 'writeFile', done: true },
-                    { name: 'writeFile', done: true },
-                    { name: 'writeFile', done: true },
-                    { name: 'convexDeploy', done: true },
-                    { name: 'startDevServer', done: true },
-                  ],
-                },
-                {
-                  role: 'assistant',
-                  content:
-                    'Flowsync is live — the 3D hero animates on load, and the dashboard shows account balances with a recent activity log.',
-                },
-                {
-                  role: 'user',
-                  content: "Add a testimonials section with finance leaders, and a ‘Book a Free Demo’ CTA.",
-                },
-                {
-                  role: 'assistant',
-                  content: "Adding a ‘Loved by finance teams’ testimonials grid and a Book a Free Demo call-to-action.",
-                  toolCalls: [
-                    { name: 'readFile', done: true },
-                    { name: 'writeFile', done: true },
-                    { name: 'writeFile', done: false },
-                  ],
-                },
-              ]}
+              messages={HERO_MESSAGES}
               previewSrc="https://bf-28ba0c04.pages.dev"
               creditPct={47}
+              projectName="Flowsync"
               agentWorking={true}
               defaultView="preview"
               modelName="Claude Opus 5.5"
               className="shadow-[0_8px_60px_-12px_rgba(0,0,0,0.25)]"
+            />
+          </div>
+        </Reveal>
+        {/* On a phone the workspace opens on the chat, so that is what is shown. */}
+        <Reveal delay={450} className="md:hidden">
+          <div className="mx-auto max-w-md px-8 pb-14">
+            <WorkspaceMockup
+              chatOnly
+              height={468}
+              messages={HERO_MESSAGES}
+              previewSrc="https://bf-28ba0c04.pages.dev"
+              creditPct={47}
+              projectName="Flowsync"
+              agentWorking={true}
+              modelName="Claude Opus 5.5"
+              className="shadow-[0_8px_40px_-12px_rgba(0,0,0,0.22)]"
             />
           </div>
         </Reveal>
@@ -2349,9 +2380,9 @@ export default function LandingV2() {
       <LineDivider />
       <section className="relative">
         <MarginHatch />
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-32">
           <Reveal>
-            <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+            <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-20">
               <SectionLabel>Features</SectionLabel>
               <h2
                 className={cn(
@@ -2420,9 +2451,9 @@ export default function LandingV2() {
       <LineDivider />
       <section className="relative bg-[var(--sand-surface)]">
         <MarginBg />
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-16 pb-8 sm:py-32">
           <Reveal>
-            <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+            <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-20">
               <SectionLabel>How it works</SectionLabel>
               <h2
                 className={cn(
@@ -2453,7 +2484,7 @@ export default function LandingV2() {
                       serif.className,
                       'relative z-10 block text-7xl sm:text-8xl font-normal leading-none select-none',
                     )}
-                    style={{ color: 'var(--sand-accent)', opacity: 0.32 }}
+                    style={{ color: 'var(--sand-text-subtle)' }}
                   >
                     {s.num}
                   </span>
@@ -2471,7 +2502,7 @@ export default function LandingV2() {
       {/* ================================================================ */}
       {/* <LineDivider />
       <section className="relative">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-32">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             <Reveal>
               <div>
@@ -2522,9 +2553,9 @@ export default function LandingV2() {
                     content:
                       'Done! Added a theme toggle with smooth transitions and system preference detection.',
                     toolCalls: [
-                      { name: 'readFile', done: true },
-                      { name: 'writeFile', done: true },
-                      { name: 'writeFile', done: true },
+                      { name: 'readFile', detail: 'src/components/Nav.tsx', done: true },
+                      { name: 'writeFile', detail: 'src/components/ThemeToggle.tsx', done: true },
+                      { name: 'writeFile', detail: 'src/components/Nav.tsx', done: true },
                     ],
                   },
                 ]}
@@ -2595,9 +2626,9 @@ export default function LandingV2() {
       {/* INTEGRATIONS                                                     */}
       {/* ================================================================ */}
       {/* <section className="relative bg-[var(--sand-surface)]">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-32">
           <Reveal>
-            <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+            <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-20">
               <SectionLabel>Infrastructure</SectionLabel>
               <h2
                 className={cn(
@@ -2629,7 +2660,7 @@ export default function LandingV2() {
               {
                 logo: (
                   <div className="h-8 w-8 rounded-lg bg-[var(--sand-elevated)] border border-[var(--sand-border)] flex items-center justify-center">
-                    <Globe className="h-5 w-5 text-[var(--sand-accent)]" />
+                    <Globe className="h-5 w-5 text-[var(--sand-text-muted)]" />
                   </div>
                 ),
                 name: 'Cloudflare',
@@ -2663,6 +2694,7 @@ export default function LandingV2() {
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative">
+        <MarginHatch />
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-24">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             {/* <Reveal className='max-md:px-4'> */}
@@ -2676,7 +2708,7 @@ export default function LandingV2() {
                   )}
                 >
                   Pick your{' '}
-                  <span style={{ color: 'var(--sand-accent)' }}>engine</span>
+                  <em className={serif.className}>engine</em>
                 </h2>
                 <p className="mt-6 text-lg text-[var(--sand-text-muted)] leading-relaxed">
                   Different tasks, different models. Use a lightweight model for quick iterations, or bring in the heavyweights for complex features. Switch models mid-conversation — no restart needed.
@@ -2699,7 +2731,7 @@ export default function LandingV2() {
           <LineDivider />
           <section className="relative bg-[var(--sand-surface)]">
             <MarginBg />
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-32">
               <Reveal>
                 <div className="text-center max-w-4xl mx-auto">
                   <SectionLabel>Showcase</SectionLabel>
@@ -2753,35 +2785,7 @@ export default function LandingV2() {
       {/* CTA                                                              */}
       {/* ================================================================ */}
       <LineDivider />
-      <section className="relative">
-        <div className="pointer-events-none absolute inset-0 -z-10 landing-gradient opacity-60" />
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-28">
-          <Reveal>
-            <div className="text-center max-w-2xl mx-auto">
-              <h2
-                className={cn(
-                  serif.className,
-                  'text-4xl sm:text-5xl md:text-6xl tracking-tight',
-                )}
-              >
-                Ready to build?
-              </h2>
-              <p className="mt-4 text-lg text-[var(--sand-text-muted)]">
-                Start for free. No credit card required.
-              </p>
-              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
-                <StaggerButton text="Get started free" href="/sign-up" />
-                <Link
-                  href="/pricing"
-                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-6 py-3 text-base font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
-                >
-                  View pricing
-                </Link>
-              </div>
-            </div>
-          </Reveal>
-        </div>
-      </section>
+      <ClosingCta heading="Ready to" em="build?" sub="Free to start. No credit card required." />
 
       {/* ================================================================ */}
       {/* FOOTER                                                           */}
@@ -2792,21 +2796,28 @@ export default function LandingV2() {
     <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} defaultTab={settingsDefaultTab} />
 
     {showAuthDialog && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-        <div className="w-full max-w-md rounded-2xl border border-border bg-bg p-6 shadow-xl">
-          <h2 className="text-xl font-semibold text-foreground">Sign in to start building</h2>
-          <p className="mt-2 text-sm text-muted">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] px-4">
+        <div
+          ref={authDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Sign in to start building"
+          tabIndex={-1}
+          className="w-full max-w-md rounded-2xl border border-border bg-bg p-6 shadow-2xl outline-none"
+        >
+          <h2 className="text-base font-semibold text-fg">Sign in to start building</h2>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
             Sign in or sign up to create your project workspace. You&apos;ll be able to name it on the next step.
           </p>
-          <div className="mt-6 flex flex-col sm:flex-row gap-3">
+          <div className="mt-6 flex flex-col gap-2.5 sm:flex-row-reverse">
             <SignInButton mode="modal" appearance={landingSignInModalAppearance}>
-              <button className="inline-flex flex-1 items-center justify-center rounded-xl bg-foreground px-4 py-2.5 text-sm font-medium text-bg shadow hover:opacity-90 transition">
+              <button className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50">
                 Sign in / Sign up
               </button>
             </SignInButton>
             <button
               onClick={closeAuthDialog}
-              className="inline-flex flex-1 items-center justify-center rounded-xl border border-border bg-elevated px-4 py-2.5 text-sm font-medium text-muted shadow-sm hover:bg-surface transition"
+              className="flex-1 inline-flex h-10 items-center justify-center rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-4 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
             >
               Cancel
             </button>
@@ -2816,8 +2827,15 @@ export default function LandingV2() {
     )}
 
     {projectStep !== null && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-        <div className="w-full max-w-md rounded-2xl border border-border bg-bg shadow-xl overflow-hidden">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] px-4">
+        <div
+          ref={projectDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Set up your project"
+          tabIndex={-1}
+          className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl outline-none"
+        >
           {projectStep === 'convex' && (() => {
             const cloudForAll = process.env.NEXT_PUBLIC_ALLOW_CLOUD_CONVEX_FOR_ALL === 'true';
             const isPaid = userTier === 'pro' || userTier === 'max' || cloudForAll;
@@ -2825,9 +2843,9 @@ export default function LandingV2() {
             const managedQuotaHit = isPaid && projectQuotaLeft !== null && projectQuotaLeft <= 0;
             return (
               <>
-                <div className="px-6 pt-6 pb-3">
-                  <h2 className="text-xl font-semibold text-foreground">Connect your backend</h2>
-                  <p className="mt-1.5 text-sm text-muted">
+                <div className="px-6 pb-4 pt-6">
+                  <h2 className="text-base font-semibold text-fg">Connect your backend</h2>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
                     {isPaid && offerManaged
                       ? 'Choose how to host the Convex backend for this project.'
                       : 'Botflow uses Convex for your backend. Connect your free Convex account to continue.'}
@@ -2835,18 +2853,18 @@ export default function LandingV2() {
                 </div>
                 <div className="px-6 pb-6 space-y-3">
                   <div className={cn(
-                    'relative rounded-xl border-2 p-4 transition-all',
-                    hasConvexOAuth ? 'border-green-500/60 bg-green-500/5' : 'border-foreground/20 bg-soft',
+                    'relative rounded-xl border p-4 transition-colors',
+                    hasConvexOAuth ? 'border-success-border bg-success-soft' : 'border-border bg-surface',
                   )}>
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-foreground">
-                        <KeyRound className="h-4 w-4 text-bg" />
+                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-elevated">
+                        <KeyRound className="h-4 w-4 text-muted" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground">Your Convex Account</span>
+                          <span className="text-sm font-medium text-fg">Your Convex account</span>
                           {hasConvexOAuth && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-700 border border-green-500/30">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
                               <Check className="h-3 w-3" /> Connected
                             </span>
                           )}
@@ -2871,7 +2889,7 @@ export default function LandingV2() {
                       <button
                         onClick={handleConnectConvex}
                         disabled={convexConnecting}
-                        className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-bg shadow hover:opacity-90 disabled:opacity-60 transition"
+                        className="mt-3 w-full inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                       >
                         {convexConnecting ? (
                           <><div className="h-4 w-4 animate-spin rounded-full border-2 border-bg/30 border-t-bg" /> Connecting&hellip;</>
@@ -2892,23 +2910,23 @@ export default function LandingV2() {
                       className={cn(
                         'relative w-full rounded-xl border p-4 text-left transition-all',
                         managedQuotaHit
-                          ? 'border-border bg-soft opacity-50 cursor-not-allowed'
-                          : 'border-border bg-soft hover:border-foreground/30 hover:bg-elevated cursor-pointer',
+                          ? 'cursor-not-allowed border-border bg-surface opacity-50'
+                          : 'cursor-pointer border-border bg-surface hover:border-border-strong hover:bg-elevated',
                       )}
                     >
                       <div className="flex items-start gap-3">
-                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-elevated">
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-elevated">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src="/convex-color.svg" className="h-4 w-4" alt="" />
                         </div>
                         <div>
-                          <span className="text-sm font-semibold text-foreground">Botflow Managed</span>
-                          <span className="ml-1.5 text-xs text-muted font-normal">(Recommended)</span>
+                          <span className="text-sm font-medium text-fg">Managed by Botflow</span>
+                          <span className="ml-1.5 text-xs font-normal text-muted">Recommended</span>
                           <p className="mt-0.5 text-xs text-muted">
                             We handle the infrastructure, backups, and scaling. Instant setup.
                           </p>
                           {managedQuotaHit && (
-                            <p className="mt-1 text-xs text-amber-600 font-medium">
+                            <p className="mt-1 text-xs text-warning font-medium">
                               You&apos;ve reached your managed project limit. Delete a project or upgrade your plan.
                             </p>
                           )}
@@ -2916,18 +2934,18 @@ export default function LandingV2() {
                       </div>
                     </button>
                   ) : (
-                    <div className="relative rounded-xl border border-border bg-soft p-4 opacity-50 cursor-not-allowed">
+                    <div className="relative cursor-not-allowed rounded-xl border border-border bg-surface p-4 opacity-60">
                       <div className="absolute -top-2.5 right-3">
-                        <span className="inline-flex items-center rounded-full bg-foreground px-2.5 py-0.5 text-xs font-semibold text-bg">
-                          Upgrade to Pro
+                        <span className="inline-flex items-center rounded-full border border-border bg-bg px-2 py-0.5 text-[11px] font-medium text-fg">
+                          Pro plan
                         </span>
                       </div>
                       <div className="flex items-start gap-3">
-                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-elevated">
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-elevated">
                           <Database className="h-4 w-4 text-muted" />
                         </div>
                         <div>
-                          <span className="text-sm font-semibold text-muted">Botflow Managed (Recommended)</span>
+                          <span className="text-sm font-medium text-muted">Managed by Botflow</span>
                           <p className="mt-0.5 text-xs text-muted">
                             We handle the infrastructure, backups, and scaling. Instant setup.
                           </p>
@@ -2935,14 +2953,14 @@ export default function LandingV2() {
                       </div>
                     </div>
                   )}
-                  <div className="flex gap-3 pt-1">
+                  <div className="flex flex-row-reverse gap-2.5 pt-1">
                     {hasConvexOAuth && (
                       <button
                         onClick={() => {
                           void saveBackendPreference('user');
                           setProjectStep('name');
                         }}
-                        className="flex-1 inline-flex items-center justify-center rounded-xl bg-foreground px-4 py-2.5 text-sm font-medium text-bg shadow hover:opacity-90 transition"
+                        className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                       >
                         Continue
                         <ArrowRight className="ml-1.5 h-4 w-4" />
@@ -2951,7 +2969,7 @@ export default function LandingV2() {
                     <button
                       onClick={closeProjectModal}
                       className={cn(
-                        'inline-flex items-center justify-center rounded-xl border border-border bg-elevated px-4 py-2.5 text-sm font-medium text-muted shadow-sm hover:bg-surface transition',
+                        'inline-flex h-10 items-center justify-center rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-4 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated',
                         hasConvexOAuth ? '' : 'flex-1',
                       )}
                     >
@@ -2964,8 +2982,8 @@ export default function LandingV2() {
           })()}
           {projectStep === 'name' && (
             <div className="p-6">
-              <h2 className="text-xl font-semibold text-foreground">Name your project</h2>
-              <p className="mt-2 text-sm text-muted">
+              <h2 className="text-base font-semibold text-fg">Name your project</h2>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
                 Give your project a short name so it&apos;s easy to find later.
               </p>
               <div className="mt-4">
@@ -2976,20 +2994,21 @@ export default function LandingV2() {
                     if (e.key === 'Enter') handleCreateProject();
                   }}
                   placeholder="My new project"
-                  className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-sm text-foreground shadow-sm outline-none focus:ring-2 focus:ring-foreground/10"
+                  className="h-10 w-full rounded-lg border border-control bg-bg px-3 text-sm text-fg inset-shadow-well outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                   autoFocus
+                  data-autofocus
                 />
               </div>
-              <div className="mt-6 flex gap-3">
+              <div className="mt-6 flex flex-row-reverse gap-2.5">
                 <button
                   onClick={handleCreateProject}
-                  className="flex-1 inline-flex items-center justify-center rounded-xl bg-foreground px-4 py-2.5 text-sm font-medium text-bg shadow hover:opacity-90 transition"
+                  className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none px-4 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                 >
-                  Continue to workspace
+                  Create project
                 </button>
                 <button
                   onClick={closeProjectModal}
-                  className="inline-flex items-center justify-center rounded-xl border border-border bg-elevated px-4 py-2.5 text-sm font-medium text-muted shadow-sm hover:bg-surface transition"
+                  className="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-4 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
                 >
                   Cancel
                 </button>

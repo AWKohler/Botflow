@@ -84,19 +84,19 @@ function PaymentModeCard({ testStoreReady }: { testStoreReady?: boolean }) {
           <span className="font-medium text-fg">Development (simulator &amp; dev devices):</span>{" "}
           {testStoreReady ? (
             <>
-              always <span className="text-amber-500 font-medium">test mode</span> — purchases are
+              always <span className="text-warning font-medium">test mode</span> — purchases are
               simulated through RevenueCat&apos;s Test Store. No Apple setup, no real money, ever.
             </>
           ) : (
             <>
-              requires RevenueCat&apos;s <span className="text-amber-500 font-medium">Test Store</span>.
+              requires RevenueCat&apos;s <span className="text-warning font-medium">Test Store</span>.
               Until it&apos;s ready, Botflow disables purchases in development rather than using a live key.
             </>
           )}
         </p>
         <p>
           <span className="font-medium text-fg">Published (App Store):</span> always{" "}
-          <span className="text-emerald-500 font-medium">live</span> — your real App Store
+          <span className="text-success font-medium">live</span> — your real App Store
           products, real money, once they pass App Review.
         </p>
         <p className="text-muted/80">
@@ -134,7 +134,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
         </code>
         <button
           onClick={copy}
-          className="flex items-center gap-1 rounded-md border border-border px-2.5 text-xs text-muted hover:text-fg bolt-hover"
+          className="flex items-center gap-1 rounded-md border border-border px-2.5 text-xs text-muted hover:text-fg"
           title="Copy"
         >
           {copied ? <Check size={13} /> : <Copy size={13} />}
@@ -148,7 +148,7 @@ function ChecklistRow({ done, children }: { done: boolean; children: React.React
   return (
     <div className="flex items-center gap-2 text-sm">
       {done ? (
-        <CircleCheck size={16} className="text-emerald-500 shrink-0" />
+        <CircleCheck size={16} className="text-success shrink-0" />
       ) : (
         <Circle size={16} className="text-muted shrink-0" />
       )}
@@ -339,25 +339,25 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted">Connection</span>
               {data?.checklist.connectionValid ? (
-                <span className="flex items-center gap-1 text-emerald-500"><CircleCheck size={14} /> Verified</span>
+                <span className="flex items-center gap-1 text-success"><CircleCheck size={14} /> Verified</span>
               ) : (
-                <span className="text-amber-500">{data?.connectionError ?? "Unverified"}</span>
+                <span className="text-warning">{data?.connectionError ?? "Unverified"}</span>
               )}
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted">Backend receiver</span>
               {data?.checklist.backendReady ? (
-                <span className="flex items-center gap-1 text-emerald-500"><CircleCheck size={14} /> Ready</span>
+                <span className="flex items-center gap-1 text-success"><CircleCheck size={14} /> Ready</span>
               ) : (
-                <span className="text-amber-500">Not set up</span>
+                <span className="text-warning">Not set up</span>
               )}
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted">Test Store (simulator purchases)</span>
               {data?.checklist.testStoreReady ? (
-                <span className="flex items-center gap-1 text-emerald-500"><CircleCheck size={14} /> Ready</span>
+                <span className="flex items-center gap-1 text-success"><CircleCheck size={14} /> Ready</span>
               ) : (
-                <span className="text-amber-500">Enable in RevenueCat</span>
+                <span className="text-warning">Enable in RevenueCat</span>
               )}
             </div>
           </div>
@@ -365,8 +365,8 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
           <PaymentModeCard testStoreReady={data?.checklist.testStoreReady} />
 
           {data && !data.checklist.testStoreReady && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-1">
-              <p className="text-xs text-amber-500">
+            <div className="rounded-xl border border-warning-border bg-warning-soft p-4 space-y-1">
+              <p className="text-xs text-warning">
                 Your RevenueCat project has no Test Store, so the simulator can&apos;t make
                 test purchases yet. Botflow keeps purchases disabled in development until
                 it&apos;s ready. Enable it in RevenueCat (Project settings → Apps → Test Store),
@@ -380,8 +380,8 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
           )}
 
           {data && !data.checklist.backendReady && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-2">
-              <p className="text-xs text-amber-500">
+            <div className="rounded-xl border border-warning-border bg-warning-soft p-4 space-y-2">
+              <p className="text-xs text-warning">
                 The webhook receiver isn&apos;t fully set up on your app&apos;s backend, so
                 purchase events can&apos;t update entitlements yet
                 {data.scaffold?.envError ? ` (${data.scaffold.envError})` : ""}
@@ -394,7 +394,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
             </div>
           )}
 
-          <Button onClick={openDashboard} className="w-full font-semibold">
+          <Button onClick={openDashboard} className="w-full">
             <ExternalLink size={16} className="mr-1.5" />
             Open RevenueCat Dashboard
           </Button>
@@ -409,7 +409,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
             </div>
             <p className="text-xs text-muted">
               Purchase and entitlement events routed to this app&apos;s backend.{" "}
-              <span className="text-amber-500">
+              <span className="text-warning">
                 Test-mode events are simulated — no real money changes hands.
               </span>
             </p>
@@ -432,8 +432,8 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
                     <span
                       className={
                         item.environment === "PRODUCTION"
-                          ? "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-500/10 text-emerald-500"
-                          : "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-500/10 text-amber-500"
+                          ? "shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold bg-success-soft text-success"
+                          : "shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold bg-warning-soft text-warning"
                       }
                     >
                       {item.environment === "PRODUCTION" ? "LIVE" : "TEST"}
@@ -449,11 +449,11 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
                     )}
                     <span className="ml-auto shrink-0 text-muted/80" title={`Delivery: ${item.delivery.status}${item.delivery.lastError ? ` — ${item.delivery.lastError}` : ""}`}>
                       {item.delivery.status === "delivered" ? (
-                        <CircleCheck size={13} className="text-emerald-500" />
+                        <CircleCheck size={13} className="text-success" />
                       ) : item.delivery.status === "exhausted" ? (
-                        <span className="text-red-400">failed</span>
+                        <span className="text-danger">failed</span>
                       ) : (
-                        <span className="text-amber-500">retrying…</span>
+                        <span className="text-warning">retrying…</span>
                       )}
                     </span>
                     <span className="shrink-0 text-muted/70">
@@ -478,7 +478,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
 
           <button
             onClick={handleDisconnect}
-            className="text-xs text-muted hover:text-red-400"
+            className="text-xs text-muted hover:text-danger"
           >
             Disconnect RevenueCat from this project
           </button>
@@ -501,7 +501,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
         </div>
 
         {loadError && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-xs text-amber-500">
+          <div className="rounded-xl border border-warning-border bg-warning-soft p-4 text-xs text-warning">
             {loadError}
           </div>
         )}
@@ -571,7 +571,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
           <Field label="API v2 Project ID (Project settings → General, starts proj…)" value={rcProjectId} onChange={setRcProjectId} placeholder="proj1a2b3c4d" mono />
 
           <div className="flex items-center gap-2 pt-1">
-            <Button onClick={handleConnect} disabled={submitting} className="font-semibold">
+            <Button onClick={handleConnect} disabled={submitting} >
               {submitting ? <Loader2 size={16} className="mr-1.5 animate-spin" /> : null}
               {submitting ? "Connecting…" : "Connect RevenueCat"}
             </Button>
@@ -581,7 +581,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
             </Button>
           </div>
           {(connectError || data?.connectionError) && (
-            <p className="text-xs text-amber-500">{connectError || data?.connectionError}</p>
+            <p className="text-xs text-warning">{connectError || data?.connectionError}</p>
           )}
         </div>
 
@@ -600,7 +600,7 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
 
         <button
           onClick={handleDisconnect}
-          className="text-xs text-muted hover:text-red-400"
+          className="text-xs text-muted hover:text-danger"
         >
           Cancel setup
         </button>

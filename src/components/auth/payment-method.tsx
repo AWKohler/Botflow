@@ -55,7 +55,7 @@ function Form({ onSaved }: { onSaved: () => void }) {
     >
       <PaymentElement />
       {message && (
-        <p role="alert" className="text-sm">
+        <p role="alert" className="rounded-lg border border-danger-border bg-danger-soft px-3 py-2.5 text-[13px] text-danger">
           {message}
         </p>
       )}

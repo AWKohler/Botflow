@@ -1,14 +1,24 @@
 @import "tailwindcss";
 
 :root {
-    /* Sand/Tan Design Tokens (Light) */
+    color-scheme: light dark;
+
+    /* ── Sand design tokens (light) ─────────────────────────────────────
+       Surfaces step up in warmth: bg → surface → elevated → soft.
+       Text steps down in weight: text → muted → subtle. */
     --sand-bg: #fefefe;
-    --sand-surface: #fcfbf8;
-    --sand-elevated: #f8f4ed;
-    --sand-soft: #e7dfd2;
-    --sand-border: #eceae4;
-    --sand-text: #2f2f31;
-    --sand-text-muted: #3f3f46;
+    --sand-surface: #fbfaf7;
+    --sand-elevated: #f6f3ec;
+    --sand-soft: #ebe6dc;
+    --sand-border: #e9e6df;
+    --sand-border-strong: #cfcac0;
+    /* Edges of form controls: at least 3:1 against every surface (WCAG 1.4.11). */
+    --sand-control-border: #8f8a80;
+    --sand-text: #27272a;
+    --sand-text-muted: #5f5e5a;
+    /* Subtle text still carries meaning (placeholders, metadata), so it keeps
+       a 4.5:1 contrast on every surface. */
+    --sand-text-subtle: #737169;
     --sand-accent: #1d52f1;
     --sand-accent-contrast: #ffffff;
     --sand-accent-contrast-two: #1b1713;
@@ -19,6 +29,43 @@
 
     --gray-accent-one: #5f5f5f;
     --gray-accent-two: #eceae4;
+
+    /* ── Semantic status tokens ─────────────────────────────────────────
+       `--x` is the readable text/icon color, `--x-solid` a filled control,
+       `--x-soft` a tinted surface and `--x-border` its outline. Every status
+       color in the app goes through these so both themes stay legible. */
+    --success: #17773a;
+    --success-solid: #1f9d4d;
+    --warning: #9a5b00;
+    --warning-solid: #d98a0b;
+    --danger: #c0271d;
+    --danger-solid: #d93a2f;
+    --info: #1d52f1;
+    --info-solid: #1d52f1;
+    --status-tint: 9%;
+    --status-line: 30%;
+
+    /* Syntax colors for marketing code samples (readable on sand surfaces). */
+    --code-keyword: #b84c33;
+    --code-function: #1d52f1;
+    --code-string: #47752b;
+    --code-type: #96601f;
+    --code-property: #6a4ba3;
+
+    /* Elevation: one warm shadow color, scaled per theme. */
+    --shadow-rgb: 38 32 22;
+    --shadow-strength: 1;
+
+    /* Bevel: raised controls are lit from above. A hairline of light inside
+       the top edge (following the radius) and a hairline of shade inside the
+       bottom edge give them physical depth without any visible gradient.
+       "ink" is the primary fill, "solid" a coloured fill, "surface" a raised
+       neutral surface (secondary buttons, selected tabs, menus). */
+    --bevel-ink: rgb(255 255 255 / 0.2);
+    --bevel-ink-base: rgb(0 0 0 / 0.28);
+    --bevel-solid: rgb(255 255 255 / 0.24);
+    --bevel-surface: rgb(255 255 255 / 0.95);
+    --bevel-surface-base: rgb(38 32 22 / 0.06);
 
     /* App Layout Vars */
     --background: var(--sand-bg);
@@ -35,37 +82,111 @@
     --color-bg: var(--sand-bg);
     --color-fg: var(--sand-text);
     --color-muted: var(--sand-text-muted);
+    --color-subtle: var(--sand-text-subtle);
     --color-surface: var(--sand-surface);
     --color-elevated: var(--sand-elevated);
     --color-soft: var(--sand-soft);
     --color-border: var(--sand-border);
+    --color-border-strong: var(--sand-border-strong);
+    --color-control: var(--sand-control-border);
     --color-accent: var(--sand-accent);
     --color-accent-foreground: var(--sand-accent-contrast);
+    --color-accent-soft: color-mix(in oklab, var(--sand-accent) 9%, var(--sand-bg));
+
+    --color-success: var(--success);
+    --color-success-solid: var(--success-solid);
+    --color-success-soft: color-mix(in oklab, var(--success-solid) var(--status-tint), var(--sand-bg));
+    --color-success-border: color-mix(in oklab, var(--success-solid) var(--status-line), var(--sand-border));
+    --color-warning: var(--warning);
+    --color-warning-solid: var(--warning-solid);
+    --color-warning-soft: color-mix(in oklab, var(--warning-solid) var(--status-tint), var(--sand-bg));
+    --color-warning-border: color-mix(in oklab, var(--warning-solid) var(--status-line), var(--sand-border));
+    --color-danger: var(--danger);
+    --color-danger-solid: var(--danger-solid);
+    --color-danger-soft: color-mix(in oklab, var(--danger-solid) var(--status-tint), var(--sand-bg));
+    --color-danger-border: color-mix(in oklab, var(--danger-solid) var(--status-line), var(--sand-border));
+    --color-info: var(--info);
+    --color-info-solid: var(--info-solid);
+    --color-info-soft: color-mix(in oklab, var(--info-solid) var(--status-tint), var(--sand-bg));
+    --color-info-border: color-mix(in oklab, var(--info-solid) var(--status-line), var(--sand-border));
 
     --font-sans: var(--font-geist-sans);
     --font-mono: var(--font-geist-mono);
+
+    /* Inner edges (compose with the outer shadows below). */
+    --inset-shadow-bevel-ink: inset 0 1px 0 0 var(--bevel-ink), inset 0 -1px 0 0 var(--bevel-ink-base);
+    --inset-shadow-bevel-solid: inset 0 1px 0 0 var(--bevel-solid), inset 0 -1px 0 0 rgb(0 0 0 / 0.14);
+    --inset-shadow-bevel: inset 0 1px 0 0 var(--bevel-surface), inset 0 -1px 0 0 var(--bevel-surface-base);
+    --inset-shadow-bevel-top: inset 0 1px 0 0 var(--bevel-surface);
+    /* The opposite of a bevel: a control you type into sits slightly below the surface. */
+    --inset-shadow-well: inset 0 1px 2px 0 rgb(var(--shadow-rgb) / calc(0.05 * var(--shadow-strength)));
+
+    --shadow-2xs: 0 1px 0 rgb(var(--shadow-rgb) / calc(0.04 * var(--shadow-strength)));
+    --shadow-xs: 0 1px 2px rgb(var(--shadow-rgb) / calc(0.05 * var(--shadow-strength)));
+    --shadow-sm:
+        0 1px 2px rgb(var(--shadow-rgb) / calc(0.06 * var(--shadow-strength))),
+        0 1px 1px rgb(var(--shadow-rgb) / calc(0.03 * var(--shadow-strength)));
+    --shadow-md:
+        0 4px 10px -2px rgb(var(--shadow-rgb) / calc(0.08 * var(--shadow-strength))),
+        0 2px 4px -2px rgb(var(--shadow-rgb) / calc(0.05 * var(--shadow-strength)));
+    --shadow-lg:
+        0 12px 24px -6px rgb(var(--shadow-rgb) / calc(0.1 * var(--shadow-strength))),
+        0 4px 8px -4px rgb(var(--shadow-rgb) / calc(0.06 * var(--shadow-strength)));
+    --shadow-xl:
+        0 20px 40px -10px rgb(var(--shadow-rgb) / calc(0.14 * var(--shadow-strength))),
+        0 8px 16px -8px rgb(var(--shadow-rgb) / calc(0.08 * var(--shadow-strength)));
+    --shadow-2xl: 0 32px 64px -16px rgb(var(--shadow-rgb) / calc(0.2 * var(--shadow-strength)));
 }
-
-
-
 
 @media (prefers-color-scheme: dark) {
     :root {
-        /* Night Sand (Dark) */
-        --sand-bg: #1d1a16;
-        --sand-surface: #23201b;
-        --sand-elevated: #2b2722;
-        --sand-soft: #2a251f;
-        --sand-border: #3a342e;
+        /* Night Sand (dark) */
+        --sand-bg: #1b1815;
+        --sand-surface: #221f1b;
+        --sand-elevated: #2a2621;
+        --sand-soft: #36302a;
+        --sand-border: #35302a;
+        --sand-border-strong: #4a433a;
+        --sand-control-border: #7a7368;
         --sand-text: #ede6db;
-        --sand-text-muted: #b8ada1;
-        --sand-accent: #d8826a;
-        --sand-accent-contrast: #1b1713;
+        --sand-text-muted: #b5ab9f;
+        --sand-text-subtle: #9a9186;
+        /* One brand hue in both themes: the same cobalt, lifted for dark. */
+        --sand-accent: #8aa6ff;
+        --sand-accent-contrast: #101728;
         /*--sand-accent-contrast-two: #ffffff;*/
         --sand-overlay: rgba(237, 230, 219, 0.07);
 
         --gray-accent-one: #c5c1b9;
         --gray-accent-two: #272624;
+
+        --success: #7ad395;
+        --success-solid: #2f9e58;
+        --warning: #ecb866;
+        --warning-solid: #d0892a;
+        --danger: #ff7a6e;
+        --danger-solid: #e0463b;
+        --info: #8aa6ff;
+        --info-solid: #5f82f7;
+        --status-tint: 14%;
+        --status-line: 34%;
+
+        --code-keyword: #f0957d;
+        --code-function: #8aa6ff;
+        --code-string: #a3d18a;
+        --code-type: #e3b577;
+        --code-property: #c8b0f2;
+
+        --shadow-rgb: 0 0 0;
+        --shadow-strength: 4;
+
+        /* In dark the primary fill is light, and neutral surfaces take the
+           classic 8–10% white top edge. */
+        --bevel-ink: rgb(255 255 255 / 0.7);
+        --bevel-ink-base: rgb(0 0 0 / 0.14);
+        --bevel-solid: rgb(255 255 255 / 0.2);
+        --bevel-surface: rgb(255 255 255 / 0.1);
+        --bevel-surface-base: rgb(0 0 0 / 0.22);
 
         --background: var(--sand-bg);
         --foreground: var(--sand-text);
@@ -86,134 +207,66 @@ body {
         Arial,
         "Apple Color Emoji",
         "Segoe UI Emoji";
+    text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
 }
 
-/* Force Google icon to pure black */
-.cl-providerIcon__google {
-    filter: grayscale(100%) contrast(200%) brightness(0);
+::selection {
+    background: color-mix(in oklab, var(--sand-accent) 22%, transparent);
 }
 
-/* Force Google icon to pure white in dark mode */
-@media (prefers-color-scheme: dark) {
-    .cl-providerIcon__google {
-        filter: grayscale(1) brightness(2.2) contrast(0.85);
-    }
+/* One focus treatment everywhere. `:where` keeps specificity at zero so any
+   component that draws its own ring (or opts out) still wins. Containers that
+   are only focused programmatically (tabindex="-1") never show it. */
+:where(a, button, [role="button"], [role="tab"], [role="menuitem"], summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--sand-accent) 70%, transparent);
+    outline-offset: 2px;
 }
 
-/* Force Google icon to pure black */
-.cl-providerIcon__github {
-    filter: grayscale(100%) contrast(200%) brightness(100);
+:where(button, [role="button"], summary, label[for], select):not(:disabled) {
+    cursor: pointer;
 }
 
-/* Force Github icon to pure white in dark mode */
-@media (prefers-color-scheme: dark) {
-    .cl-providerIcon__github {
-        filter: grayscale(1) brightness(10) contrast(0.85);
-    }
+/* Programmatic focus targets (sheets, dialogs) should not draw a ring. */
+:where([tabindex="-1"]):focus {
+    outline: none;
 }
 
-.cl-socialButtonsBlockButton > span {
-    gap: 0.5rem; /* Tailwind gap-2 */
-}
-
-/* Clerk billing drawer — render above custom modals (z-[200]) */
-.cl-drawerRoot,
-.cl-drawerContent {
-    z-index: 9999 !important;
-}
-
-/* Billing frequency switch — accent color only when toggled on */
-[class*="cl-pricingTable"] [role="switch"][data-state="checked"] {
-    background-color: var(--sand-accent) !important;
-}
-
-/* Pricing page: widen the gap between Clerk's plan cards.
-   Target only the root PricingTable grid, NOT the cards (which have
-   `cl-pricingTableCard` as a substring of `cl-pricingTable`). */
-.pricing-clerk-wrapper [data-clerk-component="PricingTable"] > div {
-    gap: 1.25rem !important;
-}
-
-/* On wide screens force three plans onto one row even if Clerk's
-   default grid would wrap. Scoped to the immediate PricingTable child
-   so it never reaches into individual cards. */
-@media (min-width: 960px) {
-    .pricing-clerk-wrapper [data-clerk-component="PricingTable"] > div {
-        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    }
+/* Quiet scrollbars by default — a thin thumb with no track. */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--sand-text-subtle) 45%, transparent) transparent;
 }
 
 /* Custom scrollbar styles */
 .modern-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: var(--sand-text-muted) var(--sand-soft);
+    scrollbar-color: color-mix(in oklab, var(--sand-text-subtle) 45%, transparent) transparent;
 }
 
 .modern-scrollbar::-webkit-scrollbar {
     width: 8px;
+    height: 8px;
 }
 
 .modern-scrollbar::-webkit-scrollbar-track {
-    background: var(--sand-soft);
-    border-radius: 6px;
+    background: transparent;
 }
 
 .modern-scrollbar::-webkit-scrollbar-thumb {
-    background: color-mix(in oklab, var(--sand-text-muted) 80%, transparent);
-    border-radius: 6px;
+    background: color-mix(in oklab, var(--sand-text-subtle) 45%, transparent);
+    border-radius: 999px;
 }
 
 .modern-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in oklab, var(--sand-text-muted) 95%, transparent);
-}
-
-/* Dune-inspired scheme (keeps class names for minimal churn) */
-.bolt-bg {
-    background:
-        radial-gradient(
-            1000px 600px at 20% -10%,
-            color-mix(in oklab, var(--sand-accent) 12%, transparent),
-            transparent
-        ),
-        radial-gradient(
-            900px 500px at 120% 10%,
-            color-mix(in oklab, var(--sand-accent) 10%, transparent),
-            transparent
-        ),
-        linear-gradient(135deg, var(--sand-bg) 0%, var(--sand-surface) 100%);
-}
-
-.bolt-border {
-    border-color: var(--sand-border);
-}
-
-.bolt-hover {
-    transition: all 0.18s ease-in-out;
-}
-
-.bolt-hover:hover {
-    background-color: color-mix(
-        in oklab,
-        var(--sand-elevated) 80%,
-        var(--sand-overlay)
-    );
-}
-
-.botflow-wordmark-invert {
-    display: block;
-}
-
-@media (prefers-color-scheme: dark) {
-    .botflow-wordmark-invert {
-        filter: invert(1) brightness(1.1);
-    }
+    background: color-mix(in oklab, var(--sand-text-subtle) 70%, transparent);
 }
 
 /* Landing page gradient */
 .landing-gradient {
-    /* Accent blobs only — no solid base so hero-grid shows through */
+    /* A faint accent wash for closing bands — quiet, like the rest of the palette. */
     background:
-        radial-gradient(ellipse 90% 60% at 50% 0%, color-mix(in oklab, var(--sand-accent) 70%, transparent), transparent),
+        radial-gradient(ellipse 90% 60% at 50% 0%, color-mix(in oklab, var(--sand-accent) 14%, transparent), transparent),
         radial-gradient(ellipse 70% 55% at 85% 5%, color-mix(in oklab, var(--sand-soft) 85%, transparent), transparent),
         radial-gradient(ellipse 60% 70% at 50% 100%, color-mix(in oklab, var(--sand-elevated) 95%, transparent), transparent);
 }
@@ -241,20 +294,239 @@ body {
     pointer-events: none;
 }
 
-/* Animation classes */
-.bolt-fade-in {
-    animation: fadeIn 0.3s ease-in-out;
+/* ── Sign-in artwork: a painting in the brand's colours on woven canvas ── */
+.auth-art__wash {
+    /* Warm paper running into cobalt and then ink, along a soft diagonal. */
+    background:
+        radial-gradient(75% 60% at 12% 8%, #f6efdf 0%, rgb(246 239 223 / 0) 70%),
+        radial-gradient(60% 45% at 78% 30%, rgb(222 228 255 / 0.9) 0%, rgb(222 228 255 / 0) 72%),
+        radial-gradient(95% 75% at 100% 100%, #0f163d 0%, rgb(15 22 61 / 0) 62%),
+        radial-gradient(70% 55% at 22% 96%, #2a45c4 0%, rgb(42 69 196 / 0) 70%),
+        linear-gradient(158deg, #efe7d6 0%, #dcdcf2 26%, #a9b8ff 43%, #4a6cf2 60%, #2238a8 78%, #141c4d 100%);
+}
+/* Two broad, soft strokes give the wash a horizon and some movement. */
+.auth-art__stroke {
+    border-radius: 50%;
+    filter: blur(46px);
+}
+.auth-art__stroke--deep {
+    left: -30%;
+    right: -30%;
+    bottom: -34%;
+    height: 78%;
+    transform: rotate(-16deg);
+    background: linear-gradient(180deg, #3558ee 0%, #1f329e 45%, #101a48 100%);
+    opacity: 0.92;
+}
+.auth-art__stroke--light {
+    left: -10%;
+    top: -18%;
+    width: 85%;
+    height: 52%;
+    transform: rotate(-16deg);
+    background: #f7f0e0;
+    opacity: 0.8;
+}
+.auth-art__stroke--beam {
+    /* A diagonal beam of cool light across the pale upper half. */
+    right: -25%;
+    top: 9%;
+    width: 110%;
+    height: 27%;
+    transform: rotate(-16deg);
+    background: linear-gradient(90deg, rgb(128 150 255 / 0) 0%, rgb(128 150 255 / 0.85) 42%, rgb(196 207 255 / 0.9) 68%, rgb(255 255 255 / 0) 100%);
+    filter: blur(30px);
+}
+.auth-art__grain {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5  0 0 0 0 .5  0 0 0 0 .5  0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode: overlay;
+    opacity: 0.55;
+}
+/* Shown only where the browser cannot paint the panel onto a real canvas. */
+.auth-art__weave {
+    background-image:
+        repeating-linear-gradient(0deg, rgb(0 0 0 / 0.07) 0 1px, transparent 1px 3px),
+        repeating-linear-gradient(90deg, rgb(255 255 255 / 0.09) 0 1px, transparent 1px 3px);
+    mix-blend-mode: soft-light;
+}
+.auth-art__prompt {
+    color: #1c1c1a;
+    /* Frosted glass over the painting (it sits above the canvas, so it stays clean). */
+    background: rgb(255 255 255 / 0.72);
+    border: 1px solid rgb(255 255 255 / 0.7);
+    box-shadow:
+        inset 0 1px 0 0 rgb(255 255 255 / 0.7),
+        0 1px 2px rgb(15 22 61 / 0.12),
+        0 14px 40px -12px rgb(15 22 61 / 0.45);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+}
+.auth-art__send {
+    color: #fff;
+    background: #1c1c1a;
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.18), 0 1px 2px rgb(0 0 0 / 0.25);
+}
+.auth-art__hint {
+    color: rgb(255 255 255 / 0.72);
+    letter-spacing: 0.01em;
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .auth-art__wash {
+        /* The same painting at night: warm black into cobalt, lit from below. */
+        background:
+            radial-gradient(75% 60% at 12% 8%, #15120f 0%, rgb(21 18 15 / 0) 70%),
+            radial-gradient(60% 45% at 78% 30%, rgb(46 58 124 / 0.75) 0%, rgb(46 58 124 / 0) 72%),
+            radial-gradient(95% 75% at 100% 100%, #a8b9ff 0%, rgb(168 185 255 / 0) 60%),
+            radial-gradient(70% 55% at 22% 96%, #3c57d6 0%, rgb(60 87 214 / 0) 70%),
+            linear-gradient(158deg, #171411 0%, #181a2c 26%, #20295c 43%, #2f47b8 62%, #5b78f2 80%, #8ea4ff 100%);
+    }
+    :root:not([data-theme="light"]) .auth-art__stroke--deep {
+        background: linear-gradient(180deg, #3a55d8 0%, #6e88f6 55%, #b4c2ff 100%);
+        opacity: 0.85;
+    }
+    :root:not([data-theme="light"]) .auth-art__stroke--light {
+        background: #14110f;
+        opacity: 0.9;
+    }
+    :root:not([data-theme="light"]) .auth-art__stroke--beam {
+        background: linear-gradient(90deg, rgb(90 118 240 / 0) 0%, rgb(90 118 240 / 0.5) 50%, rgb(168 185 255 / 0.35) 75%, rgb(168 185 255 / 0) 100%);
+    }
+    :root:not([data-theme="light"]) .auth-art__prompt {
+        color: #f3efe6;
+        background: rgb(22 20 18 / 0.6);
+        border-color: rgb(255 255 255 / 0.14);
+        box-shadow:
+            inset 0 1px 0 0 rgb(255 255 255 / 0.12),
+            0 1px 2px rgb(0 0 0 / 0.3),
+            0 14px 40px -12px rgb(0 0 0 / 0.6);
+    }
+    :root:not([data-theme="light"]) .auth-art__send {
+        color: #1c1c1a;
+        background: #f3efe6;
+        box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.7), 0 1px 2px rgb(0 0 0 / 0.3);
+    }
+}
+
+/* In the base layer, so a utility class on an element can still override them. */
+@layer base {
+    /* Headings never leave a single word alone on the last line. */
+    h1,
+    h2,
+    h3 {
+        text-wrap: balance;
+    }
+
+    /* Paragraphs avoid ending on a single short word. */
+    p {
+        text-wrap: pretty;
+    }
+}
+
+/* Touch screens: grow a control's hit area to 44px without changing how it
+   looks. In the components layer, so a positioning utility on the control
+   (absolute, fixed, sticky) still wins over `position: relative`. Not for
+   controls that clip their content (overflow-hidden cuts the area off). */
+@layer components {
+    @media (pointer: coarse) {
+        .tap-44 {
+            position: relative;
+        }
+        .tap-44::after {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: max(100%, 44px);
+            height: max(100%, 44px);
+            transform: translate(-50%, -50%);
+        }
+    }
+}
+
+/* iOS zooms the page in when a focused field's text is smaller than 16px and
+   does not zoom back out. On touch screens every text field is 16px. */
+@media (pointer: coarse) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+    textarea,
+    select {
+        font-size: 16px;
+        /* A field scrolled into view (focus, the keyboard opening) keeps clear
+           of the edge of its panel and of any fade over it. */
+        scroll-margin-block: 2.5rem;
+    }
+}
+
+/* Bottom sheet entrance (phones). */
+@keyframes sheet-up {
+    from {
+        transform: translateY(100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+@keyframes sheet-fade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Entrance animation for transient surfaces (toasts). */
+.fade-in-up {
+    animation: fadeIn 0.2s ease-out;
 }
 
 @keyframes fadeIn {
     from {
         opacity: 0;
-        transform: translateY(10px);
+        transform: translateY(6px);
     }
     to {
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+/* A wide table inside a narrow frame scrolls sideways. These shadows show at
+   whichever edge has more to scroll to, and vanish at each end (the two
+   covers scroll with the content; the two shadows stay with the frame). */
+.scroll-cue-x {
+    background:
+        linear-gradient(to right, var(--scroll-cue-bg, var(--color-surface)) 30%, transparent) left center / 2.5rem 100% no-repeat local,
+        linear-gradient(to left, var(--scroll-cue-bg, var(--color-surface)) 30%, transparent) right center / 2.5rem 100% no-repeat local,
+        linear-gradient(to right, var(--scroll-cue-shadow, rgb(0 0 0 / 0.1)), transparent) left center / 0.75rem 100% no-repeat scroll,
+        linear-gradient(to left, var(--scroll-cue-shadow, rgb(0 0 0 / 0.1)), transparent) right center / 0.75rem 100% no-repeat scroll;
+}
+
+/* On a dark surface a 10% shadow disappears: a deeper one, a little wider. */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .scroll-cue-x {
+        --scroll-cue-shadow: rgb(0 0 0 / 0.55);
+        background-size: 2.5rem 100%, 2.5rem 100%, 1.25rem 100%, 1.25rem 100%;
+    }
+}
+
+/* On iOS Monaco adds its own "show keyboard" control over the bottom-right of
+   the code (tapping it focuses the editor). It is kept, since it is the
+   editor's fallback for raising the keyboard, but drawn as one of our
+   controls: Monaco's own version is a heavy 58px glyph in its own colours. */
+.monaco-editor .iPadShowKeyboard.iPadShowKeyboard,
+.monaco-editor.vs-dark .iPadShowKeyboard.iPadShowKeyboard {
+    width: 40px;
+    height: 36px;
+    margin: 0 6px 6px 0;
+    border: 1px solid var(--sand-border);
+    border-radius: 10px;
+    background: var(--sand-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23857f75' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='5' width='20' height='14' rx='2.5'/%3E%3Cpath d='M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12.5h.01M10 12.5h.01M14 12.5h.01M18 12.5h.01M8 16h8'/%3E%3C/svg%3E") center / 20px 20px no-repeat;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+    color: transparent;
+    caret-color: transparent;
+    font-size: 16px;
+    outline: none;
 }
 
 /* Monaco editor adjustments */
@@ -264,7 +536,7 @@ body {
 
 .monaco-editor .margin,
 .monaco-editor .monaco-editor-background {
-    background-color: var(--sand-elevated) !important;
+    background-color: var(--sand-bg) !important;
 }
 
 /* Terminal styles */

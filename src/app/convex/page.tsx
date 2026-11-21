@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import {
   Database,
   Zap,
@@ -12,7 +11,6 @@ import {
   Lock,
   ArrowRight,
   ArrowUpRight,
-  Sparkles,
   Server,
   Gauge,
 } from 'lucide-react';
@@ -21,12 +19,14 @@ import { WorkspaceMockup } from '@/components/landing/WorkspaceMockup';
 import { CardSpotlight } from '@/components/landing/CardSpotlight';
 import {
   EditorialGrid,
+  ClosingCta,
   LandingFooter,
   LandingNav,
   LineDivider,
   Reveal,
   SectionLabel,
   StaggerButton,
+  marketingSecondaryClass,
   serif,
 } from '@/components/landing/shared';
 import { isManagedConvexEnabled } from '@/lib/project-platform';
@@ -114,6 +114,13 @@ const capabilities = [
 // Code block — minimal syntax-colored display (no highlighter dep)
 // ============================================================================
 
+/** Padding and a negative first-line indent, so a wrapped line of code continues under its own indentation. */
+function hangingIndent(tokens: { text: string }[]): React.CSSProperties {
+  const text = tokens.map((t) => t.text).join('');
+  const indent = text.length - text.trimStart().length + 2;
+  return { paddingLeft: `${indent}ch`, textIndent: `-${indent}ch` };
+}
+
 function CodeBlock({
   filename,
   lines,
@@ -137,7 +144,12 @@ function CodeBlock({
             <span className="w-6 shrink-0 select-none pr-3 text-right text-[var(--sand-text-muted)] opacity-50">
               {i + 1}
             </span>
-            <span className="whitespace-pre">
+            {/* Phone: long lines wrap instead of running out of the card. */}
+            <span
+              className="whitespace-pre max-sm:min-w-0 max-sm:whitespace-pre-wrap max-sm:[overflow-wrap:anywhere]"
+              // A wrapped line continues two columns in from its own indentation.
+              style={hangingIndent(line.tokens)}
+            >
               {line.tokens.length === 0 ? '\u00A0' : line.tokens.map((t, ti) => (
                 <span key={ti} style={t.color ? { color: t.color } : undefined}>
                   {t.text}
@@ -151,14 +163,14 @@ function CodeBlock({
   );
 }
 
-// Color tokens for the code examples — warm editor-ish palette that matches sand theme
+// Color tokens for the code examples — theme-aware (see --code-* in globals.css)
 const C = {
-  kw: '#d86a4e',     // keyword (import, export, const, default)
-  fn: '#1d52f1',     // function name / call
-  str: '#5a8a3b',    // string literal
+  kw: 'var(--code-keyword)', // keyword (import, export, const, default)
+  fn: 'var(--code-function)', // function name / call
+  str: 'var(--code-string)', // string literal
   id: 'var(--sand-text)', // identifier
-  type: '#b4783e',   // type / class
-  prop: '#7a5ab1',   // property
+  type: 'var(--code-type)', // type / class
+  prop: 'var(--code-property)', // property
   muted: 'var(--sand-text-muted)', // comment
   punct: 'var(--sand-text-muted)', // punctuation
 };
@@ -373,11 +385,11 @@ export default function ConvexPage() {
 
             <Reveal delay={280}>
               <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
-                <StaggerButton text="Start building" href="/sign-up" />
+                <StaggerButton text="Start building free" href="/sign-up" />
                 <button
                   type="button"
                   onClick={scrollToShowcase}
-                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-6 py-3 text-base font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
+                  className={marketingSecondaryClass}
                 >
                   See it in action
                   <ArrowRight className="h-4 w-4" />
@@ -396,21 +408,20 @@ export default function ConvexPage() {
         <div className="mx-auto max-w-7xl px-6 sm:px-6 py-20 sm:py-28">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
             {pillars.map((p, i) => (
-              <Reveal key={p.title} delay={i * 80}>
+              <Reveal key={p.title} delay={i * 80} className="h-full">
                 <div
                   className={cn(
-                    'group relative p-6 sm:p-10 transition-colors duration-300 hover:bg-[var(--sand-surface)]',
+                    'group relative h-full p-6 sm:p-10 transition-colors duration-300 hover:bg-[var(--sand-surface)]',
                     i < 2 && 'md:border-r md:border-[var(--sand-border)]',
                     i < pillars.length - 1 &&
                       'max-md:border-b max-md:border-[var(--sand-border)]',
                   )}
                 >
                   <CardSpotlight />
-                  <p.icon
-                    aria-hidden
-                    className="relative z-10 mb-6 h-8 w-8 text-[var(--sand-accent)]"
-                    strokeWidth={1.5}
-                  />
+                  {/* Same icon tile as every other feature grid on the site. */}
+                  <div className="relative z-10 mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] text-[var(--sand-text-muted)]">
+                    <p.icon aria-hidden className="h-5 w-5" strokeWidth={1.6} />
+                  </div>
                   <h3 className="relative z-10 text-xl font-semibold mb-2">
                     {p.title}
                   </h3>
@@ -429,7 +440,7 @@ export default function ConvexPage() {
       {/* ================================================================ */}
       <LineDivider />
       <section id="showcase" className="relative">
-        <div className="mx-auto max-w-7xl px-6 sm:px-6 lg:px-10 xl:px-14 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-6 sm:px-6 lg:px-10 xl:px-14 py-16 sm:py-32">
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-12 lg:gap-14 items-center">
             {/* Mockup — agent panel hidden, database view front-and-center. Hidden on mobile (too cramped to fit). */}
             <Reveal delay={150} className="hidden lg:block lg:col-span-3 lg:order-1">
@@ -499,7 +510,7 @@ export default function ConvexPage() {
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative">
-        <div className="mx-auto max-w-7xl px-6 sm:px-6 lg:px-10 xl:px-14 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-6 sm:px-6 lg:px-10 xl:px-14 py-16 sm:py-32">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-start">
             <Reveal>
               <SectionLabel>Built for AI-first development</SectionLabel>
@@ -540,9 +551,9 @@ export default function ConvexPage() {
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative bg-[var(--sand-surface)]">
-        <div className="mx-auto max-w-7xl px-6 sm:px-6 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-6 sm:px-6 py-16 sm:py-32">
           <Reveal>
-            <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+            <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-20">
               <SectionLabel>In the box</SectionLabel>
               <h2
                 className={cn(
@@ -561,13 +572,14 @@ export default function ConvexPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0">
             {capabilities.map((c, i) => (
-              <Reveal key={c.title} delay={i * 60}>
+              // Full-height cells, so the rules between rows line up across columns.
+              <Reveal key={c.title} delay={i * 60} className="h-full">
                 <a
                   href={c.href}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={cn(
-                    'group relative block p-6 sm:p-8 transition-colors duration-300 hover:bg-[var(--sand-elevated)] focus:outline-none focus-visible:bg-[var(--sand-elevated)]',
+                    'group relative block h-full p-6 sm:p-8 transition-colors duration-300 hover:bg-[var(--sand-elevated)] focus:outline-none focus-visible:bg-[var(--sand-elevated)]',
                     i % 3 !== 2 && 'lg:border-r lg:border-[var(--sand-border)]',
                     i % 2 === 0 && 'md:max-lg:border-r md:max-lg:border-[var(--sand-border)]',
                     i < 3 && 'lg:border-b lg:border-[var(--sand-border)]',
@@ -578,7 +590,7 @@ export default function ConvexPage() {
                 >
                   <CardSpotlight />
                   <div className="relative z-10 mb-4 flex items-start justify-between gap-3">
-                    <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--sand-bg)] border border-[var(--sand-border)] text-[var(--sand-text-muted)] group-hover:text-[var(--sand-accent)] group-hover:border-[var(--sand-accent)]/30 transition-colors duration-300">
+                    <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--sand-elevated)] border border-[var(--sand-border)] text-[var(--sand-text-muted)] group-hover:text-[var(--sand-accent)] group-hover:border-[var(--sand-accent)]/30 transition-colors duration-300">
                       <c.icon className="h-5 w-5" strokeWidth={1.6} />
                     </div>
                     <ArrowUpRight
@@ -605,7 +617,7 @@ export default function ConvexPage() {
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative">
-        <div className="mx-auto max-w-7xl px-6 sm:px-6 lg:px-10 xl:px-14 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-6 sm:px-6 lg:px-10 xl:px-14 py-16 sm:py-32">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             <Reveal>
               <SectionLabel>Less to pay for, less to debug</SectionLabel>
@@ -644,7 +656,7 @@ export default function ConvexPage() {
                     {['Database service', 'Auth provider', 'File/object storage', 'Job queue + scheduler', 'HTTP/webhook gateway', 'The glue code that stitches them together'].map((s) => (
                       <li key={s} className="flex items-center gap-2">
                         <span className="h-px w-4 bg-[var(--sand-border)]" />
-                        <span className="line-through decoration-[var(--sand-accent)]/40">{s}</span>
+                        <span className="line-through decoration-[var(--sand-border-strong)]">{s}</span>
                       </li>
                     ))}
                   </ul>
@@ -683,7 +695,7 @@ export default function ConvexPage() {
       {/* ================================================================ */}
       <LineDivider />
       <section className="relative bg-[var(--sand-surface)]">
-        <div className="mx-auto max-w-7xl px-6 sm:px-6 py-24 sm:py-32">
+        <div className="mx-auto max-w-7xl px-6 sm:px-6 py-16 sm:py-32">
           <Reveal>
             <div className="max-w-3xl mx-auto text-center">
               <SectionLabel>{MANAGED_CONVEX ? 'Power-user option' : 'Your Convex account'}</SectionLabel>
@@ -724,10 +736,9 @@ export default function ConvexPage() {
                     key={b.title}
                     className="relative rounded-xl border border-[var(--sand-border)] bg-[var(--sand-bg)] p-5"
                   >
-                    <b.icon
-                      className="mb-3 h-5 w-5 text-[var(--sand-accent)]"
-                      strokeWidth={1.6}
-                    />
+                    <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] text-[var(--sand-text-muted)]">
+                      <b.icon aria-hidden className="h-5 w-5" strokeWidth={1.6} />
+                    </div>
                     <p className="font-semibold text-[0.95rem] mb-1">{b.title}</p>
                     <p className="text-sm text-[var(--sand-text-muted)] leading-relaxed">
                       {b.desc}
@@ -744,36 +755,11 @@ export default function ConvexPage() {
       {/* CTA                                                              */}
       {/* ================================================================ */}
       <LineDivider />
-      <section className="relative">
-        <div className="pointer-events-none absolute inset-0 -z-10 landing-gradient opacity-60" />
-        <div className="mx-auto max-w-7xl px-6 sm:px-6 py-24 sm:py-32">
-          <Reveal>
-            <div className="text-center max-w-2xl mx-auto">
-              <h2
-                className={cn(
-                  serif.className,
-                  'text-4xl sm:text-5xl md:text-6xl tracking-tight',
-                )}
-              >
-                Build with a{' '}
-                <span style={{ color: 'var(--sand-accent)' }}>real backend</span>
-              </h2>
-              <p className="mt-4 text-lg text-[var(--sand-text-muted)]">
-                Start a new project and your Convex deployment is waiting.
-              </p>
-              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
-                <StaggerButton text="Start for free" href="/sign-up" />
-                <Link
-                  href="/pricing"
-                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-6 py-3 text-base font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
-                >
-                  View pricing
-                </Link>
-              </div>
-            </div>
-          </Reveal>
-        </div>
-      </section>
+      <ClosingCta
+        heading="Build with a"
+        em="real backend"
+        sub="Start a new project and your Convex deployment is waiting."
+      />
 
       <LineDivider />
       <LandingFooter />

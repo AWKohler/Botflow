@@ -16,15 +16,17 @@
  * member list is real.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useUser } from "@/components/auth";
 import { UserPlus, Mail, Crown, X, Check, Loader2 } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { TextInput } from "@/components/ui/field";
+import { Switch } from "@/components/ui/switch";
+import { Button, buttonClass } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { SHARING_ENABLED } from "@/lib/feature-flags";
 import { cn } from "@/lib/utils";
+import { phoneSheetBackdropClass, phoneSheetBodyClass, phoneSheetClass, phoneSheetCloseClass, phoneSheetGrabberClass, phoneSheetTitleClass, usePhoneSheetModal } from "@/components/ui/sheet";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -87,12 +89,17 @@ function useActiveCollaborators(projectId: string): ActiveCollaborator[] {
 function useSharing(projectId: string, open: boolean) {
   const [state, setState] = useState<SharingState | null>(null);
   const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
+    setFailed(false);
     try {
       const res = await fetch(`/api/projects/${projectId}/members`);
       if (res.ok) setState((await res.json()) as SharingState);
+      else setFailed(true);
+    } catch {
+      setFailed(true);
     } finally {
       setLoading(false);
     }
@@ -102,7 +109,7 @@ function useSharing(projectId: string, open: boolean) {
     if (open) void reload();
   }, [open, reload]);
 
-  return { state, loading, reload, setState };
+  return { state, loading, failed, reload, setState };
 }
 
 // ─── Popover positioning (mirrors publish-panel.tsx) ─────────────────────────
@@ -149,7 +156,7 @@ function AvatarDisc({
         <img src={imageUrl} alt={name} className="w-full h-full rounded-full object-cover" />
       ) : (
         <span
-          className="w-full h-full rounded-full flex items-center justify-center text-[10px] font-semibold text-white"
+          className="w-full h-full rounded-full flex items-center justify-center text-[11px] font-semibold text-white"
           style={{ backgroundColor: ring }}
         >
           {initials}
@@ -184,7 +191,7 @@ function OverflowChip({ hidden }: { hidden: ActiveCollaborator[] }) {
         onMouseEnter={hold}
         onMouseLeave={release}
         onClick={() => (open ? setOpen(false) : hold())}
-        className="w-7 h-7 -ml-2.5 rounded-full bg-elevated border border-border ring-2 ring-[var(--sand-surface)] text-[10px] font-semibold text-muted flex items-center justify-center hover:bg-soft transition-colors relative z-10"
+        className="w-7 h-7 -ml-2.5 rounded-full bg-elevated border border-border ring-2 ring-[var(--sand-surface)] text-[11px] font-semibold text-muted flex items-center justify-center hover:bg-soft transition-colors relative z-10"
         aria-label={`${hidden.length} more collaborators`}
       >
         +{hidden.length}
@@ -194,7 +201,7 @@ function OverflowChip({ hidden }: { hidden: ActiveCollaborator[] }) {
           <div
             onMouseEnter={hold}
             onMouseLeave={release}
-            className="fixed z-50 w-56 max-h-64 overflow-y-auto modern-scrollbar rounded-xl border border-border bg-surface shadow-lg p-1.5"
+            className="fixed z-50 w-56 max-h-64 overflow-y-auto modern-scrollbar rounded-xl border border-border bg-surface dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top shadow-lg p-1.5"
             style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
           >
             {hidden.map((c) => (
@@ -252,27 +259,7 @@ function Toggle({
 }) {
   return (
     <label className={cn("flex items-start gap-3 select-none", disabled ? "opacity-60" : "cursor-pointer")}>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={cn(
-          // appearance-none + border-0 + p-0 strip the UA button chrome that
-          // was shifting the knob; inline-flex/items-center centers the knob
-          // so its slide is purely the transform below.
-          "relative mt-0.5 inline-flex h-[18px] w-8 shrink-0 cursor-pointer items-center rounded-full border-0 p-0 appearance-none transition-colors",
-          checked ? "bg-accent" : "bg-soft",
-        )}
-      >
-        <span
-          className={cn(
-            "inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform",
-            checked ? "translate-x-[16px]" : "translate-x-[2px]",
-          )}
-        />
-      </button>
+      <Switch checked={checked} onChange={onChange} disabled={disabled} aria-label={label} className="mt-0.5" />
       <span className="flex-1">
         <span className="block text-sm text-fg">{label}</span>
         {hint && <span className="block text-xs text-muted mt-0.5">{hint}</span>}
@@ -294,16 +281,36 @@ function SharePopover({
 }) {
   const { toast } = useToast();
   const { user } = useUser();
-  const { state, loading, reload, setState } = useSharing(projectId, true);
+  const { state, failed, reload, setState } = useSharing(projectId, true);
+  // The owner's plan decides whether inviting is available at all, so the
+  // sheet can offer the upgrade instead of a field that would only error.
+  const [tier, setTier] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/usage/credits")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { tier?: string } | null) => {
+        if (!cancelled) setTier(d?.tier ?? "free");
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const planAllowsSharing = tier === "pro" || tier === "max";
   const [email, setEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [position, setPosition] = useState<AnchoredPosition | null>(null);
+  const sheet = usePhoneSheetModal<HTMLDivElement>(true, onClose, anchorRef);
+  const sheetIsPhone = sheet.isPhone;
+  const titleId = useId();
 
   const isOwner = state?.role === "owner";
 
   useEffect(() => {
     setPosition(positionFrom(anchorRef.current));
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // As a phone sheet it is a modal, and the modal stack handles Escape.
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !sheetIsPhone && onClose();
     const onResize = () => setPosition(positionFrom(anchorRef.current));
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", onResize);
@@ -311,7 +318,7 @@ function SharePopover({
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", onResize);
     };
-  }, [anchorRef, onClose]);
+  }, [anchorRef, onClose, sheetIsPhone]);
 
   const submitInvite = async () => {
     const value = email.trim();
@@ -390,69 +397,107 @@ function SharePopover({
   };
 
   return createPortal(
-    <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
+    <div>
+      <div className={cn("fixed inset-0 z-40", phoneSheetBackdropClass)} onClick={onClose} />
       <div
-        className="fixed z-50 w-[380px] max-w-[calc(100vw-1rem)] rounded-2xl border border-border bg-surface shadow-xl p-4"
-        style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
+        {...sheet.props}
+        aria-labelledby={titleId}
+        // Anchored under its button; on a phone, a modal sheet from the bottom edge.
+        className={cn(
+          "fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-bg outline-none dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top shadow-xl",
+          phoneSheetClass,
+        )}
+        // As a sheet it is placed by its classes alone.
+        style={sheet.isPhone ? undefined : position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
       >
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <h3 className="text-sm font-semibold text-fg">Share project</h3>
-            <p className="text-xs text-muted mt-0.5">
-              Invite collaborators by email. They can prompt their own agents in this workspace.
-            </p>
-          </div>
-          <button onClick={onClose} className="text-muted hover:text-fg p-0.5" aria-label="Close">
-            <X size={15} />
+        <div aria-hidden="true" className={phoneSheetGrabberClass} />
+        {/* Same layout as the Publish popover: title row, divider, body. */}
+        <div className={cn("flex items-center justify-between border-b border-border px-4 py-3", phoneSheetTitleClass)}>
+          <h3 id={titleId} className="text-sm font-semibold text-fg">Share project</h3>
+          <button onClick={onClose} aria-label="Close" className={cn("rounded-md p-1.5 text-muted transition-colors hover:bg-elevated hover:text-fg", phoneSheetCloseClass)}>
+            <X size={14} />
           </button>
         </div>
+        <div className={cn("p-4 max-sm:px-5", phoneSheetBodyClass)}>
+        <p className="mb-4 text-[13px] leading-relaxed text-muted max-sm:text-sm">
+          Invite collaborators by email. They can prompt their own agents in this workspace.
+        </p>
 
-        {isOwner && (
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex-1 relative">
-              <Mail size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && void submitInvite()}
-                placeholder="teammate@example.com"
-                className="pl-8 h-8 text-sm"
-              />
-            </div>
-            <Button size="sm" className="h-8 text-white font-medium" disabled={inviting} onClick={() => void submitInvite()}>
-              {inviting ? <Loader2 size={14} className="animate-spin" /> : "Invite"}
-            </Button>
+        {isOwner && tier !== null && !planAllowsSharing ? (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2.5">
+            <p className="text-[13px] leading-snug text-fg">Sharing is part of the Pro and Max plans.</p>
+            <a href="/pricing" target="_blank" rel="noopener noreferrer" className={buttonClass({ variant: "primary", size: "sm", className: "shrink-0" })}>
+              Compare plans
+            </a>
           </div>
+        ) : (
+          (isOwner || !state) && (
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex-1 relative">
+                <Mail size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-subtle" />
+                <TextInput
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && void submitInvite()}
+                  placeholder="teammate@example.com"
+                  aria-label="Invite by email"
+                  disabled={!state}
+                  className="h-8 pl-8 text-[13px]"
+                />
+              </div>
+              <Button
+                variant={email.trim() ? "primary" : "secondary"}
+                size="sm"
+                className="pointer-coarse:h-11"
+                disabled={!state || inviting || !email.trim()}
+                onClick={() => void submitInvite()}
+              >
+                {inviting ? <Loader2 size={14} className="animate-spin" /> : "Invite"}
+              </Button>
+            </div>
+          )
         )}
 
         <div className="space-y-1 mb-4">
-          <div className="text-[11px] font-medium uppercase tracking-wide text-muted mb-1.5">
+          <div className="mb-1.5 text-[11px] font-medium text-muted">
             People with access
           </div>
-          {/* Owner row — always present. */}
-          <div className="flex items-center gap-2.5 px-1 py-1">
-            <AvatarDisc
-              id={user?.id ?? "owner"}
-              name={isOwner ? (user?.fullName ?? "You") : "Project owner"}
-              imageUrl={isOwner ? user?.imageUrl : undefined}
-              size={26}
-            />
-            <span className="text-sm text-fg truncate flex-1">
-              {isOwner ? (user?.fullName ?? "You") : "Project owner"}
-            </span>
-            <span className="text-[10px] font-medium text-muted border border-border rounded-full px-2 py-0.5 flex items-center gap-1">
-              <Crown size={10} /> Owner
-            </span>
-          </div>
-          {loading && !state && (
-            <div className="flex items-center gap-2 px-1 py-2 text-xs text-muted">
-              <Loader2 size={12} className="animate-spin" /> Loading members…
+          {!state && failed && (
+            <div className="flex items-center justify-between gap-3 py-1.5">
+              <p className="text-[13px] text-muted">Couldn&apos;t load who has access.</p>
+              <Button variant="secondary" size="xs" onClick={() => void reload()}>
+                Try again
+              </Button>
+            </div>
+          )}
+          {/* Placeholder rows while the list loads — never a made-up person. */}
+          {!state && !failed &&
+            [0, 1].map((i) => (
+              <div key={i} className="flex items-center gap-2.5 py-1" aria-hidden={i > 0} aria-busy="true" aria-label={i === 0 ? "Loading people" : undefined}>
+                <span className="size-[26px] shrink-0 animate-pulse rounded-full bg-soft" />
+                <span className={cn("h-3 animate-pulse rounded bg-soft", i === 0 ? "w-36" : "w-28")} />
+              </div>
+            ))}
+          {/* Owner row. */}
+          {state && (
+            <div className="flex items-center gap-2.5 py-1">
+              <AvatarDisc
+                id={user?.id ?? "owner"}
+                name={isOwner ? (user?.fullName ?? "You") : "Project owner"}
+                imageUrl={isOwner ? user?.imageUrl : undefined}
+                size={26}
+              />
+              <span className="text-sm text-fg truncate flex-1">
+                {isOwner ? (user?.fullName ?? "You") : "Project owner"}
+              </span>
+              <span className="text-[11px] font-medium text-muted border border-border rounded-full px-2 py-0.5 flex items-center gap-1">
+                <Crown size={10} /> Owner
+              </span>
             </div>
           )}
           {state?.members.map((m) => (
-            <div key={m.id} className="flex items-center gap-2.5 px-1 py-1 group">
+            <div key={m.id} className="flex items-center gap-2.5 py-1 group">
               <AvatarDisc id={m.userId ?? m.email} name={m.name} imageUrl={m.imageUrl} size={26} />
               <span className="min-w-0 flex-1">
                 <span className="block text-sm text-fg truncate">{m.name}</span>
@@ -460,8 +505,8 @@ function SharePopover({
               </span>
               <span
                 className={cn(
-                  "text-[10px] font-medium rounded-full px-2 py-0.5 border",
-                  m.status === "pending" ? "text-amber-700 border-amber-300 bg-amber-50" : "text-muted border-border",
+                  "text-[11px] font-medium rounded-full px-2 py-0.5 border",
+                  m.status === "pending" ? "text-warning border-warning-border bg-warning-soft" : "text-muted border-border",
                 )}
               >
                 {m.status === "pending" ? "Invited" : "Editor"}
@@ -472,7 +517,7 @@ function SharePopover({
                   if (confirmingId === m.id) {
                     return (
                       <span className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-[10px] text-muted">
+                        <span className="text-[11px] text-muted">
                           {selfLeave ? "Leave?" : "Remove?"}
                         </span>
                         <button
@@ -487,7 +532,7 @@ function SharePopover({
                         <button
                           onClick={() => void performRemove(m)}
                           disabled={removingId === m.id}
-                          className="text-red-500 hover:text-red-600 p-0.5"
+                          className="text-danger hover:text-danger p-0.5"
                           title={selfLeave ? "Confirm leave" : "Confirm remove"}
                           aria-label={selfLeave ? "Confirm leave" : "Confirm remove"}
                         >
@@ -499,7 +544,7 @@ function SharePopover({
                   return (
                     <button
                       onClick={() => setConfirmingId(m.id)}
-                      className="text-muted hover:text-red-500 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                      className="tap-44 text-muted hover:text-danger p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 pointer-coarse:opacity-100"
                       title={selfLeave ? "Leave project" : "Remove access"}
                       aria-label={selfLeave ? "Leave project" : "Remove access"}
                     >
@@ -511,7 +556,9 @@ function SharePopover({
             </div>
           ))}
           {state && state.members.length === 0 && (
-            <p className="text-xs text-muted px-1 py-1">No collaborators yet — invite someone above.</p>
+            <p className="text-xs text-muted py-1">
+              {isOwner ? "Only you so far." : "No other collaborators yet."}
+            </p>
           )}
         </div>
 
@@ -535,7 +582,7 @@ function SharePopover({
                 void patchSettings({ shareOwnerCredits: v, ...(v ? {} : { shareOwnerOauth: false }) })
               }
               label="Collaborators use my credits"
-              hint="Their agent turns bill your plan's credits, and they get access to your tier's models."
+              hint="Their agent turns bill your plan's credits (capped per collaborator), and they get access to your plan's models."
             />
             {state.shareOwnerCredits && (
               <Toggle
@@ -548,12 +595,10 @@ function SharePopover({
           </div>
         )}
 
-        <p className="text-[11px] text-muted mt-3 pt-3 border-t border-border">
-          Sharing requires a Pro or Max plan. Platform-metered model usage by collaborators bills
-          your credits, capped per collaborator.
-        </p>
+
+        </div>
       </div>
-    </>,
+    </div>,
     document.body,
   );
 }
@@ -574,11 +619,12 @@ export function ShareControls({ projectId }: { projectId: string }) {
         ref={triggerRef}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "flex items-center justify-center w-8 h-8 rounded-full border border-border transition-colors bolt-hover",
-          open ? "bg-elevated text-fg" : "bg-surface text-muted hover:text-fg hover:bg-elevated",
+          "tap-44 flex h-8 w-8 items-center justify-center rounded-lg border border-border shadow-xs transition-colors pointer-coarse:h-10 pointer-coarse:w-10",
+          "bg-linear-to-b inset-shadow-bevel dark:from-elevated dark:to-surface",
+          open ? "from-elevated to-elevated text-fg" : "from-bg to-surface text-muted hover:border-border-strong hover:text-fg",
         )}
         title="Share this project"
-        aria-label="Share"
+        aria-label="Share project"
       >
         <UserPlus size={15} />
       </button>

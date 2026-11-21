@@ -176,7 +176,11 @@ export function DeviceFrame({
 
       {overlay && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          {overlay}
+          {/* No wider than the device's screen, so status text wraps inside it
+              instead of running out over the bezel and the card. */}
+          <div className="flex justify-center" style={{ maxWidth: scale ? screen.w * scale : undefined }}>
+            {overlay}
+          </div>
         </div>
       )}
       {footer && (

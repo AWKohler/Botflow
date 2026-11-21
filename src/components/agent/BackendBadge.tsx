@@ -108,7 +108,7 @@ export function BackendGlyphInfo({
           ref={tooltipRef}
           role="tooltip"
           className={cn(
-            "pointer-events-none absolute z-50 w-60 max-w-[calc(100vw-16px)] rounded-lg border border-border bg-surface p-2.5 text-left font-normal shadow-xl",
+            "pointer-events-none absolute z-50 w-60 max-w-[calc(100vw-16px)] rounded-lg border border-border bg-bg dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top p-2.5 text-left font-normal shadow-xl",
             tooltipPlacement === "above-end" ? "right-0 bottom-full mb-2.5" : "left-0 top-full mt-2",
           )}
         >
@@ -184,19 +184,19 @@ export function BackendChip({ backend, reason, runnable }: BackendChipProps) {
         type="button"
         onClick={() => setPopoverOpen((v) => !v)}
         className={cn(
-          "flex w-full flex-wrap items-center justify-center gap-1.5 rounded-full border px-3 py-1.5 text-center text-[11px] font-medium transition",
+          "flex w-full flex-wrap items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-center text-[11px] font-medium transition-colors",
           errorStyle
-            ? "bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/15"
-            : "bg-accent/10 border-accent/30 text-fg hover:bg-accent/15",
+            ? "border-danger-border bg-danger-soft text-danger"
+            : "border-border bg-elevated text-muted hover:border-border-strong",
         )}
       >
         <BackendGlyph backend={backend} size={12} />
         <span className="leading-snug">{copy.chipTitle}</span>
-        <span className={cn("text-[10px] leading-snug", errorStyle ? "text-red-400/70" : "text-muted")}>·</span>
+        <span className={cn("text-[11px] leading-snug", errorStyle ? "text-danger/70" : "text-subtle")}>·</span>
         <span
           className={cn(
-            "text-[11px] leading-snug underline-offset-2 hover:underline",
-            errorStyle ? "text-red-400" : "text-accent",
+            "text-[11px] leading-snug underline decoration-border-strong underline-offset-2",
+            errorStyle ? "text-danger" : "text-fg",
           )}
         >
           What&apos;s this?
@@ -218,7 +218,7 @@ function Popover({ title, body, onClose }: { title: string; body: string; onClos
   return (
     <div
       ref={ref}
-      className="absolute left-0 top-full mt-1 z-50 w-80 max-w-[calc(100vw-16px)] rounded-xl border border-border bg-surface shadow-lg p-3 text-sm"
+      className="absolute left-0 top-full mt-1 z-50 w-80 max-w-[calc(100vw-16px)] rounded-xl border border-border bg-bg dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top shadow-lg p-3 text-sm"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="font-semibold text-fg">{title}</div>

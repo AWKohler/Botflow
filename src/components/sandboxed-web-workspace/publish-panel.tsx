@@ -1,10 +1,9 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  Globe,
   Loader2,
   ExternalLink,
   Copy,
@@ -12,13 +11,15 @@ import {
   AlertCircle,
   Trash2,
   Lock,
-  Sparkles,
-  Rocket,
+  Globe,
   Wand2,
   X,
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { phoneSheetBackdropClass, phoneSheetBodyClass, phoneSheetClass, phoneSheetCloseClass, phoneSheetGrabberClass, phoneSheetTitleClass, usePhoneSheetModal } from "@/components/ui/sheet";
+import { buttonClass } from "@/components/ui/button";
+import { fieldClass, Select } from "@/components/ui/field";
 
 type PublishState = "idle" | "building" | "published" | "error";
 type DomainStatus = "pending" | "active" | "error" | null;
@@ -67,9 +68,9 @@ function CopyBtn({ value }: { value: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-muted hover:text-fg hover:bg-soft transition"
+      className={buttonClass({ variant: "ghost", size: "xs", className: "h-6 px-2 text-[11px]" })}
     >
-      {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+      {copied ? <Check size={11} className="text-success" /> : <Copy size={11} />}
       {copied ? "Copied" : "Copy"}
     </button>
   );
@@ -139,6 +140,10 @@ export function SandboxPublishPanel({
   const [cnameBusy, setCnameBusy] = useState(false);
   const [cnameErr, setCnameErr] = useState<string | null>(null);
 
+  const sheet = usePhoneSheetModal<HTMLDivElement>(isOpen, onClose, anchorRef);
+  const sheetIsPhone = sheet.isPhone;
+  const titleId = useId();
+
   // Position panel under the anchor button
   useEffect(() => {
     if (!isOpen) return;
@@ -156,10 +161,11 @@ export function SandboxPublishPanel({
   // ESC to close
   useEffect(() => {
     if (!isOpen) return;
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    // As a phone sheet it is a modal, and the modal stack handles Escape.
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !sheetIsPhone) onClose(); };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, sheetIsPhone]);
 
   // Auto-scroll logs
   useEffect(() => { logsEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [logs]);
@@ -358,17 +364,17 @@ export function SandboxPublishPanel({
 
   // Public/showcase opt-in — applied on the next Build & publish. Off by default.
   const publicToggle = (
-    <div className="rounded-xl border border-border bg-bg/50 p-3 space-y-2">
+    <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
       <label className="flex items-start gap-2.5 cursor-pointer">
         <input
           type="checkbox"
           checked={listPublic}
           onChange={(e) => setListPublic(e.target.checked)}
-          className="mt-0.5 rounded border-border"
+          className="mt-0.5 h-4 w-4 rounded border-border-strong accent-[var(--sand-accent)]"
         />
-        <span className="text-xs text-fg">
+        <span className="text-[13px] font-medium text-fg">
           List publicly in Explore
-          <span className="block text-[10px] text-muted mt-0.5">
+          <span className="mt-0.5 block text-xs font-normal leading-relaxed text-muted">
             Saves a read-only snapshot of your code. Anyone can view the live site and source, or use it as a template. Applied when you deploy.
           </span>
         </span>
@@ -380,7 +386,7 @@ export function SandboxPublishPanel({
           onChange={(e) => setPublicDesc(e.target.value)}
           maxLength={140}
           placeholder="Short description (optional)"
-          className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-xs text-fg focus:border-emerald-500/50 focus:outline-none"
+          className={cn(fieldClass, "h-8 text-xs")}
         />
       )}
       {listPublic && currentSlug && state === "published" && (
@@ -388,7 +394,7 @@ export function SandboxPublishPanel({
           href={`/p/${currentSlug}`}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 hover:text-emerald-300"
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-fg underline-offset-4 hover:underline"
         >
           <ExternalLink size={10} /> /p/{currentSlug}
         </a>
@@ -397,53 +403,57 @@ export function SandboxPublishPanel({
   );
 
   const panel = (
-    <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
+    <div>
+      <div className={cn("fixed inset-0 z-40", phoneSheetBackdropClass)} onClick={onClose} />
       <div
-        className="fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] rounded-2xl border border-border bg-elevated shadow-2xl overflow-hidden"
-        style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
+        {...sheet.props}
+        aria-labelledby={titleId}
+        // Anchored under its button; on a phone, a modal sheet from the bottom edge.
+        className={cn(
+          "fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-bg outline-none dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top shadow-xl",
+          phoneSheetClass,
+        )}
+        // As a sheet it is placed by its classes alone.
+        style={sheet.isPhone ? undefined : position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
       >
-        <div className="flex items-center justify-between border-b border-border bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 px-4 py-3">
+        <div aria-hidden="true" className={phoneSheetGrabberClass} />
+        <div className={cn("flex items-center justify-between border-b border-border px-4 py-3", phoneSheetTitleClass)}>
           <div className="flex items-center gap-2">
-            <div className="rounded-lg bg-emerald-500/15 p-1.5">
-              <Globe className="h-4 w-4 text-emerald-400" />
-            </div>
-            <h3 className="text-sm font-semibold text-fg">Publish</h3>
+            <h3 id={titleId} className="text-sm font-semibold text-fg">Publish</h3>
             {state === "published" && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300 border border-emerald-500/30">
+              <span className="inline-flex items-center gap-1 rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
                 <Check size={10} /> Live
               </span>
             )}
           </div>
-          <button onClick={onClose} className="rounded-md p-1 text-muted hover:bg-soft hover:text-fg">
+          <button onClick={onClose} aria-label="Close" className={cn("rounded-md p-1.5 text-muted transition-colors hover:bg-elevated hover:text-fg", phoneSheetCloseClass)}>
             <X size={14} />
           </button>
         </div>
 
-        <div className="max-h-[calc(100vh-120px)] overflow-y-auto">
+        <div className={cn("max-h-[calc(100vh-120px)] overflow-y-auto", phoneSheetBodyClass)}>
           {state === "idle" && (
-            <div className="p-5">
-              <p className="mb-4 text-sm text-muted">
-                Build your project in the sandbox and deploy it to Cloudflare Pages.
-                We&apos;ll stream the build output here as it happens.
+            <div className="p-4 max-sm:px-5">
+              <p className="mb-4 text-[13px] leading-relaxed text-muted max-sm:text-sm">
+                Builds your project and deploys it to Cloudflare Pages. The build output streams here as it runs.
               </p>
               <div className="mb-4">{publicToggle}</div>
               <button
                 onClick={startBuild}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-400 transition"
+                className={buttonClass({ variant: "primary", className: "h-10 w-full" })}
               >
-                <Rocket size={15} /> Build &amp; publish
+                <Globe size={15} /> Build &amp; publish
               </button>
             </div>
           )}
 
           {state === "building" && (
-            <div className="p-4">
+            <div className="p-4 max-sm:px-5">
               <div className="mb-3 flex items-center gap-2 text-sm text-fg">
-                <Loader2 size={14} className="animate-spin text-emerald-400" />
+                <Loader2 size={14} className="animate-spin text-muted" />
                 <span className="font-medium">{statusLine || "Building..."}</span>
               </div>
-              <div className="rounded-lg border border-border bg-black/60 p-3 font-mono text-[11px] leading-relaxed text-emerald-200/90 max-h-[260px] overflow-y-auto">
+              <div className="max-h-[260px] overflow-y-auto rounded-lg border border-border bg-[#1b1815] p-3 font-mono text-[11px] leading-relaxed text-[#d9d2c5]">
                 {logs.length === 0 && <div className="text-muted">Waiting for first line of output...</div>}
                 {logs.map((line, i) => (
                   <div key={i} className="whitespace-pre-wrap break-words">{line}</div>
@@ -451,7 +461,7 @@ export function SandboxPublishPanel({
                 <div ref={logsEndRef} />
               </div>
               <div className="mt-3 flex justify-end">
-                <button onClick={cancelBuild} className="rounded-lg border border-border bg-bg px-3 py-1.5 text-xs text-muted hover:text-fg hover:bg-soft transition">
+                <button onClick={cancelBuild} className={buttonClass({ variant: "secondary", size: "xs" })}>
                   Cancel
                 </button>
               </div>
@@ -459,33 +469,33 @@ export function SandboxPublishPanel({
           )}
 
           {state === "error" && (
-            <div className="p-4">
-              <div className="mb-3 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+            <div className="p-4 max-sm:px-5">
+              <div className="mb-3 flex items-start gap-2 rounded-lg border border-danger-border bg-danger-soft p-3 text-sm text-danger">
                 <AlertCircle size={14} className="mt-0.5 shrink-0" />
                 <div>
-                  <div className="font-semibold">Build failed</div>
-                  <div className="text-[11px] text-red-300/70 mt-0.5">Review the output below or have the agent fix it.</div>
+                  <div className="font-medium">The build failed</div>
+                  <div className="text-[11px] text-danger/70 mt-0.5">Review the output below or have the agent fix it.</div>
                 </div>
               </div>
-              <div className="rounded-lg border border-border bg-black/60 p-3 font-mono text-[11px] leading-relaxed text-red-200/90 max-h-[200px] overflow-y-auto whitespace-pre-wrap break-words">
+              <div className="max-h-[200px] overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-[#1b1815] p-3 font-mono text-[11px] leading-relaxed text-[#d9d2c5]">
                 {errorOutput || "(no output)"}
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <button
                   onClick={fixWithAgent}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-500 px-3 py-2 text-xs font-medium text-white hover:opacity-90 transition"
+                  className={buttonClass({ variant: "primary", size: "sm" })}
                 >
-                  <Wand2 size={12} /> Fix with Agent
+                  <Wand2 size={13} /> Fix with agent
                 </button>
                 <button
                   onClick={() => navigator.clipboard.writeText(errorOutput)}
-                  className="inline-flex items-center justify-center gap-1 rounded-lg border border-border bg-bg px-3 py-2 text-xs text-fg hover:bg-soft transition"
+                  className={buttonClass({ variant: "secondary", size: "sm" })}
                 >
                   <Copy size={12} /> Copy
                 </button>
                 <button
                   onClick={startBuild}
-                  className="inline-flex items-center justify-center gap-1 rounded-lg border border-border bg-bg px-3 py-2 text-xs text-fg hover:bg-soft transition"
+                  className={buttonClass({ variant: "secondary", size: "sm" })}
                 >
                   <RefreshCw size={12} /> Try again
                 </button>
@@ -494,16 +504,16 @@ export function SandboxPublishPanel({
           )}
 
           {state === "published" && (
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-4 max-sm:px-5">
               {/* Live URL */}
               <div>
-                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">Live URL</div>
+                <div className="mb-1.5 text-[11px] font-medium text-muted">Live URL</div>
                 <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-bg px-3 py-2">
                   <a
                     href={cloudflareDeploymentUrl ?? "#"}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex-1 min-w-0 truncate text-sm font-mono text-emerald-300 hover:text-emerald-200 transition"
+                    className="min-w-0 flex-1 truncate font-mono text-[13px] text-fg underline-offset-4 hover:underline"
                   >
                     {cloudflareDeploymentUrl ?? "—"}
                   </a>
@@ -521,9 +531,9 @@ export function SandboxPublishPanel({
               {/* Domain section */}
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">Domain</div>
+                  <div className="text-[11px] font-medium text-muted">Domain</div>
                   {canUseCustomDomain && (
-                    <div className="inline-flex rounded-lg border border-border bg-bg p-0.5 text-[10px]">
+                    <div className="inline-flex rounded-lg border border-border bg-bg p-0.5 text-[11px]">
                       <button
                         onClick={() => setDomainTab("managed")}
                         className={cn("rounded-md px-2 py-1 transition", domainTab === "managed" ? "bg-soft text-fg" : "text-muted hover:text-fg")}
@@ -541,25 +551,25 @@ export function SandboxPublishPanel({
                 </div>
 
                 {!canUseCustomDomain && (
-                  <a href="/pricing" className="block rounded-lg border border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-pink-500/10 p-3 text-xs text-muted hover:text-fg transition">
+                  <a href="/pricing" className="block rounded-lg border border-border bg-surface p-3 text-xs leading-relaxed text-muted transition-colors hover:border-border-strong hover:text-fg">
                     <div className="flex items-center gap-2 mb-1">
-                      <Lock size={12} className="text-amber-400" />
-                      <span className="font-semibold text-fg">Custom domains: Pro feature</span>
+                      <Lock size={12} className="text-muted" />
+                      <span className="font-medium text-fg">Custom domains are a Pro feature</span>
                     </div>
-                    Upgrade to use your own domain (e.g. myapp.com) instead of .pages.dev →
+                    Upgrade to serve this project from your own domain instead of .pages.dev.
                   </a>
                 )}
 
                 {canUseCustomDomain && domainTab === "managed" && (
                   <div className="space-y-2">
                     {managedDomainHostname ? (
-                      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+                      <div className="rounded-lg border border-success-border bg-success-soft p-3">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <Check size={14} className="text-emerald-400" />
+                            <Check size={14} className="text-success" />
                             <span className="font-mono text-sm text-fg">{managedDomainHostname}</span>
                           </div>
-                          <button onClick={detachManagedDomain} className="rounded-md p-1 text-red-300 hover:bg-red-500/10" title="Detach">
+                          <button onClick={detachManagedDomain} className="rounded-md p-1 text-danger hover:bg-danger-soft" title="Detach">
                             <Trash2 size={12} />
                           </button>
                         </div>
@@ -569,22 +579,22 @@ export function SandboxPublishPanel({
                     ) : managedOptions.length === 0 ? (
                       <a href="/domains" className="block rounded-lg border border-border bg-bg p-3 text-xs text-muted hover:text-fg transition">
                         You don&apos;t have any managed domains yet.<br />
-                        <span className="text-emerald-400">Add one in /domains →</span>
+                        <span className="font-medium text-fg underline underline-offset-4">Add one in Domains</span>
                       </a>
                     ) : (
                       <>
                         <div className="grid grid-cols-[1fr_auto] gap-2">
-                          <select
+                          <Select
+                            aria-label="Domain"
                             value={selectedDomainId}
                             onChange={(e) => setSelectedDomainId(e.target.value)}
-                            className="rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg focus:border-emerald-500/50 focus:outline-none"
                           >
                             {managedOptions.map(d => (
                               <option key={d.id} value={d.id} disabled={d.status !== "active"}>
                                 {d.apexDomain}{d.status !== "active" ? " (pending)" : ""}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         </div>
                         <div className="flex items-center gap-2">
                           <Input
@@ -592,11 +602,11 @@ export function SandboxPublishPanel({
                             value={selectedSubdomain}
                             onChange={(e) => setSelectedSubdomain(e.target.value)}
                             placeholder="www"
-                            className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-sm font-mono text-fg focus:border-emerald-500/50 focus:outline-none"
+                            className={cn(fieldClass, "h-9 flex-1 font-mono text-[13px]")}
                           />
                           <span className="text-sm text-muted">.{managedOptions.find(d => d.id === selectedDomainId)?.apexDomain ?? "…"}</span>
                         </div>
-                        <p className="text-[10px] text-muted">Use <code>@</code> for the apex domain ({managedOptions.find(d => d.id === selectedDomainId)?.apexDomain}).</p>
+                        <p className="text-[11px] text-muted">Use <code>@</code> for the apex domain ({managedOptions.find(d => d.id === selectedDomainId)?.apexDomain}).</p>
                         {(() => {
                           const apex = managedOptions.find(d => d.id === selectedDomainId)?.apexDomain;
                           if (!apex) return null;
@@ -609,27 +619,27 @@ export function SandboxPublishPanel({
                                 type="checkbox"
                                 checked={mirrorToOther}
                                 onChange={(e) => setMirrorToOther(e.target.checked)}
-                                className="mt-0.5 rounded border-border"
+                                className="mt-0.5 h-4 w-4 rounded border-border-strong accent-[var(--sand-accent)]"
                               />
                               <span>
-                                Also serve at <span className="font-mono text-emerald-300">{otherLabel}</span>
-                                <span className="block text-[10px] text-muted mt-0.5">Both hostnames will load the same site.</span>
+                                Also serve at <span className="font-mono text-fg">{otherLabel}</span>
+                                <span className="block text-[11px] text-muted mt-0.5">Both hostnames will load the same site.</span>
                               </span>
                             </label>
                           );
                         })()}
                         {managedErr && (
-                          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-300">{managedErr}</div>
+                          <div className="rounded-lg border border-danger-border bg-danger-soft p-2 text-xs text-danger">{managedErr}</div>
                         )}
                         <button
                           onClick={assignManagedDomain}
                           disabled={managedBusy || !selectedDomainId}
-                          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-400 transition disabled:opacity-50"
+                          className={buttonClass({ variant: "primary", className: "w-full" })}
                         >
-                          {managedBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                          {managedBusy && <Loader2 size={13} className="animate-spin" />}
                           Assign domain
                         </button>
-                        <a href="/domains" className="block text-center text-[10px] text-muted hover:text-fg">Manage in /domains →</a>
+                        <a href="/domains" className="block text-center text-[11px] text-muted underline-offset-4 hover:text-fg hover:underline">Manage domains</a>
                       </>
                     )}
                   </div>
@@ -643,15 +653,15 @@ export function SandboxPublishPanel({
                           <span className="font-mono text-sm text-fg">{customDomain}</span>
                           <div className="flex items-center gap-1">
                             {customDomainStatus === "active"
-                              ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300 border border-emerald-500/30"><Check size={10} /> Active</span>
-                              : <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300 border border-amber-500/30"><Loader2 size={10} className="animate-spin" /> Pending</span>
+                              ? <span className="inline-flex items-center gap-1 rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success"><Check size={10} /> Active</span>
+                              : <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-medium text-warning border border-warning-border"><Loader2 size={10} className="animate-spin" /> Pending</span>
                             }
-                            <button onClick={removeCname} className="rounded-md p-1 text-red-300 hover:bg-red-500/10" title="Remove">
+                            <button onClick={removeCname} className="rounded-md p-1 text-danger hover:bg-danger-soft" title="Remove">
                               <Trash2 size={12} />
                             </button>
                           </div>
                         </div>
-                        <div className="rounded-md bg-soft/50 p-2 text-[10px] text-muted">
+                        <div className="rounded-md bg-soft/50 p-2 text-[11px] text-muted">
                           Add this CNAME at your registrar:
                           <div className="mt-1 font-mono text-fg">{customDomain} → {cloudflareProjectName}.pages.dev</div>
                         </div>
@@ -663,14 +673,14 @@ export function SandboxPublishPanel({
                           value={cnameInput}
                           onChange={(e) => setCnameInput(e.target.value)}
                           placeholder="www.myapp.com"
-                          className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm font-mono text-fg focus:border-emerald-500/50 focus:outline-none"
+                          className={cn(fieldClass, "h-9 font-mono text-[13px]")}
                         />
-                        <p className="text-[10px] text-muted">Keep your nameservers at your registrar; just point a CNAME at <span className="font-mono">{cloudflareProjectName}.pages.dev</span>.</p>
-                        {cnameErr && <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-300">{cnameErr}</div>}
+                        <p className="text-[11px] text-muted">Keep your nameservers at your registrar; just point a CNAME at <span className="font-mono">{cloudflareProjectName}.pages.dev</span>.</p>
+                        {cnameErr && <div className="rounded-lg border border-danger-border bg-danger-soft p-2 text-xs text-danger">{cnameErr}</div>}
                         <button
                           onClick={attachCname}
                           disabled={cnameBusy || !cnameInput.trim()}
-                          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-bg px-3 py-2 text-sm font-medium text-fg hover:bg-soft transition disabled:opacity-50"
+                          className={buttonClass({ variant: "secondary", className: "w-full" })}
                         >
                           {cnameBusy && <Loader2 size={13} className="animate-spin" />}
                           Add custom domain
@@ -688,13 +698,13 @@ export function SandboxPublishPanel({
               <div className="flex gap-2 pt-2 border-t border-border/60">
                 <button
                   onClick={startBuild}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-bg px-3 py-2 text-xs font-medium text-fg hover:bg-soft transition"
+                  className={buttonClass({ variant: "secondary", size: "sm", className: "flex-1" })}
                 >
                   <RefreshCw size={12} /> Redeploy
                 </button>
                 <button
                   onClick={unpublish}
-                  className="inline-flex items-center justify-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 hover:bg-red-500/20 transition"
+                  className={buttonClass({ variant: "danger-outline", size: "sm" })}
                 >
                   <Trash2 size={12} /> Unpublish
                 </button>
@@ -703,7 +713,7 @@ export function SandboxPublishPanel({
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 
   return createPortal(panel, document.body);

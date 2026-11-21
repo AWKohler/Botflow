@@ -206,7 +206,10 @@ export function SwiftPipWindow({ projectId, mode, children }: SwiftPipWindowProp
       className={cn(
         "flex flex-col",
         isPip
-          ? "fixed z-50 overflow-hidden rounded-xl border border-border bg-surface shadow-2xl"
+          // Not shown on a phone, where a floating 280 × 575 window would cover
+          // the editor it floats over. It stays mounted (hidden), so the session
+          // survives; the Preview tab brings the simulator back.
+          ? "fixed z-50 overflow-hidden rounded-xl border border-border bg-surface shadow-2xl max-md:hidden"
           // Full mode owns NO padding — the inner SwiftSimulatorPreview supplies
           // the `pb-2.5 pr-2.5` gap so it isn't double-applied (this wrapper puts
           // children in a flow `flex-1` div, which respects padding).

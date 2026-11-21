@@ -178,7 +178,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
             setNewKey((p) => ({ ...p, [scope]: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') }))
           }
           placeholder="KEY_NAME"
-          className="flex-1 bg-surface border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+          className="flex-1 bg-bg border border-control rounded-md px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-accent focus:ring-3 focus:ring-accent/15"
         />
       </div>
       <div className="flex gap-2">
@@ -187,7 +187,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
           onChange={(e) => setNewValue((p) => ({ ...p, [scope]: e.target.value }))}
           placeholder="value"
           type={scope === 'frontend' && newSecret ? 'password' : 'text'}
-          className="flex-1 bg-surface border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+          className="flex-1 bg-bg border border-control rounded-md px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-accent focus:ring-3 focus:ring-accent/15"
           onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(scope); }}
         />
       </div>
@@ -242,7 +242,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
           {masked ? '••••••••' : value || <span className="italic text-muted">(empty)</span>}
         </span>
         {opts.locked && opts.lockLabel && (
-          <span className="text-[10px] text-muted bg-soft/60 rounded px-1.5 py-0.5 flex-shrink-0">
+          <span className="text-[11px] text-muted bg-soft/60 rounded px-1.5 py-0.5 flex-shrink-0">
             {opts.lockLabel}
           </span>
         )}
@@ -258,7 +258,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
         {!opts.locked && (
           <button
             onClick={() => handleDelete(opts.scope, key)}
-            className="text-muted hover:text-red-400 transition-colors flex-shrink-0"
+            className="text-muted hover:text-danger transition-colors flex-shrink-0"
             title="Delete variable"
           >
             <Trash2 size={14} />
@@ -272,14 +272,14 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
     <div className="p-3 text-sm space-y-5 overflow-y-auto modern-scrollbar">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="font-medium text-fg text-xs uppercase tracking-wide">Environment Variables</h3>
-        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={fetchAll} title="Refresh">
+        <h3 className="text-[13px] font-semibold text-fg">Environment variables</h3>
+        <Button variant="ghost" size="icon-sm" className="h-7 w-7" onClick={fetchAll} title="Refresh" aria-label="Refresh">
           <RefreshCw size={14} />
         </Button>
       </div>
 
       {error && (
-        <div className="text-xs text-red-400 bg-red-400/10 rounded px-2 py-1.5 border border-red-400/20">
+        <div className="rounded-md border border-danger-border bg-danger-soft px-2 py-1.5 text-xs text-danger">
           {error}
         </div>
       )}
@@ -287,8 +287,8 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
       {/* ───────── Frontend section ───────── */}
       <section className="space-y-2">
         <div className="flex items-center gap-2">
-          <Globe size={13} className="text-accent" />
-          <span className="text-xs font-semibold text-fg">Frontend</span>
+          <Globe size={13} className="text-muted" />
+          <span className="text-xs font-medium text-fg">Frontend</span>
         </div>
         <p className="text-[11px] text-muted leading-snug">
           Visible to anyone who uses your app — these are bundled into the site. Don’t put secrets here.
@@ -299,7 +299,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
           renderRow(v.key, v.value, { scope: 'frontend', secret: v.isSecret }),
         )}
         {frontendVars.length === 0 && systemVars.length === 0 && (
-          <p className="text-xs text-muted italic py-1">No frontend variables yet.</p>
+          <p className="py-1 text-xs text-subtle">No frontend variables yet.</p>
         )}
 
         {renderAddForm('frontend')}
@@ -309,15 +309,15 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
       {backendAvailable && (
         <section className="space-y-2 pt-3 border-t border-border">
           <div className="flex items-center gap-2">
-            <Server size={13} className="text-emerald-400" />
-            <span className="text-xs font-semibold text-fg">Backend</span>
+            <Server size={13} className="text-muted" />
+            <span className="text-xs font-medium text-fg">Backend</span>
           </div>
           <p className="text-[11px] text-muted leading-snug">
             Secret, server-only values used by your Convex backend. Synced live with the Convex dashboard.
           </p>
 
           {backendError ? (
-            <div className="flex items-start gap-2 text-xs text-amber-300 bg-amber-400/10 rounded px-2 py-1.5 border border-amber-400/20">
+            <div className="flex items-start gap-2 rounded-md border border-warning-border bg-warning-soft px-2 py-1.5 text-xs text-warning">
               <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
               <span>{backendError}</span>
             </div>
@@ -332,7 +332,7 @@ export function EnvPanel({ projectId, onEnvVarsChange }: EnvPanelProps) {
                 }),
               )}
               {backendVars.length === 0 && (
-                <p className="text-xs text-muted italic py-1">No backend variables yet.</p>
+                <p className="py-1 text-xs text-subtle">No backend variables yet.</p>
               )}
               {renderAddForm('backend')}
             </>

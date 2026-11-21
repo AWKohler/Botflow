@@ -4,16 +4,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Camera,
   CameraOff,
+  Check,
   ChevronDown,
   ChevronUp,
+  ListChecks,
   Loader2,
   Maximize2,
+  MoreHorizontal,
   RefreshCw,
   RotateCw,
   Smartphone,
   Square,
   Tablet,
 } from "lucide-react";
+import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import {
   SwiftStreamClient,
   type SimBuildStatus,
@@ -196,6 +200,18 @@ function ActiveSwiftSimulatorPreview({
   const [orientation, setOrientation] = useState<OrientationUI>(loadOrientationPref);
   const [liveOrientation, setLiveOrientation] = useState<OrientationUI | null>(null);
   const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setMoreOpen(false);
+      moreButtonRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [moreOpen]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // The orientation currently shown (live takes precedence). Held in a ref so the
@@ -1082,7 +1098,8 @@ function ActiveSwiftSimulatorPreview({
   return (
     <div
       className={cn(
-        "absolute inset-0 flex flex-col",
+        // A container: the toolbar below adapts to this pane's width, not the window's.
+        "@container absolute inset-0 flex flex-col",
         // Full mode: flush to top/left, 10px gap on right/bottom — matches the
         // Code/Database cards exactly. PIP keeps its tight all-around padding.
         isPip ? "gap-1 p-1.5" : "gap-2 pb-2.5 pr-2.5",
@@ -1093,19 +1110,21 @@ function ActiveSwiftSimulatorPreview({
       <div
         className={cn(
           "flex-shrink-0 items-center rounded-xl border border-border bg-elevated/60",
-          isPip ? "flex h-7 gap-1 px-1.5" : "flex h-9 gap-2 px-3",
+          // Narrow pane: the two actions used most keep their labels (Refresh build,
+          // Stop); device, rotation, webcam and issues move into a "More" menu.
+          isPip ? "flex h-7 gap-1 px-1.5" : "flex h-9 gap-2 px-3 @max-[40rem]:h-12 @max-[40rem]:pr-1.5",
         )}
       >
         <StatusPill pill={pill} compact={isPip} />
         <div className={cn("ml-auto flex items-center", isPip ? "gap-1" : "gap-1.5")}>
           {/* FPS counter — full mode only */}
           {!isPip && pill.kind === "live" && (
-            <span className="rounded-md bg-elevated px-2 py-0.5 font-mono text-[10px] text-muted">
+            <span className="rounded-md bg-elevated px-2 py-0.5 font-mono text-[11px] text-muted @max-[40rem]:hidden">
               {fps} fps
             </span>
           )}
           {/* Device picker — switch iPhone ↔ iPad (restarts the session). */}
-          <div className="relative">
+          <div className={cn("relative", !isPip && "@max-[40rem]:hidden")}>
             <button
               onClick={() => setDeviceMenuOpen((v) => !v)}
               className={cn(
@@ -1130,24 +1149,23 @@ function ActiveSwiftSimulatorPreview({
                   className="fixed inset-0 z-[60]"
                   onClick={() => setDeviceMenuOpen(false)}
                 />
-                <div className="absolute right-0 z-[61] mt-1 w-40 overflow-hidden rounded-md border border-border bg-elevated shadow-lg">
+                <Menu className="absolute right-0 z-[61] mt-1 w-44">
                   {([
                     { id: "iPhone-16-Pro" as DeviceModelUI, label: provider === "local" ? "iPhone" : "iPhone 17 Pro", Icon: Smartphone },
                     { id: "iPad-Pro" as DeviceModelUI, label: "iPad Pro", Icon: Tablet },
                   ]).map(({ id, label, Icon }) => (
-                    <button
+                    <MenuItem
                       key={id}
+                      role="menuitemradio"
+                      aria-checked={id === deviceModel}
                       onClick={() => switchDevice(id)}
-                      className={cn(
-                        "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] hover:bg-surface",
-                        id === deviceModel ? "text-accent" : "text-fg/80",
-                      )}
                     >
-                      <Icon size={13} />
-                      <span>{label}</span>
-                    </button>
+                      <Icon size={14} className="text-muted" />
+                      <span className="flex-1">{label}</span>
+                      <Check size={14} className={cn("text-fg", id !== deviceModel && "invisible")} />
+                    </MenuItem>
                   ))}
-                </div>
+                </Menu>
               </>
             )}
           </div>
@@ -1158,7 +1176,7 @@ function ActiveSwiftSimulatorPreview({
             className={cn(
               "flex items-center rounded-md border border-border bg-elevated text-muted hover:text-fg",
               "disabled:cursor-not-allowed disabled:opacity-40",
-              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px]",
+              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] @max-[40rem]:hidden",
             )}
             title={`Rotate to ${orientation === "portrait" ? "landscape" : "portrait"}`}
           >
@@ -1180,12 +1198,13 @@ function ActiveSwiftSimulatorPreview({
             className={cn(
               "flex items-center rounded-md border border-border bg-elevated text-muted hover:text-fg",
               "disabled:cursor-not-allowed disabled:opacity-40",
-              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px]",
+              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] @max-[40rem]:h-10 @max-[40rem]:px-3 @max-[40rem]:text-xs",
             )}
             title="Tar the sandbox and rebuild"
           >
             <RefreshCw size={isPip ? 11 : 12} className={rebuilding ? "animate-spin" : ""} />
-            {!isPip && <span>Refresh build</span>}
+            {/* In the narrowest panes (a 320px phone) the icon alone; the name stays for screen readers. */}
+            {!isPip && <span className="whitespace-nowrap @max-[22rem]:sr-only">Refresh build</span>}
           </button>
           {/* Webcam toggle — routes the browser camera into the simulator */}
           <button
@@ -1197,9 +1216,9 @@ function ActiveSwiftSimulatorPreview({
               cameraState === "active"
                 ? "text-accent"
                 : cameraState === "denied"
-                  ? "text-red-400"
+                  ? "text-danger"
                   : "text-muted",
-              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px]",
+              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] @max-[40rem]:hidden",
             )}
             title={
               provider === "local" ? "Webcam forwarding is available with cloud previews" : cameraState === "active"
@@ -1222,12 +1241,12 @@ function ActiveSwiftSimulatorPreview({
           {!isPip && (
             <button
               onClick={() => setIssuesOpen((v) => !v)}
-              className="flex items-center gap-1 rounded-md border border-border bg-elevated px-2 py-1 text-[11px] text-muted hover:text-fg"
+              className="flex items-center gap-1 rounded-md border border-border bg-elevated px-2 py-1 text-[11px] text-muted hover:text-fg @max-[40rem]:hidden"
               title={issuesOpen ? "Hide issues" : "Show issues"}
             >
               Issues
               {diagnostics.length > 0 && (
-                <span className="ml-0.5 rounded-full bg-elevated px-1.5 text-[10px] text-fg/80">
+                <span className="ml-0.5 rounded-full bg-elevated px-1.5 text-[11px] text-fg/80">
                   {diagnostics.length}
                 </span>
               )}
@@ -1244,13 +1263,68 @@ function ActiveSwiftSimulatorPreview({
               <Maximize2 size={11} />
             </button>
           )}
+          {/* Phone: the less-used controls, each with its name. */}
+          {!isPip && (
+            <div className="relative @[40rem]:hidden">
+              <button
+                ref={moreButtonRef}
+                onClick={() => setMoreOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={moreOpen}
+                aria-label="More simulator controls"
+                title="More"
+                className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-fg"
+              >
+                <MoreHorizontal size={16} />
+              </button>
+              {moreOpen && (
+                <>
+                  <div className="fixed inset-0 z-[60]" onClick={() => setMoreOpen(false)} />
+                  <Menu className="absolute right-0 z-[61] mt-1 w-60">
+                    {([
+                      { id: "iPhone-16-Pro" as DeviceModelUI, label: provider === "local" ? "iPhone" : "iPhone 17 Pro", Icon: Smartphone },
+                      { id: "iPad-Pro" as DeviceModelUI, label: "iPad Pro", Icon: Tablet },
+                    ]).map(({ id, label, Icon }) => (
+                      <MenuItem
+                        key={id}
+                        role="menuitemradio"
+                        aria-checked={id === deviceModel}
+                        onClick={() => { setMoreOpen(false); switchDevice(id); }}
+                      >
+                        <Icon size={15} className="text-muted" />
+                        <span className="flex-1">{label}</span>
+                        <Check size={15} className={cn("text-fg", id !== deviceModel && "invisible")} />
+                      </MenuItem>
+                    ))}
+                    <MenuSeparator />
+                    <MenuItem disabled={pill.kind !== "live"} onClick={() => { setMoreOpen(false); toggleOrientation(); }}>
+                      <RotateCw size={15} className="text-muted" />
+                      Rotate to {(liveOrientation ?? orientation) === "portrait" ? "landscape" : "portrait"}
+                    </MenuItem>
+                    <MenuItem
+                      disabled={pill.kind !== "live" || provider === "local"}
+                      onClick={() => { setMoreOpen(false); toggleCamera(); }}
+                    >
+                      {cameraState === "active" ? <Camera size={15} className="text-accent" /> : <CameraOff size={15} className="text-muted" />}
+                      {cameraState === "active" ? "Stop sharing webcam" : "Share webcam"}
+                    </MenuItem>
+                    <MenuItem onClick={() => { setMoreOpen(false); setIssuesOpen((v) => !v); }}>
+                      <ListChecks size={15} className="text-muted" />
+                      <span className="flex-1">{issuesOpen ? "Hide issues" : "Show issues"}</span>
+                      {diagnostics.length > 0 && <span className="tabular-nums text-muted">{diagnostics.length}</span>}
+                    </MenuItem>
+                  </Menu>
+                </>
+              )}
+            </div>
+          )}
           {/* Stop — always when caller provided handler */}
           {onStop && (
             <button
               onClick={handleStop}
               className={cn(
-                "flex items-center rounded-md border border-border bg-elevated text-muted hover:text-red-400",
-                isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px]",
+                "flex items-center rounded-md border border-border bg-elevated text-muted hover:text-danger",
+                isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] @max-[40rem]:h-10 @max-[40rem]:px-3 @max-[40rem]:text-xs",
               )}
               title="Stop the simulator"
             >
@@ -1283,7 +1357,7 @@ function ActiveSwiftSimulatorPreview({
           }
           footer={
             !isPip && pill.kind === "live" ? (
-              <div className="rounded-md bg-black/55 px-2 py-0.5 text-[10px] text-white/70 backdrop-blur whitespace-nowrap">
+              <div className="rounded-md bg-black/55 px-2 py-0.5 text-[11px] text-white/70 backdrop-blur whitespace-nowrap">
                 {kbdFocused
                   ? "Keyboard connected — typing goes to the device"
                   : "Click the screen to enable keyboard"}
@@ -1366,7 +1440,7 @@ function StatusPill({ pill, compact = false }: { pill: PillState; compact?: bool
   // PIP `compact` mode shrinks text + drops verbose labels so the pill fits
   // a 280px-wide header. The status icon and color stay identical so the
   // visual semantics match between modes.
-  const textCls = compact ? "text-[10px]" : "text-xs";
+  const textCls = compact ? "text-[11px]" : "text-xs";
   const gapCls = compact ? "gap-1.5" : "gap-2";
   const icoSize = compact ? 10 : 12;
   switch (pill.kind) {
@@ -1375,7 +1449,7 @@ function StatusPill({ pill, compact = false }: { pill: PillState; compact?: bool
     case "starting":
       return (
         <span className={cn("flex items-center", gapCls, textCls)}>
-          <Loader2 size={icoSize} className="animate-spin text-blue-400" />
+          <Loader2 size={icoSize} className="animate-spin text-info" />
           <span className="text-fg/80 truncate">{compact ? "Starting" : pill.label}</span>
         </span>
       );
@@ -1384,7 +1458,7 @@ function StatusPill({ pill, compact = false }: { pill: PillState; compact?: bool
     case "installing":
       return (
         <span className={cn("flex items-center", gapCls, textCls)}>
-          <Loader2 size={icoSize} className="animate-spin text-emerald-400" />
+          <Loader2 size={icoSize} className="animate-spin text-success" />
           <span className="text-fg/80 truncate">
             {compact ? "Installing" : "Installing on simulator…"}
           </span>
@@ -1393,14 +1467,14 @@ function StatusPill({ pill, compact = false }: { pill: PillState; compact?: bool
     case "live":
       return (
         <span className={cn("flex items-center", gapCls, textCls)}>
-          <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_0_3px_rgba(74,222,128,0.2)]" />
+          <span className="h-2 w-2 rounded-full bg-success-solid shadow-[0_0_0_3px_rgba(74,222,128,0.2)]" />
           <span className="text-fg/80">Live</span>
         </span>
       );
     case "failed":
       return (
-        <span className={cn("flex items-center text-red-300", gapCls, textCls)}>
-          <span className="h-2 w-2 rounded-full bg-red-500" />
+        <span className={cn("flex items-center text-danger", gapCls, textCls)}>
+          <span className="h-2 w-2 rounded-full bg-danger-solid" />
           <span className="truncate">
             {compact
               ? "Build failed"
@@ -1417,8 +1491,8 @@ function StatusPill({ pill, compact = false }: { pill: PillState; compact?: bool
       );
     case "error":
       return (
-        <span className={cn("flex items-center text-red-300", gapCls, textCls)}>
-          <span className="h-2 w-2 rounded-full bg-red-500" />
+        <span className={cn("flex items-center text-danger", gapCls, textCls)}>
+          <span className="h-2 w-2 rounded-full bg-danger-solid" />
           <span className="truncate" title={pill.message}>
             {compact ? "Error" : pill.message}
           </span>
@@ -1435,8 +1509,8 @@ function BuildingPill({ startedAt, compact = false }: { startedAt: number; compa
   }, []);
   const seconds = Math.floor((now - startedAt) / 1000);
   return (
-    <span className={cn("flex items-center", compact ? "gap-1.5 text-[10px]" : "gap-2 text-xs")}>
-      <Loader2 size={compact ? 10 : 12} className="animate-spin text-amber-400" />
+    <span className={cn("flex items-center", compact ? "gap-1.5 text-[11px]" : "gap-2 text-xs")}>
+      <Loader2 size={compact ? 10 : 12} className="animate-spin text-warning" />
       <span className="text-fg/80">
         Building <span className="font-mono text-muted">{formatTimer(seconds)}</span>
       </span>
@@ -1450,6 +1524,8 @@ function formatTimer(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+// Shown on the device's screen, which is black in both themes: light text,
+// whatever the page theme.
 function CenterContent({
   pill,
   hasCalibration,
@@ -1460,11 +1536,11 @@ function CenterContent({
   if (pill.kind === "live") return null;
   if (pill.kind === "failed") {
     return (
-      <div className="max-w-sm px-6 text-center">
-        <p className="mb-2 font-semibold text-red-300">Build failed</p>
-        <p className="text-xs text-muted">
+      <div className="max-w-sm px-5 text-center">
+        <p className="mb-2 font-semibold text-red-400">Build failed</p>
+        <p className="text-xs text-white/70">
           Expand the log below for xcodebuild output. Fix the error in the editor and
-          click <span className="text-fg/80">Refresh build</span>.
+          click <span className="text-white">Refresh build</span>.
         </p>
       </div>
     );
@@ -1472,8 +1548,8 @@ function CenterContent({
   if (pill.kind === "ended") {
     const inactive = pill.reason === "inactivity";
     return (
-      <div className="max-w-sm px-6 text-center text-muted">
-        <p className="mb-1 font-semibold">
+      <div className="max-w-sm px-5 text-center text-white/70">
+        <p className="mb-1 font-semibold text-white">
           {inactive ? "Closed for inactivity" : "Session ended"}
         </p>
         <p className="text-xs">
@@ -1485,8 +1561,8 @@ function CenterContent({
     );
   }
   return (
-    <div className="max-w-sm px-6 text-center text-muted">
-      <p className="mb-1 font-semibold">
+    <div className="max-w-sm px-5 text-center text-white/70">
+      <p className="mb-1 font-semibold text-white">
         {pill.kind === "starting" ? "Starting Swift preview" : "Working…"}
       </p>
       <p className="text-xs">

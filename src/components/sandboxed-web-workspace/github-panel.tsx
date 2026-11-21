@@ -473,7 +473,7 @@ export function SandboxGitHubPanel({
               value={newRepoName}
               onChange={(e) => setNewRepoName(e.target.value)}
               placeholder="my-project"
-              className="w-full px-2 py-1.5 text-sm rounded-md bg-surface border border-border focus:outline-none focus:ring-1 focus:ring-accent"
+              className="w-full px-2 py-1.5 text-sm rounded-md bg-bg border border-control focus:outline-none focus:border-accent focus:ring-3 focus:ring-accent/15"
             />
             <div className="flex items-center gap-2 text-xs">
               <button
@@ -578,7 +578,7 @@ export function SandboxGitHubPanel({
             <button
               type="button"
               onClick={unlinkRepo}
-              className="text-muted hover:text-red-400"
+              className="text-muted hover:text-danger"
               title="Unlink"
             >
               <LogOut size={11} />
@@ -605,7 +605,7 @@ export function SandboxGitHubPanel({
         {status && !status.isClean && (
           <div className="space-y-1 text-[11px]">
             {conflictCount > 0 && (
-              <div className="text-red-400">
+              <div className="text-danger">
                 {conflictCount} file{conflictCount === 1 ? "" : "s"} with merge conflicts
               </div>
             )}
@@ -640,7 +640,7 @@ export function SandboxGitHubPanel({
           onChange={(e) => setCommitMessage(e.target.value)}
           placeholder="What did you change?"
           rows={2}
-          className="w-full px-2 py-1.5 text-xs rounded-md bg-surface border border-border focus:outline-none focus:ring-1 focus:ring-accent resize-none"
+          className="w-full px-2 py-1.5 text-xs rounded-md bg-bg border border-control focus:outline-none focus:border-accent focus:ring-3 focus:ring-accent/15 resize-none"
           disabled={saving || pulling || Boolean(status?.hasMerging)}
         />
         <div className="flex items-center gap-1.5">
@@ -675,7 +675,7 @@ export function SandboxGitHubPanel({
           </Button>
         </div>
         {status?.hasMerging && (
-          <div className="rounded-md bg-yellow-500/10 border border-yellow-500/30 px-2.5 py-2 text-[11px] text-yellow-400">
+          <div className="rounded-md bg-warning-soft border border-warning-border px-2.5 py-2 text-[11px] text-warning">
             Merge in progress — finish resolving conflicts before saving.
           </div>
         )}
@@ -836,7 +836,7 @@ function RepoList({
             )}
             <span className="text-xs truncate">{r.fullName}</span>
           </div>
-          <span className="text-[10px] text-muted shrink-0">{r.defaultBranch}</span>
+          <span className="text-[11px] text-muted shrink-0">{r.defaultBranch}</span>
         </button>
       ))}
     </div>

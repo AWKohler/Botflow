@@ -59,7 +59,7 @@ export function ImageViewer({ src, filename, byteLength }: ImageViewerProps) {
       {/* Info bar */}
       <div className="flex items-center gap-3 px-4 py-2 border-t border-border bg-surface shrink-0">
         <span className="text-xs font-mono text-foreground font-medium truncate max-w-xs">{name}</span>
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-soft text-muted font-medium">{ext}</span>
+        <span className="text-[11px] px-1.5 py-0.5 rounded bg-soft text-muted font-medium">{ext}</span>
         {dimensions && (
           <span className="text-xs text-muted">
             {dimensions.w} × {dimensions.h}
@@ -69,7 +69,7 @@ export function ImageViewer({ src, filename, byteLength }: ImageViewerProps) {
           <span className="text-xs text-muted">{formatBytes(byteLength)}</span>
         )}
         <div className="flex-1" />
-        <span className="text-[10px] text-muted opacity-60">Click image to zoom</span>
+        <span className="text-[11px] text-muted opacity-60">Click image to zoom</span>
         <div className="flex items-center gap-1 text-xs text-muted">
           <button
             type="button"

@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { COMPACT_QUERY, useMediaQuery } from '@/components/ui/use-media-query';
+import { formatToolName } from '@/lib/agent/tool-labels';
 import type { ToolCallData } from '@/lib/agent/ui-types';
 import { ChevronDown, ChevronRight, Loader2, Check } from 'lucide-react';
 
@@ -10,6 +12,8 @@ type Props = {
   onClear?: () => void;
   className?: string;
 };
+
+const MAX_LIST_HEIGHT = 112;
 
 export function LiveActions({ actions: allActions, onClear, className }: Props) {
   // endTurn is a control-flow signal the agent calls to mark "done", not a
@@ -29,30 +33,73 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
     )
   ), [fileActions]);
 
+  // Where the chat is short of room — a phone, or a short window such as a
+  // phone on its side — the card is one line (the latest step) until it is
+  // opened: a five-row list would leave almost no room for the conversation.
+  const compact = useMediaQuery(COMPACT_QUERY);
+  const [opened, setOpened] = useState(false);
+  // Changing layout (a rotation) returns the card to that layout's default.
+  useEffect(() => setOpened(false), [compact]);
+  const expanded = !compact || opened;
+
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    // Show the latest rows, and only whole ones: when the list overflows, the
+    // box shrinks to the trailing rows that fit, so no half row (or a stub of
+    // its timeline line) is left peeking out under the heading.
+    el.style.maxHeight = `${MAX_LIST_HEIGHT}px`;
+    if (el.scrollHeight > MAX_LIST_HEIGHT) {
+      const rows = Array.from(el.children) as HTMLElement[];
+      const first = rows.find((r) => r.offsetTop >= el.scrollHeight - MAX_LIST_HEIGHT);
+      if (first) el.style.maxHeight = `${el.scrollHeight - first.offsetTop}px`;
+    }
     el.scrollTop = el.scrollHeight;
-  }, [actions.length]);
+  }, [actions.length, expanded]);
 
   if (!actions.length) return null;
 
+  const latest = actions[actions.length - 1];
+  const latestRunning = latest.status === 'invoked';
+
   return (
     <div className={cn('rounded-lg border border-border bg-elevated p-2 space-y-1', className)}>
-      <div className="flex items-center justify-between px-1">
-        <span className="text-xs font-medium text-muted">Live Actions</span>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2 px-1">
+        <button
+          type="button"
+          // A toggle only where the card is compact; elsewhere the list is always open.
+          onClick={() => compact && setOpened((v) => !v)}
+          aria-expanded={compact ? opened : undefined}
+          tabIndex={compact ? undefined : -1}
+          className={cn(
+            'flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium text-muted pointer-coarse:min-h-8',
+            !compact && 'pointer-events-none',
+          )}
+        >
+          <ChevronRight
+            size={12}
+            className={cn('shrink-0 transition-transform', !compact && 'hidden', opened && 'rotate-90')}
+          />
+          <span className="shrink-0">Activity</span>
+          <span className={cn('flex min-w-0 items-center gap-1.5 font-normal', expanded && 'hidden')}>
+            <span className="text-subtle">·</span>
+            {latestRunning && <Loader2 size={11} className="shrink-0 animate-spin" />}
+            <span className="truncate">{actionSummary(latest).title}</span>
+            {actions.length > 1 && <span className="shrink-0 tabular-nums text-subtle">+{actions.length - 1}</span>}
+          </span>
+        </button>
+        <div className="flex shrink-0 items-center gap-2">
           {totals.files > 0 && (
-            <span className="text-[10px] text-muted tabular-nums">
+            <span className="text-[11px] text-muted tabular-nums">
               {totals.files} file{totals.files !== 1 ? 's' : ''}
-              <span className="text-green-500 ml-1">+{totals.additions}</span>
-              <span className="text-red-500 ml-1">-{totals.deletions}</span>
+              <span className="text-success ml-1">+{totals.additions}</span>
+              <span className="text-danger ml-1">-{totals.deletions}</span>
             </span>
           )}
           {onClear && (
             <button
-              className="text-[10px] text-muted hover:text-fg transition"
+              className="tap-44 rounded-sm text-xs text-muted transition-colors hover:text-fg"
               onClick={onClear}
               type="button"
             >
@@ -62,7 +109,10 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
         </div>
       </div>
 
-      <div ref={scrollRef} className="modern-scrollbar max-h-28 overflow-auto pl-1 pr-1">
+      <div
+        ref={scrollRef}
+        className={cn('modern-scrollbar relative max-h-28 overflow-auto pl-1 pr-1', !expanded && 'hidden')}
+      >
         {actions.map((a, i) => (
           <LiveActionStep key={a.toolCallId} action={a} isLast={i === actions.length - 1} />
         ))}
@@ -71,10 +121,55 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
   );
 }
 
+const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
+
+/** Plain-language kinds of shell command, matched on the first recognisable verb. */
+const COMMAND_KINDS: Array<[RegExp, string]> = [
+  [/\b(pnpm|npm|yarn|bun)\s+(install|add|i|ci)\b/, 'Install packages'],
+  [/\b(pnpm|npm|yarn|bun)\s+(run\s+)?build\b|\b(vite|next)\s+build\b/, 'Build the project'],
+  [/\b(pnpm|npm|yarn|bun)\s+(run\s+)?(test|lint|typecheck|check)\b|\b(tsc|eslint|vitest|jest)\b/, 'Check the code'],
+  [/\bnpx\s+convex\b|\bconvex\s+(dev|deploy)\b/, 'Update the backend'],
+  [/^\s*git\b/, 'Use git'],
+  [/^\s*(curl|wget)\b/, 'Fetch a URL'],
+  [/^\s*(ls|cat|head|tail|find|grep|rg|wc|tree|stat|file|pwd)\b/, 'Inspect project files'],
+  [/^\s*(mkdir|cp|mv|rm|touch|chmod)\b/, 'Organise files'],
+  [/^\s*(python3?|node|tsx|deno|bash|sh)\b/, 'Run a script'],
+];
+
+function describeCommand(command: string): string | null {
+  for (const [pattern, label] of COMMAND_KINDS) if (pattern.test(command)) return label;
+  return null;
+}
+
+/**
+ * How a step reads in the list. When the agent said what a command was for,
+ * that sentence is the title; otherwise the title is the tool's name followed
+ * by what it acted on (file, search, command). Nothing is cut here — the row
+ * truncates visually and the expanded view shows everything.
+ */
+function actionSummary(action: ToolCallData): { title: string; detail: string | null; command: string | null } {
+  const args = action.args ?? {};
+  const command = str(args.command);
+  const description = str(args.description);
+  if (command && description) return { title: description, detail: null, command };
+  // No description from the agent: say what kind of command it was in plain
+  // words. The command itself is one click away in the expanded row.
+  const kind = command ? describeCommand(command) : null;
+  if (command && kind) return { title: kind, detail: null, command };
+  let detail: string | null = command ? command.split('\n')[0] : null;
+  for (const key of ['file_path', 'filePath', 'path', 'pattern', 'query', 'url']) {
+    if (detail) break;
+    detail = str(args[key]);
+  }
+  return { title: formatToolName(action.toolName), detail, command };
+}
+
 function LiveActionStep({ action, isLast }: { action: ToolCallData; isLast: boolean }) {
   const [open, setOpen] = useState(false);
   const isDone = action.status !== 'invoked';
   const isEdit = Boolean(action.fileChange);
+  const summary = actionSummary(action);
+  const detail = isEdit ? null : summary.detail;
 
   return (
     <div className="relative flex gap-2.5">
@@ -85,12 +180,12 @@ function LiveActionStep({ action, isLast }: { action: ToolCallData; isLast: bool
 
       {/* Step indicator */}
       {isDone ? (
-        <div className="relative z-10 flex shrink-0 items-center justify-center size-4 rounded-full bg-fg mt-[3px]">
-          <Check size={9} className="text-bg" />
+        <div className="relative z-10 mt-[3px] flex size-4 shrink-0 items-center justify-center rounded-full border-[1.5px] border-border bg-bg">
+          <Check size={9} className="text-muted" />
         </div>
       ) : (
-        <div className="relative z-10 flex shrink-0 items-center justify-center size-4 rounded-full border-[1.5px] border-border bg-surface mt-[3px]">
-          <Loader2 size={9} className="animate-spin text-accent" />
+        <div className="relative z-10 mt-[3px] flex size-4 shrink-0 items-center justify-center rounded-full border-[1.5px] border-border bg-bg">
+          <Loader2 size={9} className="animate-spin text-muted" />
         </div>
       )}
 
@@ -98,16 +193,21 @@ function LiveActionStep({ action, isLast }: { action: ToolCallData; isLast: bool
       <div className="flex-1 pb-2 min-w-0">
         <button
           type="button"
-          className="flex items-center gap-1.5 text-xs hover:text-accent transition-colors w-full text-left"
+          className="flex w-full items-center gap-1.5 rounded-sm text-left text-xs transition-colors"
           onClick={() => setOpen(v => !v)}
         >
-          <span className={cn('font-medium truncate', isDone ? 'text-fg' : 'text-muted')}>
-            {isEdit ? action.fileChange!.filePath : action.toolName}
+          <span className={cn('truncate text-[13px]', detail ? 'shrink-0' : 'min-w-0', isEdit && 'min-w-0 shrink font-mono text-xs', isDone ? 'text-muted' : 'text-fg')}>
+            {isEdit ? action.fileChange!.filePath : summary.title}
           </span>
+          {detail && (
+            <code className="min-w-0 truncate font-mono text-xs text-subtle" title={detail}>
+              {detail}
+            </code>
+          )}
           {isEdit && (
-            <span className="shrink-0 text-[10px] tabular-nums">
-              <span className="text-green-500">+{action.fileChange!.additions}</span>
-              <span className="text-red-500 ml-0.5">-{action.fileChange!.deletions}</span>
+            <span className="shrink-0 text-[11px] tabular-nums">
+              <span className="text-success">+{action.fileChange!.additions}</span>
+              <span className="text-danger ml-0.5">-{action.fileChange!.deletions}</span>
             </span>
           )}
           {open ? <ChevronDown size={10} className="text-muted shrink-0 ml-auto" /> : <ChevronRight size={10} className="text-muted shrink-0 ml-auto" />}
@@ -117,9 +217,16 @@ function LiveActionStep({ action, isLast }: { action: ToolCallData; isLast: bool
             {isEdit ? (
               <FileChange before={action.fileChange!.before} after={action.fileChange!.after} />
             ) : (
-              <pre className="text-[10px] overflow-auto bg-soft p-1.5 rounded border border-border whitespace-pre-wrap break-words max-h-24">
+              <>
+                {summary.command && (
+                  <pre className="mb-1 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-soft p-1.5 font-mono text-[11px] text-fg">
+                    {summary.command}
+                  </pre>
+                )}
+              <pre className="text-[11px] overflow-auto bg-soft p-1.5 rounded border border-border whitespace-pre-wrap break-words max-h-24">
                 {action.resultPreview ?? ''}
               </pre>
+              </>
             )}
           </div>
         )}
@@ -132,12 +239,12 @@ function FileChange({ before, after }: { before: string; after: string }) {
   return (
     <div className="grid grid-cols-2 gap-2">
       <div>
-        <div className="text-[10px] mb-1 text-muted">Before</div>
-        <pre className="text-[10px] overflow-auto bg-soft p-1.5 rounded border border-border whitespace-pre max-h-24">{before}</pre>
+        <div className="text-[11px] mb-1 text-muted">Before</div>
+        <pre className="text-[11px] overflow-auto bg-soft p-1.5 rounded border border-border whitespace-pre max-h-24">{before}</pre>
       </div>
       <div>
-        <div className="text-[10px] mb-1 text-muted">After</div>
-        <pre className="text-[10px] overflow-auto bg-soft p-1.5 rounded border border-border whitespace-pre max-h-24">{after}</pre>
+        <div className="text-[11px] mb-1 text-muted">After</div>
+        <pre className="text-[11px] overflow-auto bg-soft p-1.5 rounded border border-border whitespace-pre max-h-24">{after}</pre>
       </div>
     </div>
   );

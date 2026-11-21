@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, Lock } from 'lucide-react';
+import { Check, ChevronDown, Lock } from 'lucide-react';
 import { MODEL_CONFIGS, isModelDisabled, modelDisabledReason, type ModelId } from '@/lib/agent/models';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
 import type { LimitReachedPayload } from '@/components/ui/LimitModal';
 import { useClampToViewport } from '@/components/ui/use-clamp-to-viewport';
+import { BottomSheet, useIsPhone } from '@/components/ui/sheet';
 
 export interface ModelSelectorProps {
   value: ModelId;
@@ -81,8 +82,9 @@ const SERVER_KEY_MODELS = new Set<ModelId>([
 ]);
 
 /** Per-model cost hint ("x6", "x0.3") — derived from pricing; see ModelConfig.costMultiplier. */
+/** How fast a model spends credits relative to the baseline, e.g. "6× credits". */
 function costLabel(modelId: ModelId): string {
-  return `x${MODEL_CONFIGS[modelId].costMultiplier}`;
+  return `${MODEL_CONFIGS[modelId].costMultiplier}× credits`;
 }
 
 const TIER_RANK: Record<string, number> = { free: 0, pro: 1, max: 2 };
@@ -90,7 +92,7 @@ const TIER_LABELS: Record<string, string> = { pro: 'Pro', max: 'Max' };
 
 function formatContextSize(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(0)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}k`;
+  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}K`;
   return String(tokens);
 }
 
@@ -101,9 +103,13 @@ const MODEL_ORDER: ModelId[] = (Object.keys(MODEL_CONFIGS) as ModelId[])
 export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', variant = 'default', className, useTogetherKimi = false, leading, openDirection = 'down', align }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   // Keep the menu inside the window (it's right- or left-aligned to the trigger).
   const dropdownRef = useClampToViewport<HTMLDivElement>(open);
   const { toast } = useToast();
+  // On a phone the list is a bottom sheet: anchored to its button it runs
+  // under the header or off the side of the screen.
+  const isPhone = useIsPhone();
 
   /** Provider label for the dropdown badge — reflects the live Kimi→Together redirect. */
   const providerLabel = useCallback(
@@ -168,7 +174,8 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
 
   // Close on click outside
   useEffect(() => {
-    if (!open) return;
+    // The phone sheet lives outside this container and has its own backdrop.
+    if (!open || isPhone) return;
     const handler = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
@@ -176,17 +183,108 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+  }, [open, isPhone]);
 
-  // Close on Escape
+  // Close on Escape (the phone sheet handles its own)
   useEffect(() => {
-    if (!open) return;
+    if (!open || isPhone) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [open]);
+  }, [open, isPhone]);
+
+  const options = (
+    <>
+      {MODEL_ORDER.map((modelId) => {
+        const config = MODEL_CONFIGS[modelId];
+        const hasAccess = providerAccess[config.provider];
+        const isCredentialMissing = hasAccess === false;
+        const requiredTier = MODEL_SERVER_TIER[modelId] ?? 'free';
+        const userTierRank = TIER_RANK[userTier] ?? 0;
+        const requiredTierRank = TIER_RANK[requiredTier] ?? 0;
+        const isTierLocked = requiredTierRank > userTierRank && !hasAccess;
+        const isSelected = modelId === value;
+        const isDisabled = isModelDisabled(modelId);
+        const disabledReason = isDisabled ? modelDisabledReason(modelId) : '';
+
+        const tierBadge = requiredTierRank > 0 ? TIER_LABELS[requiredTier] : null;
+        // Kimi K2.7 is x3 on both providers — Together homologated to Fireworks pricing.
+        const modelCostLabel = costLabel(modelId);
+
+        return (
+          <button
+            key={modelId}
+            type="button"
+            onClick={() => handleSelect(modelId)}
+            disabled={isDisabled}
+            aria-disabled={isDisabled}
+            title={isDisabled ? disabledReason : undefined}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left transition-colors max-sm:min-h-14 max-sm:rounded-lg max-sm:px-3',
+              isSelected ? 'bg-elevated dark:bg-soft' : 'hover:bg-elevated dark:hover:bg-soft',
+              isTierLocked && 'opacity-50',
+              isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent',
+            )}
+          >
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[13px] font-medium text-fg max-sm:text-[15px]">
+                  {config.displayName}
+                </span>
+                {/* Provider is plain text; only the plan requirement is a tag. */}
+                <span className="text-xs text-muted max-sm:text-[13px]">{providerLabel(modelId)}</span>
+                {/* A locked row already says which plan it needs, beside its lock. */}
+                {tierBadge && !isTierLocked && (
+                  <span className={cn(
+                    'inline-flex items-center rounded-full border px-1.5 py-px text-[11px] font-medium',
+                    // Plan tags are tinted so they never read as a provider tag.
+                    'border-accent/25 bg-accent-soft text-accent'
+                  )}>
+                    {tierBadge}
+                  </span>
+                )}
+              </div>
+              <div className="mt-0.5 flex items-center gap-2 text-xs text-muted max-sm:text-[13px]">
+                <span>{formatContextSize(config.maxContextTokens)} context</span>
+                <span className="text-subtle">·</span>
+                <span>{modelCostLabel}</span>
+              </div>
+              {isDisabled && (
+                <div className="mt-0.5 text-xs text-muted">{disabledReason}</div>
+              )}
+            </div>
+            {isSelected && !isDisabled && <Check className="h-4 w-4 shrink-0 text-fg" aria-label="Selected" />}
+            {isDisabled && (
+              <div className="flex items-center gap-1 text-muted">
+                <Lock className="h-3 w-3" />
+                <span className="text-[11px]">Unavailable</span>
+              </div>
+            )}
+            {(!isDisabled && isCredentialMissing && !isTierLocked && !SERVER_KEY_MODELS.has(modelId)) && (
+              <div className="flex items-center gap-1 text-muted">
+                <Lock className="h-3 w-3" />
+                <span className="text-[11px]">No key</span>
+              </div>
+            )}
+            {!isDisabled && isTierLocked && (
+              <div className="flex items-center gap-1 text-muted">
+                <Lock className="h-3 w-3" />
+                <span className="text-[11px]">{tierBadge}</span>
+              </div>
+            )}
+          </button>
+        );
+      })}
+    </>
+  );
+  // Says what the multiplier is relative to.
+  const note = (className: string) => (
+    <p className={className}>
+      Rates compare models for the same token use: a 6× model costs six times the credits of a 1× model.
+    </p>
+  );
 
   const isSm = size === 'sm';
   const isComposer = variant === 'composer';
@@ -196,6 +294,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
     <div ref={containerRef} className={cn('relative pointer-events-auto', className)}>
       {/* Trigger button */}
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(v => !v)}
         aria-haspopup="listbox"
@@ -204,12 +303,12 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
           'inline-flex items-center gap-1.5 transition min-w-0',
           isComposer
             ? cn(
-                'h-6 rounded-full pl-1.5 pr-2 text-xs font-medium text-muted hover:bg-soft hover:text-foreground max-w-[200px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
-                open && 'bg-soft text-foreground',
+                'h-11 max-w-[200px] rounded-md pl-1.5 pr-2 text-[13px] font-medium text-muted hover:bg-elevated hover:text-fg md:h-7 md:text-xs',
+                open && 'bg-elevated text-fg',
               )
             : isSm
-              ? 'border bg-elevated border-border rounded-md px-2 py-1 text-xs text-muted max-w-[180px]'
-              : 'border pointer-events-auto rounded-full border-border bg-elevated px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--sand-text)] shadow-sm hover:border-transparent hover:bg-accent/15 max-w-[120px] sm:max-w-[200px]',
+              ? 'max-w-[180px] rounded-md border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-2 py-1 text-xs text-muted shadow-xs hover:border-border-strong pointer-coarse:h-9 pointer-coarse:px-2.5 pointer-coarse:text-[13px]'
+              : 'pointer-events-auto max-w-[120px] rounded-full border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-3 py-1.5 text-xs font-medium text-fg shadow-xs hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated sm:max-w-[200px] sm:text-sm pointer-coarse:h-10 pointer-coarse:max-w-[150px] pointer-coarse:px-3.5 pointer-coarse:text-sm pointer-coarse:max-[359px]:max-w-[100px] pointer-coarse:max-[359px]:px-3',
         )}
       >
         {leading != null && (
@@ -230,12 +329,23 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
         />
       </button>
 
+      {/* Phone: a bottom sheet */}
+      {open && isPhone && (
+        <BottomSheet open onClose={() => setOpen(false)} title="Choose a model" trigger={triggerRef}>
+          <div role="group" aria-label="Models" className="px-2 pb-1">
+            {options}
+          </div>
+          {note('border-t border-border px-5 py-3 text-[13px] leading-relaxed text-muted')}
+        </BottomSheet>
+      )}
+
       {/* Dropdown */}
-      {open && (
+      {open && !isPhone && (
         <div
           ref={dropdownRef}
           className={cn(
-            'absolute z-50 min-w-[min(280px,calc(100vw-16px))] max-w-[calc(100vw-16px)] max-h-[320px] overflow-y-auto modern-scrollbar rounded-xl border border-border bg-surface shadow-lg',
+            // A column: the list scrolls if it must, the note below it never does.
+            'absolute z-50 flex max-h-[calc(100dvh-7rem)] min-w-[min(288px,calc(100vw-16px))] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-xl border border-border bg-bg shadow-lg dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top',
             // 'up' opens above the trigger (bottom toolbars like the landing
             // prompt box, where a downward menu is clipped by the hero's
             // overflow-hidden); 'down' opens below (top toolbars like the agent
@@ -244,86 +354,8 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
             dropdownAlign === 'end' ? 'right-0' : 'left-0',
           )}
         >
-          {MODEL_ORDER.map((modelId) => {
-            const config = MODEL_CONFIGS[modelId];
-            const hasAccess = providerAccess[config.provider];
-            const isCredentialMissing = hasAccess === false;
-            const requiredTier = MODEL_SERVER_TIER[modelId] ?? 'free';
-            const userTierRank = TIER_RANK[userTier] ?? 0;
-            const requiredTierRank = TIER_RANK[requiredTier] ?? 0;
-            const isTierLocked = requiredTierRank > userTierRank && !hasAccess;
-            const isSelected = modelId === value;
-            const isDisabled = isModelDisabled(modelId);
-            const disabledReason = isDisabled ? modelDisabledReason(modelId) : '';
-
-            const tierBadge = requiredTierRank > 0 ? TIER_LABELS[requiredTier] : null;
-            // Kimi K2.7 is x3 on both providers — Together homologated to Fireworks pricing.
-            const modelCostLabel = costLabel(modelId);
-
-            return (
-              <button
-                key={modelId}
-                type="button"
-                onClick={() => handleSelect(modelId)}
-                disabled={isDisabled}
-                aria-disabled={isDisabled}
-                title={isDisabled ? disabledReason : undefined}
-                className={cn(
-                  'flex w-full items-center gap-3 px-3 py-2.5 text-left transition',
-                  isSelected ? 'bg-elevated' : 'hover:bg-elevated/60',
-                  isTierLocked && 'opacity-50',
-                  isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent',
-                )}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={cn('text-sm font-medium', isSelected ? 'text-foreground' : 'text-foreground')}>
-                      {config.displayName}
-                    </span>
-                    <span className="inline-flex items-center rounded-full bg-soft px-1.5 py-0.5 text-[10px] font-medium text-muted">
-                      {providerLabel(modelId)}
-                    </span>
-                    {tierBadge && (
-                      <span className={cn(
-                        'inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
-                        requiredTier === 'max'
-                          ? 'bg-accent/10 text-accent'
-                          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                      )}>
-                        {tierBadge}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 text-[11px] text-muted mt-0.5">
-                    <span>{formatContextSize(config.maxContextTokens)} context</span>
-                    <span className="text-muted/50">·</span>
-                    <span className="font-medium">{modelCostLabel}</span>
-                  </div>
-                  {isDisabled && (
-                    <div className="text-[11px] text-muted mt-0.5">{disabledReason}</div>
-                  )}
-                </div>
-                {isDisabled && (
-                  <div className="flex items-center gap-1 text-muted">
-                    <Lock className="h-3 w-3" />
-                    <span className="text-[10px]">Unavailable</span>
-                  </div>
-                )}
-                {(!isDisabled && isCredentialMissing && !isTierLocked && !SERVER_KEY_MODELS.has(modelId)) && (
-                  <div className="flex items-center gap-1 text-muted">
-                    <Lock className="h-3 w-3" />
-                    <span className="text-[10px]">no key</span>
-                  </div>
-                )}
-                {!isDisabled && isTierLocked && (
-                  <div className="flex items-center gap-1 text-muted">
-                    <Lock className="h-3 w-3" />
-                    <span className="text-[10px]">{tierBadge}</span>
-                  </div>
-                )}
-              </button>
-            );
-          })}
+          <div className="modern-scrollbar min-h-0 flex-1 overflow-y-auto p-1">{options}</div>
+          {note('shrink-0 border-t border-border px-3.5 py-2.5 text-xs leading-relaxed text-muted')}
         </div>
       )}
     </div>

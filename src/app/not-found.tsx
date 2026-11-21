@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SignedIn, SignedOut } from '@/components/auth';
 import {
   EditorialGrid,
   LandingFooter,
@@ -8,6 +9,7 @@ import {
   Reveal,
   SectionLabel,
   StaggerButton,
+  marketingSecondaryClass,
 } from '@/components/landing/shared';
 import { serif } from '@/components/landing/fonts';
 import { cn } from '@/lib/utils';
@@ -92,14 +94,19 @@ export default function NotFound() {
               </Reveal>
 
               <Reveal delay={360}>
-                <div className="mt-8 flex flex-wrap items-center gap-5">
+                <div className="mt-8 flex flex-wrap items-center gap-3">
                   <StaggerButton text="Back to home" href="/" />
-                  <Link
-                    href="/projects"
-                    className="text-sm font-medium text-[var(--sand-text-muted)] hover:text-[var(--sand-accent)] transition"
-                  >
-                    Go to my projects
-                  </Link>
+                  {/* The second action fits who is looking at it. */}
+                  <SignedIn>
+                    <Link href="/projects" className={marketingSecondaryClass}>
+                      Go to my projects
+                    </Link>
+                  </SignedIn>
+                  <SignedOut>
+                    <Link href="/sign-in" className={marketingSecondaryClass}>
+                      Log in
+                    </Link>
+                  </SignedOut>
                 </div>
               </Reveal>
             </div>
