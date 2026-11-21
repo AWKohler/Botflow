@@ -1115,8 +1115,10 @@ function ActiveSwiftSimulatorPreview({
           isPip ? "flex h-7 gap-1 px-1.5" : "flex h-9 gap-2 px-3 @max-[40rem]:h-12 @max-[40rem]:pr-1.5",
         )}
       >
+        {/* The status takes the room the actions leave and cuts its text off
+            there: a long error must not push the buttons out of the pane. */}
         <StatusPill pill={pill} compact={isPip} />
-        <div className={cn("ml-auto flex items-center", isPip ? "gap-1" : "gap-1.5")}>
+        <div className={cn("ml-auto flex shrink-0 items-center", isPip ? "gap-1" : "gap-1.5")}>
           {/* FPS counter — full mode only */}
           {!isPip && pill.kind === "live" && (
             <span className="rounded-md bg-elevated px-2 py-0.5 font-mono text-[11px] text-muted @max-[40rem]:hidden">
@@ -1352,7 +1354,12 @@ function ActiveSwiftSimulatorPreview({
           orientation={liveOrientation ?? orientation}
           overlay={
             pill.kind !== "live" ? (
-              <CenterContent pill={pill} hasCalibration={!!calibration} />
+              <CenterContent
+                pill={pill}
+                hasCalibration={!!calibration}
+                compact={isPip}
+                canRefresh={!!sessionId}
+              />
             ) : undefined
           }
           footer={
@@ -1448,8 +1455,8 @@ function StatusPill({ pill, compact = false }: { pill: PillState; compact?: bool
       return null;
     case "starting":
       return (
-        <span className={cn("flex items-center", gapCls, textCls)}>
-          <Loader2 size={icoSize} className="animate-spin text-info" />
+        <span className={cn("flex min-w-0 items-center", gapCls, textCls)}>
+          <Loader2 size={icoSize} className="shrink-0 animate-spin text-info" />
           <span className="text-fg/80 truncate">{compact ? "Starting" : pill.label}</span>
         </span>
       );
@@ -1457,8 +1464,8 @@ function StatusPill({ pill, compact = false }: { pill: PillState; compact?: bool
       return <BuildingPill startedAt={pill.startedAt} compact={compact} />;
     case "installing":
       return (
-        <span className={cn("flex items-center", gapCls, textCls)}>
-          <Loader2 size={icoSize} className="animate-spin text-success" />
+        <span className={cn("flex min-w-0 items-center", gapCls, textCls)}>
+          <Loader2 size={icoSize} className="shrink-0 animate-spin text-success" />
           <span className="text-fg/80 truncate">
             {compact ? "Installing" : "Installing on simulator…"}
           </span>
@@ -1466,15 +1473,15 @@ function StatusPill({ pill, compact = false }: { pill: PillState; compact?: bool
       );
     case "live":
       return (
-        <span className={cn("flex items-center", gapCls, textCls)}>
-          <span className="h-2 w-2 rounded-full bg-success-solid shadow-[0_0_0_3px_rgba(74,222,128,0.2)]" />
-          <span className="text-fg/80">Live</span>
+        <span className={cn("flex min-w-0 items-center", gapCls, textCls)}>
+          <span className="h-2 w-2 shrink-0 rounded-full bg-success-solid shadow-[0_0_0_3px_rgba(74,222,128,0.2)]" />
+          <span className="truncate text-fg/80">Live</span>
         </span>
       );
     case "failed":
       return (
-        <span className={cn("flex items-center text-danger", gapCls, textCls)}>
-          <span className="h-2 w-2 rounded-full bg-danger-solid" />
+        <span className={cn("flex min-w-0 items-center text-danger", gapCls, textCls)}>
+          <span className="h-2 w-2 shrink-0 rounded-full bg-danger-solid" />
           <span className="truncate">
             {compact
               ? "Build failed"
@@ -1484,18 +1491,28 @@ function StatusPill({ pill, compact = false }: { pill: PillState; compact?: bool
       );
     case "ended":
       return (
-        <span className={cn("flex items-center", gapCls, textCls)}>
-          <span className="h-2 w-2 rounded-full bg-muted" />
-          <span className="text-muted">{compact ? "Ended" : "Session ended"}</span>
+        <span className={cn("flex min-w-0 items-center", gapCls, textCls)}>
+          <span className="h-2 w-2 shrink-0 rounded-full bg-muted" />
+          <span className="truncate text-muted">{compact ? "Ended" : "Session ended"}</span>
         </span>
       );
     case "error":
       return (
-        <span className={cn("flex items-center text-danger", gapCls, textCls)}>
-          <span className="h-2 w-2 rounded-full bg-danger-solid" />
-          <span className="truncate" title={pill.message}>
-            {compact ? "Error" : pill.message}
-          </span>
+        <span className={cn("flex min-w-0 items-center text-danger", gapCls, textCls)}>
+          <span className="h-2 w-2 shrink-0 rounded-full bg-danger-solid" />
+          {/* One line, cut off where the actions begin. A narrow pane has room
+              for a few words only, so it names the state instead. Either way
+              the whole message is on the device's screen (see CenterContent). */}
+          {compact ? (
+            <span className="truncate" title={pill.message}>Error</span>
+          ) : (
+            <>
+              <span className="truncate @max-[40rem]:hidden" title={pill.message}>
+                {pill.message}
+              </span>
+              <span className="hidden truncate @max-[40rem]:inline">Preview error</span>
+            </>
+          )}
         </span>
       );
   }
@@ -1509,9 +1526,9 @@ function BuildingPill({ startedAt, compact = false }: { startedAt: number; compa
   }, []);
   const seconds = Math.floor((now - startedAt) / 1000);
   return (
-    <span className={cn("flex items-center", compact ? "gap-1.5 text-[11px]" : "gap-2 text-xs")}>
-      <Loader2 size={compact ? 10 : 12} className="animate-spin text-warning" />
-      <span className="text-fg/80">
+    <span className={cn("flex min-w-0 items-center", compact ? "gap-1.5 text-[11px]" : "gap-2 text-xs")}>
+      <Loader2 size={compact ? 10 : 12} className="shrink-0 animate-spin text-warning" />
+      <span className="truncate text-fg/80">
         Building <span className="font-mono text-muted">{formatTimer(seconds)}</span>
       </span>
     </span>
@@ -1529,11 +1546,47 @@ function formatTimer(seconds: number): string {
 function CenterContent({
   pill,
   hasCalibration,
+  compact = false,
+  canRefresh = false,
 }: {
   pill: PillState;
   hasCalibration: boolean;
+  compact?: boolean;
+  /** Refresh build is available (there is a session to rebuild). */
+  canRefresh?: boolean;
 }): React.JSX.Element | null {
   if (pill.kind === "live") return null;
+  if (pill.kind === "error") {
+    // The toolbar has room for a few words; the message is given in full here,
+    // wrapped, and cut off only when it is very long.
+    return (
+      <div className={cn("min-w-0 max-w-sm text-center", compact ? "px-2" : "px-5")}>
+        <p className={cn("font-semibold text-red-400", compact ? "mb-1 text-xs" : "mb-2")}>
+          Preview error
+        </p>
+        <p
+          className={cn(
+            "text-white/70 [overflow-wrap:anywhere]",
+            compact ? "line-clamp-3 text-[11px]" : "line-clamp-6 text-xs",
+          )}
+        >
+          {pill.message}
+        </p>
+        {!compact && (
+          <p className="mt-2 text-xs text-white/70">
+            {canRefresh ? (
+              <>
+                Try <span className="text-white">Refresh build</span>, or stop the preview
+                and start it again.
+              </>
+            ) : (
+              "Stop the preview and start it again."
+            )}
+          </p>
+        )}
+      </div>
+    );
+  }
   if (pill.kind === "failed") {
     return (
       <div className="max-w-sm px-5 text-center">
