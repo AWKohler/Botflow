@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { HTMLAttributes } from "react";
+import { forwardRef, type HTMLAttributes } from "react";
 
 export type BadgeTone = "neutral" | "accent" | "success" | "warning" | "danger" | "info";
 
@@ -31,15 +31,13 @@ export function Badge({
 }
 
 /** A tinted inline message block (callout) in one of the status tones. */
-export function Notice({
-  tone = "neutral",
-  className,
-  ...props
-}: HTMLAttributes<HTMLDivElement> & { tone?: BadgeTone }) {
-  return (
+export const Notice = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement> & { tone?: BadgeTone }>(
+  ({ tone = "neutral", className, ...props }, ref) => (
     <div
+      ref={ref}
       className={cn("rounded-lg border px-3 py-2.5 text-[13px] leading-relaxed", tones[tone], className)}
       {...props}
     />
-  );
-}
+  ),
+);
+Notice.displayName = "Notice";

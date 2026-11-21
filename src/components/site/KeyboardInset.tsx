@@ -41,8 +41,15 @@ export function KeyboardInset() {
         if (opened) {
           requestAnimationFrame(() =>
             requestAnimationFrame(() => {
+              // Only a real text field. Not the code editor's hidden textarea
+              // or the preview frame: scrolling those "into view" could shift a
+              // pane of the full-screen workspace with no way to scroll it back.
               const active = document.activeElement;
-              if (active instanceof HTMLElement && active !== document.body) {
+              if (
+                active instanceof HTMLElement &&
+                (active.matches('input, textarea, select') || active.isContentEditable) &&
+                !active.closest('.monaco-editor')
+              ) {
                 active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
               }
             }),

@@ -1909,7 +1909,8 @@ export default function LandingV2() {
 
             {/* Prompt box */}
             <Reveal delay={250} className="relative z-40">
-              <div className="w-full mt-8">
+              {/* Phone: inset a little, so the box's border does not sit on the margin rails. */}
+              <div className="mt-8 w-full max-sm:px-1.5">
                 {/* Platform tabs — sit on top of the prompt box; the selected
                     tab's accent color frames the box. Web is the default; Swift
                     is available to Pro/Max and beta users (shows a lock until

@@ -16,6 +16,7 @@ import { FileCode2 } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { NARROW_QUERY, useMediaQuery } from "@/components/ui/use-media-query";
+import { scrollRowFade, useScrollRow } from "@/components/ui/use-scroll-row";
 import { FileSearch } from "./file-search";
 import { SandboxGitHubPanel } from "@/components/sandboxed-web-workspace/github-panel";
 import { SwiftSimulatorPreview } from "./swift-simulator-preview";
@@ -101,6 +102,7 @@ export function PersistentWorkspace({
   const narrow = useMediaQuery(NARROW_QUERY);
   const [sidebarTab, setSidebarTab] = useState<"files" | "search" | "env" | "git">("files");
   const [currentView, setCurrentView] = useState<WorkspaceView>("code");
+  const viewTabs = useScrollRow<HTMLDivElement>(currentView);
   // When a build-error row is clicked, we open the file and ask the editor to
   // reveal a specific line. The counter is bumped on every click so that
   // re-clicking the SAME row still triggers a reveal (Monaco won't otherwise
@@ -578,7 +580,15 @@ export function PersistentWorkspace({
         {/* Header */}
         <div className="@container flex h-12 shrink-0 items-center gap-2 pl-2.5 pr-2.5 md:pl-0">
           {/* Up to four tabs: on a phone they scroll sideways rather than push the actions off. */}
-          <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div
+            ref={viewTabs.ref}
+            // The current tab is kept in view and the row fades where it runs on;
+            // the vertical padding leaves room for a tab's focus ring.
+            className={cn(
+              "-my-1 min-w-0 shrink overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+              scrollRowFade(viewTabs.more),
+            )}
+          >
           <Tabs
             options={
               [

@@ -337,7 +337,7 @@ export function AccountPanel() {
             className={cn(
               "relative mt-5 flex gap-1 md:mt-6 md:flex-col",
               "max-md:-mx-6 max-md:overflow-x-auto max-md:px-6 max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden",
-              "max-md:[mask-image:linear-gradient(to_right,transparent,black_1.25rem,black_calc(100%-2.5rem),transparent)]",
+              "max-md:[mask-image:linear-gradient(to_right,transparent,black_2rem,black_calc(100%-2.5rem),transparent)]",
             )}
           >
             {tabs.map((t) => (

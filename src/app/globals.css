@@ -498,8 +498,16 @@ body {
     background:
         linear-gradient(to right, var(--scroll-cue-bg, var(--color-surface)) 30%, transparent) left center / 2.5rem 100% no-repeat local,
         linear-gradient(to left, var(--scroll-cue-bg, var(--color-surface)) 30%, transparent) right center / 2.5rem 100% no-repeat local,
-        linear-gradient(to right, rgb(0 0 0 / 0.1), transparent) left center / 0.75rem 100% no-repeat scroll,
-        linear-gradient(to left, rgb(0 0 0 / 0.1), transparent) right center / 0.75rem 100% no-repeat scroll;
+        linear-gradient(to right, var(--scroll-cue-shadow, rgb(0 0 0 / 0.1)), transparent) left center / 0.75rem 100% no-repeat scroll,
+        linear-gradient(to left, var(--scroll-cue-shadow, rgb(0 0 0 / 0.1)), transparent) right center / 0.75rem 100% no-repeat scroll;
+}
+
+/* On a dark surface a 10% shadow disappears: a deeper one, a little wider. */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .scroll-cue-x {
+        --scroll-cue-shadow: rgb(0 0 0 / 0.55);
+        background-size: 2.5rem 100%, 2.5rem 100%, 1.25rem 100%, 1.25rem 100%;
+    }
 }
 
 /* On iOS Monaco adds its own "show keyboard" control over the bottom-right of

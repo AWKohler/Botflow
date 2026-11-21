@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Globe,
   Plus,
@@ -76,9 +76,14 @@ function CopyBtn({ value }: { value: string }) {
   );
 }
 
+/** An error line; when it appears it is scrolled into view (inside a dialog it can be below the fold). */
 function ErrorNotice({ children, className }: { children: React.ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView({ block: 'nearest' });
+  }, [children]);
   return (
-    <Notice tone="danger" className={className}>
+    <Notice ref={ref} role="alert" tone="danger" className={className}>
       <span className="flex items-start gap-2">
         <AlertCircle size={14} className="mt-0.5 shrink-0" />
         <span>{children}</span>

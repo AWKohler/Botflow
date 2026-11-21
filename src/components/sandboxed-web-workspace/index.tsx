@@ -70,6 +70,7 @@ import type { PreviewInfo } from "@/lib/preview-store";
 import { buildPreviewUrl } from "@/lib/preview-url";
 import { cn } from "@/lib/utils";
 import { NARROW_QUERY, useMediaQuery } from "@/components/ui/use-media-query";
+import { scrollRowFade, useScrollRow } from "@/components/ui/use-scroll-row";
 import {
   normalizeBackendType,
   projectUsesConvex,
@@ -173,6 +174,7 @@ export function SandboxedWebWorkspace({
   const [projectName, setProjectName] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>("preview");
+  const viewTabs = useScrollRow<HTMLDivElement>(currentView);
 
   // ── Preview / dev server ─────────────────────────────────────────────
   const [previews, setPreviews] = useState<PreviewInfo[]>([]);
@@ -1401,7 +1403,15 @@ export function SandboxedWebWorkspace({
         <div className="@container flex h-12 shrink-0 items-center gap-2 pl-2.5 pr-2.5 md:pl-0">
           {/* Up to four tabs (a backend adds Database, payments adds Stripe): in a
               narrow pane they scroll sideways rather than push Share and Publish off. */}
-          <div className="min-w-0 shrink overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div
+            ref={viewTabs.ref}
+            // The current tab is kept in view and the row fades where it runs on;
+            // the vertical padding leaves room for a tab's focus ring.
+            className={cn(
+              "-my-1 min-w-0 shrink overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+              scrollRowFade(viewTabs.more),
+            )}
+          >
           <Tabs
             options={
               [
