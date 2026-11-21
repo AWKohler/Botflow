@@ -358,7 +358,8 @@ export function CodeEditor({
         occurrencesHighlight: 'singleFile',
         overviewRulerBorder: false,
         overviewRulerLanes: 3,
-        padding: { top: 12, bottom: 12 },
+        // Phone: room to scroll the last lines clear of the corner keyboard control.
+        padding: { top: 12, bottom: narrow ? 56 : 12 },
         parameterHints: { enabled: !disabled },
         quickSuggestionsDelay: 10,
         renderControlCharacters: false,
