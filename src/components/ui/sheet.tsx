@@ -51,9 +51,11 @@ export const phoneSheetBodyClass = "max-sm:max-h-[calc(85dvh-4.25rem)] max-sm:ov
  * The panel and its click-away layer must share one wrapper element, because
  * everything outside the panel's root is made inert.
  */
-export function usePhoneSheetModal<T extends HTMLElement>(open: boolean) {
+export function usePhoneSheetModal<T extends HTMLElement>(open: boolean, onClose?: () => void) {
   const isPhone = useIsPhone();
-  const ref = useModal<T>(open && isPhone);
+  // Escape goes through the modal stack, so only the top modal answers it. The
+  // popover's own Escape listener should stand down while `isPhone` is true.
+  const ref = useModal<T>(open && isPhone, onClose);
   return {
     isPhone,
     props: { ref, role: "dialog", "aria-modal": isPhone || undefined, tabIndex: -1 } as const,

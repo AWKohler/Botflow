@@ -140,7 +140,8 @@ export function SandboxPublishPanel({
   const [cnameBusy, setCnameBusy] = useState(false);
   const [cnameErr, setCnameErr] = useState<string | null>(null);
 
-  const sheet = usePhoneSheetModal<HTMLDivElement>(isOpen);
+  const sheet = usePhoneSheetModal<HTMLDivElement>(isOpen, onClose);
+  const sheetIsPhone = sheet.isPhone;
   const titleId = useId();
 
   // Position panel under the anchor button
@@ -160,10 +161,11 @@ export function SandboxPublishPanel({
   // ESC to close
   useEffect(() => {
     if (!isOpen) return;
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    // As a phone sheet it is a modal, and the modal stack handles Escape.
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !sheetIsPhone) onClose(); };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, sheetIsPhone]);
 
   // Auto-scroll logs
   useEffect(() => { logsEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [logs]);
@@ -411,7 +413,8 @@ export function SandboxPublishPanel({
           "fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-bg outline-none dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top shadow-xl",
           phoneSheetClass,
         )}
-        style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
+        // As a sheet it is placed by its classes alone.
+        style={sheet.isPhone ? undefined : position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
       >
         <div aria-hidden="true" className={phoneSheetGrabberClass} />
         <div className={cn("flex items-center justify-between border-b border-border px-4 py-3", phoneSheetTitleClass)}>

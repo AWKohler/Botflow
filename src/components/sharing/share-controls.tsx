@@ -301,14 +301,16 @@ function SharePopover({
   const [email, setEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [position, setPosition] = useState<AnchoredPosition | null>(null);
-  const sheet = usePhoneSheetModal<HTMLDivElement>(true);
+  const sheet = usePhoneSheetModal<HTMLDivElement>(true, onClose);
+  const sheetIsPhone = sheet.isPhone;
   const titleId = useId();
 
   const isOwner = state?.role === "owner";
 
   useEffect(() => {
     setPosition(positionFrom(anchorRef.current));
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // As a phone sheet it is a modal, and the modal stack handles Escape.
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !sheetIsPhone && onClose();
     const onResize = () => setPosition(positionFrom(anchorRef.current));
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", onResize);
@@ -316,7 +318,7 @@ function SharePopover({
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", onResize);
     };
-  }, [anchorRef, onClose]);
+  }, [anchorRef, onClose, sheetIsPhone]);
 
   const submitInvite = async () => {
     const value = email.trim();
@@ -405,7 +407,8 @@ function SharePopover({
           "fixed z-50 w-[420px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-bg outline-none dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top shadow-xl",
           phoneSheetClass,
         )}
-        style={position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
+        // As a sheet it is placed by its classes alone.
+        style={sheet.isPhone ? undefined : position ? { top: position.top, right: position.right } : { top: 60, right: 16 }}
       >
         <div aria-hidden="true" className={phoneSheetGrabberClass} />
         {/* Same layout as the Publish popover: title row, divider, body. */}

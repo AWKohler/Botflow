@@ -1723,7 +1723,7 @@ export function SandboxedWebWorkspace({
                   <button
                     type="button"
                     onClick={() => setShowSidebar(true)}
-                    className="flex h-9 shrink-0 items-center gap-0.5 rounded-md pl-1 pr-2 text-sm font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
+                    className="flex h-11 shrink-0 items-center gap-0.5 rounded-md pl-1.5 pr-2.5 text-sm font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
                   >
                     <ChevronLeft size={16} />
                     Files

@@ -84,6 +84,22 @@ export function AccountPanel() {
   const [accounts, setAccounts] = useState<
     { id: string; providerId: string; accountId: string }[]
   >([]);
+  // The tier the account actually has. It can be above the paid plan (access
+  // granted to the account), and the Usage tab reports allowances by tier, so
+  // the plan card says so instead of a bare "Free".
+  const [accessTier, setAccessTier] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/user/plan")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { tier?: string } | null) => {
+        if (!cancelled && d?.tier) setAccessTier(d.tier);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [subscription, setSubscription] = useState<{
     plan: string;
     status: string;
@@ -272,6 +288,10 @@ export function AccountPanel() {
     { id: "connections", label: "Connections", icon: Plug },
     { id: "billing", label: "Plan and billing", icon: CreditCard },
   ];
+  const PLAN_RANK: Record<string, number> = { free: 0, pro: 1, max: 2 };
+  const paidPlan = subscription?.plan ?? "free";
+  const grantedTier =
+    accessTier && (PLAN_RANK[accessTier] ?? 0) > (PLAN_RANK[paidPlan] ?? 0) ? accessTier : null;
   const socialAccounts = accounts.filter((a) => a.providerId !== "credential");
   const thisDevice = session.session as unknown as Session;
   const deviceRows: Session[] = sessions.length ? sessions : [thisDevice];
@@ -783,7 +803,7 @@ export function AccountPanel() {
                           <span className="truncate">{describeDevice(s.userAgent)}</span>
                           {s.id === session.session.id && <Badge tone="accent">This device</Badge>}
                         </p>
-                        <p className="mt-0.5 truncate text-xs text-muted">
+                        <p className="mt-0.5 text-xs text-muted sm:truncate">
                           {s.ipAddress ? `${s.ipAddress} · ` : ""}Signed in until{" "}
                           {new Date(s.expiresAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                         </p>
@@ -901,6 +921,12 @@ export function AccountPanel() {
                       </p>
                     ) : (
                       <p className="mt-1 text-sm text-muted">No recurring charge</p>
+                    )}
+                    {grantedTier && (
+                      <p className="mt-2 max-w-sm text-[13px] leading-relaxed text-muted">
+                        Your account has <span className="font-medium capitalize text-fg">{grantedTier}</span> access
+                        at no charge, so your models and credit allowance are {grantedTier === "max" ? "Max" : "Pro"}&apos;s.
+                      </p>
                     )}
                   </div>
                   {!subscription?.migrationPending && (

@@ -114,6 +114,13 @@ const capabilities = [
 // Code block — minimal syntax-colored display (no highlighter dep)
 // ============================================================================
 
+/** Padding and a negative first-line indent, so a wrapped line of code continues under its own indentation. */
+function hangingIndent(tokens: { text: string }[]): React.CSSProperties {
+  const text = tokens.map((t) => t.text).join('');
+  const indent = text.length - text.trimStart().length + 2;
+  return { paddingLeft: `${indent}ch`, textIndent: `-${indent}ch` };
+}
+
 function CodeBlock({
   filename,
   lines,
@@ -138,7 +145,11 @@ function CodeBlock({
               {i + 1}
             </span>
             {/* Phone: long lines wrap instead of running out of the card. */}
-            <span className="whitespace-pre max-sm:min-w-0 max-sm:whitespace-pre-wrap max-sm:[overflow-wrap:anywhere]">
+            <span
+              className="whitespace-pre max-sm:min-w-0 max-sm:whitespace-pre-wrap max-sm:[overflow-wrap:anywhere]"
+              // A wrapped line continues two columns in from its own indentation.
+              style={hangingIndent(line.tokens)}
+            >
               {line.tokens.length === 0 ? '\u00A0' : line.tokens.map((t, ti) => (
                 <span key={ti} style={t.color ? { color: t.color } : undefined}>
                   {t.text}

@@ -90,6 +90,13 @@ export function PricingTable(props: {
   // is known the cards show no action at all, never a wrong one.
   const [currentPlan, setCurrentPlan] = useState<string | null>(null);
   const [planLookupFailed, setPlanLookupFailed] = useState(false);
+  // Access granted to the account above what it pays for (the Usage page
+  // reports allowances by this tier): that card is marked, so "Current plan:
+  // Free" is never shown beside Pro allowances without a word.
+  const [accessTier, setAccessTier] = useState<string | null>(null);
+  const RANK: Record<string, number> = { free: 0, pro: 1, max: 2 };
+  const grantedPlan =
+    currentPlan && accessTier && (RANK[accessTier] ?? 0) > (RANK[currentPlan] ?? 0) ? accessTier : null;
   const planKnown = isLoaded && (!isSignedIn || currentPlan !== null || planLookupFailed);
   useEffect(() => {
     if (!isSignedIn) {
@@ -97,6 +104,12 @@ export function PricingTable(props: {
       return;
     }
     let cancelled = false;
+    fetch("/api/user/plan")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { tier?: string } | null) => {
+        if (!cancelled && d?.tier) setAccessTier(d.tier);
+      })
+      .catch(() => {});
     fetch("/api/billing/status")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
@@ -164,7 +177,8 @@ export function PricingTable(props: {
               {id === "pro" && <div aria-hidden="true" className="absolute inset-x-0 top-0 h-[2px] bg-accent" />}
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">{plan.name}</h2>
-                {isCurrent && <Badge>Current plan</Badge>}
+                {isCurrent && !grantedPlan && <Badge>Current plan</Badge>}
+                {grantedPlan === id && <Badge tone="accent">Your access</Badge>}
               </div>
               {/* Fixed-height slot so prices and buttons line up across cards. */}
               <p className="mt-2 min-h-[2.75rem] text-sm leading-snug text-muted">
@@ -190,7 +204,9 @@ export function PricingTable(props: {
                   }
                 >
                   {isCurrent
-                    ? "Current plan"
+                    ? grantedPlan
+                      ? "No subscription"
+                      : "Current plan"
                     : busy === id
                       ? "Please wait…"
                       : id === "free"

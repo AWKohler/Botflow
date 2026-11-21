@@ -318,7 +318,7 @@ export function CodeEditor({
         lineNumbersMinChars: narrow ? 3 : 5,
         lineDecorationsWidth: narrow ? 8 : 10,
         folding: !narrow,
-        glyphMargin: false,
+        glyphMargin: !narrow,
         roundedSelection: false,
         scrollBeyondLastLine: false,
         automaticLayout: true,

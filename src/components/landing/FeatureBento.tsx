@@ -342,8 +342,10 @@ export function FeatureBento({
         </div>
       </Tile>
 
-      {/* 6 — Webcam → Simulator */}
-      <Tile delay={0}>
+      {/* 6 — Webcam → Simulator. In the one- and two-column layouts the tile
+          is given height and the screenshot is shown whole-width, fading out
+          downward; in the wide grid it bleeds off the corner. */}
+      <Tile delay={0} className="min-h-[330px] lg:min-h-0">
         <div className="flex h-full flex-col p-6">
           {/*<Eyebrow>Simulator superpowers</Eyebrow>*/}
           <Title className="text-[17px]">
@@ -360,31 +362,19 @@ export function FeatureBento({
 
             <div
               aria-hidden
-              className="pointer-events-none absolute left-6 right-0 top-[15px] bottom-0"
+              className="pointer-events-none absolute left-6 right-6 top-[15px] bottom-0 lg:right-0"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/bento/sim-light.png"
                 alt=""
-                className="absolute left-0 top-0 w-[110%] max-w-none rounded-md border border-border block dark:hidden"
-                style={{
-                  WebkitMaskImage:
-                    "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-                  maskImage:
-                    "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-                }}
+                className="absolute left-0 top-0 w-full max-w-none rounded-md border border-border block dark:hidden lg:w-[110%] [mask-image:linear-gradient(to_bottom,#000_55%,transparent)] lg:[mask-image:linear-gradient(to_bottom_right,#000_26%,transparent_74%)]"
               />
 
               <img
                 src="/bento/sim-dark.png"
                 alt=""
-                className="absolute left-0 top-0 w-[110%] max-w-none rounded-tl-md border border-border hidden dark:block"
-                style={{
-                  WebkitMaskImage:
-                    "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-                  maskImage:
-                    "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-                }}
+                className="absolute left-0 top-0 w-full max-w-none rounded-md border border-border hidden dark:block lg:w-[110%] lg:rounded-none lg:rounded-tl-md [mask-image:linear-gradient(to_bottom,#000_55%,transparent)] lg:[mask-image:linear-gradient(to_bottom_right,#000_26%,transparent_74%)]"
               />
             </div>
           </div>
@@ -435,31 +425,19 @@ export function FeatureBento({
       <Tile delay={180} className="min-h-[300px] lg:min-h-0">
         <div
           aria-hidden
-          className="pointer-events-none absolute left-6 right-0 top-[100px] bottom-0"
+          className="pointer-events-none absolute left-6 right-6 top-[76px] bottom-0 lg:right-0 lg:top-[100px]"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/bento/convex-dash-light.png"
             alt=""
-            className="absolute left-0 top-0 w-[128%] max-w-none rounded-tl-md border border-white/10 block dark:hidden"
-            style={{
-              WebkitMaskImage:
-                "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-              maskImage:
-                "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-            }}
+            className="absolute left-0 top-0 w-full max-w-none rounded-md border border-border block dark:hidden lg:w-[128%] lg:rounded-none lg:rounded-tl-md lg:border-white/10 [mask-image:linear-gradient(to_bottom,#000_55%,transparent)] lg:[mask-image:linear-gradient(to_bottom_right,#000_26%,transparent_74%)]"
           />
 
           <img
             src="/bento/convex-dash-dark.png"
             alt=""
-            className="absolute left-0 top-0 w-[128%] max-w-none rounded-tl-md border border-white/10 hidden dark:block"
-            style={{
-              WebkitMaskImage:
-                "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-              maskImage:
-                "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-            }}
+            className="absolute left-0 top-0 w-full max-w-none rounded-md border border-white/10 hidden dark:block lg:w-[128%] lg:rounded-none lg:rounded-tl-md [mask-image:linear-gradient(to_bottom,#000_55%,transparent)] lg:[mask-image:linear-gradient(to_bottom_right,#000_26%,transparent_74%)]"
           />
         </div>
         <div className="relative z-10 p-6">

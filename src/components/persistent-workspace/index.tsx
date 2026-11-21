@@ -805,7 +805,7 @@ export function PersistentWorkspace({
                   <button
                     type="button"
                     onClick={() => setShowSidebar(true)}
-                    className="flex h-9 shrink-0 items-center gap-0.5 rounded-md pl-1 pr-2 text-sm font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
+                    className="flex h-11 shrink-0 items-center gap-0.5 rounded-md pl-1.5 pr-2.5 text-sm font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
                   >
                     <ChevronLeft size={16} />
                     Files
@@ -868,7 +868,7 @@ export function PersistentWorkspace({
                 <ChevronRight size={12} className={cn("transition-transform", terminalOpen === null ? "md:rotate-90" : terminalOpen && "rotate-90")} />
                 Terminal
               </button>
-              <div className={cn("h-36", terminalOpen === null ? "max-md:hidden" : !terminalOpen && "hidden")}>
+              <div className={cn("h-36 md:h-44", terminalOpen === null ? "max-md:hidden" : !terminalOpen && "hidden")}>
                 <PersistentTerminal projectId={projectId} ready={sandboxStatus === "ready"} />
               </div>
             </div>
