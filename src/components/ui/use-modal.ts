@@ -108,7 +108,11 @@ export function useModal<T extends HTMLElement>(open: boolean, onClose?: () => v
       // that closes should not do that on its own.
       const raisesKeyboard =
         !!opener &&
-        (opener.tagName === "TEXTAREA" || opener.tagName === "INPUT" || opener.isContentEditable) &&
+        // Text fields only: a checkbox or radio does not raise the keyboard and keeps normal focus return.
+        (opener.tagName === "TEXTAREA" ||
+          (opener instanceof HTMLInputElement &&
+            !["checkbox", "radio", "button", "submit", "reset", "range", "file", "color"].includes(opener.type)) ||
+          opener.isContentEditable) &&
         window.matchMedia("(pointer: coarse)").matches;
       if (opener && document.contains(opener) && !raisesKeyboard) opener.focus({ preventScroll: true });
     };

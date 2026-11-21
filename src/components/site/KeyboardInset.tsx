@@ -27,6 +27,7 @@ export function KeyboardInset() {
     const touch = window.matchMedia('(pointer: coarse)');
     let last = -1;
     let pinning = 0;
+    let revealing = 0;
     const apply = () => {
       const zoomed = Math.abs(vv.scale - 1) > 0.01;
       const covered = zoomed || !touch.matches ? 0 : window.innerHeight - vv.height;
@@ -39,8 +40,9 @@ export function KeyboardInset() {
         // Panels above the keyboard have just become shorter: once they have
         // been laid out, bring the field being typed in back into view.
         if (opened) {
-          requestAnimationFrame(() =>
-            requestAnimationFrame(() => {
+          cancelAnimationFrame(revealing);
+          revealing = requestAnimationFrame(() => {
+            revealing = requestAnimationFrame(() => {
               // Only a real text field. Not the code editor's hidden textarea
               // or the preview frame: scrolling those "into view" could shift a
               // pane of the full-screen workspace with no way to scroll it back.
@@ -52,8 +54,8 @@ export function KeyboardInset() {
               ) {
                 active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
               }
-            }),
-          );
+            });
+          });
         }
       }
       // At most once a frame, so it settles rather than fights Safari's own scrolling.
@@ -71,6 +73,7 @@ export function KeyboardInset() {
     return () => {
       touch.removeEventListener('change', apply);
       cancelAnimationFrame(pinning);
+      cancelAnimationFrame(revealing);
       vv.removeEventListener('resize', apply);
       vv.removeEventListener('scroll', apply);
       root.style.removeProperty('--keyboard-inset');
