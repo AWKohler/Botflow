@@ -37,10 +37,19 @@ if (typeof document !== "undefined") {
  *  - focus returns to whatever opened it.
  * Attach the returned ref to the panel and give the panel `tabIndex={-1}`.
  */
-export function useModal<T extends HTMLElement>(open: boolean, onClose?: () => void) {
+export function useModal<T extends HTMLElement>(
+  open: boolean,
+  onClose?: () => void,
+  /** The control that opens this modal, when the caller has it. Safari does not
+   *  focus a button that is tapped or clicked, so focus history alone cannot
+   *  tell where to return to there. */
+  trigger?: { current: HTMLElement | null },
+) {
   const ref = useRef<T>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const triggerRef = useRef(trigger);
+  triggerRef.current = trigger;
 
   useEffect(() => {
     const panel = ref.current;
@@ -48,9 +57,11 @@ export function useModal<T extends HTMLElement>(open: boolean, onClose?: () => v
 
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const opener =
-      active && !panel.contains(active)
+      active && active !== document.body && !panel.contains(active)
         ? active
-        : ([...focusHistory].reverse().find((el) => !panel.contains(el) && document.contains(el)) ?? null);
+        : (triggerRef.current?.current ??
+          [...focusHistory].reverse().find((el) => !panel.contains(el) && document.contains(el)) ??
+          null);
     stack.push(panel);
 
     const inerted: Element[] = [];

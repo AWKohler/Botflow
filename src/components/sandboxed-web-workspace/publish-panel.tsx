@@ -140,7 +140,7 @@ export function SandboxPublishPanel({
   const [cnameBusy, setCnameBusy] = useState(false);
   const [cnameErr, setCnameErr] = useState<string | null>(null);
 
-  const sheet = usePhoneSheetModal<HTMLDivElement>(isOpen, onClose);
+  const sheet = usePhoneSheetModal<HTMLDivElement>(isOpen, onClose, anchorRef);
   const sheetIsPhone = sheet.isPhone;
   const titleId = useId();
 

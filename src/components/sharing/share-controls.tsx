@@ -301,7 +301,7 @@ function SharePopover({
   const [email, setEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [position, setPosition] = useState<AnchoredPosition | null>(null);
-  const sheet = usePhoneSheetModal<HTMLDivElement>(true, onClose);
+  const sheet = usePhoneSheetModal<HTMLDivElement>(true, onClose, anchorRef);
   const sheetIsPhone = sheet.isPhone;
   const titleId = useId();
 

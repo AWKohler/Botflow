@@ -53,11 +53,15 @@ export const phoneSheetBodyClass =
  * The panel and its click-away layer must share one wrapper element, because
  * everything outside the panel's root is made inert.
  */
-export function usePhoneSheetModal<T extends HTMLElement>(open: boolean, onClose?: () => void) {
+export function usePhoneSheetModal<T extends HTMLElement>(
+  open: boolean,
+  onClose?: () => void,
+  trigger?: { current: HTMLElement | null },
+) {
   const isPhone = useIsPhone();
   // Escape goes through the modal stack, so only the top modal answers it. The
   // popover's own Escape listener should stand down while `isPhone` is true.
-  const ref = useModal<T>(open && isPhone, onClose);
+  const ref = useModal<T>(open && isPhone, onClose, trigger);
   return {
     isPhone,
     props: { ref, role: "dialog", "aria-modal": isPhone || undefined, tabIndex: -1 } as const,
@@ -83,9 +87,12 @@ export function BottomSheet({
   footer,
   className,
   zIndex = 200,
+  trigger,
 }: {
   open: boolean;
   onClose: () => void;
+  /** The control that opened the sheet; focus returns to it on close. */
+  trigger?: { current: HTMLElement | null };
   title: ReactNode;
   description?: ReactNode;
   children: ReactNode;
@@ -93,7 +100,7 @@ export function BottomSheet({
   className?: string;
   zIndex?: number;
 }) {
-  const panelRef = useModal<HTMLDivElement>(open, onClose);
+  const panelRef = useModal<HTMLDivElement>(open, onClose, trigger);
   const titleId = useId();
   const descriptionId = useId();
 

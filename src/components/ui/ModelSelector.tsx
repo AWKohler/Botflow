@@ -103,6 +103,7 @@ const MODEL_ORDER: ModelId[] = (Object.keys(MODEL_CONFIGS) as ModelId[])
 export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', variant = 'default', className, useTogetherKimi = false, leading, openDirection = 'down', align }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   // Keep the menu inside the window (it's right- or left-aligned to the trigger).
   const dropdownRef = useClampToViewport<HTMLDivElement>(open);
   const { toast } = useToast();
@@ -293,6 +294,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
     <div ref={containerRef} className={cn('relative pointer-events-auto', className)}>
       {/* Trigger button */}
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(v => !v)}
         aria-haspopup="listbox"
@@ -329,7 +331,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
 
       {/* Phone: a bottom sheet */}
       {open && isPhone && (
-        <BottomSheet open onClose={() => setOpen(false)} title="Choose a model">
+        <BottomSheet open onClose={() => setOpen(false)} title="Choose a model" trigger={triggerRef}>
           <div role="group" aria-label="Models" className="px-2 pb-1">
             {options}
           </div>
