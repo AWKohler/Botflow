@@ -1,11 +1,12 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { BrandMark } from "@/components/site/SiteHeader";
-import { AuthArt, AuthArtBand } from "./auth-art";
+import { AuthArt } from "./auth-art";
 
 /**
  * Split layout shared by /sign-in and /sign-up: the form on the left under
  * the brand mark, and a painted canvas on the right in the brand's colours.
+ * Phones get the form alone: the painting only shows from the md breakpoint.
  */
 export function AuthShell({ children }: { children: ReactNode }) {
   return (
@@ -16,8 +17,6 @@ export function AuthShell({ children }: { children: ReactNode }) {
             <BrandMark />
           </Link>
         </div>
-        {/* Phone: the painting from the larger layout, as a band above the form. */}
-        <AuthArtBand className="mx-4 h-20 shrink-0 md:hidden" />
         <div className="flex flex-1 items-start justify-center px-2 pb-12 pt-4 md:items-center md:pb-16 md:pt-0">
           <div className="w-full max-w-md">{children}</div>
         </div>
