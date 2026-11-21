@@ -503,7 +503,8 @@ body {
    the code (tapping it focuses the editor). It is kept, since it is the
    editor's fallback for raising the keyboard, but drawn as one of our
    controls: Monaco's own version is a heavy 58px glyph in its own colours. */
-.monaco-editor .iPadShowKeyboard.iPadShowKeyboard {
+.monaco-editor .iPadShowKeyboard.iPadShowKeyboard,
+.monaco-editor.vs-dark .iPadShowKeyboard.iPadShowKeyboard {
     width: 40px;
     height: 36px;
     margin: 0 6px 6px 0;
