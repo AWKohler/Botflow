@@ -22,7 +22,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
-import { VisualEditorPanel } from "@/components/workspace/VisualEditorPanel";
+import { VisualEditorPanel, VISUAL_EDITOR_PANEL_ID } from "@/components/workspace/VisualEditorPanel";
+import { PHONE_QUERY } from "@/components/ui/sheet";
 import { PreviewInfo } from "@/lib/preview-store";
 import { buildPreviewUrl } from "@/lib/preview-url";
 import {
@@ -712,11 +713,11 @@ export function Preview({
   // edge is measured once it has been laid out.
   const revealAbovePanel = useCallback(
     (loc: string) => {
-      if (!iframeRef.current || !window.matchMedia("(max-width: 639px)").matches) return;
+      if (!iframeRef.current || !window.matchMedia(PHONE_QUERY).matches) return;
       requestAnimationFrame(() => {
         const frame = iframeRef.current;
         if (!frame) return;
-        const panel = document.querySelector('[role="dialog"][aria-label="Edit element"]');
+        const panel = document.getElementById(VISUAL_EDITOR_PANEL_ID);
         const panelTop = panel ? panel.getBoundingClientRect().top : window.innerHeight * 0.48;
         postToIframe({
           type: "BF_EDITOR_REVEAL",
@@ -733,9 +734,16 @@ export function Preview({
   useEffect(() => {
     const vv = window.visualViewport;
     if (!selectedLoc || !vv) return;
-    const again = () => window.setTimeout(() => revealAbovePanel(selectedLoc), 60);
+    let timer = 0;
+    const again = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => revealAbovePanel(selectedLoc), 60);
+    };
     vv.addEventListener("resize", again);
-    return () => vv.removeEventListener("resize", again);
+    return () => {
+      window.clearTimeout(timer);
+      vv.removeEventListener("resize", again);
+    };
   }, [selectedLoc, revealAbovePanel]);
 
   // Enable/disable the in-iframe runtime when editMode flips.

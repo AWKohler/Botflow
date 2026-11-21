@@ -1378,7 +1378,7 @@ export function SandboxedWebWorkspace({
         )}
       >
         {bootError && (
-          <div className="mr-2.5 mt-2 flex items-center gap-3 rounded-lg border border-danger-border bg-danger-soft px-3 py-2 text-[13px] text-danger">
+          <div className="ml-2.5 mr-2.5 mt-2 flex items-center gap-3 rounded-lg border border-danger-border bg-danger-soft px-3 py-2 text-[13px] text-danger md:ml-0">
             <span className="font-medium">The sandbox didn’t start</span>
             <span className="flex-1 truncate text-fg/80">{bootError}</span>
             <Button variant="danger-outline" size="xs" onClick={() => void bootSandbox()}>

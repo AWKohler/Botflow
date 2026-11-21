@@ -43,22 +43,23 @@ export function ConvexStatusBanner({
 
   if (status === "paused") {
     return (
-      <div className="flex items-center gap-3 border-b border-danger-border bg-danger-soft px-4 py-2 text-xs text-danger">
+      // Phone: the message wraps and the action drops under it, instead of being pushed off the side.
+      <div className="flex items-center gap-3 border-b border-danger-border bg-danger-soft px-4 py-2 text-xs text-danger max-md:flex-wrap max-md:gap-x-2 max-md:gap-y-1.5">
         <PauseCircle className="h-4 w-4 shrink-0" />
         <span className="font-semibold shrink-0">Backend paused</span>
-        <span className="opacity-80 flex-1 truncate">
+        <span className="opacity-80 flex-1 truncate max-md:order-last max-md:basis-full max-md:whitespace-normal">
           This project&apos;s database and functions are paused because usage exceeded
           platform limits. The app can&apos;t read or write data until it&apos;s resolved.
         </span>
         {isOwner ? (
           <a
             href={SUPPORT_MAILTO}
-            className="shrink-0 rounded-md bg-danger-solid px-2 py-1 text-xs font-medium text-white hover:bg-danger-solid/90"
+            className="shrink-0 rounded-md bg-danger-solid px-2 py-1 text-xs font-medium text-white hover:bg-danger-solid/90 max-md:ml-auto pointer-coarse:px-3 pointer-coarse:py-2"
           >
             Contact us
           </a>
         ) : (
-          <span className="opacity-80 shrink-0">Ask the project owner to resolve this.</span>
+          <span className="opacity-80 shrink-0 max-md:order-last max-md:basis-full max-md:shrink">Ask the project owner to resolve this.</span>
         )}
       </div>
     );
@@ -66,16 +67,16 @@ export function ConvexStatusBanner({
 
   if (status === "warned" && !warnDismissed) {
     return (
-      <div className="px-4 py-2 bg-warning-soft border-b border-warning-border text-warning text-xs flex items-center gap-3">
+      <div className="px-4 py-2 bg-warning-soft border-b border-warning-border text-warning text-xs flex items-center gap-3 max-md:flex-wrap max-md:gap-x-2 max-md:gap-y-1">
         <AlertTriangle className="h-4 w-4 shrink-0" />
         <span className="font-semibold shrink-0">High backend usage</span>
-        <span className="opacity-90 flex-1 truncate">
+        <span className="opacity-90 flex-1 truncate max-md:order-last max-md:basis-full max-md:whitespace-normal">
           This project&apos;s Convex backend is unusually busy. If usage keeps climbing it
           may be paused automatically.
         </span>
         <button
           onClick={() => setWarnDismissed(true)}
-          className="p-1 rounded hover:bg-warning-border/60 shrink-0"
+          className="tap-44 p-1 rounded hover:bg-warning-border/60 shrink-0 max-md:ml-auto"
           aria-label="Dismiss warning"
         >
           <X className="h-3.5 w-3.5" />

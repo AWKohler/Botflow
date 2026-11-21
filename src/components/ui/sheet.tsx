@@ -11,7 +11,7 @@ import { useModal } from "./use-modal";
 // Below Tailwind's `sm`. This is the width at which an anchored 420px popover
 // stops fitting, which is why sheets use it; the workspaces switch to one pane
 // at a time earlier (below `md`), where those popovers still fit.
-const PHONE_QUERY = "(max-width: 639px)";
+export const PHONE_QUERY = "(max-width: 639px)";
 
 /**
  * True on a phone-width window (below Tailwind's `sm`). False on the server

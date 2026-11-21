@@ -433,8 +433,8 @@ export function SandboxPublishPanel({
 
         <div className={cn("max-h-[calc(100vh-120px)] overflow-y-auto", phoneSheetBodyClass)}>
           {state === "idle" && (
-            <div className="p-4">
-              <p className="mb-4 text-[13px] leading-relaxed text-muted">
+            <div className="p-4 max-sm:px-5">
+              <p className="mb-4 text-[13px] leading-relaxed text-muted max-sm:text-sm">
                 Builds your project and deploys it to Cloudflare Pages. The build output streams here as it runs.
               </p>
               <div className="mb-4">{publicToggle}</div>
@@ -448,7 +448,7 @@ export function SandboxPublishPanel({
           )}
 
           {state === "building" && (
-            <div className="p-4">
+            <div className="p-4 max-sm:px-5">
               <div className="mb-3 flex items-center gap-2 text-sm text-fg">
                 <Loader2 size={14} className="animate-spin text-muted" />
                 <span className="font-medium">{statusLine || "Building..."}</span>
@@ -469,7 +469,7 @@ export function SandboxPublishPanel({
           )}
 
           {state === "error" && (
-            <div className="p-4">
+            <div className="p-4 max-sm:px-5">
               <div className="mb-3 flex items-start gap-2 rounded-lg border border-danger-border bg-danger-soft p-3 text-sm text-danger">
                 <AlertCircle size={14} className="mt-0.5 shrink-0" />
                 <div>
@@ -504,7 +504,7 @@ export function SandboxPublishPanel({
           )}
 
           {state === "published" && (
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-4 max-sm:px-5">
               {/* Live URL */}
               <div>
                 <div className="mb-1.5 text-[11px] font-medium text-muted">Live URL</div>

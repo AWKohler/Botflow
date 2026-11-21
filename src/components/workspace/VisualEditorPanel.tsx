@@ -113,6 +113,9 @@ function initialPanelPos(box: BfBox | null): PanelPos {
   return placePanel(box, PANEL_WIDTH, 0, window.innerWidth, window.innerHeight);
 }
 
+/** The panel's element id, so the preview can measure where it starts. */
+export const VISUAL_EDITOR_PANEL_ID = "visual-editor-panel";
+
 export function VisualEditorPanel({
   projectId,
   selection,
@@ -278,6 +281,7 @@ export function VisualEditorPanel({
   return (
     <div
       ref={panelRef}
+      id={VISUAL_EDITOR_PANEL_ID}
       role="dialog"
       aria-label="Edit element"
       className={cn(
@@ -286,8 +290,9 @@ export function VisualEditorPanel({
         // Phone: docked across the bottom half of the screen (these win over the
         // measured position below), so the element being edited stays in view above it.
         // With the keyboard up it is shorter still: the two header rows and a
-        // strip of the preview (17rem in all) stay visible above it.
-        "max-sm:bottom-[calc(0.5rem+var(--keyboard-inset,0px))]! max-sm:left-2! max-sm:right-2! max-sm:top-auto! max-sm:w-auto! max-sm:max-h-[min(52dvh,calc(100dvh-var(--keyboard-inset,0px)-17rem))]!",
+        // strip of the preview (17rem in all) stay visible above it — but never
+        // shorter than its own header plus one field (a small phone).
+        "max-sm:bottom-[calc(0.5rem+var(--keyboard-inset,0px))]! max-sm:left-2! max-sm:right-2! max-sm:top-auto! max-sm:w-auto! max-sm:max-h-[max(9rem,min(52dvh,calc(100dvh-var(--keyboard-inset,0px)-17rem)))]!",
       )}
       style={{ left: pos.left, top: pos.top, width: PANEL_WIDTH, maxHeight: pos.maxHeight }}
       onMouseDown={(e) => e.stopPropagation()}
@@ -324,7 +329,8 @@ export function VisualEditorPanel({
           element near it, or ask the agent to change it.
         </div>
       ) : (
-        <div className="modern-scrollbar flex-1 space-y-4 overflow-y-auto p-3.5">
+        // scroll-padding: a field brought into view keeps its focus ring clear of the edges.
+        <div className="modern-scrollbar flex-1 scroll-py-3 space-y-4 overflow-y-auto p-3.5">
           {errorMsg && (
             <div className="rounded-md border border-danger-border bg-danger-soft px-2.5 py-1.5 text-xs text-danger">
               {errorMsg}
@@ -428,8 +434,9 @@ function Swatches({
   onPick: (token: string) => void;
 }) {
   return (
-    // Touch: 40px swatches 8px apart, so a neighbouring colour is not hit by mistake.
-    <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-2">
+    // Touch: 40px swatches 8px apart, so a neighbouring colour is not hit by
+    // mistake; on a phone they sit in five even columns, so no swatch is left alone on a row.
+    <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-2 max-sm:grid max-sm:grid-cols-5 max-sm:justify-items-center max-sm:gap-y-2.5">
       {swatches.map((s) => (
         <button
           key={s.token}

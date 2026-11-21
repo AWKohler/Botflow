@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useModal } from '@/components/ui/use-modal';
-import { useMediaQuery } from '@/components/ui/use-media-query';
+import { useIsPhone } from '@/components/ui/sheet';
 import { SignedIn, SignedOut, SignInButton } from '@/components/auth';
 import { useToast } from '@/components/ui/toast';
 import { X, ChevronDown, ExternalLink, AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
@@ -89,7 +89,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
   // On a phone the two long parts of Connections (the API key list and the
   // Apple setup steps) are folded until asked for, so the page scans as a
   // short list of accounts. null: not toggled, so the screen size decides.
-  const phone = useMediaQuery('(max-width: 639px)');
+  const phone = useIsPhone();
   const [keysOpenChoice, setKeysOpen] = useState<boolean | null>(null);
   const [appleOpenChoice, setAppleOpen] = useState<boolean | null>(null);
   // Off a phone there are no toggles, so both are always open: a section
