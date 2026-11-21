@@ -9,13 +9,14 @@
  * (docs/features/multi-agent-threads.md).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, ChevronDown, Pencil, Plus, Trash2, X as IconX } from 'lucide-react';
+import { Archive, ArchiveRestore, ChevronDown, MoreHorizontal, Pencil, Plus, Trash2, X as IconX } from 'lucide-react';
 import type { ThreadStatus, ThreadSummary } from '@/lib/agent/threads';
 import type { QueueItemSummary } from '@/lib/agent/thread-queue';
 import type { ThreadPerson } from '@/lib/agent/thread-presence';
 import { MODEL_CONFIGS, type ModelId } from '@/lib/agent/models';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
+import { Menu, MenuItem, MenuSeparator } from '@/components/ui/menu';
 
 export type { ThreadSummary, QueueItemSummary, ThreadPerson };
 
@@ -23,8 +24,8 @@ export type { ThreadSummary, QueueItemSummary, ThreadPerson };
 export type ThreadAttention = 'needs_input' | 'error' | 'unread' | 'running';
 
 export const ATTENTION_DOT_CLASS: Record<ThreadAttention, string> = {
-  needs_input: 'bg-amber-500',
-  error: 'bg-red-500',
+  needs_input: 'bg-warning-solid',
+  error: 'bg-danger-solid',
   unread: 'bg-accent',
   running: 'bg-accent animate-pulse',
 };
@@ -191,7 +192,7 @@ export function PeopleChips({
   const shown = userIds.slice(0, max);
   const extra = userIds.length - shown.length;
   const names = userIds.map((id) => people[id]?.name ?? 'Member').join(', ');
-  const dim = size === 'xs' ? 'size-4 text-[8px]' : 'size-5 text-[9px]';
+  const dim = size === 'xs' ? 'size-4 text-[11px]' : 'size-5 text-[11px]';
   return (
     <span className="flex shrink-0 items-center -space-x-1.5" title={names} aria-label={`Viewing: ${names}`}>
       {shown.map((id) => (
@@ -240,12 +241,13 @@ function StatusDot({ thread }: { thread: ThreadSummary }) {
     thread.status === 'running'
       ? 'bg-accent animate-pulse'
       : thread.status === 'needs_input'
-        ? 'bg-amber-500'
+        ? 'bg-warning-solid'
         : thread.status === 'error'
-          ? 'bg-red-500'
+          ? 'bg-danger-solid'
           : thread.unread
             ? 'bg-accent'
-            : 'bg-transparent';
+            : null;
+  if (!cls) return null;
   return (
     <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
       <span className={cn('size-2 rounded-full', cls)} />
@@ -267,6 +269,10 @@ interface ThreadRowProps {
 
 function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, onArchive, onDelete }: ThreadRowProps) {
   const [renaming, setRenaming] = useState(false);
+  // Touch screens: the row's actions sit behind one "More" button until asked for.
+  const [actionsOpen, setActionsOpen] = useState(false);
+  // A row near the bottom of the screen opens its menu upward.
+  const [menuUp, setMenuUp] = useState(false);
   const [draft, setDraft] = useState(thread.title ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -286,11 +292,10 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
   return (
     <div
       className={cn(
-        'group/row relative flex items-center gap-2 rounded-xl px-2 py-2 transition-colors',
+        'group/row relative flex items-center gap-2 rounded-lg px-2 py-2 transition-colors',
         selected ? 'bg-elevated' : 'hover:bg-elevated/60',
       )}
     >
-      <StatusDot thread={thread} />
       {renaming ? (
         <input
           ref={inputRef}
@@ -307,7 +312,7 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
             }
           }}
           aria-label="Chat title"
-          className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1 text-sm text-fg outline-none focus:border-accent/60"
+          className="min-w-0 flex-1 rounded-md border border-control bg-bg px-2 py-1 text-sm text-fg outline-none focus:border-accent focus:ring-3 focus:ring-accent/20"
         />
       ) : (
         <button
@@ -316,15 +321,16 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
           className="min-w-0 flex-1 text-left"
           aria-current={selected ? 'true' : undefined}
         >
-          <div className={cn('truncate text-sm', thread.unread || selected ? 'font-medium text-fg' : 'text-fg/90')}>
+          {/* Up to two lines, so the end of a long title (often the telling part) is not lost. */}
+          <div className={cn('line-clamp-2 text-sm leading-snug', thread.unread || selected ? 'font-medium text-fg' : 'text-fg/90')}>
             {label}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-muted">
             {statusText ? (
               <span
                 className={cn(
-                  thread.status === 'needs_input' && 'text-amber-500',
-                  thread.status === 'error' && 'text-red-400',
+                  thread.status === 'needs_input' && 'text-warning',
+                  thread.status === 'error' && 'text-danger',
                   thread.status === 'running' && 'text-accent',
                 )}
               >
@@ -333,17 +339,20 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
             ) : (
               <span className="truncate">{modelName}</span>
             )}
-            <span className="text-muted/50">·</span>
+            <span className="text-subtle">·</span>
             <span className="shrink-0 tabular-nums">{relativeTime(thread.updatedAt)}</span>
             {thread.queued > 0 && (
               <>
-                <span className="text-muted/50">·</span>
+                <span className="text-subtle">·</span>
                 <span className="shrink-0">{thread.queued} queued</span>
               </>
             )}
           </div>
         </button>
       )}
+      {/* Status sits at the trailing edge so every title starts on the same
+          left edge as the sheet's heading. */}
+      {!renaming && <StatusDot thread={thread} />}
       {!renaming && viewerIds.length > 0 && (
         <span className="shrink-0 group-hover/row:hidden">
           <PeopleChips userIds={viewerIds} people={people} size="xs" />
@@ -352,8 +361,11 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
       {!renaming && (
         <div
           className={cn(
-            // Hover-revealed on desktop; always shown on touch screens, which can't hover.
-            'flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100',
+            // Revealed on hover or keyboard focus. Hidden rather than
+            // transparent, so a resting row gives its whole width to the title.
+            // A touch screen can't hover: there the row has one "More" button
+            // that opens a labelled menu instead (below).
+            'hidden shrink-0 items-center gap-0.5 [@media(hover:hover)]:group-hover/row:flex [@media(hover:hover)]:group-focus-within/row:flex',
           )}
         >
           <RowAction label="Rename" onClick={() => setRenaming(true)}>
@@ -369,6 +381,45 @@ function ThreadRow({ thread, viewerIds, people, selected, onSelect, onRename, on
             <Trash2 size={13} />
           </RowAction>
         </div>
+      )}
+      {!renaming && (
+        <button
+          type="button"
+          onClick={(e) => {
+            // Against the drawer's own bottom edge (it is shorter when the keyboard is up).
+            const drawer = e.currentTarget.closest('[role="dialog"]');
+            const floor = drawer ? drawer.getBoundingClientRect().bottom : window.innerHeight;
+            setMenuUp(e.currentTarget.getBoundingClientRect().bottom > floor - 180);
+            setActionsOpen((v) => !v);
+          }}
+          aria-haspopup="menu"
+          aria-expanded={actionsOpen}
+          aria-label="Chat actions"
+          title="Actions"
+          className="hidden size-9 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-soft hover:text-fg [@media(hover:none)]:flex"
+        >
+          <MoreHorizontal size={16} />
+        </button>
+      )}
+      {actionsOpen && !renaming && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setActionsOpen(false)} />
+          <Menu className={cn('absolute right-2 z-20 w-48', menuUp ? 'bottom-full -mb-1' : 'top-full -mt-1')}>
+            <MenuItem onClick={() => { setActionsOpen(false); setRenaming(true); }}>
+              <Pencil size={15} className="text-muted" />
+              Rename
+            </MenuItem>
+            <MenuItem onClick={() => { setActionsOpen(false); onArchive(!thread.archived); }}>
+              {thread.archived ? <ArchiveRestore size={15} className="text-muted" /> : <Archive size={15} className="text-muted" />}
+              {thread.archived ? 'Unarchive' : 'Archive'}
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem tone="danger" onClick={() => { setActionsOpen(false); onDelete(); }}>
+              <Trash2 size={15} />
+              Delete
+            </MenuItem>
+          </Menu>
+        </>
       )}
     </div>
   );
@@ -392,8 +443,8 @@ function RowAction({
       title={label}
       aria-label={label}
       className={cn(
-        'flex size-6 items-center justify-center rounded-full text-muted transition-colors hover:bg-soft',
-        danger ? 'hover:text-red-400' : 'hover:text-fg',
+        'flex size-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-soft pointer-coarse:size-9 pointer-coarse:[&_svg]:size-4',
+        danger ? 'hover:text-danger' : 'hover:text-fg',
       )}
     >
       {children}
@@ -480,11 +531,12 @@ export function ThreadsSheet({
 
   return (
     <div className={cn('absolute inset-0 z-40', open ? 'pointer-events-auto' : 'pointer-events-none')} aria-hidden={!open}>
-      {/* Backdrop — dims the agent column (clicks outside the sheet close it
-          via the document listener above). */}
+      {/* Backdrop — dims the whole workspace, not just the chat column (clicks
+          outside the sheet close it via the document listener above). */}
       <div
         className={cn(
-          'absolute inset-0 bg-black/30 transition-opacity duration-200',
+          // Lighter in light mode, where a heavy blurred scrim turns the warm page muddy.
+          'fixed inset-0 bg-black/25 backdrop-blur-[1px] transition-opacity duration-200 dark:bg-black/45 dark:backdrop-blur-[2px]',
           open ? 'opacity-100' : 'opacity-0',
         )}
       />
@@ -495,9 +547,10 @@ export function ThreadsSheet({
         aria-label="Chats"
         tabIndex={-1}
         className={cn(
-          'absolute inset-y-0 left-0 flex w-[86%] max-w-[340px] flex-col rounded-r-2xl border-r border-border bg-surface shadow-2xl outline-none',
+          'absolute inset-y-0 left-0 flex w-[86%] max-w-[340px] flex-col border-r border-border bg-bg outline-none',
           'transition-transform duration-200 ease-out',
-          open ? 'translate-x-0' : '-translate-x-full',
+          // The shadow belongs to the open drawer; closed, it would spill onto the chat's left edge.
+          open ? 'translate-x-0 shadow-2xl' : '-translate-x-full',
         )}
       >
         <div className="flex items-center justify-between px-4 pb-2 pt-3.5">
@@ -506,17 +559,18 @@ export function ThreadsSheet({
             type="button"
             onClick={onClose}
             aria-label="Close chats"
-            className="flex size-7 items-center justify-center rounded-full text-muted transition-colors hover:bg-soft hover:text-fg"
+            className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg pointer-coarse:size-10"
           >
             <IconX size={15} />
           </button>
         </div>
 
-        <div className="px-3 pb-2">
+        {/* Same 8px inset as the rows below, so the button and the cards share an edge. */}
+        <div className="px-2 pb-2">
           <button
             type="button"
             onClick={onNewChat}
-            className="flex w-full items-center justify-center gap-1.5 rounded-full border border-border bg-elevated py-2 text-sm font-medium text-fg transition-colors hover:bg-soft"
+            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel pointer-coarse:h-11 pointer-coarse:text-[15px] dark:from-elevated dark:to-surface text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
           >
             <Plus size={15} />
             New chat
@@ -524,11 +578,11 @@ export function ThreadsSheet({
         </div>
 
         <div className="modern-scrollbar flex-1 overflow-y-auto px-2 pb-3">
-          {error && <p className="px-2 py-3 text-xs text-red-400">{error}</p>}
+          {error && <p className="px-2 py-3 text-xs text-danger">{error}</p>}
           {!threads && !error && (
             <div className="space-y-2 px-2 py-2">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="h-10 animate-pulse rounded-xl bg-elevated/70" />
+                <div key={i} className="h-10 animate-pulse rounded-lg bg-elevated" />
               ))}
             </div>
           )}
@@ -552,7 +606,7 @@ export function ThreadsSheet({
               <button
                 type="button"
                 onClick={() => setShowArchived((v) => !v)}
-                className="flex w-full items-center gap-1 px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted hover:text-fg"
+                className="flex w-full items-center gap-1 px-2 pb-1 pt-2 text-[11px] font-medium text-muted hover:text-fg"
               >
                 Archived ({archived.length})
                 <ChevronDown size={12} className={cn('transition-transform', showArchived && 'rotate-180')} />
@@ -568,7 +622,7 @@ export function ThreadsSheet({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted">{children}</div>
+    <div className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted">{children}</div>
   );
 }
 

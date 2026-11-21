@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuth } from '@/lib/auth/config';
+import { previewCanonicalRedirect } from '@/lib/auth/base-url';
 import { enforce, identifierFor } from '@/lib/rate-limit';
 import { classifyApiRequest } from '@/lib/rate-limit-classify';
 
@@ -19,6 +20,8 @@ const SESSIONLESS_API = [
 ];
 
 export default async function middleware(req: NextRequest) {
+  const canonical = previewCanonicalRedirect(req.method, req.nextUrl);
+  if (canonical) return NextResponse.redirect(canonical, 307);
   const path = req.nextUrl.pathname;
   // These routes verify their own signatures/bearers; auth endpoints enforce
   // origin checks and persistent authentication rate limits in Better Auth.

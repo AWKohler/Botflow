@@ -5,16 +5,19 @@ import { createPortal } from 'react-dom';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, isToolUIPart, getToolName, type UIMessage } from 'ai';
 import { Markdown } from '@/components/ui/markdown';
-import { ChevronDown, ChevronRight, ArrowUp, X as IconX, Cog, AlertCircle, RotateCcw, Loader2, ListPlus, Check, ImagePlus, Smartphone, PanelLeft, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, ArrowUp, X as IconX, Settings2, Square, AlertCircle, RotateCcw, Loader2, ListPlus, Check, ImagePlus, Smartphone, PanelLeft, ChevronLeft, SquarePen, MoreHorizontal, Trash2 } from 'lucide-react';
+import Link from 'next/link';
 import { SettingsModal } from '@/components/settings/SettingsModal';
+import { Menu, MenuItem, MenuSeparator } from '@/components/ui/menu';
 import { cn } from '@/lib/utils';
 import { LiveActions } from '@/components/agent/LiveActions';
 import { useToast } from '@/components/ui/toast';
 import type { ToolCallData } from '@/lib/agent/ui-types';
 import { MODEL_CONFIGS, DEFAULT_MODEL_ID, modelSupportsImages, resolveModelId, effectiveContextTokens, type ModelId } from '@/lib/agent/models';
 import { ModelSelector } from '@/components/ui/ModelSelector';
+import { useClampToViewport } from '@/components/ui/use-clamp-to-viewport';
+import { formatToolName } from '@/lib/agent/tool-labels';
 import { LimitModal, parseLimitPayload, type LimitReachedPayload } from '@/components/ui/LimitModal';
-import { CreditGauge } from '@/components/ui/CreditGauge';
 import { isProviderOutage, providerOutageMessage, type AgentErrorType } from '@/lib/agent/errors';
 import { processImageForUpload } from '@/lib/image-processing';
 import { ImageLightbox } from '@/components/ui/ImageLightbox';
@@ -127,7 +130,7 @@ function ToolStep({ toolName, state, content }: { toolName: string; state: strin
   return (
     <div>
       {/* Flex row — fixed height, circle is first item so line position is exact */}
-      <div className="flex items-center gap-2.5 h-7">
+      <div className="flex items-center gap-2.5 h-7 pointer-coarse:h-9">
         {/* Circle — 14px wide, opaque bg-surface hides the line behind it */}
         <div className="shrink-0 z-10 size-[14px] rounded-full border-[1.5px] border-border bg-surface flex items-center justify-center">
           {isDone && <Check size={8} className="text-muted" />}
@@ -136,10 +139,11 @@ function ToolStep({ toolName, state, content }: { toolName: string; state: strin
         {/* Clickable label */}
         <button
           type="button"
-          className="flex items-center gap-1 p-0 text-sm text-muted hover:text-fg transition-colors"
+          // The label fills the row's height, so the whole row is the target.
+          className="flex h-full items-center gap-1 rounded-sm p-0 text-[13px] text-muted transition-colors hover:text-fg pointer-coarse:text-sm"
           onClick={() => setOpen(v => !v)}
         >
-          <span className="font-medium">{toolName}</span>
+          <span className="font-medium" title={toolName}>{formatToolName(toolName)}</span>
           {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
         </button>
       </div>
@@ -177,13 +181,13 @@ function SubagentStepRow({ step }: { step: SubagentStep }) {
         {step.status === 'running'
           ? <Loader2 size={9} className="animate-spin shrink-0" />
           : step.status === 'error'
-            ? <AlertCircle size={9} className="text-red-500 shrink-0" />
+            ? <AlertCircle size={9} className="text-danger shrink-0" />
             : <Check size={9} className="shrink-0 text-muted" />}
         <span className="font-medium truncate">{step.toolName}</span>
         {open ? <ChevronDown size={10} className="ml-auto shrink-0" /> : <ChevronRight size={10} className="ml-auto shrink-0" />}
       </button>
       {open && (
-        <pre className="mt-1 text-[10px] overflow-auto bg-surface p-1.5 rounded border border-border whitespace-pre-wrap break-words max-h-40">
+        <pre className="mt-1 text-[11px] overflow-auto bg-surface p-1.5 rounded border border-border whitespace-pre-wrap break-words max-h-40">
           {JSON.stringify(step.input, null, 2)}
           {step.output ? `\n\n— output —\n${step.output}` : ''}
         </pre>
@@ -204,7 +208,7 @@ function SubagentCard({ steps, label }: { steps: SubagentStep[]; label?: string 
         onClick={() => setOpen(v => !v)}
       >
         <span className="font-medium text-accent/80">Subagent{label ? ` · ${label}` : ''}</span>
-        <span className="text-[10px] text-muted tabular-nums">{toolCount} action{toolCount !== 1 ? 's' : ''}</span>
+        <span className="text-[11px] text-muted tabular-nums">{toolCount} action{toolCount !== 1 ? 's' : ''}</span>
         {open ? <ChevronDown size={10} className="ml-auto shrink-0 text-muted" /> : <ChevronRight size={10} className="ml-auto shrink-0 text-muted" />}
       </button>
       {open && (
@@ -219,8 +223,11 @@ function SubagentCard({ steps, label }: { steps: SubagentStep[]; label?: string 
 // ============================================================================
 // Token display formatter
 // ============================================================================
-/** Hover wrapper for the header gauges — shows a small labelled tooltip so
- *  the user knows which usage each ring measures. */
+/** Icon button in the chat header: 44px touch target on phones, 28px on desktop. */
+const headerIconButton =
+  'relative flex size-11 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg md:size-7';
+
+/** Hover wrapper for the usage label — the tooltip spells out every allowance. */
 function GaugeWithTooltip({
   label,
   lines,
@@ -230,21 +237,34 @@ function GaugeWithTooltip({
   lines: string[];
   children: React.ReactNode;
 }) {
+  const [hovered, setHovered] = useState(false);
+  const tooltipRef = useClampToViewport<HTMLDivElement>(hovered);
   return (
-    <div className="relative group inline-flex">
+    <div
+      className="relative inline-flex"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       {children}
-      <div className="pointer-events-none absolute right-0 top-full mt-1.5 z-50 hidden group-hover:block w-max max-w-[240px] rounded-lg border border-border bg-elevated px-3 py-2 shadow-xl">
-        <div className="text-[11px] font-medium text-fg">{label}</div>
-        {lines.map((line, i) => (
-          <div key={i} className="text-[11px] text-muted leading-relaxed">{line}</div>
-        ))}
-      </div>
+      {hovered && (
+        <div
+          ref={tooltipRef}
+          className="pointer-events-none absolute bottom-full right-0 z-50 mb-1.5 w-max max-w-[min(280px,calc(100vw-16px))] rounded-lg border border-border bg-bg dark:border-border-strong dark:bg-elevated inset-shadow-bevel-top px-3 py-2 shadow-lg"
+        >
+          <div className="text-xs font-medium text-fg">{label}</div>
+          {lines.map((line, i) => (
+            <div key={i} className="text-xs leading-relaxed text-muted tabular-nums">{line}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 function formatTokenCount(tokens: number): string {
-  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`;
+  const trim = (n: number) => n.toFixed(1).replace(/\.0$/, '');
+  if (tokens >= 1_000_000) return `${trim(tokens / 1_000_000)}M`;
+  if (tokens >= 1000) return `${trim(tokens / 1000)}K`;
   return String(tokens);
 }
 
@@ -342,6 +362,14 @@ function AgentThreadPanel({
   // Server flag (USE_TOGETHER_KIMI): Kimi K2.7 is served by Together AI, not Fireworks.
   const [useTogetherKimi, setUseTogetherKimi] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // Slot in the workspace's phone top bar (absent in workspaces without one).
+  const [mobileSlot, setMobileSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setMobileSlot(document.getElementById('workspace-chat-actions'));
+  }, []);
+  const [projectName, setProjectName] = useState<string | null>(null);
   const [agentError, setAgentError] = useState<StructuredError | null>(null);
   const [retryCountdown, setRetryCountdown] = useState<number | null>(null);
   const [limitPayload, setLimitPayload] = useState<LimitReachedPayload | null>(null);
@@ -373,7 +401,8 @@ function AgentThreadPanel({
   const [showCompletionWarning, setShowCompletionWarning] = useState(false);
 
   // --- Credit gauge state ---
-  const [creditPct, setCreditPct] = useState(0);
+  // null until the first response, so nothing reads "0% used" while loading.
+  const [creditPct, setCreditPct] = useState<number | null>(null);
 
   // --- Claude plan usage gauge (OAuth subscription only) ---
   // Mirrors Claude Code's /usage numbers: session (5h) and week (7d)
@@ -392,8 +421,9 @@ function AgentThreadPanel({
     let cancelled = false;
     fetch(`/api/projects/${encodeURIComponent(projectId)}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((p: { sharedTier?: string } | null) => {
+      .then((p: { sharedTier?: string; name?: string } | null) => {
         if (cancelled) return;
+        if (typeof p?.name === 'string') setProjectName(p.name);
         if (p?.sharedTier === 'pro' || p?.sharedTier === 'max') {
           sharedTierRef.current = p.sharedTier;
           setUserTier(p.sharedTier);
@@ -1756,7 +1786,7 @@ function AgentThreadPanel({
     ? claudeCodeUsage.tokens
     : tokenEstimate;
   const tokenRatio = maxTokens > 0 ? displayedTokens / maxTokens : 0;
-  const tokenBarColor = tokenRatio >= 0.9 ? 'bg-red-500' : tokenRatio >= 0.7 ? 'bg-yellow-500' : 'bg-accent';
+  const tokenBarColor = tokenRatio >= 0.9 ? 'bg-danger-solid' : tokenRatio >= 0.7 ? 'bg-warning-solid' : 'bg-fg/40';
 
   const placeholder = useMemo(() => 'Ask Botflow...', []);
 
@@ -1934,7 +1964,7 @@ function AgentThreadPanel({
         errorContent = (
           <p className="flex-1 text-xs leading-relaxed whitespace-pre-wrap">
             Authentication error. Check your API key in{' '}
-            <button type="button" onClick={() => setShowSettings(true)} className="underline hover:text-red-300">Settings</button>.
+            <button type="button" onClick={() => setShowSettings(true)} className="underline hover:text-danger">Settings</button>.
           </p>
         );
         break;
@@ -1961,7 +1991,7 @@ function AgentThreadPanel({
                   fetch(`/api/projects/${encodeURIComponent(projectId)}/browser-log`, { method: 'DELETE' }).catch(() => {});
                 } catch {}
               }}
-              className="underline hover:text-red-300"
+              className="underline hover:text-danger"
             >
               reset the conversation
             </button>.
@@ -1985,7 +2015,7 @@ function AgentThreadPanel({
     }
 
     return (
-      <div className="flex items-start gap-2.5 rounded-xl px-3.5 py-3 bg-red-500/10 border border-red-500/20 text-red-400">
+      <div className="flex items-start gap-2.5 rounded-xl px-3.5 py-3 bg-danger-soft border border-danger-border text-danger">
         <AlertCircle size={14} className="mt-0.5 shrink-0" />
         {errorContent}
         <div className="flex items-center gap-1 shrink-0">
@@ -2008,7 +2038,7 @@ function AgentThreadPanel({
                   }
                 }
               }}
-              className="text-red-400/60 hover:text-red-400 transition-colors"
+              className="text-danger/60 hover:text-danger transition-colors"
               aria-label="Retry"
               title="Retry"
             >
@@ -2018,7 +2048,7 @@ function AgentThreadPanel({
           <button
             type="button"
             onClick={() => { setAgentError(null); setRetryCountdown(null); }}
-            className="text-red-400/60 hover:text-red-400 transition-colors"
+            className="text-danger/60 hover:text-danger transition-colors"
             aria-label="Dismiss"
           >
             <IconX size={13} />
@@ -2028,26 +2058,74 @@ function AgentThreadPanel({
     );
   };
 
+  // Deletes this chat's messages and starts a fresh segment.
+  const clearChat = async () => {
+    const confirmed = window.confirm('Clear this chat? This permanently deletes its messages. Your other chats are not affected.');
+    if (!confirmed) return;
+    try {
+      const r = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}`, { method: 'DELETE' });
+      const data = await r.json().catch(() => ({} as { currentSegmentId?: string }));
+      if (typeof data.currentSegmentId === 'string') setCurrentSegmentId(data.currentSegmentId);
+      savedIdsRef.current.clear();
+      segmentByMessageIdRef.current.clear();
+      lastAssistantSavedRef.current = null;
+      setMessages([]);
+      setHasAgentResponded(false);
+      setTokenEstimate(0);
+      setClaudeCodeUsage(null);
+      setIsCompacting(false);
+      onThreadChanged();
+      // Wipe browser-log ring buffer — new segment, fresh slate.
+      fetch(`/api/projects/${encodeURIComponent(projectId)}/browser-log`, { method: 'DELETE' }).catch(() => {});
+      // Clean up any pending image attachments
+      setPendingImages(prev => {
+        prev.forEach(img => URL.revokeObjectURL(img.localUrl));
+        return [];
+      });
+    } catch (err) {
+      console.error('Failed to reset chat:', err);
+    }
+  };
+
   return (
     <div className={cn('flex h-full flex-col text-sm bg-surface text-fg p-2.5', className)}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 bg-surface">
-        <div className="flex items-center gap-1">
-          {/* Threads sheet toggle. -ml-1.5 cancels the hit-area padding so the
-              glyph lines up with the header edge, mirroring Settings. */}
+      {/* Header: where you are (project, with a way back) on the left; the
+          three chat actions on the right. Touch targets are 44px on phones. */}
+      <div
+        className={cn(
+          'items-center justify-between gap-2 border-b border-border px-1 pb-2 pt-0.5',
+          // Where the workspace has a phone top bar, the actions live there instead.
+          mobileSlot ? 'hidden md:flex' : 'flex',
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-0.5">
+          <Link
+            href="/projects"
+            title="All projects"
+            aria-label="Back to all projects"
+            className="-ml-1 hidden size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg md:flex"
+          >
+            <ChevronLeft size={16} />
+          </Link>
+          <span className="truncate pl-1.5 text-[13px] font-medium text-fg md:pl-0.5" title={projectName ?? undefined}>
+            {projectName ?? '\u00A0'}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <PeopleChips userIds={viewerIds} people={people} />
           <button
             type="button"
             onClick={onOpenThreads}
             title="Chats"
             aria-label="Open chats"
-            className="relative -ml-1.5 flex size-7 items-center justify-center rounded-full text-muted transition-colors hover:bg-soft hover:text-fg"
+            className={headerIconButton}
           >
             <PanelLeft size={16} />
             {threadsAttention && (
               <span
                 aria-hidden
                 className={cn(
-                  'absolute right-0.5 top-0.5 size-2 rounded-full ring-2 ring-surface',
+                  'absolute right-2.5 top-2.5 size-2 rounded-full ring-2 ring-surface md:right-0.5 md:top-0.5',
                   ATTENTION_DOT_CLASS[threadsAttention],
                 )}
               />
@@ -2056,98 +2134,125 @@ function AgentThreadPanel({
           <button
             type="button"
             onClick={onNewChat}
-            className="flex h-7 items-center gap-1 rounded-full pl-2 pr-2.5 text-xs font-medium text-muted transition-colors hover:bg-soft hover:text-fg"
+            title="New chat"
+            aria-label="New chat"
+            className={headerIconButton}
           >
-            <Plus size={14} />
-            New chat
+            <SquarePen size={16} strokeWidth={1.75} />
           </button>
-          <button
-            type="button"
-            className="flex h-7 items-center rounded-full px-2.5 text-xs font-medium text-muted transition-colors hover:bg-soft hover:text-fg"
-            onClick={async () => {
-              const confirmed = window.confirm('Reset this chat? This permanently deletes its messages. Your other chats are not affected.');
-              if (!confirmed) return;
-              try {
-                const r = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&threadId=${encodeURIComponent(threadId)}`, { method: 'DELETE' });
-                const data = await r.json().catch(() => ({} as { currentSegmentId?: string }));
-                if (typeof data.currentSegmentId === 'string') setCurrentSegmentId(data.currentSegmentId);
-                savedIdsRef.current.clear();
-                segmentByMessageIdRef.current.clear();
-                lastAssistantSavedRef.current = null;
-                setMessages([]);
-                setHasAgentResponded(false);
-                setTokenEstimate(0);
-                setClaudeCodeUsage(null);
-                setIsCompacting(false);
-                onThreadChanged();
-                // Wipe browser-log ring buffer — new segment, fresh slate.
-                fetch(`/api/projects/${encodeURIComponent(projectId)}/browser-log`, { method: 'DELETE' }).catch(() => {});
-                // Clean up any pending image attachments
-                setPendingImages(prev => {
-                  prev.forEach(img => URL.revokeObjectURL(img.localUrl));
-                  return [];
-                });
-              } catch (err) {
-                console.error('Failed to reset chat:', err);
-              }
-            }}
-          >
-            Reset
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <PeopleChips userIds={viewerIds} people={people} />
-          {(() => {
-            // Shrink both gauges a touch when they sit side-by-side so they
-            // don't crowd each other. Mirrored layout: the Botflow gauge sits
-            // next to Settings at the outer edge, the Claude plan gauge inside it.
-            const showClaudePlan = Boolean(usesClaudePlan && claudePlanUsage);
-            const gaugeSize = showClaudePlan ? 'xs' : 'sm';
-            return (
+          <div className="relative">
+            <button
+              type="button"
+              title="More"
+              aria-label="More chat actions"
+              aria-haspopup="menu"
+              aria-expanded={headerMenuOpen}
+              onClick={() => setHeaderMenuOpen((v) => !v)}
+              className={cn(headerIconButton, '-mr-1')}
+            >
+              <MoreHorizontal size={16} />
+            </button>
+            {headerMenuOpen && (
               <>
-                {showClaudePlan && claudePlanUsage && (
-                  <GaugeWithTooltip
-                    label="Claude plan usage"
-                    lines={[
-                      ...(claudePlanUsage.fiveHour !== null ? [`Session (5h): ${claudePlanUsage.fiveHour}% used`] : []),
-                      ...(claudePlanUsage.sevenDay !== null ? [`Week (7d): ${claudePlanUsage.sevenDay}% used`] : []),
-                      'Claude Code runs on your Claude subscription.',
-                    ]}
+                <div className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} />
+                <Menu className="absolute right-0 top-full z-50 mt-1 w-52">
+                  <MenuItem
+                    onClick={() => {
+                      setHeaderMenuOpen(false);
+                      setShowSettings(true);
+                    }}
                   >
-                    <CreditGauge
-                      pct={Math.max(claudePlanUsage.fiveHour ?? 0, claudePlanUsage.sevenDay ?? 0)}
-                      size={gaugeSize}
-                    />
-                  </GaugeWithTooltip>
-                )}
-                <GaugeWithTooltip
-                  label="Botflow credits"
-                  lines={[`${Math.round(creditPct)}% of your weekly platform credits used.`]}
-                >
-                  <CreditGauge pct={creditPct} size={gaugeSize} />
-                </GaugeWithTooltip>
+                    <Settings2 size={15} strokeWidth={1.75} className="text-muted" />
+                    Usage and settings
+                  </MenuItem>
+                  <MenuSeparator />
+                  <MenuItem
+                    tone="danger"
+                    onClick={() => {
+                      setHeaderMenuOpen(false);
+                      void clearChat();
+                    }}
+                  >
+                    <Trash2 size={15} strokeWidth={1.75} />
+                    Clear this chat
+                  </MenuItem>
+                </Menu>
               </>
-            );
-          })()}
-          <button onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings" className="text-muted hover:text-fg">
-            <Cog size={16} />
-          </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Inline backend chip — info-only. Hidden when there's nothing
-          meaningful to explain (e.g., non-Anthropic model on free tier). */}
-      <div className="px-3 pb-1">
-        <BackendChip
-          backend={agentBackend}
-          reason={derivedBackend.reason}
-          runnable={derivedBackend.runnable}
-        />
-      </div>
+      {/* Phone: the chat's actions, rendered into the workspace top bar. */}
+      {mobileSlot &&
+        createPortal(
+          <div className="relative md:hidden">
+            <button
+              type="button"
+              title="Chat actions"
+              aria-label="Chat actions"
+              aria-haspopup="menu"
+              aria-expanded={mobileMenuOpen}
+              onClick={() => setMobileMenuOpen((v) => !v)}
+              className={headerIconButton}
+            >
+              <MoreHorizontal size={18} />
+              {threadsAttention && (
+                <span
+                  aria-hidden
+                  className={cn('absolute right-2.5 top-2.5 size-2 rounded-full ring-2 ring-surface', ATTENTION_DOT_CLASS[threadsAttention])}
+                />
+              )}
+            </button>
+            {mobileMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMobileMenuOpen(false)} />
+                <Menu className="absolute right-0 top-full z-50 mt-1 w-60">
+                  <MenuItem className="min-h-11" onClick={() => { setMobileMenuOpen(false); onNewChat(); }}>
+                    <SquarePen size={16} strokeWidth={1.75} className="text-muted" />
+                    New chat
+                  </MenuItem>
+                  <MenuItem className="min-h-11" onClick={() => { setMobileMenuOpen(false); onOpenThreads(); }}>
+                    <PanelLeft size={16} className="text-muted" />
+                    All chats
+                  </MenuItem>
+                  <MenuItem className="min-h-11" onClick={() => { setMobileMenuOpen(false); setShowSettings(true); }}>
+                    <Settings2 size={16} strokeWidth={1.75} className="text-muted" />
+                    Usage and settings
+                  </MenuItem>
+                  <MenuSeparator />
+                  <MenuItem tone="danger" className="min-h-11" onClick={() => { setMobileMenuOpen(false); void clearChat(); }}>
+                    <Trash2 size={16} strokeWidth={1.75} />
+                    Clear this chat
+                  </MenuItem>
+                </Menu>
+              </>
+            )}
+          </div>,
+          mobileSlot,
+        )}
+
+      {/* The backend banner appears only when something needs attention
+          (missing credentials, a plan that can't run this model). When all is
+          well, the same explanation sits behind the usage figure in the
+          composer footer, so it is not said three times. */}
+      {!derivedBackend.runnable && (
+        <div className="border-b border-border py-2.5 empty:hidden">
+          <BackendChip
+            backend={agentBackend}
+            reason={derivedBackend.reason}
+            runnable={derivedBackend.runnable}
+          />
+        </div>
+      )}
 
       {/* Messages — v6 parts-based rendering. Segments from prior agents
           stay visible but visually de-emphasized; a divider marks the boundary. */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden space-y-3 p-3 modern-scrollbar min-w-0">
+      <div
+        ref={scrollRef}
+        // A short fade under the header, so a line scrolled half out of view is never cut off hard.
+        className="modern-scrollbar min-w-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-1.5 py-3 [mask-image:linear-gradient(to_bottom,transparent_0,black_18px)]"
+      >
         {messages.map((m, idx) => {
           const mySeg = segmentByMessageIdRef.current.get(m.id) ?? currentSegmentId ?? null;
           const prevSeg = idx > 0
@@ -2156,7 +2261,7 @@ function AgentThreadPanel({
           const showSegmentDivider = idx > 0 && mySeg && prevSeg && mySeg !== prevSeg;
           const isOlderSegment = Boolean(currentSegmentId && mySeg && mySeg !== currentSegmentId);
           const dividerEl = showSegmentDivider ? (
-            <div key={`seg-${idx}`} className="flex items-center gap-2 px-2 py-1 text-[10px] uppercase tracking-wider text-muted">
+            <div key={`seg-${idx}`} className="flex items-center gap-2 px-2 py-1 text-[11px] uppercase tracking-wider text-muted">
               <div className="flex-1 h-px bg-border" />
               <span>{mySeg === currentSegmentId ? 'New conversation' : 'Previous conversation'}</span>
               <div className="flex-1 h-px bg-border" />
@@ -2214,13 +2319,13 @@ function AgentThreadPanel({
                 {dividerEl}
                 {otherAuthor && (
                   <div className={cn('-mb-1.5 flex items-center gap-1.5 px-1 text-[11px] text-muted', olderClass)}>
-                    <span className="flex size-4 items-center justify-center rounded-full bg-soft text-[8px] font-semibold text-fg">
+                    <span className="flex size-4 items-center justify-center rounded-full bg-soft text-[11px] font-semibold text-fg">
                       {otherAuthor.initials}
                     </span>
                     {otherAuthor.name}
                   </div>
                 )}
-                <div className={cn('rounded-xl px-2 py-3 text-[1.1rem] tracking tight min-w-0 max-w-full overflow-hidden break-words [overflow-wrap:anywhere]', m.role === 'user' ? 'bg-elevated' : '', olderClass)}>
+                <div className={cn('min-w-0 max-w-full overflow-hidden break-words text-base leading-[1.6] [overflow-wrap:anywhere]', m.role === 'user' ? 'rounded-xl border border-border bg-elevated px-3.5 py-2.5' : 'px-1 py-1', olderClass)}>
                 {filteredParts.map((part, i) => {
                   if (part.type === 'text') return <Markdown key={i} content={part.text} />;
                   if (part.type === 'reasoning') {
@@ -2282,7 +2387,7 @@ function AgentThreadPanel({
           return (
             <Fragment key={m.id}>
               {dividerEl}
-              <div className={cn('rounded-xl px-2 py-3 text-[1.1rem] tracking tight min-w-0 max-w-full overflow-hidden break-words [overflow-wrap:anywhere]', olderClass)}>
+              <div className={cn('min-w-0 max-w-full overflow-hidden break-words px-1 py-1 text-base leading-[1.6] [overflow-wrap:anywhere]', olderClass)}>
               {/* Content before the first tool call */}
               {preTimeline.map((group, gi) => (
                 <div key={`pre-${gi}`}>{renderContentGroup(group, `pre-${gi}`)}</div>
@@ -2439,20 +2544,20 @@ function AgentThreadPanel({
 
         {/* Lazy completion warning */}
         {showCompletionWarning && !isAgentWorking && !agentError && (
-          <div className="flex items-center gap-2.5 rounded-xl px-3.5 py-3 bg-yellow-500/10 border border-yellow-500/20 text-yellow-400">
+          <div className="flex items-center gap-2.5 rounded-lg border border-warning-border bg-warning-soft px-3 py-2.5 text-warning">
             <AlertCircle size={14} className="shrink-0" />
-            <p className="flex-1 text-xs leading-relaxed">Agent may not have finished.</p>
+            <p className="flex-1 text-[13px] leading-relaxed text-fg">The agent may have stopped early.</p>
             <button
               type="button"
               onClick={handleReprompt}
-              className="text-xs text-yellow-400 hover:text-yellow-300 underline shrink-0"
+              className="shrink-0 rounded-sm text-[13px] font-medium text-fg underline decoration-border-strong underline-offset-4 hover:decoration-fg"
             >
-              Re-prompt
+              Ask it to continue
             </button>
             <button
               type="button"
               onClick={() => setShowCompletionWarning(false)}
-              className="text-yellow-400/60 hover:text-yellow-400 transition-colors shrink-0"
+              className="shrink-0 rounded text-muted transition-colors hover:text-fg"
               aria-label="Dismiss"
             >
               <IconX size={13} />
@@ -2462,9 +2567,9 @@ function AgentThreadPanel({
 
         {/* Persistent thinking indicator */}
         {isAgentWorking && (
-          <div className="flex items-center gap-2 py-2">
-            <Loader2 size={14} className="animate-spin text-accent" />
-            <span className="text-xs text-muted">Agent is working<span className="animate-pulse">...</span></span>
+          <div className="flex items-center gap-2 px-1 py-2">
+            <Loader2 size={14} className="animate-spin text-muted" />
+            <span className="text-[13px] text-muted">Working…</span>
           </div>
         )}
 
@@ -2473,7 +2578,7 @@ function AgentThreadPanel({
       {/* Compound input card */}
       <form
         onSubmit={(e) => { void onFormSubmit(e); }}
-        className="group flex flex-col rounded-2xl border border-border bg-elevated transition-colors duration-150 ease-in-out relative mt-2"
+        className="group relative mt-2 flex flex-col rounded-xl border border-border bg-bg shadow-sm transition-[border-color,box-shadow] duration-150 focus-within:border-border-strong focus-within:shadow-md"
       >
         {/* Inset top — Live Actions */}
         {actions.length > 0 && (
@@ -2495,14 +2600,14 @@ function AgentThreadPanel({
               return (
                 <div key={q.id} className="flex items-center gap-2 text-xs">
                   <span
-                    className="flex size-4 shrink-0 items-center justify-center rounded-full bg-soft text-[8px] font-semibold text-fg"
+                    className="flex size-4 shrink-0 items-center justify-center rounded-full bg-soft text-[11px] font-semibold text-fg"
                     title={mine ? 'You' : author?.name}
                   >
                     {mine ? <ListPlus size={9} /> : author?.initials ?? '?'}
                   </span>
                   <span className="min-w-0 flex-1 truncate">
                     {q.status === 'failed' ? (
-                      <span className="text-red-400">Couldn&apos;t start: {q.error ?? 'unknown error'}</span>
+                      <span className="text-danger">Couldn&apos;t start: {q.error ?? 'unknown error'}</span>
                     ) : (
                       <>
                         <span className="text-muted">{q.status === 'claimed' ? 'Starting…' : 'Queued'}</span>{' '}
@@ -2528,10 +2633,10 @@ function AgentThreadPanel({
         )}
 
         {/* Textarea */}
-        <div data-state="closed" style={{ cursor: 'text' }} className="px-4 pt-3">
+        <div data-state="closed" style={{ cursor: 'text' }} className="px-3 pt-2.5">
           <div className="relative flex flex-1 items-center">
             <textarea
-              className="flex w-full ring-offset-background placeholder:text-muted focus-visible:outline-none focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none text-[16px] leading-snug placeholder-shown:text-ellipsis placeholder-shown:whitespace-nowrap md:text-base focus-visible:ring-0 focus-visible:ring-offset-0 max-h-[200px] bg-transparent focus:bg-transparent flex-1 m-1 rounded-md p-0"
+              className="m-1 flex max-h-[200px] w-full flex-1 resize-none rounded-md bg-transparent p-0 text-[16px] leading-snug outline-none placeholder:text-subtle placeholder-shown:text-ellipsis placeholder-shown:whitespace-nowrap focus:bg-transparent disabled:cursor-not-allowed disabled:opacity-50 md:text-[15px]"
               id="chatinput"
               placeholder={isAgentWorking ? 'Type to queue a message...' : placeholder}
               maxLength={50000}
@@ -2561,7 +2666,7 @@ function AgentThreadPanel({
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={img.localUrl} alt="" className="w-full h-full object-cover opacity-30" />
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <AlertCircle size={16} className="text-red-400" />
+                        <AlertCircle size={16} className="text-danger" />
                       </div>
                     </>
                   ) : (
@@ -2572,7 +2677,7 @@ function AgentThreadPanel({
                 <button
                   type="button"
                   onClick={() => handleRemoveImage(img.id)}
-                  className="absolute -top-1.5 -right-1.5 flex items-center justify-center size-4 rounded-full bg-surface border border-border text-muted hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="tap-44 absolute -top-1.5 -right-1.5 flex items-center justify-center size-4 rounded-full bg-surface border border-border text-muted hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity pointer-coarse:size-5 pointer-coarse:opacity-100"
                   aria-label="Remove image"
                 >
                   <IconX size={10} />
@@ -2583,7 +2688,7 @@ function AgentThreadPanel({
         )}
 
         {/* Buttons row */}
-        <div className="flex items-center gap-1 px-4 pb-2">
+        <div className="flex items-center gap-1 px-3 pb-2.5">
           <input
             ref={fileInputRef}
             id="file-upload"
@@ -2600,7 +2705,7 @@ function AgentThreadPanel({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center justify-center size-6 rounded-full text-muted hover:text-foreground transition-colors"
+              className="flex size-11 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg md:size-7"
               title="Attach image"
               aria-label="Attach image"
             >
@@ -2616,7 +2721,7 @@ function AgentThreadPanel({
               type="button"
               onClick={handleCaptureSimShot}
               disabled={!simShotAvailable || capturingSimShot}
-              className="flex items-center justify-center size-6 rounded-full text-muted hover:text-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-muted"
+              className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted"
               title={simShotAvailable ? 'Attach a screenshot of the simulator' : 'Start the simulator to attach a screenshot'}
               aria-label="Attach simulator screenshot"
             >
@@ -2680,7 +2785,7 @@ function AgentThreadPanel({
                 <button
                   id="chatinput-queue-button"
                   type="submit"
-                  className="flex size-6 items-center justify-center rounded-full bg-accent text-accent-foreground transition-colors duration-150 ease-out hover:opacity-80"
+                  className="flex size-11 items-center justify-center rounded-full bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-bg md:size-7 transition-opacity duration-150 ease-out hover:opacity-85"
                   title="Queue message"
                   aria-label="Queue message"
                 >
@@ -2692,7 +2797,7 @@ function AgentThreadPanel({
                   id="chatinput-stop-button"
                   type="button"
                   className={cn(
-                    'flex size-6 items-center justify-center rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors duration-150 ease-out'
+                    'flex size-11 items-center justify-center rounded-full bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-bg md:size-7 transition-opacity duration-150 ease-out hover:opacity-85'
                   )}
                   onClick={() => {
                     // Explicit user stop — auto-continue must not undo it.
@@ -2732,15 +2837,15 @@ function AgentThreadPanel({
                   title="Stop"
                   aria-label="Stop"
                 >
-                  <IconX size={18} />
+                  <Square size={11} fill="currentColor" />
                 </button>
               ) : (
                 <button
                   id="chatinput-send-message-button"
                   type="submit"
                   className={cn(
-                    'flex size-6 items-center justify-center rounded-full bg-accent text-accent-foreground transition-opacity duration-150 ease-out',
-                    !input.trim() && pendingImages.length === 0 ? 'disabled:cursor-not-allowed disabled:opacity-50 opacity-50' : ''
+                    'flex size-11 items-center justify-center rounded-full bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink text-bg md:size-7 transition-opacity duration-150 ease-out hover:opacity-85',
+                    !input.trim() && pendingImages.length === 0 ? 'opacity-30 disabled:cursor-not-allowed' : ''
                   )}
                   disabled={!input.trim() && pendingImages.length === 0}
                   title="Send"
@@ -2753,33 +2858,82 @@ function AgentThreadPanel({
           </div>
         </div>
 
-        {/* Inset bottom — Token counter. Shows the agent's real usage when
-            available; falls back to our char/4 estimate before the first report. */}
-        {(displayedTokens > 0 || isCompacting) && (
-          <div
-            className="flex items-center gap-2 px-4 py-2 border-t border-border cursor-help"
-            title="Context window used vs. total — how much of the model's memory this conversation is using. Older messages are auto-summarized as it fills up."
-          >
-            <div className="flex-1 h-1 rounded-full bg-soft overflow-hidden">
-              <div
-                className={cn(
-                  'h-full rounded-full transition-all duration-300',
-                  isCompacting ? 'bg-accent animate-pulse' : tokenBarColor,
-                )}
-                style={{ width: `${Math.min(tokenRatio * 100, 100)}%` }}
-              />
+        {/* Inset bottom — the two things that run out, each with its name:
+            this conversation's context on the left, the allowance the turn
+            draws on (Claude plan or Botflow credits) on the right. */}
+        {(() => {
+          const showContext = displayedTokens > 0 || isCompacting;
+          const showClaudePlan = Boolean(usesClaudePlan && claudePlanUsage);
+          const session = claudePlanUsage?.fiveHour ?? null;
+          const week = claudePlanUsage?.sevenDay ?? null;
+          // The label names whichever limit is closest to running out.
+          const usage: { label: string; pct: number } | null = showClaudePlan
+            ? (session ?? 0) >= (week ?? 0)
+              ? { label: 'Claude session', pct: session ?? 0 }
+              : { label: 'Claude week', pct: week ?? 0 }
+            : creditPct !== null
+              ? { label: 'Weekly credits', pct: creditPct }
+              : null;
+          if (!showContext && !usage) return null;
+          return (
+            // A container: in a narrow chat column the bar steps aside so the two
+            // figures stay on one line (and they wrap, never overlap, if even that is too wide).
+            <div className="@container flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-3.5 py-2 text-xs tabular-nums">
+              {showContext ? (
+                <div
+                  className="flex flex-1 cursor-help items-center gap-2.5"
+                  aria-label="Context window used"
+                  title="Context window used vs. total — how much of the model's memory this conversation is using. Older messages are auto-summarized as it fills up."
+                >
+                  <div className="hidden h-1 min-w-6 flex-1 overflow-hidden rounded-full bg-soft @[20rem]:block">
+                    <div
+                      className={cn(
+                        'h-full rounded-full transition-all duration-300',
+                        isCompacting ? 'animate-pulse bg-fg/40' : tokenBarColor,
+                      )}
+                      style={{ width: `${Math.min(tokenRatio * 100, 100)}%` }}
+                    />
+                  </div>
+                  <span className={cn(
+                    'whitespace-nowrap',
+                    isCompacting ? 'text-muted' :
+                    tokenRatio >= 0.9 ? 'text-danger' : tokenRatio >= 0.7 ? 'text-warning' : 'text-muted'
+                  )}>
+                    {isCompacting
+                      ? 'Compacting…'
+                      : `Context ${formatTokenCount(displayedTokens)} / ${formatTokenCount(maxTokens)}`}
+                  </span>
+                </div>
+              ) : (
+                <span className="flex-1" />
+              )}
+              {usage && (
+                <GaugeWithTooltip
+                  label={showClaudePlan ? 'Running on your Claude subscription' : 'Usage — Botflow credits'}
+                  lines={[
+                    ...(showClaudePlan
+                      ? [
+                          ...(session !== null ? [`Claude session (5h): ${session}% used`] : []),
+                          ...(week !== null ? [`Claude week (7d): ${week}% used`] : []),
+                        ]
+                      : []),
+                    ...(creditPct !== null ? [`Botflow credits this week: ${Math.round(creditPct)}% used`] : []),
+                  ]}
+                >
+                  <span
+                    className={cn(
+                      'cursor-help whitespace-nowrap',
+                      showContext && 'min-[380px]:border-l min-[380px]:border-border min-[380px]:pl-3',
+                      usage.pct >= 80 ? 'text-danger' : usage.pct >= 60 ? 'text-warning' : 'text-muted',
+                    )}
+                  >
+                    {usage.label} {Math.round(usage.pct)}% used
+                  </span>
+                </GaugeWithTooltip>
+              )}
             </div>
-            <span className={cn(
-              'text-[10px] tabular-nums',
-              isCompacting ? 'text-accent' :
-              tokenRatio >= 0.9 ? 'text-red-400' : tokenRatio >= 0.7 ? 'text-yellow-400' : 'text-muted'
-            )}>
-              {isCompacting
-                ? 'Compacting…'
-                : `${formatTokenCount(displayedTokens)} / ${formatTokenCount(maxTokens)}`}
-            </span>
-          </div>
-        )}
+          );
+        })()}
       </form>
 
       {/* Portals render to document.body — skip during SSR. */}

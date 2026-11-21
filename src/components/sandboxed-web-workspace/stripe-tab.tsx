@@ -51,8 +51,8 @@ export function StripeModeToggle({ mode, busy, onToggle }: StripeModeToggleProps
             "text-[11px] font-medium px-3 py-1 rounded-full transition-colors",
             mode === m
               ? m === "live"
-                ? "bg-red-500/20 text-red-300"
-                : "bg-amber-500/20 text-amber-300"
+                ? "bg-danger-soft text-danger"
+                : "bg-warning-soft text-warning"
               : "text-muted hover:text-fg",
           )}
         >
@@ -270,7 +270,7 @@ export function StripeTab({ projectId, mode, onOpenFullDashboard, onDisconnected
   const needsOnboarding = status?.connected === true && status.ready === false;
 
   return (
-    <div className="flex flex-col h-full bg-bolt-bg">
+    <div className="flex h-full flex-col bg-bg">
       <div className="flex items-center justify-between px-6 py-3 border-b border-border">
         <div className="flex items-center gap-1.5">
           {/* Hide the dashboard sub-views until onboarding is actually
@@ -291,14 +291,14 @@ export function StripeTab({ projectId, mode, onOpenFullDashboard, onDisconnected
               </button>
             ))}
           {needsOnboarding && (
-            <span className="text-xs font-medium text-amber-300">
+            <span className="text-xs font-medium text-warning">
               Finish activating your Stripe account
             </span>
           )}
         </div>
         <div className="flex items-center gap-3">
           {accountId && (
-            <span className="text-[10px] text-muted font-mono">
+            <span className="text-[11px] text-muted font-mono">
               {accountId.slice(0, 14)}…
             </span>
           )}
@@ -306,7 +306,7 @@ export function StripeTab({ projectId, mode, onOpenFullDashboard, onDisconnected
             <button
               onClick={handleDisconnect}
               disabled={disconnecting}
-              className="flex items-center gap-1 text-xs font-medium text-muted hover:text-red-400 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1 text-xs font-medium text-muted hover:text-danger transition-colors disabled:opacity-50"
               title={`Disconnect your Stripe account from ${mode} mode`}
             >
               {disconnecting ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
@@ -335,7 +335,7 @@ export function StripeTab({ projectId, mode, onOpenFullDashboard, onDisconnected
         )}
         {error && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
-            <p className="text-sm text-red-400 max-w-md">{error}</p>
+            <p className="text-sm text-danger max-w-md">{error}</p>
             <button
               onClick={() => setRetryTick((t) => t + 1)}
               className="flex items-center gap-2 text-sm font-medium bg-elevated px-3 py-1.5 rounded-md hover:bg-elevated/70 transition-colors"
@@ -353,8 +353,8 @@ export function StripeTab({ projectId, mode, onOpenFullDashboard, onDisconnected
             <div className="px-6 py-5 space-y-5">
               {needsOnboarding ? (
                 <>
-                  <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
-                    <AlertTriangle size={18} className="text-amber-300 mt-0.5 shrink-0" />
+                  <div className="flex items-start gap-3 rounded-lg border border-warning-border bg-warning-soft px-4 py-3">
+                    <AlertTriangle size={18} className="text-warning mt-0.5 shrink-0" />
                     <div className="text-sm text-amber-100/90 space-y-1">
                       <p className="font-medium text-amber-200">
                         Your Stripe account isn&apos;t fully activated yet

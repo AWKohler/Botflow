@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useModal } from "@/components/ui/use-modal";
 import { AlertTriangle, PauseCircle, X } from "lucide-react";
 
 /**
@@ -42,22 +43,23 @@ export function ConvexStatusBanner({
 
   if (status === "paused") {
     return (
-      <div className="px-4 py-2 bg-red-900/80 border-b border-red-700 text-white text-xs flex items-center gap-3">
+      // Phone: the message wraps and the action drops under it, instead of being pushed off the side.
+      <div className="flex items-center gap-3 border-b border-danger-border bg-danger-soft px-4 py-2 text-xs text-danger max-md:flex-wrap max-md:gap-x-2 max-md:gap-y-1.5">
         <PauseCircle className="h-4 w-4 shrink-0" />
         <span className="font-semibold shrink-0">Backend paused</span>
-        <span className="opacity-80 flex-1 truncate">
+        <span className="opacity-80 flex-1 truncate max-md:order-last max-md:basis-full max-md:whitespace-normal">
           This project&apos;s database and functions are paused because usage exceeded
           platform limits. The app can&apos;t read or write data until it&apos;s resolved.
         </span>
         {isOwner ? (
           <a
             href={SUPPORT_MAILTO}
-            className="px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-white text-xs font-medium shrink-0"
+            className="shrink-0 rounded-md bg-danger-solid px-2 py-1 text-xs font-medium text-white hover:bg-danger-solid/90 max-md:ml-auto pointer-coarse:px-3 pointer-coarse:py-2"
           >
             Contact us
           </a>
         ) : (
-          <span className="opacity-80 shrink-0">Ask the project owner to resolve this.</span>
+          <span className="opacity-80 shrink-0 max-md:order-last max-md:basis-full max-md:shrink">Ask the project owner to resolve this.</span>
         )}
       </div>
     );
@@ -65,16 +67,16 @@ export function ConvexStatusBanner({
 
   if (status === "warned" && !warnDismissed) {
     return (
-      <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 text-amber-400 text-xs flex items-center gap-3">
+      <div className="px-4 py-2 bg-warning-soft border-b border-warning-border text-warning text-xs flex items-center gap-3 max-md:flex-wrap max-md:gap-x-2 max-md:gap-y-1">
         <AlertTriangle className="h-4 w-4 shrink-0" />
         <span className="font-semibold shrink-0">High backend usage</span>
-        <span className="opacity-90 flex-1 truncate">
+        <span className="opacity-90 flex-1 truncate max-md:order-last max-md:basis-full max-md:whitespace-normal">
           This project&apos;s Convex backend is unusually busy. If usage keeps climbing it
           may be paused automatically.
         </span>
         <button
           onClick={() => setWarnDismissed(true)}
-          className="p-1 rounded hover:bg-amber-500/20 shrink-0"
+          className="tap-44 p-1 rounded hover:bg-warning-border/60 shrink-0 max-md:ml-auto"
           aria-label="Dismiss warning"
         >
           <X className="h-3.5 w-3.5" />
@@ -93,15 +95,23 @@ export function ConvexPausedModal({
   isOwner: boolean;
   onClose: () => void;
 }) {
+  const modalRef = useModal<HTMLDivElement>(true, onClose);
   return (
-    <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4">
-      <div className="w-[min(480px,calc(100vw-2rem))] rounded-xl border border-border bg-surface text-fg shadow-2xl">
+    <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Your backend is paused"
+        tabIndex={-1}
+        className="w-[min(480px,calc(100vw-2rem))] rounded-2xl border border-border bg-bg text-fg shadow-2xl outline-none"
+      >
         <div className="px-5 py-4 border-b border-border flex items-center gap-2.5">
-          <PauseCircle className="h-5 w-5 text-red-400 shrink-0" />
-          <h2 className="font-semibold flex-1">Your backend is paused</h2>
+          <PauseCircle className="h-5 w-5 text-danger shrink-0" />
+          <h2 className="flex-1 text-base font-semibold">Your backend is paused</h2>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-elevated"
+            className="rounded-md p-1.5 text-muted transition-colors hover:bg-elevated hover:text-fg"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -137,14 +147,14 @@ export function ConvexPausedModal({
           {isOwner && (
             <a
               href={SUPPORT_MAILTO}
-              className="px-3 py-1.5 rounded-lg bg-accent text-accent-foreground text-sm font-medium"
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none px-3 text-[13px] font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
             >
               Contact us
             </a>
           )}
           <button
             onClick={onClose}
-            className="px-3 py-1.5 rounded-lg border border-border text-sm hover:bg-elevated"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel disabled:bg-none disabled:bg-surface disabled:shadow-none disabled:inset-shadow-none dark:from-elevated dark:to-surface px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50"
           >
             Dismiss
           </button>

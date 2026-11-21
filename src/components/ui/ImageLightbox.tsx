@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { useModal } from "@/components/ui/use-modal";
 
 interface ImageLightboxProps {
   src: string;
@@ -10,17 +10,16 @@ interface ImageLightboxProps {
 }
 
 export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
+  const modalRef = useModal<HTMLDivElement>(true, onClose);
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+      ref={modalRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={alt || 'Image preview'}
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 outline-none"
       onClick={onClose}
     >
       <button

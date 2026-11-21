@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { Fragment, useId, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Check, Minus, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CardSpotlight } from '@/components/landing/CardSpotlight';
@@ -13,6 +13,7 @@ import {
   Reveal,
   SectionLabel,
   StaggerButton,
+  marketingSecondaryClass,
   serif,
 } from '@/components/landing/shared';
 import type {
@@ -45,7 +46,7 @@ export function CompareHero({
   return (
     <section className="relative overflow-hidden hero-grid">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-16 sm:pt-24 pb-12 sm:pb-16">
-        <div className="max-w-3xl mx-auto text-center">
+        <div className="max-w-3xl mx-auto text-center px-2 sm:px-0">
           <Reveal>
             <SectionLabel>{label}</SectionLabel>
           </Reveal>
@@ -66,7 +67,7 @@ export function CompareHero({
           </Reveal>
 
           <Reveal delay={180}>
-            <p className="mt-6 text-lg sm:text-xl text-[var(--sand-text-muted)] max-w-2xl mx-auto leading-relaxed">
+            <p className="mt-6 text-lg sm:text-xl text-[var(--sand-text-muted)] max-w-2xl mx-auto leading-relaxed text-balance">
               {intro}
             </p>
           </Reveal>
@@ -79,10 +80,10 @@ export function CompareHero({
 
           <Reveal delay={300}>
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
-              <StaggerButton text="Try Botflow free" href="/sign-up" />
+              <StaggerButton text="Start building free" href="/sign-up" />
               <Link
                 href="/compare"
-                className="inline-flex items-center gap-2 rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-6 py-3 text-base font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
+                className={marketingSecondaryClass}
               >
                 All comparisons
               </Link>
@@ -139,7 +140,7 @@ export function GlanceCards({
     <section className="relative">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-20">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-12">
+          <div className="text-center max-w-2xl mx-auto mb-12 px-2 sm:px-0">
             <SectionLabel>At a glance</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl tracking-tight')}>
               Two tools, <em className={serif.className}>two bets</em>
@@ -175,8 +176,6 @@ export function GlanceCards({
               />
               <div className="relative z-10">
                 <span className="flex items-center gap-2.5">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/brand/botflow-glyph.svg" alt="" className="h-6 w-6" />
                   <span className={cn(serif.className, 'text-2xl sm:text-3xl tracking-tight')}>
                     Botflow
                   </span>
@@ -204,13 +203,17 @@ export function GlanceCards({
 function CompareCell({ value, highlight }: { value: boolean | string; highlight?: boolean }) {
   if (value === true) {
     return (
-      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--sand-accent)]/10 text-[var(--sand-accent)]">
-        <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
-      </span>
+      // An ink tick, the same mark the plan cards use.
+      <Check className="mx-auto h-4 w-4 text-[var(--sand-text)]" strokeWidth={2.25} aria-label="Included" />
     );
   }
   if (value === false) {
-    return <span className="text-[var(--sand-text-muted)]/40">—</span>;
+    // Same line box as text and tick cells, and a spoken label instead of "em dash".
+    return (
+      <span role="img" aria-label="Not included" className="text-sm leading-5 text-[var(--sand-text-muted)]">
+        —
+      </span>
+    );
   }
   return (
     <span
@@ -229,7 +232,7 @@ export function CompareTable({ themName, groups }: { themName: string; groups: C
     <section className="relative">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 py-16 sm:py-20">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-12">
+          <div className="text-center max-w-2xl mx-auto mb-12 px-2 sm:px-0">
             <SectionLabel>Feature by feature</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl tracking-tight')}>
               Botflow vs {themName}, <em className={serif.className}>in detail</em>
@@ -239,16 +242,12 @@ export function CompareTable({ themName, groups }: { themName: string; groups: C
 
         <Reveal delay={120}>
           <div className="rounded-2xl border border-[var(--sand-border)] bg-[var(--sand-bg)] overflow-hidden">
-            <div className="grid grid-cols-[1.3fr_1fr_1fr] sm:grid-cols-[1.6fr_1fr_1fr] border-b border-[var(--sand-border)]">
+            <div className="grid grid-cols-[minmax(0,1.3fr)_repeat(2,minmax(0,1fr))] sm:grid-cols-[minmax(0,1.6fr)_repeat(2,minmax(0,1fr))] border-b border-[var(--sand-border)]">
               <div className="px-4 sm:px-7 py-5 text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]">
                 Feature
               </div>
-              <div className="px-2 sm:px-4 py-5 text-center">
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text)]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/brand/botflow-glyph.svg" alt="" className="h-4 w-4" />
-                  Botflow
-                </span>
+              <div className="px-2 sm:px-4 py-5 text-center text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text)] bg-[var(--sand-soft)]/40">
+                Botflow
               </div>
               <div className="px-2 sm:px-4 py-5 text-center text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]">
                 {themName}
@@ -257,7 +256,7 @@ export function CompareTable({ themName, groups }: { themName: string; groups: C
 
             {groups.map((group, gi) => (
               <div key={group.label}>
-                <div className="border-b border-[var(--sand-border)] bg-[var(--sand-elevated)]/40">
+                <div className="grid grid-cols-[minmax(0,1.3fr)_repeat(2,minmax(0,1fr))] sm:grid-cols-[minmax(0,1.6fr)_repeat(2,minmax(0,1fr))] border-b border-[var(--sand-border)] bg-[var(--sand-elevated)]/40">
                   <div
                     className={cn(
                       serif.className,
@@ -266,23 +265,28 @@ export function CompareTable({ themName, groups }: { themName: string; groups: C
                   >
                     {group.label}
                   </div>
+                  {/* Empty cells, so the Botflow column's tint runs unbroken through group rows. */}
+                  <div aria-hidden className="bg-[var(--sand-soft)]/40" />
+                  <div aria-hidden />
                 </div>
                 {group.rows.map((row, ri) => (
                   <div
                     key={row.feature}
                     className={cn(
-                      'grid grid-cols-[1.3fr_1fr_1fr] sm:grid-cols-[1.6fr_1fr_1fr] items-center',
+                      // Cells stretch to the row's height (and centre their own content),
+                      // so the tinted column is one unbroken band whatever wraps.
+                      'grid grid-cols-[minmax(0,1.3fr)_repeat(2,minmax(0,1fr))] sm:grid-cols-[minmax(0,1.6fr)_repeat(2,minmax(0,1fr))]',
                       (gi !== groups.length - 1 || ri !== group.rows.length - 1) &&
                         'border-b border-[var(--sand-border)]',
                     )}
                   >
-                    <div className="px-4 sm:px-7 py-4 text-sm text-[var(--sand-text)]">
+                    <div className="flex items-center self-stretch px-4 sm:px-7 py-4 text-sm text-[var(--sand-text)]">
                       {row.feature}
                     </div>
-                    <div className="px-2 sm:px-4 py-4 text-center bg-[var(--sand-accent)]/[0.03]">
+                    <div className="flex items-center justify-center self-stretch px-2 sm:px-4 py-4 text-center bg-[var(--sand-soft)]/40">
                       <CompareCell value={row.us} highlight />
                     </div>
-                    <div className="px-2 sm:px-4 py-4 text-center">
+                    <div className="flex items-center justify-center self-stretch px-2 sm:px-4 py-4 text-center">
                       <CompareCell value={row.them} />
                     </div>
                   </div>
@@ -333,7 +337,7 @@ export function StrengthsSplit({
       <MarginBg />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-28">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-16">
+          <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-16 px-2 sm:px-0">
             <SectionLabel>Credit where due</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>
               Where each one <em className={serif.className}>shines</em>
@@ -341,7 +345,7 @@ export function StrengthsSplit({
           </div>
         </Reveal>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 lg:gap-10">
+        <div className="grid grid-cols-1 gap-14 px-2 sm:px-0 lg:grid-cols-2 lg:gap-10">
           <div className="lg:pr-8 lg:border-r lg:border-[var(--sand-border)]">
             <Reveal>
               <p className="mb-7 text-[11px] font-medium uppercase tracking-[0.2em] text-[var(--sand-text-muted)]">
@@ -374,7 +378,7 @@ export function DeepDives({ dives }: { dives: DeepDive[] }) {
       <MarginHatch />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-20 sm:py-28">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-20">
+          <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-20 px-2 sm:px-0">
             <SectionLabel>The differences that matter</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>
               Beyond the <em className={serif.className}>checkboxes</em>
@@ -382,25 +386,24 @@ export function DeepDives({ dives }: { dives: DeepDive[] }) {
           </div>
         </Reveal>
 
-        <div className="space-y-16 sm:space-y-20">
+        <div className="space-y-14 px-2 sm:space-y-20 sm:px-0">
           {dives.map((dive, i) => (
             <Reveal key={dive.title} delay={60}>
-              <div className="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-6 md:gap-12 items-start max-w-4xl mx-auto">
+              {/* Fixed numeral column, so every section's text starts on the same line. */}
+              <div className="grid grid-cols-1 md:grid-cols-[7rem_1fr] gap-6 md:gap-12 items-start max-w-4xl mx-auto">
                 <span
                   className={cn(
                     serif.className,
                     'block text-7xl sm:text-8xl font-normal leading-none select-none',
                   )}
-                  style={{ color: 'var(--sand-accent)', opacity: 0.32 }}
+                  style={{ color: 'var(--sand-text-subtle)' }}
                 >
                   {String(i + 1).padStart(2, '0')}
                 </span>
                 <div>
                   <h3 className={cn(serif.className, 'text-3xl sm:text-4xl tracking-tight mb-5')}>
                     {dive.title}{' '}
-                    <em className={serif.className} style={{ color: 'var(--sand-accent)' }}>
-                      {dive.em}
-                    </em>
+                    <em className={serif.className}>{dive.em}</em>
                   </h3>
                   <div className="space-y-4">
                     {dive.paragraphs.map((p, pi) => (
@@ -439,7 +442,7 @@ export function VerdictCards({
     <section className="relative">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 py-16 sm:py-24">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
+          <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16 px-2 sm:px-0">
             <SectionLabel>The verdict</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>
               So, which <em className={serif.className}>one?</em>
@@ -478,9 +481,7 @@ export function VerdictCards({
               />
               <h3 className={cn(serif.className, 'text-2xl sm:text-3xl tracking-tight mb-6')}>
                 Choose{' '}
-                <em className={serif.className} style={{ color: 'var(--sand-accent)' }}>
-                  Botflow
-                </em>{' '}
+                <em className={serif.className}>Botflow</em>{' '}
                 if…
               </h3>
               <ul className="space-y-3.5">
@@ -508,43 +509,57 @@ export function VerdictCards({
 // FAQ accordion (matches the pricing page pattern)
 // ============================================================================
 
-function FaqItem({ q, a, index }: { q: string; a: string; index: number }) {
+// One question. The dividers live on the list (`FaqList`), the question is a
+// real button that says whether it is open, and the answer sits outside it.
+export function FaqItem({ q, a, index }: { q: string; a: string; index: number }) {
   const [open, setOpen] = useState(index === 0);
+  const id = useId();
   return (
     <Reveal delay={index * 60}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          'group w-full text-left transition-colors',
-          'border-b border-[var(--sand-border)] last:border-b-0',
-          'py-6 hover:bg-[var(--sand-surface)]/50',
-        )}
-      >
-        <div className="flex items-start justify-between gap-6 px-1">
+      <h3>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-controls={id}
+          className="group flex w-full items-start justify-between gap-6 rounded-md px-2 pt-6 pb-3 text-left sm:px-0"
+        >
           <span className="text-base sm:text-lg font-medium text-[var(--sand-text)] leading-snug">
             {q}
           </span>
           <span
             aria-hidden
-            className="mt-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] text-[var(--sand-text-muted)] transition-transform duration-300"
+            className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[var(--sand-border)] bg-[var(--sand-elevated)] text-[var(--sand-text-muted)] transition-[transform,border-color,color] duration-300 group-hover:border-[var(--sand-border-strong)] group-hover:text-[var(--sand-text)]"
             style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
           >
             {open ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
           </span>
+        </button>
+      </h3>
+      <div
+        id={id}
+        className="grid overflow-hidden transition-[grid-template-rows] duration-300 ease-out"
+        style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <p className="max-w-3xl px-2 pb-3 text-[15px] sm:px-0 sm:pr-12 sm:text-base text-[var(--sand-text-muted)] leading-relaxed">
+            {a}
+          </p>
         </div>
-        <div
-          className="grid overflow-hidden transition-[grid-template-rows] duration-300 ease-out px-1"
-          style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
-        >
-          <div className="min-h-0 overflow-hidden">
-            <p className="mt-3 max-w-3xl text-sm sm:text-base text-[var(--sand-text-muted)] leading-relaxed">
-              {a}
-            </p>
-          </div>
-        </div>
-      </button>
+      </div>
+      <div className="h-3" />
     </Reveal>
+  );
+}
+
+// The list of questions: a rule above, below and between every question.
+export function FaqList({ faqs }: { faqs: Faq[] }) {
+  return (
+    <div className="divide-y divide-[var(--sand-border)] border-y border-[var(--sand-border)]">
+      {faqs.map((f, i) => (
+        <FaqItem key={f.q} q={f.q} a={f.a} index={i} />
+      ))}
+    </div>
   );
 }
 
@@ -553,7 +568,7 @@ export function FaqSection({ faqs }: { faqs: Faq[] }) {
     <section className="relative">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 py-16 sm:py-24">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
+          <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16 px-2 sm:px-0">
             <SectionLabel>FAQ</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>
               Questions, <em className={serif.className}>answered</em>
@@ -561,11 +576,7 @@ export function FaqSection({ faqs }: { faqs: Faq[] }) {
           </div>
         </Reveal>
 
-        <div className="border-t border-[var(--sand-border)]">
-          {faqs.map((f, i) => (
-            <FaqItem key={f.q} q={f.q} a={f.a} index={i} />
-          ))}
-        </div>
+        <FaqList faqs={faqs} />
       </div>
     </section>
   );
@@ -608,40 +619,8 @@ export function RelatedStrip({
   );
 }
 
-// ============================================================================
-// Closing CTA
-// ============================================================================
-
-export function ClosingCta({ heading, em, sub }: { heading: string; em: string; sub: string }) {
-  return (
-    <section className="relative">
-      <MarginHatch />
-      <div className="pointer-events-none absolute inset-0 -z-10 landing-gradient opacity-60" />
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-24 sm:py-32">
-        <Reveal>
-          <div className="text-center max-w-2xl mx-auto">
-            <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>
-              {heading}{' '}
-              <em className={serif.className} style={{ color: 'var(--sand-accent)' }}>
-                {em}
-              </em>
-            </h2>
-            <p className="mt-4 text-lg text-[var(--sand-text-muted)]">{sub}</p>
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
-              <StaggerButton text="Start building free" href="/sign-up" />
-              <Link
-                href="/pricing"
-                className="inline-flex items-center gap-2 rounded-xl border border-[var(--sand-border)] bg-[var(--sand-elevated)] px-6 py-3 text-base font-medium shadow-sm hover:bg-[var(--sand-surface)] transition"
-              >
-                View pricing
-              </Link>
-            </div>
-          </div>
-        </Reveal>
-      </div>
-    </section>
-  );
-}
+// The closing band lives in shared.tsx so every marketing page ends the same way.
+export { ClosingCta } from '@/components/landing/shared';
 
 // ============================================================================
 // Alternatives page — why-people-switch cards
@@ -652,7 +631,7 @@ export function WhySwitchCards({ name, items }: { name: string; items: Strength[
     <section className="relative">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-20">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-12">
+          <div className="text-center max-w-2xl mx-auto mb-12 px-2 sm:px-0">
             <SectionLabel>Why people look</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl tracking-tight')}>
               Why builders outgrow <em className={serif.className}>{name}</em>
@@ -698,7 +677,7 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
       <MarginBg />
       <div className="mx-auto max-w-5xl px-4 sm:px-6 py-20 sm:py-28">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-20">
+          <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-20 px-2 sm:px-0">
             <SectionLabel>The alternatives</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl md:text-6xl tracking-tight')}>
               Ranked, with <em className={serif.className}>reasons</em>
@@ -722,30 +701,34 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
                   />
                 )}
 
-                <div className="grid grid-cols-[auto_1fr] gap-5 sm:gap-8 items-start">
+                {/* Phone: the numeral sits beside the name and everything under
+                    it takes the card's full width. Wider: a numeral column. */}
+                <div className="grid grid-cols-[auto_1fr] items-start gap-x-4 sm:grid-cols-[3.75rem_1fr] sm:gap-x-8">
                   <span
                     className={cn(
                       serif.className,
-                      'block text-6xl sm:text-8xl font-normal leading-none select-none -mt-1',
+                      'block text-5xl sm:text-8xl font-normal leading-none select-none sm:row-span-2 sm:-mt-1',
                     )}
-                    style={{ color: 'var(--sand-accent)', opacity: 0.32 }}
+                    style={{ color: 'var(--sand-text-subtle)' }}
                   >
                     {i + 1}
                   </span>
 
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-3">
+                  <div className="min-w-0 self-center sm:self-start">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                       <h3 className={cn(serif.className, 'text-3xl sm:text-4xl tracking-tight')}>
                         {p.name}
                       </h3>
                       {p.isBotflow && (
-                        <span className="inline-flex items-center rounded-full bg-[var(--sand-accent)] px-3 py-1 text-xs font-semibold text-[var(--sand-accent-contrast)]">
+                        <span className="inline-flex items-center rounded-full border border-[var(--sand-accent)]/25 bg-[var(--sand-accent)]/10 px-3 py-1 text-xs font-medium text-[var(--sand-accent)]">
                           Our pick — and our product
                         </span>
                       )}
                     </div>
+                  </div>
 
-                    <p className="mt-3 text-base sm:text-lg text-[var(--sand-text-muted)] leading-relaxed">
+                  <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2">
+                    <p className="mt-4 text-base sm:mt-3 sm:text-lg text-[var(--sand-text-muted)] leading-relaxed">
                       {p.oneLiner}
                     </p>
 
@@ -801,7 +784,7 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
                         {p.compareSlug && !p.isBotflow && (
                           <Link
                             href={`/compare/botflow-vs-${p.compareSlug}`}
-                            className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--sand-accent)] hover:opacity-80 transition"
+                            className="inline-flex items-center gap-1.5 py-2 text-sm font-medium text-[var(--sand-accent)] hover:opacity-80 transition"
                           >
                             Full comparison
                             <ArrowRight className="h-3.5 w-3.5" />
@@ -810,9 +793,9 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
                         {p.isBotflow ? (
                           <Link
                             href="/sign-up"
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--sand-accent)] px-4 py-2 text-sm font-medium text-[var(--sand-accent-contrast)] shadow-sm hover:opacity-90 transition"
+                            className="inline-flex h-9 items-center gap-1.5 rounded-lg pointer-coarse:h-11 pointer-coarse:px-4 bg-[var(--sand-text)] bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-4 text-sm font-medium text-[var(--sand-bg)] shadow-xs transition-opacity hover:opacity-90"
                           >
-                            Try it free
+                            Start building free
                             <ArrowRight className="h-3.5 w-3.5" />
                           </Link>
                         ) : (
@@ -821,7 +804,7 @@ export function AlternativesList({ profiles }: { profiles: AltProfile[] }) {
                               href={p.url}
                               target="_blank"
                               rel="noopener"
-                              className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--sand-text-muted)] hover:text-[var(--sand-text)] transition"
+                              className="inline-flex items-center gap-1.5 py-2 text-sm font-medium text-[var(--sand-text-muted)] hover:text-[var(--sand-text)] transition"
                             >
                               Visit site
                               <ArrowUpRight className="h-3.5 w-3.5" />
@@ -856,7 +839,7 @@ export function AltQuickTable({ profiles }: { profiles: AltProfile[] }) {
     <section className="relative">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 py-16 sm:py-20">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-12">
+          <div className="text-center max-w-2xl mx-auto mb-12 px-2 sm:px-0">
             <SectionLabel>Quick reference</SectionLabel>
             <h2 className={cn(serif.className, 'text-4xl sm:text-5xl tracking-tight')}>
               The facts, <em className={serif.className}>side by side</em>
@@ -864,18 +847,51 @@ export function AltQuickTable({ profiles }: { profiles: AltProfile[] }) {
           </div>
         </Reveal>
 
-        <Reveal delay={100}>
+        {/* Phone: one card per product (a five-column table cannot be read at this width). */}
+        <Reveal delay={100} className="sm:hidden">
+          <ul className="overflow-hidden rounded-2xl border border-[var(--sand-border)] bg-[var(--sand-bg)]">
+            {profiles.map((p, i) => (
+              <li
+                key={p.key}
+                className={cn(
+                  'px-5 py-5',
+                  i !== 0 && 'border-t border-[var(--sand-border)]',
+                  p.isBotflow && 'bg-[var(--sand-accent)]/[0.04]',
+                )}
+              >
+                <h3 className="text-base font-semibold text-[var(--sand-text)]">{p.name}</h3>
+                <dl className="mt-3 grid grid-cols-[7.5rem_1fr] gap-x-4 gap-y-2 text-sm leading-snug">
+                  {cols.map((c) => (
+                    <Fragment key={c.key}>
+                      <dt className="text-[var(--sand-text-muted)]">{c.label}</dt>
+                      <dd className="text-[var(--sand-text)]">{p.facts[c.key]}</dd>
+                    </Fragment>
+                  ))}
+                </dl>
+              </li>
+            ))}
+          </ul>
+        </Reveal>
+
+        <Reveal delay={100} className="hidden sm:block">
           <div className="rounded-2xl border border-[var(--sand-border)] bg-[var(--sand-bg)] overflow-hidden overflow-x-auto modern-scrollbar">
-            <table className="w-full min-w-[640px] border-collapse text-left">
+            <table className="w-full min-w-[760px] table-fixed border-collapse text-left">
+              <colgroup>
+                <col className="w-[19%]" />
+                <col className="w-[19%]" />
+                <col className="w-[22%]" />
+                <col className="w-[22%]" />
+                <col className="w-[18%]" />
+              </colgroup>
               <thead>
                 <tr className="border-b border-[var(--sand-border)]">
-                  <th className="px-5 sm:px-7 py-4 text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]">
+                  <th className="px-5 sm:px-7 py-4 align-bottom text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]">
                     Product
                   </th>
                   {cols.map((c) => (
                     <th
                       key={c.key}
-                      className="px-4 py-4 text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]"
+                      className="px-5 py-4 align-bottom text-xs font-medium uppercase tracking-[0.18em] text-[var(--sand-text-muted)]"
                     >
                       {c.label}
                     </th>
@@ -891,19 +907,15 @@ export function AltQuickTable({ profiles }: { profiles: AltProfile[] }) {
                       p.isBotflow && 'bg-[var(--sand-accent)]/[0.04]',
                     )}
                   >
-                    <td className="px-5 sm:px-7 py-4 text-sm font-medium text-[var(--sand-text)] whitespace-nowrap">
+                    <td className="px-5 py-4 align-top text-sm font-medium text-[var(--sand-text)] sm:px-7">
                       <span className="inline-flex items-center gap-2">
-                        {p.isBotflow && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src="/brand/botflow-glyph.svg" alt="" className="h-4 w-4" />
-                        )}
                         {p.name}
                       </span>
                     </td>
                     {cols.map((c) => (
                       <td
                         key={c.key}
-                        className="px-4 py-4 text-sm text-[var(--sand-text-muted)] leading-snug"
+                        className="px-5 py-4 align-top text-sm leading-snug text-[var(--sand-text-muted)]"
                       >
                         {p.facts[c.key]}
                       </td>

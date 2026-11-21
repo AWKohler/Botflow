@@ -127,7 +127,9 @@ export function ModelCloud({ className }: { className?: string }) {
     <div
       ref={containerRef}
       className={cn(
-        'relative w-full aspect-[5/4] min-h-[420px]',
+        // Clipped sideways on phones: an icon's hover glow at the edge would
+        // otherwise make the page a pixel wider than the screen.
+        'relative w-full aspect-[5/4] min-h-[420px] max-md:[overflow-x:clip]',
         className,
       )}
     >

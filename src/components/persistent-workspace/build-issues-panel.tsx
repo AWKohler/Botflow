@@ -143,13 +143,13 @@ export function BuildIssuesPanel({
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-border px-3 py-2 text-xs">
         {errorCount > 0 && (
-          <span className="flex items-center gap-1.5 text-red-400">
-            <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
+          <span className="flex items-center gap-1.5 text-danger">
+            <span className="inline-block h-2 w-2 rounded-full bg-danger-solid" />
             {errorCount} {errorCount === 1 ? "error" : "errors"}
           </span>
         )}
         {warningCount > 0 && (
-          <span className="flex items-center gap-1.5 text-amber-400">
+          <span className="flex items-center gap-1.5 text-warning">
             <AlertTriangle size={12} />
             {warningCount} {warningCount === 1 ? "warning" : "warnings"}
           </span>
@@ -187,7 +187,7 @@ export function BuildIssuesPanel({
       <div className="max-h-72 overflow-y-auto">
         {showRawFallback ? (
           <div className="px-3 py-2">
-            <p className="mb-2 text-[11px] text-amber-400">
+            <p className="mb-2 text-[11px] text-warning">
               {failureMessage ??
                 "Build failed but no structured errors were extracted. Showing sanitized build log."}
             </p>
@@ -298,7 +298,7 @@ function DiagnosticRow({
     <div className="group px-3 py-1.5">
       <div className="flex items-start gap-2">
         {/* Severity icon */}
-        <div className={cn("mt-[2px] shrink-0", isError ? "text-red-400" : "text-amber-400")}>
+        <div className={cn("mt-[2px] shrink-0", isError ? "text-danger" : "text-warning")}>
           {isError ? <XCircle size={13} /> : <AlertTriangle size={13} />}
         </div>
         {/* Snippet toggle */}
@@ -346,13 +346,13 @@ function DiagnosticRow({
         </button>
       </div>
       {snippetOpen && diag.snippet && (
-        <pre className="ml-7 mt-1 select-text whitespace-pre overflow-x-auto rounded-md bg-elevated/60 px-2 py-1 font-mono text-[10.5px] leading-tight text-fg/80">
+        <pre className="ml-7 mt-1 select-text whitespace-pre overflow-x-auto rounded-md bg-elevated/60 px-2 py-1 font-mono text-[11px] leading-tight text-fg/80">
           {diag.snippet.join("\n")}
         </pre>
       )}
       {/* If we can't jump but we have a file name (no line), still show it for context. */}
       {!diag.line && diag.file && (
-        <div className="ml-7 mt-0.5 font-mono text-[10.5px] text-muted">{diag.file}</div>
+        <div className="ml-7 mt-0.5 font-mono text-[11px] text-muted">{diag.file}</div>
       )}
       {/* Used for stable React keys; suppress unused. */}
       <span className="hidden">{rowKey}</span>
@@ -366,14 +366,14 @@ function RawLogView({
   lines: { line: string; stream: "stdout" | "stderr" }[];
 }) {
   return (
-    <div className="max-h-48 overflow-y-auto font-mono text-[10.5px] leading-snug">
+    <div className="max-h-48 overflow-y-auto font-mono text-[11px] leading-snug">
       {lines.length === 0 ? (
         <div className="text-muted">No build output yet.</div>
       ) : (
         lines.map((l, i) => (
           <div
             key={i}
-            className={l.stream === "stderr" ? "text-red-400" : "text-fg/80"}
+            className={l.stream === "stderr" ? "text-danger" : "text-fg/80"}
           >
             {l.line}
           </div>

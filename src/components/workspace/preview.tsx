@@ -4,7 +4,8 @@ import { Input } from "@/components/ui/input";
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import html2canvas from "html2canvas";
 import Image from "next/image";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClass } from "@/components/ui/button";
+import { Menu, MenuItem } from "@/components/ui/menu";
 import {
   RefreshCw,
   ExternalLink,
@@ -12,12 +13,17 @@ import {
   Smartphone,
   Tablet,
   RotateCcw,
+  Check,
   ChevronDown,
   Play,
   X,
+  Loader2,
+  MonitorPlay,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { VisualEditorPanel } from "@/components/workspace/VisualEditorPanel";
+import { EmptyState } from "@/components/ui/empty-state";
+import { VisualEditorPanel, VISUAL_EDITOR_PANEL_ID } from "@/components/workspace/VisualEditorPanel";
+import { PHONE_QUERY } from "@/components/ui/sheet";
 import { PreviewInfo } from "@/lib/preview-store";
 import { buildPreviewUrl } from "@/lib/preview-url";
 import {
@@ -701,6 +707,45 @@ export function Preview({
     iframeRef.current?.contentWindow?.postMessage(msg, "*");
   }, []);
 
+  // On a phone the edit panel docks over the lower part of the screen (see
+  // VisualEditorPanel): ask the page to bring the selected element into the
+  // part of the preview that stays visible above it. The panel's real top
+  // edge is measured once it has been laid out.
+  const revealAbovePanel = useCallback(
+    (loc: string) => {
+      if (!iframeRef.current || !window.matchMedia(PHONE_QUERY).matches) return;
+      requestAnimationFrame(() => {
+        const frame = iframeRef.current;
+        if (!frame) return;
+        const panel = document.getElementById(VISUAL_EDITOR_PANEL_ID);
+        const panelTop = panel ? panel.getBoundingClientRect().top : window.innerHeight * 0.48;
+        postToIframe({
+          type: "BF_EDITOR_REVEAL",
+          loc,
+          height: Math.max(60, panelTop - 8 - frame.getBoundingClientRect().top),
+        });
+      });
+    },
+    [postToIframe],
+  );
+
+  // The panel gets shorter when the on-screen keyboard opens: reveal again.
+  const selectedLoc = selection?.loc ?? null;
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!selectedLoc || !vv) return;
+    let timer = 0;
+    const again = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => revealAbovePanel(selectedLoc), 60);
+    };
+    vv.addEventListener("resize", again);
+    return () => {
+      window.clearTimeout(timer);
+      vv.removeEventListener("resize", again);
+    };
+  }, [selectedLoc, revealAbovePanel]);
+
   // Enable/disable the in-iframe runtime when editMode flips.
   useEffect(() => {
     postToIframe({ type: editMode ? "BF_EDITOR_ENABLE" : "BF_EDITOR_DISABLE" });
@@ -741,6 +786,10 @@ export function Preview({
           setSelection(sel);
           setSelectedBox(toParentBox(sel.rect));
           onElementSelected?.(sel);
+          // On a phone the edit panel docks over the lower half of the screen
+          // (see VisualEditorPanel): ask the page to bring the element into
+          // the part of the preview that stays visible above it.
+          if (sel.loc) revealAbovePanel(sel.loc);
           break;
         }
         case "BF_EDITOR_RECT": {
@@ -755,7 +804,7 @@ export function Preview({
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [postToIframe, toParentBox, onElementSelected]);
+  }, [postToIframe, toParentBox, onElementSelected, revealAbovePanel]);
 
   // Fetch HTML snapshot content
   useEffect(() => {
@@ -1026,7 +1075,7 @@ export function Preview({
                   href="https://apps.apple.com/us/app/expo-go/id982107779"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs px-3 py-1.5 rounded-full border border-border bg-white hover:bg-neutral-50 transition text-neutral-800"
+                  className="inline-flex h-7 items-center rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
                   title="Download on the App Store"
                 >
                   App Store
@@ -1035,7 +1084,7 @@ export function Preview({
                   href="https://play.google.com/store/apps/details?id=host.exp.exponent&hl=en_US&pli=1"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs px-3 py-1.5 rounded-full border border-border bg-white hover:bg-neutral-50 transition text-neutral-800"
+                  className="inline-flex h-7 items-center rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
                   title="Get it on Google Play"
                 >
                   Google Play
@@ -1126,7 +1175,7 @@ export function Preview({
         <div class="w-full h-full relative overflow-hidden">
           <iframe srcdoc="${snapshotHtml?.replace(/"/g, '&quot;').replace(/\$/g, '$$$$') || ""}" class="border-0 w-full select-none h-full" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" style="opacity: 0.6;"></iframe>
           <div class="flex flex-col items-center justify-center absolute inset-0 z-[3] bg-black/40 backdrop-blur-[1px]" style="transform-origin: center center;">
-            <button class="flex items-center justify-center w-20 h-20 rounded-full bg-white/90 hover:bg-white hover:scale-110 shadow-2xl transition-all duration-300" onclick="this.innerHTML='<span class=\\'inline-flex h-8 w-8 rounded-full border-4 border-green-600 border-t-transparent animate-spin\\'></span>'">
+            <button class="flex items-center justify-center w-20 h-20 rounded-full bg-white/90 hover:bg-white hover:scale-110 shadow-2xl transition-all duration-300" onclick="this.innerHTML='<span class=\\'inline-flex h-8 w-8 rounded-full border-4 border-success-border border-t-transparent animate-spin\\'></span>'">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M8 5v14l11-7z" fill="#16a34a" stroke="#16a34a" stroke-width="2" stroke-linejoin="round"/>
               </svg>
@@ -1170,11 +1219,11 @@ export function Preview({
                     )}
                   >
                     {isInstalling || isStartingServer ? (
-                      <span className="inline-flex h-8 w-8 rounded-full border-4 border-green-600 border-t-transparent animate-spin" />
+                      <span className="inline-flex h-8 w-8 rounded-full border-4 border-success-border border-t-transparent animate-spin" />
                     ) : (
                       <Play
                         size={32}
-                        className="text-green-600 fill-green-600 ml-1"
+                        className="text-success fill-green-600 ml-1"
                       />
                     )}
                   </button>
@@ -1212,11 +1261,11 @@ export function Preview({
                 )}
               >
                 {isInstalling || isStartingServer ? (
-                  <span className="inline-flex h-10 w-10 rounded-full border-4 border-green-600 border-t-transparent animate-spin" />
+                  <span className="inline-flex h-10 w-10 rounded-full border-4 border-success-border border-t-transparent animate-spin" />
                 ) : (
                   <Play
                     size={40}
-                    className="text-green-600 fill-green-600 ml-1"
+                    className="text-success fill-green-600 ml-1"
                   />
                 )}
               </button>
@@ -1247,54 +1296,40 @@ export function Preview({
 
     // No snapshot available - show default "No Preview Yet" message
     return (
-      <div className="h-full flex items-center justify-center bg-surface text-muted rounded-xl border border-border">
-        <div className="text-center max-w-md px-6">
-          <div className="text-4xl mb-3">🚀</div>
-          <h3 className="text-2xl font-semibold mb-2 text-fg tracking-tight">
-            No Preview Yet
-          </h3>
-          <p className="text-md mb-4 tracking-normal">
-            Start the development server to see your app here. We&apos;ll open
-            the first active port automatically and keep this preview in sync.
-          </p>
-          <div className="flex items-center justify-center gap-2">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={onToggleDevServer}
-              disabled={Boolean(isInstalling) || Boolean(isStartingServer)}
-              className={cn(
-                "inline-flex items-center gap-2 rounded-full px-4",
-                isDevServerRunning
-                  ? "bg-red-600 hover:bg-red-700"
-                  : "bg-green-600 hover:bg-green-700",
-              )}
-            >
-              {isInstalling || isStartingServer ? (
-                <>
-                  <span className="inline-flex h-3 w-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                  <span>{isInstalling ? "Installing…" : "Starting…"}</span>
-                </>
-              ) : isDevServerRunning ? (
-                <>
-                  <span>Stop Dev Server</span>
-                </>
-              ) : (
-                <>
-                  <span>Start Dev Server</span>
-                </>
-              )}
-            </Button>
-          </div>
-          <p className="text-xs mt-3 text-muted">
-            Equivalent command:{" "}
-            <code className="bg-elevated px-1 rounded border border-border">
-              {(platform === "mobile" || platform === "multiplatform")
-                ? "pnpm exec expo start --web"
-                : "pnpm dev"}
-            </code>
-          </p>
-        </div>
+      <div className="flex h-full items-center justify-center rounded-xl border border-border bg-bg">
+        <EmptyState
+          icon={MonitorPlay}
+          title="No preview yet"
+          description="Start the dev server and your app shows up here, kept in sync as the agent works."
+          action={
+            <div className="flex flex-col items-center gap-3">
+              <Button
+                variant={isDevServerRunning ? "secondary" : "primary"}
+                onClick={onToggleDevServer}
+                disabled={Boolean(isInstalling) || Boolean(isStartingServer)}
+              >
+                {isInstalling || isStartingServer ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>{isInstalling ? "Installing…" : "Starting…"}</span>
+                  </>
+                ) : isDevServerRunning ? (
+                  <span>Stop dev server</span>
+                ) : (
+                  <span>Start dev server</span>
+                )}
+              </Button>
+              <p className="text-xs text-subtle">
+                Same as running{" "}
+                <code className="rounded border border-border bg-elevated px-1 py-0.5 font-mono text-[11px] text-muted">
+                  {(platform === "mobile" || platform === "multiplatform")
+                    ? "pnpm exec expo start --web"
+                    : "pnpm dev"}
+                </code>
+              </p>
+            </div>
+          }
+        />
       </div>
     );
   }
@@ -1412,32 +1447,35 @@ export function Preview({
             <div className="relative">
               <button
                 onClick={() => setIsPortDropdownOpen(!isPortDropdownOpen)}
-                className="flex items-center gap-1 px-2 py-1 bg-elevated hover:bg-elevated/80 rounded text-sm text-muted border border-border"
+                aria-haspopup="menu"
+                aria-expanded={isPortDropdownOpen}
+                className={buttonClass({ variant: "secondary", size: "sm", className: "gap-1 font-mono text-xs" })}
               >
                 <span>:{activePreview.port}</span>
-                <ChevronDown size={14} />
+                <ChevronDown size={13} className="text-muted" />
               </button>
 
               {isPortDropdownOpen && (
-                <div className="absolute top-full left-0 mt-1 bg-elevated border border-border rounded shadow-lg z-50">
-                  {previews.map((preview, index) => (
-                    <button
-                      key={preview.port}
-                      onClick={() => {
-                        onActivePreviewChange(index);
-                        setIsPortDropdownOpen(false);
-                      }}
-                      className={cn(
-                        "block w-full px-3 py-2 text-left text-sm hover:bg-soft",
-                        index === activePreviewIndex
-                          ? "text-accent"
-                          : "text-muted",
-                      )}
-                    >
-                      Port {preview.port}
-                    </button>
-                  ))}
-                </div>
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsPortDropdownOpen(false)} />
+                  <Menu className="absolute left-0 top-full z-50 mt-1 w-40">
+                    <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted">Port</div>
+                    {previews.map((preview, index) => (
+                      <MenuItem
+                        key={preview.port}
+                        role="menuitemradio"
+                        aria-checked={index === activePreviewIndex}
+                        onClick={() => {
+                          onActivePreviewChange(index);
+                          setIsPortDropdownOpen(false);
+                        }}
+                      >
+                        <span className="flex-1 font-mono text-xs">{preview.port}</span>
+                        <Check size={14} className={cn("text-fg", index !== activePreviewIndex && "invisible")} />
+                      </MenuItem>
+                    ))}
+                  </Menu>
+                </>
               )}
             </div>
           )}
@@ -1569,7 +1607,7 @@ export function Preview({
                 href="https://apps.apple.com/us/app/expo-go/id982107779"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs px-3 py-1.5 rounded-full border border-border bg-white hover:bg-neutral-50 transition text-neutral-800"
+                className="inline-flex h-7 items-center rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
                 title="Download on the App Store"
               >
                 App Store
@@ -1578,7 +1616,7 @@ export function Preview({
                 href="https://play.google.com/store/apps/details?id=host.exp.exponent&hl=en_US&pli=1"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs px-3 py-1.5 rounded-full border border-border bg-white hover:bg-neutral-50 transition text-neutral-800"
+                className="inline-flex h-7 items-center rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-2.5 text-xs font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated"
                 title="Get it on Google Play"
               >
                 Google Play

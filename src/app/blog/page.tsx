@@ -62,7 +62,7 @@ export default async function BlogIndexPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }}
       />
 
-      <section className="mx-auto max-w-7xl px-4 pt-16 sm:px-6 sm:pt-24">
+      <section className="mx-auto max-w-7xl px-6 pt-14 sm:pt-24">
         <Reveal>
           <SectionLabel>Botflow Journal</SectionLabel>
           <h1
@@ -71,7 +71,7 @@ export default async function BlogIndexPage() {
               'max-w-3xl text-balance text-5xl leading-[1.05] tracking-tight sm:text-6xl md:text-7xl',
             )}
           >
-            Field notes on building <em className="italic">with</em> AI.
+            Field notes on building <em className="italic text-[var(--sand-accent)]">with</em> AI.
           </h1>
           <p className="mt-6 max-w-2xl text-lg text-[var(--sand-text-muted)]">
             Product updates, engineering deep-dives, and the occasional
@@ -80,7 +80,7 @@ export default async function BlogIndexPage() {
         </Reveal>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pt-12 pb-24 sm:px-6 sm:pt-20">
+      <section className="mx-auto max-w-7xl px-6 pt-10 pb-20 sm:pt-20 sm:pb-24">
         {posts.length === 0 ? (
           <p className="text-[var(--sand-text-muted)]">
             No posts yet. Check back soon.

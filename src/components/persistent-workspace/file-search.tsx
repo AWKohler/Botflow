@@ -79,7 +79,7 @@ export function FileSearch({ projectId, onOpenFile }: FileSearchProps) {
         </div>
         <div className="mt-1 text-xs text-muted">
           {error
-            ? <span className="text-red-400">{error}</span>
+            ? <span className="text-danger">{error}</span>
             : searching
               ? "Searching…"
               : results.length > 0
@@ -96,13 +96,13 @@ export function FileSearch({ projectId, onOpenFile }: FileSearchProps) {
             key={`${r.file}:${r.line}:${idx}`}
             onClick={() => onOpenFile(r.file)}
             className={cn(
-              "w-full text-left px-2 py-2 rounded-md border border-transparent hover:border-border hover:bg-elevated/60 bolt-hover",
+              "w-full text-left px-2 py-2 rounded-md border border-transparent hover:border-border hover:bg-elevated/60",
             )}
             title={`${r.file}:${r.line}`}
           >
             <div className="text-muted text-xs truncate">{r.file}</div>
             <div className="text-fg truncate font-mono text-xs">{r.text}</div>
-            <div className="text-muted text-[10px]">line {r.line}</div>
+            <div className="text-muted text-[11px]">line {r.line}</div>
           </button>
         ))}
       </div>

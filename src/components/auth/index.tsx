@@ -1,10 +1,14 @@
 "use client";
 import Image from "next/image";
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth/client";
 import { safeRedirect } from "@/lib/auth/policy";
 import { AuthForm } from "./sign-in";
-import { AccountPanel } from "./account";
+import Link from "next/link";
+import { LogOut, Settings2, X } from "lucide-react";
+import { buttonClass } from "@/components/ui/button";
+import { Menu, MenuItem, MenuSeparator, menuItemClass } from "@/components/ui/menu";
+import { phoneNativeDialogClass } from "@/components/ui/dialog";
 export { PricingTable } from "./pricing-table";
 
 interface User {
@@ -62,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       {session.data?.session.impersonatedBy && (
         <div
           role="status"
-          className="fixed top-0 inset-x-0 z-[100] flex justify-center gap-4 bg-amber-100 p-2 text-sm text-amber-950"
+          className="fixed top-0 inset-x-0 z-[100] flex justify-center gap-4 bg-warning-soft p-2 text-sm text-amber-950"
         >
           Viewing Botflow as {session.data.user.email}
           <button
@@ -130,15 +134,15 @@ export function SignInButton({
         <dialog
           ref={dialogRef}
           onClose={() => setOpen(false)}
-          className="fixed inset-0 m-auto max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-[var(--sand-border)] bg-[var(--color-surface)] p-0 text-[var(--sand-text)] shadow-xl backdrop:bg-black/40"
+          className={`fixed inset-0 m-auto max-h-[90vh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-2xl border border-border bg-bg p-0 text-fg shadow-2xl backdrop:bg-black/40 backdrop:backdrop-blur-[2px] ${phoneNativeDialogClass}`}
         >
           <button
             autoFocus
             aria-label="Close sign in"
-            className="absolute right-4 top-3 z-10 text-xl"
+            className={buttonClass({ variant: "ghost", size: "icon-sm", className: "absolute right-3 top-3 z-10" })}
             onClick={() => dialogRef.current?.close()}
           >
-            ×
+            <X className="h-4 w-4" />
           </button>
           <AuthForm
             redirectUrl={
@@ -163,19 +167,33 @@ export function UserButton(_props: {
   void _props;
   const { user } = useUser();
   const [open, setOpen] = useState(false);
-  const [accountTab, setAccountTab] = useState<string | null>(null);
-  const accountDialog = React.useRef<HTMLDialogElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Close on a press anywhere else, or Escape. (A full-screen catcher element
+  // would not work here: inside the blurred header, `fixed` only covers the header.)
   useEffect(() => {
-    if (accountTab) accountDialog.current?.showModal();
-  }, [accountTab]);
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
   if (!user) return null;
   return (
-    <div className="relative text-[var(--sand-text)]">
+    <div ref={rootRef} className="relative text-fg">
       <button
         aria-label="Open user menu"
+        aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-[var(--sand-elevated)] text-sm"
+        className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-border bg-elevated text-[13px] font-medium uppercase text-fg transition-colors hover:border-border-strong pointer-coarse:h-10 pointer-coarse:w-10"
       >
         {user.imageUrl ? (
           <Image
@@ -192,69 +210,30 @@ export function UserButton(_props: {
       </button>
       {open && (
         <>
-          <button
-            aria-label="Close user menu"
-            className="fixed inset-0 z-40 cursor-default"
-            onClick={() => setOpen(false)}
-          />
-          <div
-            role="menu"
-            className="absolute right-0 top-11 z-50 w-72 rounded-xl border border-[var(--sand-border)] bg-[var(--color-surface)] p-2 shadow-xl"
-          >
-            <div className="border-b border-[var(--sand-border)] p-3">
-              <p className="font-medium">{user.fullName}</p>
-              <p className="text-sm text-[var(--sand-text-muted)]">
+          <Menu className="absolute right-0 top-full z-50 mt-2 w-64">
+            <div className="px-2.5 pb-2 pt-1.5 pointer-coarse:px-3">
+              <p className="truncate text-[13px] font-medium text-fg pointer-coarse:text-[15px]">{user.fullName}</p>
+              <p className="truncate text-xs text-muted pointer-coarse:text-[13px]">
                 {user.primaryEmailAddress?.emailAddress}
               </p>
             </div>
-            <button
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                setAccountTab("profile");
-              }}
-              className="block rounded-lg p-3 text-sm hover:bg-[var(--sand-elevated)]"
-            >
-              Manage account
-            </button>
-            <button
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                setAccountTab("billing");
-              }}
-              className="block rounded-lg p-3 text-sm hover:bg-[var(--sand-elevated)]"
-            >
-              Billing
-            </button>
-            <button
-              role="menuitem"
-              className="w-full rounded-lg p-3 text-left text-sm hover:bg-[var(--sand-elevated)]"
+            <MenuSeparator />
+            {/* One destination for everything about the account. */}
+            <Link href="/account" role="menuitem" className={menuItemClass} onClick={() => setOpen(false)}>
+              <Settings2 className="h-4 w-4 text-muted" strokeWidth={1.75} />
+              Settings
+            </Link>
+            <MenuItem
               onClick={async () => {
                 const result = await authClient.signOut();
                 if (!result.error) location.assign("/");
               }}
             >
+              <LogOut className="h-4 w-4 text-muted" strokeWidth={1.75} />
               Sign out
-            </button>
-          </div>
+            </MenuItem>
+          </Menu>
         </>
-      )}
-      {accountTab && (
-        <dialog
-          ref={accountDialog}
-          onClose={() => setAccountTab(null)}
-          className="fixed inset-0 m-auto max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl border-none bg-[var(--color-surface)] p-0 backdrop:bg-black/40"
-        >
-          <button
-            aria-label="Close account"
-            className="absolute right-4 top-3 z-10 text-xl"
-            onClick={() => accountDialog.current?.close()}
-          >
-            ×
-          </button>
-          <AccountPanel embedded initialTab={accountTab} />
-        </dialog>
       )}
     </div>
   );

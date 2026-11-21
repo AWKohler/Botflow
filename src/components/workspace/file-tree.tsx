@@ -101,10 +101,11 @@ export function FileTree({ files, selectedFile, onFileSelect, onFileDrop }: File
         <div
           key={filePath}
           className={cn(
-            'flex items-center cursor-pointer px-2 py-1 text-sm rounded-md mx-1 transition-all duration-150',
-            'hover:bg-elevated/60 bolt-hover',
-            isSelected && !isFolder && 'bg-accent/20 hover:bg-accent/25 shadow-sm',
-            isDragTarget && isFolder && 'ring-1 ring-accent bg-accent/15',
+            'flex h-7 cursor-pointer items-center rounded-md px-2 text-[13px] transition-colors duration-100 pointer-coarse:h-10 pointer-coarse:text-[15px]',
+            'hover:bg-elevated',
+            // Selected file: a clearly stronger fill than hover, plus weight.
+            isSelected && !isFolder && 'bg-soft font-medium',
+            isDragTarget && isFolder && 'bg-accent-soft ring-1 ring-accent',
           )}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onClick={() => {
@@ -118,25 +119,25 @@ export function FileTree({ files, selectedFile, onFileSelect, onFileDrop }: File
           {isFolder ? (
             <>
               {isExpanded ? (
-                <ChevronDown size={14} className="mr-1 text-muted" />
+                <ChevronDown size={14} className="mr-1 shrink-0 text-subtle" />
               ) : (
-                <ChevronRight size={14} className="mr-1 text-muted" />
+                <ChevronRight size={14} className="mr-1 shrink-0 text-subtle" />
               )}
               {isExpanded ? (
-                <FolderOpen size={16} className={cn('mr-2', isDragTarget ? 'text-accent' : 'text-accent')} />
+                <FolderOpen size={15} strokeWidth={1.75} className={cn('mr-2 shrink-0', isDragTarget ? 'text-accent' : 'text-muted')} />
               ) : (
-                <Folder size={16} className="mr-2 text-accent" />
+                <Folder size={15} strokeWidth={1.75} className="mr-2 shrink-0 text-muted" />
               )}
             </>
           ) : (
             <>
-              <div className="w-4 mr-1" />
-              <FileIcon filename={name} />
+              <div className="mr-1 w-3.5 shrink-0" />
+              <File size={15} strokeWidth={1.75} className="mr-2 shrink-0 text-subtle" />
             </>
           )}
           <span className={cn(
             'truncate',
-            isSelected && !isFolder ? 'text-fg' : 'text-muted',
+            isSelected && !isFolder ? 'text-fg' : isFolder ? 'text-fg' : 'text-muted',
             isDragTarget && isFolder && 'text-accent font-medium',
           )}>
             {name}
@@ -154,8 +155,8 @@ export function FileTree({ files, selectedFile, onFileSelect, onFileDrop }: File
   return (
     <div
       className={cn(
-        'p-2 text-fg relative transition-all duration-150',
-        isDraggingOver && 'ring-1 ring-inset ring-accent/40 rounded-lg bg-accent/5',
+        'relative p-1.5 text-fg transition-colors duration-150',
+        isDraggingOver && 'rounded-lg bg-accent-soft ring-1 ring-inset ring-accent/40',
       )}
       onDragEnter={onContainerDragEnter}
       onDragLeave={onContainerDragLeave}
@@ -165,24 +166,24 @@ export function FileTree({ files, selectedFile, onFileSelect, onFileDrop }: File
       {/* Root "Project" row */}
       <div
         className={cn(
-          'flex items-center cursor-pointer hover:bg-elevated/60 px-2 py-1 text-sm rounded-md bolt-hover transition-all duration-150',
-          isRootTarget && isDraggingOver && 'ring-1 ring-accent bg-accent/15',
+          'flex h-7 cursor-pointer items-center rounded-md px-2 text-[13px] transition-colors duration-100 hover:bg-elevated pointer-coarse:h-10 pointer-coarse:text-[15px]',
+          isRootTarget && isDraggingOver && 'bg-accent-soft ring-1 ring-accent',
         )}
         onClick={() => toggleFolder('/')}
         onDragEnter={(e) => { e.stopPropagation(); setDragOverFolder('/'); }}
         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
       >
         {expandedFolders.has('/') ? (
-          <ChevronDown size={14} className="mr-1 text-muted" />
+          <ChevronDown size={14} className="mr-1 shrink-0 text-subtle" />
         ) : (
-          <ChevronRight size={14} className="mr-1 text-muted" />
+          <ChevronRight size={14} className="mr-1 shrink-0 text-subtle" />
         )}
         {expandedFolders.has('/') ? (
-          <FolderOpen size={16} className="mr-2 text-accent" />
+          <FolderOpen size={15} strokeWidth={1.75} className="mr-2 shrink-0 text-muted" />
         ) : (
-          <Folder size={16} className="mr-2 text-accent" />
+          <Folder size={15} strokeWidth={1.75} className="mr-2 shrink-0 text-muted" />
         )}
-        <span className={cn('text-muted flex-1', isRootTarget && isDraggingOver && 'text-accent font-medium')}>
+        <span className={cn('flex-1 font-medium text-fg', isRootTarget && isDraggingOver && 'text-accent')}>
           Project
         </span>
       </div>
@@ -203,44 +204,4 @@ export function FileTree({ files, selectedFile, onFileSelect, onFileDrop }: File
       )}
     </div>
   );
-}
-
-function FileIcon({ filename }: { filename: string }) {
-  const ext = filename.split('.').pop()?.toLowerCase();
-
-  const getIconColor = (extension: string) => {
-    switch (extension) {
-      case 'js':
-      case 'jsx':
-        return 'text-yellow-400';
-      case 'ts':
-      case 'tsx':
-        return 'text-blue-400';
-      case 'json':
-        return 'text-yellow-600';
-      case 'md':
-        return 'text-blue-300';
-      case 'html':
-        return 'text-orange-400';
-      case 'css':
-      case 'scss':
-        return 'text-blue-500';
-      case 'py':
-        return 'text-green-400';
-      case 'rb':
-        return 'text-red-400';
-      case 'png':
-      case 'jpg':
-      case 'jpeg':
-      case 'gif':
-      case 'svg':
-      case 'webp':
-      case 'ico':
-        return 'text-purple-400';
-      default:
-        return 'text-muted';
-    }
-  };
-
-  return <File size={16} className={cn('mr-2', getIconColor(ext || ''))} />;
 }

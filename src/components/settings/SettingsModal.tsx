@@ -1,11 +1,15 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { useEffect, useState } from 'react';
-import { SignedIn, SignedOut, SignInButton, PricingTable } from '@/components/auth';
+import { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useModal } from '@/components/ui/use-modal';
+import { useIsPhone } from '@/components/ui/sheet';
+import { SignedIn, SignedOut, SignInButton } from '@/components/auth';
 import { useToast } from '@/components/ui/toast';
-import { X, ExternalLink, AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
+import { X, ChevronDown, ExternalLink, AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { buttonClass } from '@/components/ui/button';
 import { UsageTab } from './UsageTab';
 import { ANTHROPIC_OAUTH_ENABLED } from '@/lib/feature-flags';
 
@@ -13,12 +17,15 @@ interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
   defaultTab?: Tab;
-  /** Pass true when rendering inside the workspace — COEP headers prevent Stripe iframes
-   *  from loading, so the subscription tab opens /pricing in a new tab instead. */
+  /** Pass true when rendering inside the workspace, where leaving the page
+   *  would interrupt work: links out of the dialog then open in a new tab. */
   workspaceContext?: boolean;
+  /** 'section' renders just the content of `defaultTab`, with no dialog
+   *  around it, so the Settings page and the dialog are one implementation. */
+  variant?: 'modal' | 'section';
 }
 
-type Tab = 'usage' | 'connections' | 'subscription';
+type Tab = 'usage' | 'connections';
 type Provider = 'openai' | 'anthropic' | 'moonshot' | 'fireworks' | 'together' | 'google' | 'xai';
 type OAuthStep = 'idle' | 'connecting' | 'exchanging' | 'success';
 
@@ -28,20 +35,70 @@ const PROVIDERS: Array<{
   field: string;
   placeholder: string;
 }> = [
-  { provider: 'openai', label: 'OpenAI API Key', field: 'openaiApiKey', placeholder: 'sk-...' },
-  { provider: 'anthropic', label: 'Anthropic API Key', field: 'anthropicApiKey', placeholder: 'sk-ant-...' },
-  { provider: 'google', label: 'Google AI Studio API Key', field: 'googleApiKey', placeholder: 'AIza...' },
-  { provider: 'xai', label: 'xAI (Grok) API Key', field: 'xaiApiKey', placeholder: 'xai-...' },
-  { provider: 'moonshot', label: 'Moonshot API Key', field: 'moonshotApiKey', placeholder: 'moonshot-...' },
-  { provider: 'fireworks', label: 'Fireworks AI API Key', field: 'fireworksApiKey', placeholder: 'fw-...' },
+  { provider: 'openai', label: 'OpenAI', field: 'openaiApiKey', placeholder: 'sk-...' },
+  { provider: 'anthropic', label: 'Anthropic', field: 'anthropicApiKey', placeholder: 'sk-ant-...' },
+  { provider: 'google', label: 'Google AI Studio', field: 'googleApiKey', placeholder: 'AIza...' },
+  { provider: 'xai', label: 'xAI (Grok)', field: 'xaiApiKey', placeholder: 'xai-...' },
+  { provider: 'moonshot', label: 'Moonshot', field: 'moonshotApiKey', placeholder: 'moonshot-...' },
+  { provider: 'fireworks', label: 'Fireworks AI', field: 'fireworksApiKey', placeholder: 'fw-...' },
   // Only rendered when the USE_TOGETHER_KIMI flag is on (Kimi routed to Together AI).
-  { provider: 'together', label: 'Together AI API Key', field: 'togetherApiKey', placeholder: 'together-...' },
+  { provider: 'together', label: 'Together AI', field: 'togetherApiKey', placeholder: 'together-...' },
 ];
 
-export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceContext = false }: SettingsModalProps) {
+const connectionButtonClass =
+  'inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-lg border border-border pointer-coarse:h-10 pointer-coarse:px-3.5 pointer-coarse:text-sm bg-linear-to-b from-bg to-surface inset-shadow-bevel disabled:bg-none disabled:bg-surface disabled:shadow-none disabled:inset-shadow-none dark:from-elevated dark:to-surface px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50';
+
+/**
+ * One connection row: what it is on the left, its state and its single action
+ * on the right, so every connection reads the same way at a glance.
+ */
+function ConnectionHeader({
+  title,
+  description,
+  connected,
+  children,
+}: {
+  title: string;
+  description: React.ReactNode;
+  connected: boolean;
+  children?: React.ReactNode;
+}) {
+  return (
+    // Phone: the status and button sit under the description, which keeps its full width.
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+      <div className="min-w-0">
+        <h3 className="text-sm font-semibold text-fg">{title}</h3>
+        <p className="mt-0.5 max-w-prose text-xs leading-5 text-muted max-sm:text-[13px]">{description}</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2.5 max-sm:flex-row-reverse max-sm:justify-end">
+        {connected && (
+          <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-success">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Connected
+          </span>
+        )}
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceContext = false, variant = 'modal' }: SettingsModalProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>(defaultTab);
   const [loading, setLoading] = useState(true);
+  // On a phone the two long parts of Connections (the API key list and the
+  // Apple setup steps) are folded until asked for, so the page scans as a
+  // short list of accounts. null: not toggled, so the screen size decides.
+  const phone = useIsPhone();
+  const [keysOpenChoice, setKeysOpen] = useState<boolean | null>(null);
+  const [appleOpenChoice, setAppleOpen] = useState<boolean | null>(null);
+  // Off a phone there are no toggles, so both are always open: a section
+  // folded on a phone can never stay hidden after a rotation.
+  const keysOpen = phone ? (keysOpenChoice ?? false) : true;
+  const appleOpen = phone ? (appleOpenChoice ?? false) : true;
+  // A failed load must never read as "nothing is connected".
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [savingKey, setSavingKey] = useState<Provider | null>(null);
   const [removingKey, setRemovingKey] = useState<Provider | null>(null);
   const [keys, setKeys] = useState<Record<Provider, string>>({
@@ -52,6 +109,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
   });
   // Server-controlled flag (USE_TOGETHER_KIMI): gates the Together AI key input.
   const [useTogetherKimi, setUseTogetherKimi] = useState(false);
+  const savedKeyCount = PROVIDERS.filter((p) => (p.provider !== 'together' || useTogetherKimi) && hasKey[p.provider]).length;
   const [hasClaudeOAuth, setHasClaudeOAuth] = useState(false);
   const [hasCodexOAuth, setHasCodexOAuth] = useState(false);
   const [hasConvexOAuth, setHasConvexOAuth] = useState(false);
@@ -86,25 +144,14 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
 
   useEffect(() => {
     if (!open) return;
-    // On mobile, connections tab is hidden — fall back to usage
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
-    setActiveTab(defaultTab === 'connections' && isMobile ? 'usage' : defaultTab);
+    setActiveTab(defaultTab);
   }, [open, defaultTab]);
-
-  // If screen resizes to mobile while connections is active, switch away
-  useEffect(() => {
-    if (activeTab !== 'connections') return;
-    const check = () => {
-      if (window.innerWidth < 640) setActiveTab('usage');
-    };
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, [activeTab]);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setLoading(true);
+    setLoadFailed(false);
     setKeys({ openai: '', anthropic: '', moonshot: '', fireworks: '', together: '', google: '', xai: '' });
     setOauthStep('idle');
     setOauthCode('');
@@ -134,15 +181,17 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
             setHasCodexOAuth(Boolean(data?.hasCodexOAuth));
             setHasConvexOAuth(Boolean(data?.hasConvexOAuth));
           }
+        } else if (!cancelled) {
+          setLoadFailed(true);
         }
       } catch {
-        // ignore
+        if (!cancelled) setLoadFailed(true);
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [open]);
+  }, [open, reloadKey]);
 
   // Apple Developer connection status (separate route — masked, never the .p8)
   useEffect(() => {
@@ -197,7 +246,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
         if (data.status === 'success') {
           setCodexOAuthStep('success');
           setHasCodexOAuth(true);
-          toast({ title: 'ChatGPT Codex connected', description: 'OAuth token saved. GPT-5.3 Codex will use it automatically.' });
+          toast({ title: 'ChatGPT connected', description: 'GPT-5.3 Codex will now use your ChatGPT subscription.' });
         } else if (data.status === 'failed') {
           setCodexOAuthStep('idle');
           toast({ title: 'Auth failed', description: 'Device authorization failed. Please try again.' });
@@ -234,7 +283,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
           xai: Boolean(data?.hasXaiKey),
         });
         setKeys(prev => ({ ...prev, [provider]: '' }));
-        toast({ title: 'Key saved', description: `${config.label} has been updated.` });
+        toast({ title: 'Key saved', description: `Your ${config.label} key has been updated.` });
       } else {
         toast({ title: 'Save failed', description: 'Could not save key.' });
       }
@@ -257,7 +306,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
       if (res.ok) {
         setHasKey(prev => ({ ...prev, [provider]: false }));
         setKeys(prev => ({ ...prev, [provider]: '' }));
-        toast({ title: 'Key removed', description: `${config.label} has been removed.` });
+        toast({ title: 'Key removed', description: `Your ${config.label} key has been removed.` });
       } else {
         toast({ title: 'Remove failed', description: 'Could not remove key.' });
       }
@@ -318,7 +367,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
       }
       setHasClaudeOAuth(true);
       setOauthStep('success');
-      toast({ title: 'Claude Code connected', description: 'OAuth token saved. Anthropic models will use it automatically.' });
+      toast({ title: 'Claude connected', description: 'Claude models will now use your Claude subscription.' });
     } catch {
       setOauthError('Unexpected error exchanging token.');
       setOauthStep('connecting');
@@ -330,7 +379,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
       await fetch('/api/oauth/claude/disconnect', { method: 'POST' });
       setHasClaudeOAuth(false);
       setOauthStep('idle');
-      toast({ title: 'Disconnected', description: 'Claude Code OAuth token removed.' });
+      toast({ title: 'Disconnected', description: 'Your Claude subscription is no longer connected.' });
     } catch {
       toast({ title: 'Error', description: 'Failed to disconnect.' });
     }
@@ -359,7 +408,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
       await fetch('/api/oauth/codex/disconnect', { method: 'POST' });
       setHasCodexOAuth(false);
       setCodexOAuthStep('idle');
-      toast({ title: 'Disconnected', description: 'ChatGPT Codex OAuth removed.' });
+      toast({ title: 'Disconnected', description: 'Your ChatGPT subscription is no longer connected.' });
     } catch {
       toast({ title: 'Error', description: 'Failed to disconnect.' });
     }
@@ -459,8 +508,6 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
     }
   };
 
-  if (!open) return null;
-
   const handleClose = () => {
     onClose();
     // Notify listeners (AgentPanel, landing page) to refresh provider access
@@ -468,220 +515,121 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
       window.dispatchEvent(new CustomEvent('settings-closed'));
     }
   };
+  // Modal behaviour for the dialog form: focus in and contained, page inert,
+  // Escape closes, focus returns to the opener.
+  const panelRef = useModal<HTMLDivElement>(open && variant === 'modal', handleClose);
+  const titleId = useId();
+  // Whether the dialog body has more below the fold (drives the bottom fade).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const updateMore = () => {
+    const el = scrollRef.current;
+    if (el) setHasMore(el.scrollHeight - el.scrollTop - el.clientHeight > 8);
+  };
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!open || !el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(updateMore);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    updateMore();
+    return () => ro.disconnect();
+  }, [open, activeTab, loading]);
 
-  const isSubscriptionTab = activeTab === 'subscription';
+  if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center px-4">
-      {/* Blur backdrop as a sibling — NOT an ancestor of the modal content.
-          This prevents backdrop-filter from creating a containing block that
-          traps Clerk's checkout panel (position:fixed) inside our modal. */}
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={handleClose}
-      />
-      <div
-        className={cn(
-          'relative w-full rounded-2xl border border-border bg-bg shadow-xl max-h-[90vh] flex flex-col overflow-hidden transition-all duration-200',
-          isSubscriptionTab ? 'max-w-5xl' : activeTab === 'usage' ? 'max-w-xl' : 'max-w-lg'
-        )}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 border-b border-border flex-shrink-0 gap-2">
-          <div className="flex items-center gap-2 sm:gap-6 min-w-0">
-            <h2 className="text-sm sm:text-lg font-semibold text-fg shrink-0">Settings</h2>
-            <div className="flex items-center gap-0.5 sm:gap-1">
-              <button
-                onClick={() => setActiveTab('usage')}
-                className={cn(
-                  'px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap',
-                  activeTab === 'usage'
-                    ? 'bg-elevated text-fg'
-                    : 'text-muted hover:text-fg'
-                )}
-              >
-                Usage
-              </button>
-              <button
-                onClick={() => setActiveTab('connections')}
-                className={cn(
-                  'hidden sm:block px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap',
-                  activeTab === 'connections'
-                    ? 'bg-elevated text-fg'
-                    : 'text-muted hover:text-fg'
-                )}
-              >
-                Connections
-              </button>
-              <button
-                onClick={() => setActiveTab('subscription')}
-                className={cn(
-                  'px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap',
-                  activeTab === 'subscription'
-                    ? 'bg-elevated text-fg'
-                    : 'text-muted hover:text-fg'
-                )}
-              >
-                Subscription
-              </button>
-            </div>
-          </div>
-          <button
-            onClick={handleClose}
-            className="shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-full hover:bg-elevated transition"
-          >
-            <X className="h-4 w-4 text-muted" />
-          </button>
+  const body = (
+    <>
+      <SignedOut>
+        <div className="rounded-xl border border-border p-6">
+          <p className="mb-4 text-sm text-muted">You need to sign in to manage settings.</p>
+          <SignInButton>
+            <button className="inline-flex h-9 items-center pointer-coarse:h-11 gap-2 rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel disabled:bg-none disabled:bg-surface disabled:shadow-none disabled:inset-shadow-none dark:from-elevated dark:to-surface px-3.5 text-sm font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50">
+              Sign in
+            </button>
+          </SignInButton>
         </div>
+      </SignedOut>
 
-        {/* Scrollable body */}
-        <div className="px-3 sm:px-6 py-4 sm:py-5 overflow-y-auto flex-1">
-          <SignedOut>
-            <div className="rounded-xl border border-border p-6">
-              <p className="mb-4 text-sm text-muted">You need to sign in to manage settings.</p>
-              <SignInButton>
-                <button className="inline-flex items-center rounded-lg border border-border bg-bg px-3.5 py-2 text-sm font-medium shadow-sm hover:bg-surface transition">
-                  Sign in
-                </button>
-              </SignInButton>
-            </div>
-          </SignedOut>
-
-          <SignedIn>
+      <SignedIn>
             {/* ── Usage tab ── */}
             {activeTab === 'usage' && <UsageTab />}
-
-            {/* ── Subscription tab ── */}
-            {activeTab === 'subscription' && (
-              <div>
-                <p className="text-xs text-muted mb-5">
-                  Free is the default plan — no action needed to get started.
-                  Upgrade anytime to unlock more capabilities.
-                </p>
-                {workspaceContext ? (
-                  /* Stripe iframes can't run inside COEP-isolated workspace pages.
-                     Open the pricing page in a new tab where there's no COEP restriction. */
-                  <div className="flex flex-col items-start gap-3">
-                    <p className="text-sm text-muted">
-                      Subscription management opens in a new tab to ensure the payment form loads correctly.
-                    </p>
-                    <a
-                      href="/pricing"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 rounded-xl bg-fg px-4 py-2.5 text-sm font-medium text-bg shadow hover:opacity-90 transition"
-                    >
-                      Manage subscription
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  </div>
-                ) : (
-                  <PricingTable
-                    newSubscriptionRedirectUrl="/projects"
-                    ctaPosition="bottom"
-
-                  
-                    // appearance={
-
-                    // }
-                  />
-                )}
-              </div>
-            )}
 
             {/* ── Connections tab ── */}
             {activeTab === 'connections' && (
               <>
                 {loading ? (
-                  <div className="py-8 text-center text-sm text-muted">Loading…</div>
+                  <div className="divide-y divide-border" aria-busy="true" aria-label="Loading connections">
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="flex items-start justify-between gap-4 py-5 first:pt-0">
+                        <div className="min-w-0 flex-1">
+                          <div className="h-4 w-40 animate-pulse rounded bg-soft" />
+                          <div className="mt-2 h-3 w-4/5 max-w-md animate-pulse rounded bg-soft" />
+                        </div>
+                        <div className="h-8 w-24 animate-pulse rounded-lg bg-soft" />
+                      </div>
+                    ))}
+                    <div className="space-y-4 pt-5">
+                      <div className="h-4 w-24 animate-pulse rounded bg-soft" />
+                      {[0, 1].map((i) => (
+                        <div key={i} className="h-9 w-full animate-pulse rounded-lg bg-soft" />
+                      ))}
+                    </div>
+                  </div>
+                ) : loadFailed ? (
+                  <div className="flex flex-col items-center gap-3 py-10 text-center">
+                    <p className="text-sm text-muted">Your connections couldn&apos;t be loaded.</p>
+                    <button onClick={() => setReloadKey((k) => k + 1)} className={connectionButtonClass}>
+                      Try again
+                    </button>
+                  </div>
                 ) : (
-                  <div className="space-y-8">
+                  <div className="divide-y divide-border [&>div]:py-5 [&>div:first-child]:pt-0 [&>div:last-child]:pb-0">
 
                     {/* ── Convex OAuth section ── */}
                     <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-fg">Convex Account</h3>
-                          <p className="text-xs text-muted mt-0.5">
-                            Connect your Convex account to use your own backend projects.
-                            Required for free-plan projects.
-                          </p>
-                        </div>
-                        {hasConvexOAuth && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-medium text-green-600 border border-green-500/30 whitespace-nowrap">
-                            <CheckCircle2 className="h-3 w-3" /> Connected
-                          </span>
+                      <ConnectionHeader
+                        title="Convex account"
+                        description="Use your own Convex account for your projects' backends. Required on the Free plan."
+                        connected={hasConvexOAuth}
+                      >
+                        {!hasConvexOAuth ? (
+                          <button onClick={startConvexOAuth} disabled={convexConnecting} className={connectionButtonClass}>
+                            {convexConnecting ? (
+                              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting&hellip;</>
+                            ) : 'Connect'}
+                          </button>
+                        ) : (
+                          <button onClick={disconnectConvexOAuth} className={connectionButtonClass}>
+                            Disconnect
+                          </button>
                         )}
-                      </div>
-
-                      {!hasConvexOAuth ? (
-                        <button
-                          onClick={startConvexOAuth}
-                          disabled={convexConnecting}
-                          className="inline-flex items-center gap-2 rounded-lg border border-border bg-bg px-3.5 py-2 text-sm font-medium text-fg shadow-sm hover:bg-surface transition disabled:opacity-50"
-                        >
-                          {convexConnecting ? (
-                            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting&hellip;</>
-                          ) : 'Connect Convex Account'}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={disconnectConvexOAuth}
-                          className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/15 px-3.5 py-2 text-sm font-medium text-red-500 hover:bg-red-500/25 transition"
-                        >
-                          Disconnect
-                        </button>
-                      )}
+                      </ConnectionHeader>
                     </div>
 
                     {/* ── ChatGPT Codex OAuth section ── */}
                     <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-fg">ChatGPT Codex</h3>
-                          <p className="text-xs text-muted mt-0.5">
-                            Use your ChatGPT subscription for GPT-5.3 Codex.
-                            Takes priority over the OpenAI API key below.
-                          </p>
-                        </div>
-                        {hasCodexOAuth && codexOAuthStep === 'idle' ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-medium text-green-600 border border-green-500/30 whitespace-nowrap">
-                            <CheckCircle2 className="h-3 w-3" /> Connected
-                          </span>
-                        ) : null}
-                      </div>
-
-                      {/* TODO: remove this warning once resolved */}
-                      {/* <div className="flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2.5 mb-3">
-                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
-                        <p className="text-xs text-amber-700 dark:text-amber-300/80">
-                          Currently facing issues when using models with OpenAI OAuth.
-                        </p>
-                      </div> */}
-
-                      {!hasCodexOAuth && codexOAuthStep === 'idle' && (
-                        <button
-                          onClick={startCodexOAuth}
-                          className="inline-flex items-center gap-2 rounded-lg border border-border bg-bg px-3.5 py-2 text-sm font-medium text-fg shadow-sm hover:bg-surface transition"
-                        >
-                          Sign in with ChatGPT Codex
-                        </button>
-                      )}
-
-                      {hasCodexOAuth && codexOAuthStep === 'idle' && (
-                        <button
-                          onClick={disconnectCodexOAuth}
-                          className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/15 px-3.5 py-2 text-sm font-medium text-red-500 hover:bg-red-500/25 transition"
-                        >
-                          Disconnect
-                        </button>
-                      )}
+                      <ConnectionHeader
+                        title="ChatGPT subscription"
+                        description="Use your ChatGPT plan for GPT-5.3 Codex. Takes priority over the OpenAI API key below."
+                        connected={hasCodexOAuth && codexOAuthStep === 'idle'}
+                      >
+                        {!hasCodexOAuth && codexOAuthStep === 'idle' && (
+                          <button onClick={startCodexOAuth} className={connectionButtonClass}>
+                            Connect
+                          </button>
+                        )}
+                        {hasCodexOAuth && codexOAuthStep === 'idle' && (
+                          <button onClick={disconnectCodexOAuth} className={connectionButtonClass}>
+                            Disconnect
+                          </button>
+                        )}
+                      </ConnectionHeader>
 
                       {codexOAuthStep === 'success' && (
-                        <div className="flex items-center gap-2 text-sm text-green-700">
+                        <div className="mt-3 flex items-center gap-2 text-sm text-success">
                           <CheckCircle2 className="h-4 w-4" />
-                          Connected successfully!
+                          Connected.
                           <button
                             onClick={() => setCodexOAuthStep('idle')}
                             className="ml-auto text-muted hover:text-fg text-xs underline"
@@ -692,7 +640,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                       )}
 
                       {codexOAuthStep === 'polling' && (
-                        <div className="rounded-xl border border-border bg-surface p-4 space-y-3">
+                        <div className="mt-3 rounded-xl border border-border bg-surface p-4 space-y-3">
                           <p className="text-sm text-fg">
                             Go to{' '}
                             <a
@@ -743,43 +691,27 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
 
                     {/* ── Claude Code OAuth section ── */}
                     {ANTHROPIC_OAUTH_ENABLED && <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-fg">Claude Code OAuth</h3>
-                          <p className="text-xs text-muted mt-0.5">
-                            Use your Claude Pro/Max subscription instead of an API key.
-                            Takes priority over the Anthropic API key below.
-                          </p>
-                        </div>
-                        {hasClaudeOAuth && oauthStep !== 'idle' && oauthStep !== 'success' ? null : hasClaudeOAuth ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-medium text-green-600 border border-green-500/30 whitespace-nowrap">
-                            <CheckCircle2 className="h-3 w-3" /> Connected
-                          </span>
-                        ) : null}
-                      </div>
-
-                      {!hasClaudeOAuth && oauthStep === 'idle' && (
-                        <button
-                          onClick={startOAuthFlow}
-                          className="inline-flex items-center gap-2 rounded-lg border border-border bg-bg px-3.5 py-2 text-sm font-medium text-fg shadow-sm hover:bg-surface transition"
-                        >
-                          Connect with Claude Code
-                        </button>
-                      )}
-
-                      {hasClaudeOAuth && oauthStep === 'idle' && (
-                        <button
-                          onClick={disconnectOAuth}
-                          className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/15 px-3.5 py-2 text-sm font-medium text-red-500 hover:bg-red-500/25 transition"
-                        >
-                          Disconnect
-                        </button>
-                      )}
+                      <ConnectionHeader
+                        title="Claude subscription"
+                        description="Use your Claude Pro or Max plan instead of an API key. Takes priority over the Anthropic API key below."
+                        connected={hasClaudeOAuth && (oauthStep === 'idle' || oauthStep === 'success')}
+                      >
+                        {!hasClaudeOAuth && oauthStep === 'idle' && (
+                          <button onClick={startOAuthFlow} className={connectionButtonClass}>
+                            Connect
+                          </button>
+                        )}
+                        {hasClaudeOAuth && oauthStep === 'idle' && (
+                          <button onClick={disconnectOAuth} className={connectionButtonClass}>
+                            Disconnect
+                          </button>
+                        )}
+                      </ConnectionHeader>
 
                       {oauthStep === 'success' && (
-                        <div className="flex items-center gap-2 text-sm text-green-700">
+                        <div className="mt-3 flex items-center gap-2 text-sm text-success">
                           <CheckCircle2 className="h-4 w-4" />
-                          Connected successfully!
+                          Connected.
                           <button
                             onClick={() => setOauthStep('idle')}
                             className="ml-auto text-muted hover:text-fg text-xs underline"
@@ -790,7 +722,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                       )}
 
                       {(oauthStep === 'connecting' || oauthStep === 'exchanging') && (
-                        <div className="rounded-xl border border-border bg-surface p-4 space-y-3">
+                        <div className="mt-3 rounded-xl border border-border bg-surface p-4 space-y-3">
                           <ol className="text-xs text-muted space-y-1 list-decimal list-inside">
                             <li>Complete authorization in the tab that opened.</li>
                             <li>After redirecting, copy the full URL from your browser&apos;s address bar.</li>
@@ -803,7 +735,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                             </code>
                           </p>
                           {oauthError && (
-                            <p className="text-xs text-red-600 font-medium">{oauthError}</p>
+                            <p className="text-xs text-danger font-medium">{oauthError}</p>
                           )}
                           <div className="flex gap-2">
                             <Input
@@ -812,13 +744,13 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               value={oauthCode}
                               onChange={e => setOauthCode(e.target.value)}
                               onKeyDown={e => { if (e.key === 'Enter') exchangeCode(); }}
-                              className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:ring-2 focus:ring-border"
+                              className="flex-1 rounded-lg border border-control bg-bg px-3 h-9 text-sm pointer-coarse:h-11 text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               disabled={oauthStep === 'exchanging'}
                             />
                             <button
                               onClick={exchangeCode}
                               disabled={!oauthCode.trim() || oauthStep === 'exchanging'}
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-fg px-3.5 py-2 text-sm font-medium text-bg shadow hover:opacity-90 disabled:opacity-40 transition"
+                              className="inline-flex h-9 items-center pointer-coarse:h-11 gap-2 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none px-3.5 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
                             >
                               {oauthStep === 'exchanging' ? (
                                 <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting…</>
@@ -845,18 +777,31 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
 
                     {/* ── BYOK API Keys ── */}
                     <div>
-                      <h3 className="text-sm font-semibold text-fg mb-1">API Keys</h3>
-                      <p className="text-xs text-muted mb-4">
-                        Bring your own keys. Each key is saved independently — adding one won&apos;t affect the others.
-                        {hasCodexOAuth && (
-                          <span className="ml-1 text-green-700 font-medium">
-                            Codex OAuth is active — OpenAI API key is used as fallback only.
+                      {phone ? (
+                        <button
+                          type="button"
+                          onClick={() => setKeysOpen(!keysOpen)}
+                          aria-expanded={keysOpen}
+                          className="flex min-h-11 w-full items-center justify-between gap-3 text-left"
+                        >
+                          <span>
+                            <span className="block text-sm font-semibold text-fg">API keys</span>
+                            {!keysOpen && (
+                              <span className="mt-0.5 block text-[13px] text-muted">
+                                {savedKeyCount === 0 ? 'Use your own model keys. None saved.' : `${savedKeyCount} saved`}
+                              </span>
+                            )}
                           </span>
-                        )}
-                        {ANTHROPIC_OAUTH_ENABLED && hasClaudeOAuth && (
-                          <span className="ml-1 text-green-700 font-medium">
-                            Claude Code OAuth is active — Anthropic API key is used as fallback only.
-                          </span>
+                          <ChevronDown className={cn('h-4 w-4 shrink-0 text-muted transition-transform', keysOpen && 'rotate-180')} />
+                        </button>
+                      ) : (
+                        <h3 className="text-sm font-semibold text-fg mb-1">API keys</h3>
+                      )}
+                      {keysOpen && (<>
+                      <p className="text-xs text-muted mb-4 max-sm:mt-1 max-sm:text-[13px]">
+                        Use your own model keys. Each one is saved separately.
+                        {(hasCodexOAuth || (ANTHROPIC_OAUTH_ENABLED && hasClaudeOAuth)) && (
+                          <> A Fallback key is used only if its subscription above is unavailable.</>
                         )}
                       </p>
                       <div className="space-y-4">
@@ -865,18 +810,18 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                             <label className="flex items-center gap-2 text-sm font-medium text-fg mb-1.5">
                               {label}
                               {hasKey[provider] && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 border border-green-500/30">
+                                <span className="inline-flex items-center gap-1 rounded-full border border-success-border bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
                                   Saved
                                 </span>
                               )}
                               {provider === 'openai' && hasCodexOAuth && (
-                                <span className="inline-flex items-center rounded-full bg-elevated px-2 py-0.5 text-xs text-muted">
-                                  fallback
+                                <span className="inline-flex items-center rounded-full border border-border bg-elevated px-2 py-0.5 text-[11px] font-medium text-muted">
+                                  Fallback
                                 </span>
                               )}
                               {ANTHROPIC_OAUTH_ENABLED && provider === 'anthropic' && hasClaudeOAuth && (
-                                <span className="inline-flex items-center rounded-full bg-elevated px-2 py-0.5 text-xs text-muted">
-                                  fallback
+                                <span className="inline-flex items-center rounded-full border border-border bg-elevated px-2 py-0.5 text-[11px] font-medium text-muted">
+                                  Fallback
                                 </span>
                               )}
                             </label>
@@ -887,73 +832,71 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                 value={keys[provider]}
                                 onChange={e => setKeys(prev => ({ ...prev, [provider]: e.target.value }))}
                                 onKeyDown={e => { if (e.key === 'Enter') saveKey(provider); }}
-                                className="flex-1 rounded-lg border border-border bg-bg text-fg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border"
+                                className="flex-1 rounded-lg border border-control bg-bg px-3 h-9 text-sm pointer-coarse:h-11 text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               />
                               {hasKey[provider] && (
                                 <button
                                   onClick={() => removeKey(provider)}
                                   disabled={removingKey === provider || savingKey === provider}
                                   title="Remove key"
-                                  className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-red-500/30 bg-red-500/15 text-red-500 hover:bg-red-500/25 disabled:opacity-40 transition"
+                                  className="inline-flex h-9 w-9 items-center pointer-coarse:h-11 pointer-coarse:w-11 justify-center rounded-lg border border-border text-muted transition-colors hover:border-danger-border hover:bg-danger-soft hover:text-danger disabled:opacity-40"
                                 >
                                   {removingKey === provider
                                     ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                     : <Trash2 className="h-3.5 w-3.5" />}
                                 </button>
                               )}
-                              <button
-                                onClick={() => saveKey(provider)}
-                                disabled={!keys[provider].trim() || savingKey === provider || removingKey === provider}
-                                className="inline-flex items-center rounded-lg bg-fg px-3.5 py-2 text-sm font-medium text-bg shadow hover:opacity-90 disabled:opacity-40 transition"
-                              >
-                                {savingKey === provider ? 'Saving…' : 'Save'}
-                              </button>
+                              {/* Save appears with the first character, so a page of empty
+                                  fields is not a page of greyed-out buttons. */}
+                              {keys[provider].trim() && (
+                                <button
+                                  onClick={() => saveKey(provider)}
+                                  disabled={savingKey === provider || removingKey === provider}
+                                  className={buttonClass({ variant: 'primary' })}
+                                >
+                                  {savingKey === provider ? 'Saving…' : 'Save'}
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}
                       </div>
+                      </>)}
                     </div>
 
                     {/* ── Apple Developer (App Store Connect) section ── */}
                     <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-fg">Apple Developer</h3>
-                          <p className="text-xs text-muted mt-0.5">
-                            Connect an App Store Connect API key to publish Swift apps
-                            to TestFlight and the App Store.
-                          </p>
-                        </div>
+                      <ConnectionHeader
+                        title="Apple Developer"
+                        description={
+                          appleConnected
+                            ? <>Key {appleKeyIdMasked}{appleTeamId ? <> · Team {appleTeamId}</> : null}. Used to publish Swift apps to TestFlight and the App Store.</>
+                            : 'Add an App Store Connect API key to publish Swift apps to TestFlight and the App Store.'
+                        }
+                        connected={appleConnected}
+                      >
                         {appleConnected && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-medium text-green-600 border border-green-500/30 whitespace-nowrap">
-                            <CheckCircle2 className="h-3 w-3" /> Connected
-                          </span>
-                        )}
-                      </div>
-
-                      {appleConnected ? (
-                        <div className="flex items-center gap-3">
-                          <div className="text-xs text-muted">
-                            <span className="font-medium text-fg">Key {appleKeyIdMasked}</span>
-                            {appleTeamId && <span className="ml-2">Team {appleTeamId}</span>}
-                          </div>
-                          <button
-                            onClick={disconnectApple}
-                            disabled={appleDisconnecting}
-                            className="ml-auto inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/15 px-3.5 py-2 text-sm font-medium text-red-500 hover:bg-red-500/25 disabled:opacity-50 transition"
-                          >
+                          <button onClick={disconnectApple} disabled={appleDisconnecting} className={connectionButtonClass}>
                             {appleDisconnecting ? (
                               <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Disconnecting&hellip;</>
                             ) : 'Disconnect'}
                           </button>
-                        </div>
-                      ) : (
-                        <div className="rounded-xl border border-border bg-surface p-4 space-y-3">
+                        )}
+                        {!appleConnected && phone && (
+                          <button onClick={() => setAppleOpen(!appleOpen)} aria-expanded={appleOpen} className={connectionButtonClass}>
+                            {appleOpen ? 'Hide steps' : 'Set up'}
+                          </button>
+                        )}
+                      </ConnectionHeader>
+
+                      {appleConnected || !appleOpen ? null : (
+                        // Phone: no box inside the card, so the instructions get the card's full width.
+                        <div className="mt-3 rounded-xl border border-border bg-surface p-4 space-y-3 max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:p-0">
                           {/* Free Apple IDs never see the Integrations page — lead
                               with the paid-membership requirement or the link below
                               dead-ends for anyone not enrolled. */}
-                          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
-                            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-400" />
+                          <div className="flex items-start gap-2 rounded-lg border border-warning-border bg-warning-soft px-3 py-2.5">
+                            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-warning" />
                             <p className="text-xs leading-5 text-muted">
                               <span className="font-semibold text-fg">
                                 Requires a paid Apple Developer account (US$99/year).
@@ -977,14 +920,14 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               href="https://appstoreconnect.apple.com/access/integrations/api"
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 underline text-fg hover:text-fg"
+                              className="text-fg underline hover:text-fg"
                             >
                               App Store Connect → Users and Access → Integrations
-                              <ExternalLink className="h-3 w-3" />
+                              <ExternalLink className="ml-1 inline h-3 w-3 align-[-1px]" />
                             </a>
                             . First time, if it shows{' '}
                             <span className="font-medium text-fg">&ldquo;Request Access&rdquo;</span>{' '}
-                            instead of a key list, click it and accept the terms (Account
+                            instead of a key list, choose it and accept the terms (Account
                             Holder only). Then on the{' '}
                             <span className="font-medium text-fg">Team Keys</span> tab generate
                             a key with the <span className="font-medium text-fg">App Manager</span>{' '}
@@ -1019,7 +962,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                 placeholder="e.g. 2X9R4HXF34"
                                 value={appleKeyIdInput}
                                 onChange={e => setAppleKeyIdInput(e.target.value)}
-                                className="w-full rounded-lg border border-border bg-bg text-fg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border"
+                                className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm pointer-coarse:h-11 text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               />
                             </div>
                             <div>
@@ -1029,7 +972,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                                 placeholder="69a6de7e-…"
                                 value={appleIssuerIdInput}
                                 onChange={e => setAppleIssuerIdInput(e.target.value)}
-                                className="w-full rounded-lg border border-border bg-bg text-fg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border"
+                                className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm pointer-coarse:h-11 text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                               />
                             </div>
                           </div>
@@ -1042,7 +985,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                               placeholder="e.g. A1B2C3D4E5"
                               value={appleTeamIdInput}
                               onChange={e => setAppleTeamIdInput(e.target.value)}
-                              className="w-full rounded-lg border border-border bg-bg text-fg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border"
+                              className="w-full rounded-lg border border-control bg-bg px-3 h-9 text-sm pointer-coarse:h-11 text-fg inset-shadow-well outline-none placeholder:text-subtle transition-[border-color,box-shadow] hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                             />
                             <p className="mt-1 text-[11px] leading-4 text-muted">
                               To set it manually:{' '}
@@ -1059,12 +1002,14 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                             </p>
                           </div>
                           {appleError && (
-                            <p className="text-xs text-red-600 font-medium">{appleError}</p>
+                            <p className="text-xs text-danger font-medium">{appleError}</p>
                           )}
                           <button
                             onClick={saveAppleCredentials}
                             disabled={!appleP8 || !appleKeyIdInput.trim() || !appleIssuerIdInput.trim() || appleSaving}
-                            className="inline-flex items-center gap-2 rounded-lg bg-fg px-3.5 py-2 text-sm font-medium text-bg shadow hover:opacity-90 disabled:opacity-40 transition"
+                            className={buttonClass({
+                              variant: appleP8 && appleKeyIdInput.trim() && appleIssuerIdInput.trim() ? 'primary' : 'secondary',
+                            })}
                           >
                             {appleSaving ? (
                               <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Verifying&hellip;</>
@@ -1078,9 +1023,93 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                 )}
               </>
             )}
-          </SignedIn>
+      </SignedIn>
+    </>
+  );
+
+  if (variant === 'section') return body;
+  if (typeof document === 'undefined') return null;
+
+  // Rendered at the end of <body>, so nothing behind it can sit above it.
+  return createPortal(
+    // Anchored to the top, so the header and tabs stay exactly where they are
+    // when you switch tabs; the dialog only grows downward, up to a limit.
+    <div className="fixed inset-0 z-[200] flex items-start justify-center px-4 pt-[max(1rem,8vh)]">
+      {/* Blur backdrop as a sibling — NOT an ancestor of the dialog content, so
+          backdrop-filter never becomes the containing block for fixed children. */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={handleClose} />
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        // Ends above the on-screen keyboard (see KeyboardInset), so a focused key field is never behind it.
+        className="relative flex max-h-[min(42rem,calc(100dvh-2rem-8vh-var(--keyboard-inset,0px)))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl inset-shadow-bevel-top outline-none dark:border-border-strong"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* On the narrowest phones the title and Close share the first row and
+            the tabs take a second, full-width one (side by side they overflow 320px). */}
+        <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-2.5 border-b border-border px-4 py-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3 max-[389px]:contents sm:gap-5">
+            <h2 id={titleId} className="shrink-0 text-base font-semibold text-fg">Settings</h2>
+            <div role="tablist" className="flex items-center gap-0.5 rounded-lg border border-border bg-elevated p-0.5 inset-shadow-well dark:bg-bg max-[389px]:order-3 max-[389px]:w-full max-[389px]:[&>button]:flex-1">
+              {(
+                [
+                  ['usage', 'Usage'],
+                  ['connections', 'Connections'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  role="tab"
+                  aria-selected={activeTab === id}
+                  onClick={() => setActiveTab(id)}
+                  className={cn(
+                    'h-7 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-[background-color,color,box-shadow] sm:px-3',
+                    'pointer-coarse:h-9 pointer-coarse:px-3 pointer-coarse:text-sm',
+                    activeTab === id ? 'bg-bg text-fg shadow-sm inset-shadow-bevel-top ring-1 ring-border-strong/50 dark:bg-soft dark:ring-border-strong' : 'text-muted hover:text-fg',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {/* The plan has one home: the Settings page. */}
+            <a
+              href="/account?tab=billing"
+              {...(workspaceContext ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+              className="hidden h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-muted transition-colors hover:bg-elevated hover:text-fg sm:inline-flex"
+            >
+              Plan and billing
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+            <button
+              onClick={handleClose}
+              aria-label="Close settings"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-fg pointer-coarse:h-10 pointer-coarse:w-10"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div ref={scrollRef} onScroll={updateMore} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+            {body}
+          </div>
+          {/* A soft fade at the bottom edge while there is more to scroll to; it
+              takes no space, so short tabs end with the same padding as they start. */}
+          {hasMore && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-bg via-bg/80 to-transparent"
+            />
+          )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
