@@ -1074,7 +1074,7 @@ function StoppedPreviewPlaceholder({
     <div className="absolute inset-0 flex flex-col gap-2 pb-2.5 pr-2.5">
       {/* Picker bar — choose the device/orientation before starting. */}
       <div className="flex h-9 flex-shrink-0 items-center gap-2 rounded-xl border border-border bg-elevated/60 px-3 max-md:h-12 max-md:pr-1">
-        <span className="text-[11px] text-muted max-md:text-xs">
+        <span className="whitespace-nowrap text-[11px] text-muted max-md:text-xs max-[359px]:sr-only">
           Preview stopped<span className="max-md:hidden"> — pick a device, then press play</span>
         </span>
         <div className="ml-auto flex items-center gap-1.5">

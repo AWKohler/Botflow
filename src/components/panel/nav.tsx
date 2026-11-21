@@ -38,7 +38,8 @@ export function PanelNav({ activePath }: { activePath?: string } = {}) {
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-6 px-6 sm:px-10 md:h-14 md:flex-nowrap md:justify-start">
         <Link href="/projects" aria-label="Back to Botflow" className="flex h-14 shrink-0 items-center gap-2.5 rounded-md">
           <BrandMark />
-          <Badge>Admin</Badge>
+          {/* Dropped on the narrowest phones, where brand, badge and avatar do not fit one row. */}
+          <Badge className="max-[359px]:hidden">Admin</Badge>
         </Link>
         <nav
           ref={navRef}

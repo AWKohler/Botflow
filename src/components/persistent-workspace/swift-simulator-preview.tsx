@@ -1203,7 +1203,8 @@ function ActiveSwiftSimulatorPreview({
             title="Tar the sandbox and rebuild"
           >
             <RefreshCw size={isPip ? 11 : 12} className={rebuilding ? "animate-spin" : ""} />
-            {!isPip && <span>Refresh build</span>}
+            {/* In the narrowest panes (a 320px phone) the icon alone; the name stays for screen readers. */}
+            {!isPip && <span className="whitespace-nowrap @max-[22rem]:sr-only">Refresh build</span>}
           </button>
           {/* Webcam toggle — routes the browser camera into the simulator */}
           <button

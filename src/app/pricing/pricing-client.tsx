@@ -392,7 +392,7 @@ export default function PricingClient({ credits }: { credits: PlanCredits }) {
                           'border-b border-[var(--sand-border)]',
                       )}
                     >
-                      <div className="px-4 sm:px-7 py-4 text-sm text-[var(--sand-text)] [overflow-wrap:anywhere]">
+                      <div lang="en" className="px-4 sm:px-7 py-4 text-sm text-[var(--sand-text)] hyphens-auto [overflow-wrap:break-word]">
                         {row.feature}
                       </div>
                       {(['free', 'pro', 'max'] as PlanKey[]).map((p) => (

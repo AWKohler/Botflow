@@ -306,7 +306,7 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
               )
             : isSm
               ? 'max-w-[180px] rounded-md border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-2 py-1 text-xs text-muted shadow-xs hover:border-border-strong pointer-coarse:h-9 pointer-coarse:px-2.5 pointer-coarse:text-[13px]'
-              : 'pointer-events-auto max-w-[120px] rounded-full border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-3 py-1.5 text-xs font-medium text-fg shadow-xs hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated sm:max-w-[200px] sm:text-sm pointer-coarse:h-10 pointer-coarse:max-w-[150px] pointer-coarse:px-3.5 pointer-coarse:text-sm',
+              : 'pointer-events-auto max-w-[120px] rounded-full border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel dark:from-elevated dark:to-surface px-3 py-1.5 text-xs font-medium text-fg shadow-xs hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated sm:max-w-[200px] sm:text-sm pointer-coarse:h-10 pointer-coarse:max-w-[150px] pointer-coarse:px-3.5 pointer-coarse:text-sm pointer-coarse:max-[359px]:max-w-[112px] pointer-coarse:max-[359px]:px-3',
         )}
       >
         {leading != null && (
