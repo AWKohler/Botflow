@@ -3,13 +3,13 @@
  * (caps, errors-first ordering) and the tool-facing outcome formatter that
  * both agents' startSimulator tools return to the model.
  *
- * Run with: node --import tsx --test src/lib/swift-sim-control.test.ts
+ * Run with: npx vitest run src/lib/swift-sim-control.test.ts
  *
  * Note: runs with Upstash env UNSET so getRedis() returns the no-op stub —
  * the waitForSimulatorBuild timeout test exercises the "no build result ever
  * appears" path without a real Redis.
  */
-import { test, describe } from 'node:test';
+import { test, describe } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   sanitizeBuildDiagnostics,

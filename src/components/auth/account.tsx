@@ -6,6 +6,7 @@ import { authClient } from "@/lib/auth/client";
 import { ChangePlanModal } from "./change-plan";
 import { ProviderLogo } from "./sign-in";
 import { PaymentMethodForm } from "./payment-method";
+import { useCaptcha } from "./captcha";
 import dynamic from "next/dynamic";
 import { CreditCard, ExternalLink, Gauge, Plug, ShieldCheck, UserRound } from "lucide-react";
 import { UsageTab } from "@/components/settings/UsageTab";
@@ -35,6 +36,7 @@ interface Session {
 export function AccountPanel() {
   const { data: session, isPending } = authClient.useSession();
   const [tab, setTab] = useState<TabId>("profile");
+  const captcha = useCaptcha(tab === "security");
   // On a phone the section tabs are one scrolling row: keep the current one in view.
   const tabsRef = useRef<HTMLElement>(null);
   const tabsShown = !isPending && !!session;
@@ -665,12 +667,14 @@ export function AccountPanel() {
                       variant="ghost"
                       size="sm"
                       className="-ml-3 underline decoration-border-strong underline-offset-4"
+                      disabled={busy || !captcha.ready}
                       onClick={() =>
                         act(
                           () =>
                             authClient.requestPasswordReset({
                               email: session.user.email,
                               redirectTo: "/sign-in",
+                              fetchOptions: captcha.take(),
                             }),
                           "A password reset email has been sent.",
                         )
@@ -686,6 +690,7 @@ export function AccountPanel() {
                       Update password
                     </Button>
                   </div>
+                  {captcha.widget}
                 </form>
               </Card>
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, test } from "vitest";
 import { acquireSession, forceEndSession, releaseSession } from "./swift-preview-session-pool";
 import { resetLocalConnection } from "./local-simulator-client";
 

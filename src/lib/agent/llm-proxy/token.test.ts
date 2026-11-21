@@ -8,7 +8,7 @@
  * Runs with Upstash env UNSET so `redis` is the no-op stub — resolution must
  * fail closed.
  */
-import { test, describe } from "node:test";
+import { test, describe } from "vitest";
 import assert from "node:assert/strict";
 
 import {

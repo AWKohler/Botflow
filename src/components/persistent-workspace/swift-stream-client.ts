@@ -118,6 +118,9 @@ export class SwiftStreamClient {
 
   start(): void {
     const ws = new WebSocket(this.url);
+    // Video arrives as binary frames. The default "blob" type makes every frame
+    // an extra async read (and an ordering hazard) before it can be decoded.
+    ws.binaryType = "arraybuffer";
     this.ws = ws;
 
     ws.onopen = () => {

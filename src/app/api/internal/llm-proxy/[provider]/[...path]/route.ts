@@ -29,6 +29,7 @@
  *              providers that don't report).
  */
 import { NextRequest } from "next/server";
+import { fetchWithUpstreamRetry } from "@/lib/agent/llm-proxy/upstream-retry";
 import {
   LLM_PROXY_PROVIDERS,
   isLlmProxyProvider,
@@ -241,12 +242,23 @@ async function proxy(
   const url = `${spec.upstreamBase}/${subpath}${req.nextUrl.search}`;
   let upstream: Response;
   try {
-    upstream = await fetch(url, {
-      method: req.method,
-      headers,
-      ...(outboundBody !== null ? { body: outboundBody } : {}),
-      redirect: "manual",
-    });
+    // Transient gateway failures (502/503/504, connection errors) get two
+    // quick retries before reaching the agent — see upstream-retry.ts.
+    upstream = await fetchWithUpstreamRetry(
+      () =>
+        fetch(url, {
+          method: req.method,
+          headers,
+          ...(outboundBody !== null ? { body: outboundBody } : {}),
+          redirect: "manual",
+        }),
+      {
+        onRetry: ({ attempt, status, delayMs }) =>
+          console.warn(
+            JSON.stringify({ tag: "llm-proxy-retry", provider, path: subpath, attempt: attempt + 1, status, delayMs }),
+          ),
+      },
+    );
   } catch (err) {
     console.error("[llm-proxy] upstream fetch failed:", err);
     await settle(null, observedModel);

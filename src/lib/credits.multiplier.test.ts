@@ -3,7 +3,7 @@
  * ModelConfig.costMultiplier is hand-written (client-safe), the formula lives
  * in credits.ts. Update both together when a price changes.
  */
-import { test, describe } from "node:test";
+import { test, describe } from "vitest";
 import assert from "node:assert/strict";
 
 import { costMultiplierFromPricing } from "@/lib/credits";

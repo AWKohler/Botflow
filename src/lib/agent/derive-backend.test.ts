@@ -10,11 +10,11 @@
  * Env is set BEFORE the modules under test load: static imports hoist, so the
  * modules are pulled in lazily via dynamic import inside the tests.
  *
- * Run: node --import tsx --test src/lib/agent/derive-backend.test.ts
+ * Run: npx vitest run src/lib/agent/derive-backend.test.ts
  */
 process.env.NEXT_PUBLIC_ANTHROPIC_OAUTH_ENABLED = "true";
 
-import { test, describe } from "node:test";
+import { test, describe } from "vitest";
 import assert from "node:assert/strict";
 
 const NO_CREDS = {

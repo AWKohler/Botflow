@@ -27,6 +27,7 @@ import {
   type SimVideoConfig,
 } from "./swift-stream-client";
 import { SwiftCameraCapture, type CameraCaptureState } from "./swift-camera-capture";
+import { SimVideoDecoder } from "./sim-video-decoder";
 import {
   DeviceFrame,
   type DeviceModelUI,
@@ -226,9 +227,7 @@ function ActiveSwiftSimulatorPreview({
   const buildStartedAtRef = useRef<number | null>(null);
   const frameCountRef = useRef(0);
   const fpsTimeRef = useRef(Date.now());
-  const videoDecoderRef = useRef<VideoDecoder | null>(null);
-  const videoConfiguredRef = useRef(false);
-  const waitingForVideoKeyframeRef = useRef(true);
+  const videoDecoderRef = useRef<SimVideoDecoder | null>(null);
   const cameraRef = useRef<SwiftCameraCapture | null>(null);
   // Orientation the user just asked for via the toggle; compared against what
   // the host reports back so we can tell the user when a rotate didn't apply.
@@ -427,15 +426,8 @@ function ActiveSwiftSimulatorPreview({
         clientRef.current.close();
         clientRef.current = null;
       }
-      if (videoDecoderRef.current) {
-        try {
-          videoDecoderRef.current.close();
-        } catch {
-          /* ignore */
-        }
-        videoDecoderRef.current = null;
-        videoConfiguredRef.current = false;
-      }
+      videoDecoderRef.current?.close();
+      videoDecoderRef.current = null;
       // Refcounted: the pool may defer the actual DELETE in case a strict-
       // mode remount re-claims within the grace window. Keyed by deviceModel so
       // switching device tears down the old simulator and starts a new one.
@@ -848,18 +840,18 @@ function ActiveSwiftSimulatorPreview({
       return;
     }
 
-    if (videoDecoderRef.current) {
-      try {
-        videoDecoderRef.current.close();
-      } catch {
-        /* ignore */
-      }
-    }
+    videoDecoderRef.current?.close();
 
     canvas.width = config.width;
     canvas.height = config.height;
-    const decoder = new VideoDecoder({
-      output: (frame: VideoFrame) => {
+
+    // SimVideoDecoder rebuilds itself after a decoder error (falling back from
+    // the software decoder to the browser's default); onFatal only fires once
+    // that recovery is exhausted, with the decoder's own error.
+    videoDecoderRef.current = new SimVideoDecoder({
+      width: config.width,
+      height: config.height,
+      onFrame: (frame) => {
         const c = canvasRef.current;
         if (c) {
           blitToCanvas(
@@ -870,7 +862,6 @@ function ActiveSwiftSimulatorPreview({
             displayOrientationRef.current === "landscape",
           );
         }
-        frame.close();
         markFrame();
         frameCountRef.current++;
         const now = Date.now();
@@ -881,40 +872,14 @@ function ActiveSwiftSimulatorPreview({
           fpsTimeRef.current = now;
         }
       },
-      error: (e: Error) => {
-        setPill({ kind: "error", message: `Video decoder error: ${e.message}` });
+      onFatal: (message) => {
+        setPill({ kind: "error", message: `Video decoder error: ${message}` });
       },
     });
-
-    decoder.configure({
-      codec: "avc1.42E01F",
-      codedWidth: config.width,
-      codedHeight: config.height,
-      optimizeForLatency: true,
-      avc: { format: "annexb" },
-    } as VideoDecoderConfig);
-    videoDecoderRef.current = decoder;
-    videoConfiguredRef.current = true;
-    waitingForVideoKeyframeRef.current = true;
   }, [markFrame]);
 
   const handleVideoChunk = useCallback((chunk: Uint8Array, timestampMs: number, keyframe: boolean) => {
-    const decoder = videoDecoderRef.current;
-    if (!decoder || !videoConfiguredRef.current) return;
-    if (waitingForVideoKeyframeRef.current && !keyframe) return;
-    if (keyframe) waitingForVideoKeyframeRef.current = false;
-    try {
-      if (typeof EncodedVideoChunk === "undefined") return;
-      decoder.decode(
-        new EncodedVideoChunk({
-          type: keyframe ? "key" : "delta",
-          timestamp: timestampMs * 1000,
-          data: chunk,
-        }),
-      );
-    } catch (e) {
-      setPill({ kind: "error", message: `Video decode failed: ${(e as Error).message}` });
-    }
+    videoDecoderRef.current?.decode(chunk, timestampMs, keyframe);
   }, []);
 
   // ────────────────────────────────────────────────────────────────────────────

@@ -4,9 +4,9 @@
  * per thread (refuse, never kill), the running-count admission ceiling, and
  * the stop script.
  *
- * Run: node --import tsx --test src/lib/agent/claude-code/bridge-control.test.ts
+ * Run: npx vitest run src/lib/agent/claude-code/bridge-control.test.ts
  */
-import { test, describe, after } from "node:test";
+import { test, describe, afterAll } from "vitest";
 import assert from "node:assert/strict";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
@@ -29,7 +29,7 @@ const T3 = "33333333-3333-4333-8333-333333333333";
 
 const root = mkdtempSync(path.join(tmpdir(), "bridge-control-"));
 const children: ChildProcess[] = [];
-after(() => {
+afterAll(() => {
   for (const c of children) c.kill("SIGKILL");
   rmSync(root, { recursive: true, force: true });
 });

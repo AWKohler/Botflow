@@ -3,9 +3,9 @@
  * same assistant message the live stream did — deterministic id, text + tool
  * parts — and report how the turn ended.
  *
- * Run: node --import tsx --test src/lib/agent/turn-persistence.test.ts
+ * Run: npx vitest run src/lib/agent/turn-persistence.test.ts
  */
-import { test, describe } from "node:test";
+import { test, describe } from "vitest";
 import assert from "node:assert/strict";
 import { assembleTurnMessage, assistantMessageIdForTurn } from "./turn-persistence";
 

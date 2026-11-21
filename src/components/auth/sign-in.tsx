@@ -7,6 +7,7 @@ import { safeRedirect } from "@/lib/auth/policy";
 import { buttonClass } from "@/components/ui/button";
 import { fieldClass as baseFieldClass } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
+import { useCaptcha } from "./captcha";
 
 // Auth forms wrap each input in its <label>, so the control carries the gap.
 export const fieldClass = cn(baseFieldClass, "mt-1.5 h-10 font-normal");
@@ -48,6 +49,10 @@ export function AuthForm({
     }
   }, []);
   const callbackURL = safeRedirect(redirectUrl);
+  // Password sign-in isn't gated, but its step offers "Use a code instead".
+  const captcha = useCaptcha(step === "credentials" || step === "reset");
+  const awaitingCaptcha =
+    !captcha.ready && ((signUp && step === "credentials") || step === "reset");
   async function perform(
     fn: () => Promise<{ error?: { message?: string } | null }>,
     success?: () => void,
@@ -111,6 +116,7 @@ export function AuthForm({
           authClient.emailOtp.sendVerificationOtp({
             email,
             type: "forget-password",
+            fetchOptions: captcha.take(),
           }),
         () => setStep("reset-code"),
       );
@@ -125,7 +131,14 @@ export function AuthForm({
       );
     if (signUp)
       return perform(
-        () => authClient.signUp.email({ email, password, name, callbackURL }),
+        () =>
+          authClient.signUp.email({
+            email,
+            password,
+            name,
+            callbackURL,
+            fetchOptions: captcha.take(),
+          }),
         () => setStep("verify"),
       );
     return perform(
@@ -259,6 +272,7 @@ export function AuthForm({
             </span>
           </label>
         )}
+        {captcha.widget}
         {message && (
           <p
             role="status"
@@ -267,15 +281,19 @@ export function AuthForm({
             {message}
           </p>
         )}
-        <button type="submit" disabled={busy} className={primaryClass}>
-          {busy ? "Please wait…" : "Continue"}
+        <button type="submit" disabled={busy || awaitingCaptcha} className={primaryClass}>
+          {busy
+            ? "Please wait…"
+            : awaitingCaptcha && !captcha.failed
+              ? "Verifying you’re human…"
+              : "Continue"}
         </button>
       </form>
       {!signUp && step === "credentials" && (
         <div className="mt-4 flex justify-between text-[13px]">
           <button
             type="button"
-            disabled={busy || !email}
+            disabled={busy || !email || !captcha.ready}
             className={linkClass}
             onClick={() =>
               perform(
@@ -283,6 +301,7 @@ export function AuthForm({
                   authClient.emailOtp.sendVerificationOtp({
                     email,
                     type: "sign-in",
+                    fetchOptions: captcha.take(),
                   }),
                 () => setStep("code"),
               )

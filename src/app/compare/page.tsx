@@ -38,7 +38,7 @@ export const metadata: Metadata = {
 const HUB_BLURBS: Record<CompetitorSlug, string> = {
   lovable: 'The web-builder giant — and the native iOS apps it can’t build.',
   rork: 'The direct rival on native iOS. The difference is the backend.',
-  vibecode: 'Phone-first building vs browser-built native SwiftUI.',
+  vibecode: 'Native SwiftUI on both — platform breadth vs your own Claude.',
   bloom: 'Same Convex backend, different finish line: demo link or App Store.',
   base44: 'All-in-one simplicity vs code and a backend you actually own.',
 };

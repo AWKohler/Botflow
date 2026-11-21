@@ -88,7 +88,7 @@ export async function resolveOpenCodePaths(projectId: string): Promise<OpenCodeS
 // message.part.updated, session.status), the "step-start" part type, and the
 // "opencode server listening on" readiness line are all still present.
 // A full in-sandbox turn is still the last-mile check before/after deploy.
-const OPENCODE_VERSION = process.env.BOTFLOW_OPENCODE_VERSION || "1.18.30";
+const OPENCODE_VERSION = process.env.BOTFLOW_OPENCODE_VERSION || "1.19.0";
 const MCP_SDK_VERSION = process.env.BOTFLOW_MCP_SDK_VERSION || "1.29.0";
 
 function installMarkerToken(): string {

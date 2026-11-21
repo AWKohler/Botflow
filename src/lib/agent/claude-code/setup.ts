@@ -94,10 +94,15 @@ export async function resolveSandboxPaths(projectId: string): Promise<SandboxPat
 // Bump these when validating a newer release; the installer keys the
 // install-marker on these strings, so a change here forces every active
 // sandbox to reinstall on its next agent turn.
+//
+// The two move in lockstep (SDK 0.3.N bundles Claude Code 2.1.N, which is what
+// the bridge actually runs). Minimums are set by Anthropic per model: Claude
+// Opus 5.5 requires Claude Code 2.1.280+ (the API answers 400 "Claude Code
+// 2.1.145 does not support this model" otherwise).
 const CLAUDE_AGENT_SDK_VERSION =
-  process.env.BOTFLOW_CLAUDE_AGENT_SDK_VERSION || "0.3.145";
+  process.env.BOTFLOW_CLAUDE_AGENT_SDK_VERSION || "0.3.290";
 const CLAUDE_CODE_CLI_VERSION =
-  process.env.BOTFLOW_CLAUDE_CODE_CLI_VERSION || "2.1.145";
+  process.env.BOTFLOW_CLAUDE_CODE_CLI_VERSION || "2.1.290";
 
 /** Compose a content-addressed marker token so changing pinned versions
  *  invalidates the marker and forces a re-install on the next agent turn. */

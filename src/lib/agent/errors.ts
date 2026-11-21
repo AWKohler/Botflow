@@ -9,6 +9,8 @@ export type AgentErrorType =
   | "context_overflow"
   | "network"
   | "provider_error"
+  /** The model provider's service is down/unreachable (not the user's project). */
+  | "provider_unavailable"
   | "unknown";
 
 export interface AgentError {
@@ -16,6 +18,24 @@ export interface AgentError {
   message: string;
   retryAfter?: number; // seconds
   details?: string;
+}
+
+/**
+ * Gateway-level outage text from a model provider: an Envoy "upstream connect
+ * error or disconnect/reset before headers" page, a bare 502/503/504, or an
+ * overloaded/unavailable notice. These are the provider's side failing — the
+ * agent panel shows a plain-language message instead of the raw page.
+ */
+const PROVIDER_OUTAGE_PATTERN =
+  /upstream connect error|disconnect\/reset before headers|service unavailable|bad gateway|gateway time-?out|\b(?:http|status|code)\s*50[234]\b|\boverloaded\b|temporarily unavailable/i;
+
+export function isProviderOutage(text: string): boolean {
+  return PROVIDER_OUTAGE_PATTERN.test(text);
+}
+
+/** "OpenAI's ChatGPT service is temporarily unavailable…" */
+export function providerOutageMessage(providerLabel: string): string {
+  return `${providerLabel} is temporarily unavailable — this is on their side, not your project. Try again in a moment.`;
 }
 
 /** Pull responseBody string off AI SDK errors (AI_APICallError or AI_RetryError → lastError) */

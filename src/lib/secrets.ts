@@ -58,7 +58,9 @@ export function decryptSecret(value: string | null | undefined): string | null {
     const iv = Buffer.from(ivB64, 'base64');
     const enc = Buffer.from(encB64, 'base64');
     const tag = Buffer.from(tagB64, 'base64');
-    const decipher = crypto.createDecipheriv(ALG, getKey(), iv);
+    // Pin the tag length: Node 22 otherwise accepts truncated (4-byte) GCM
+    // tags, which makes a forged ciphertext brute-forceable.
+    const decipher = crypto.createDecipheriv(ALG, getKey(), iv, { authTagLength: 16 });
     decipher.setAuthTag(tag);
     const dec = Buffer.concat([decipher.update(enc), decipher.final()]);
     return dec.toString('utf8');

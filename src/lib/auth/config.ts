@@ -9,6 +9,8 @@ import { ownerIds } from "./policy";
 import { encryptPrivateData } from "./crypto";
 import { sendAuthEmail } from "./email";
 import { emailAliases } from "./email-aliases";
+import { captchaPlugin } from "./captcha";
+import { gateNewUser, isGateBannedUser } from "./username-gate";
 
 export function createIdentityAuth(
   deliver: typeof sendAuthEmail = sendAuthEmail,
@@ -25,6 +27,9 @@ export function createIdentityAuth(
     databaseHooks: {
       user: {
         create: {
+          // USERNAME_GATE_ENABLED: machine-generated usernames are created
+          // already banned, and sendVerificationOTP below never mails them.
+          before: async (user) => gateNewUser(user),
           after: async (user) => {
             await getIdentityDb().query(
               "INSERT INTO identity_profile(user_id,private_metadata_encrypted) VALUES($1,$2) ON CONFLICT DO NOTHING",
@@ -137,6 +142,7 @@ export function createIdentityAuth(
       max: 30,
     },
     plugins: [
+      captchaPlugin(),
       emailAliases(),
       username(),
       admin({
@@ -150,7 +156,13 @@ export function createIdentityAuth(
         allowedAttempts: 5,
         sendVerificationOnSignUp: true,
         overrideDefaultEmailVerification: true,
-        async sendVerificationOTP({ email, otp, type }) {
+        async sendVerificationOTP({ email, otp, type }, ctx) {
+          // Silently drop codes for accounts banned by the username gate.
+          // The sign-up OTP is sent before the user row commits, so look the
+          // user up through ctx's adapter (same transaction), not the pool.
+          const found = await ctx?.context.internalAdapter.findUserByEmail(email);
+          if (isGateBannedUser(found?.user as Parameters<typeof isGateBannedUser>[0]))
+            return;
           await deliver(
             email,
             type === "forget-password"

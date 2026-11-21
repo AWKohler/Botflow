@@ -7,9 +7,9 @@
  * required"}`, which is why the retry has to be bounded rather than
  * condition-driven.
  *
- * Run: node --import tsx --test src/lib/muhkoo-data.test.ts
+ * Run: npx vitest run src/lib/muhkoo-data.test.ts
  */
-import { test, describe, beforeEach, afterEach } from "node:test";
+import { test, describe, beforeEach, afterEach } from "vitest";
 import assert from "node:assert/strict";
 
 import {

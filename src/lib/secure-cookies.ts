@@ -31,7 +31,8 @@ export async function decryptCookie<T = unknown>(value: string | undefined | nul
   const enc = Buffer.from(encB64, 'base64');
   const tag = Buffer.from(tagB64, 'base64');
   const key = getKey();
-  const decipher = crypto.createDecipheriv(ALG, key, iv);
+  // Pin the tag length (Node 22 otherwise accepts truncated GCM tags).
+  const decipher = crypto.createDecipheriv(ALG, key, iv, { authTagLength: 16 });
   decipher.setAuthTag(tag);
   const dec = Buffer.concat([decipher.update(enc), decipher.final()]);
   try {

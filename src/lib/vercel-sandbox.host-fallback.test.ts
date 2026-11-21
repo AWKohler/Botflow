@@ -5,9 +5,9 @@
  * errors, but NOT when the host itself answered with a JSON error — that
  * would abandon a live project's files.
  *
- * Run with: node --import tsx --test src/lib/vercel-sandbox.host-fallback.test.ts
+ * Run with: npx vitest run src/lib/vercel-sandbox.host-fallback.test.ts
  */
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { APIError as HostAPIError } from "@sandbox-host/sdk";
 import { APIError as VercelAPIError } from "@vercel/sandbox";

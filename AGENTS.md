@@ -5,7 +5,9 @@
 - `npm run build` - Build for production
 - `npm run lint` - Run ESLint
 - `npm run start` - Start production server
-- No test runner configured (no Jest/Vitest)
+- `npm test` - Run all tests (Vitest, ~15s; in-process fakes, no network/DB/sandbox). Run after every change — the Vercel build runs it too and a failure blocks the deploy
+- `npm run test:watch` - Vitest watch mode
+- Test harness and conventions: `src/test/` and `docs/testing/test-plan.md`
 
 ## Code Style
 - **TypeScript**: Strict mode enabled, target ES2017

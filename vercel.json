@@ -1,5 +1,6 @@
 {
   "ignoreCommand": "git diff HEAD^ HEAD --quiet -- . ':(exclude)docs'",
+  "buildCommand": "pnpm test && pnpm run build",
   "rewrites": [
     {
       "source": "/docs",

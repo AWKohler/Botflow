@@ -205,24 +205,24 @@ export const ALT_PROFILES: Record<string, AltProfile> = {
     key: 'vibecode',
     name: 'Vibecode',
     oneLiner:
-      'The iPhone app that builds mobile apps — prompt on your phone, get a React Native app with media generation built in.',
-    bestFor: 'Building small apps entirely from your phone.',
+      'An AI app builder for native Swift/SwiftUI iPhone apps, React Native apps for iOS and Android, and web apps — picked per project, built from its phone app or any browser.',
+    bestFor: 'Native Swift or cross-platform apps, from your phone or your computer.',
     strengths: [
-      'The build-from-your-phone experience is genuinely magical — no computer needed.',
-      'Built-in image and sound generation for app assets.',
-      'A guided in-app App Store submission flow via Expo’s cloud builds.',
+      'Three project types — native Swift/SwiftUI, React Native for iOS and Android, or web — from a phone app or the browser.',
+      'For Swift apps, Vibecode builds, signs, uploads, and submits to the App Store itself, with no Expo involved.',
+      'A built-in backend (Vibecode Cloud) plus AI integrations like image generation, GPT, and Gemini for the apps you build.',
     ],
     tradeoffs: [
-      'As an on-device builder app, it sits in the blast radius of Apple’s Guideline 2.5.2 enforcement — previews already had to move to an external browser.',
-      'Output is React Native, not native SwiftUI, and publishing still needs your own Apple Developer account plus an Expo token.',
+      'Model usage is billed through Vibecode credits — no option to build on your own Claude subscription or with your own API keys.',
+      'App Store submission, Vibecode Cloud, and code download sit on paid plans, and React Native projects still publish via Expo with your own Expo token.',
     ],
-    pricingNote: 'Subscription via the App Store.',
+    pricingNote: 'Credit-based subscriptions; publishing and code download on paid plans.',
     compareSlug: 'vibecode',
     facts: {
-      platforms: 'iOS-first (React Native)',
-      backend: 'Limited, built in',
-      code: 'Limited export',
-      native: 'Via Expo/EAS',
+      platforms: 'iOS (Swift) + iOS/Android (RN) + Web',
+      backend: 'Vibecode Cloud, built in',
+      code: 'Download on paid plans',
+      native: 'Managed (Swift); Expo (RN)',
     },
   },
   bloom: {
@@ -749,15 +749,15 @@ export const COMPETITORS: Record<CompetitorSlug, Competitor> = {
       faqs: [
         {
           q: 'What is the best Rork alternative?',
-          a: 'For the same native-SwiftUI-with-managed-publishing architecture plus a built-in backend, Botflow (our product — bias declared) is the most direct alternative. Bloom is best for instantly shareable prototypes, Vibecode for building from your phone, a0.dev for quick React Native tests, and FlutterFlow for mature visual cross-platform building.',
+          a: 'For the same native-SwiftUI-with-managed-publishing architecture plus a built-in backend, Botflow (our product — bias declared) is the most direct alternative. Bloom is best for instantly shareable prototypes, Vibecode for native Swift or React Native from your phone or browser, a0.dev for quick React Native tests, and FlutterFlow for mature visual cross-platform building.',
         },
         {
           q: 'Which Rork alternatives include a backend?',
-          a: 'Botflow and Bloom both build on Convex — a typed, real-time backend — rather than asking you to bring Firebase or Supabase. Botflow provisions and wires it (including auth) automatically; Bloom exports it as part of a standard Expo + Convex project.',
+          a: 'Botflow and Bloom both build on Convex — a typed, real-time backend — rather than asking you to bring Firebase or Supabase. Botflow provisions and wires it (including auth) automatically; Bloom exports it as part of a standard Expo + Convex project. Vibecode includes Vibecode Cloud (database, auth, and storage) on its paid plans.',
         },
         {
           q: 'Do any alternatives publish to the App Store for me?',
-          a: 'Botflow manages the full build-sign-upload pipeline server-side (early access) — you bring only an Apple Developer account. Vibecode offers a guided flow through Expo’s cloud builds. Bloom and a0.dev leave store publishing to you. No tool can remove the Apple Developer account requirement.',
+          a: 'Botflow manages the full build-sign-upload pipeline server-side (early access) — you bring only an Apple Developer account. Vibecode builds, signs, uploads, and submits Swift apps itself, and routes React Native apps through Expo’s cloud builds. Bloom and a0.dev leave store publishing to you. No tool can remove the Apple Developer account requirement.',
         },
       ],
     },
@@ -770,44 +770,38 @@ export const COMPETITORS: Record<CompetitorSlug, Competitor> = {
     slug: 'vibecode',
     name: 'Vibecode',
     compareMeta: {
-      title: 'Botflow vs Vibecode (2026) — two ways to build mobile apps with AI',
+      title: 'Botflow vs Vibecode (2026) — native iOS app builders compared',
       description:
-        'Vibecode builds React Native apps from your iPhone. Botflow builds native SwiftUI from your browser — an architecture Apple’s Guideline 2.5.2 crackdown can’t touch. Both use Claude Code. An honest comparison of the two approaches.',
+        'Vibecode and Botflow both build native SwiftUI apps with a streamed cloud iOS Simulator and managed App Store publishing. Vibecode adds React Native for Android and a phone app; Botflow adds your own Claude subscription, model choice, and a Convex backend. An honest comparison.',
     },
     altMeta: {
       title: '4 Best Vibecode Alternatives in 2026 (Compared Honestly)',
       description:
-        'Looking for a Vibecode alternative? An honest comparison of Botflow, Rork, Bloom, and a0.dev — including native SwiftUI options, Apple Guideline 2.5.2 exposure, and which tools manage App Store publishing for you.',
+        'Looking for a Vibecode alternative? An honest comparison of Botflow, Rork, Bloom, and a0.dev — including native SwiftUI options, how each one charges for AI, and which tools manage App Store publishing for you.',
     },
     heroIntro:
-      'Vibecode pioneered something genuinely delightful: building a mobile app from your phone, no computer involved. Botflow takes the opposite architectural bet — a full IDE in your browser producing native SwiftUI, previewed on a real streamed iOS Simulator. Both run on Claude under the hood. The deciding factors are where you want to build, what the output should be made of, and how much Apple-policy risk you want between you and your users.',
+      'Vibecode started as the app that builds apps from your phone, and it has grown well past that: each project is now a native Swift/SwiftUI iPhone app, a React Native app for iOS and Android, or a web app, built from its phone app or any browser. Botflow covers much of the same ground from a browser IDE — native SwiftUI previewed on a streamed iOS Simulator, plus full-stack web apps on Convex. Both run on Claude Code. The real differences are platform breadth, how you pay for the model, and how mature each native pipeline is today.',
     glance: {
       them: {
         blurb:
-          'The iPhone app that builds mobile apps. Prompt from your phone and get a React Native app, with image and sound generation built in and a guided App Store submission flow through Expo’s cloud builds. A genuinely magical demo — and a featured Anthropic customer.',
-        bestFor: 'Building small apps entirely from your phone.',
+          'An AI app builder with three project types — native Swift/SwiftUI for iPhone and iPad, React Native + Expo for iOS and Android, and web apps — usable from its phone app or the browser. Swift apps preview on a cloud iOS Simulator streamed to you, and Vibecode builds, signs, uploads, and submits them to the App Store itself, with no Expo involved. A featured Anthropic customer.',
+        bestFor: 'Shipping to iOS and Android, from your phone or your computer.',
       },
       us: {
         blurb:
           'A browser-based AI workspace that writes real SwiftUI — the same framework Apple’s own apps use — previews it on a real iOS Simulator streamed to any device with a browser, and manages App Store builds and signing server-side (early access). Plus full-stack web apps with a real Convex backend from the same chat.',
-        bestFor: 'Real native apps meant to live in the App Store for years.',
+        bestFor: 'Native iOS and web apps built on your own Claude subscription.',
       },
     },
     tableGroups: [
       {
         label: 'Where and what you build',
         rows: [
-          { feature: 'Where you build', us: 'Any browser, any device', them: 'On your iPhone' },
-          { feature: 'App output', us: 'Native SwiftUI', them: 'React Native + Expo' },
-          { feature: 'Full-stack web apps', us: true, them: 'Web-to-mobile conversion' },
-          { feature: 'Preview', us: 'Real iOS Simulator, streamed', them: 'External browser preview' },
-        ],
-      },
-      {
-        label: 'Apple policy exposure',
-        rows: [
-          { feature: 'Builder subject to App Review', us: 'No — it’s a web app', them: 'Yes — it’s an iOS app' },
-          { feature: 'Guideline 2.5.2 exposure', us: 'Structurally low', them: 'Named in the 2026 crackdown' },
+          { feature: 'Where you build', us: 'Any browser, any device', them: 'Phone app or any browser' },
+          { feature: 'Native iOS (SwiftUI)', us: 'Yes (early access)', them: 'Yes (Xcode project)' },
+          { feature: 'Android', us: false, them: 'React Native + Expo' },
+          { feature: 'Full-stack web apps', us: 'First-class (React + Convex)', them: true },
+          { feature: 'iOS preview', us: 'Real iOS Simulator, streamed', them: 'Cloud iOS Simulator, streamed' },
         ],
       },
       {
@@ -815,138 +809,147 @@ export const COMPETITORS: Record<CompetitorSlug, Competitor> = {
         rows: [
           { feature: 'Claude Code under the hood', us: true, them: true },
           { feature: 'Use your own Claude subscription', us: 'Yes — zero credits', them: false },
-          { feature: 'Choose your model', us: '9+ models', them: 'Managed' },
-          { feature: 'Built-in image / sound generation', us: false, them: true },
+          { feature: 'Models', us: '9+ models, your pick', them: 'Claude, GPT, Gemini via credits' },
+          { feature: 'Bring your own API keys', us: true, them: false },
+          { feature: 'Built-in AI integrations for your app', us: false, them: 'Image gen, GPT, Gemini, more' },
         ],
       },
       {
         label: 'Backend & shipping',
         rows: [
-          { feature: 'Backend included', us: 'Convex (database, auth, real-time)', them: 'Limited' },
-          { feature: 'App Store publishing', us: 'Managed signing, server-side (early access)', them: 'Guided, via Expo/EAS + your token' },
-          { feature: 'You own the code', us: 'Always, with GitHub', them: 'Limited export' },
+          { feature: 'Backend included', us: 'Convex (database, auth, real-time)', them: 'Vibecode Cloud (database, auth, storage)' },
+          { feature: 'App Store publishing (Swift)', us: 'Managed signing, server-side (early access)', them: 'Managed build, sign, upload, submit' },
+          { feature: 'App Store publishing (React Native)', us: 'No React Native projects', them: 'Via Expo + your Expo token' },
+          { feature: 'You own the code', us: 'Always, with GitHub', them: 'Download on paid plans' },
         ],
       },
     ],
     theirStrengths: [
       {
+        title: 'More platforms from one tool',
+        body: 'Each Vibecode project is native Swift/SwiftUI, React Native for iOS and Android, or a web app. Botflow is deliberately Apple-first plus web: real SwiftUI, no Android today. If Android matters now, Vibecode covers ground Botflow doesn’t.',
+      },
+      {
+        title: 'Native publishing that’s generally available',
+        body: 'For Swift projects, Vibecode builds, signs, uploads, and submits your app for review itself — no Expo involved. Botflow’s managed pipeline does the same job but is in early access; if you need to ship this week, that difference matters and we won’t pretend otherwise.',
+      },
+      {
         title: 'Build from your phone',
-        body: 'Vibecode’s core magic is real: idea to running app from the device in your pocket, no computer required. Botflow works in a phone browser, but it’s built for a bigger screen. For pure spontaneity, Vibecode wins.',
+        body: 'Vibecode has a phone app as well as a browser builder, and the iPhone app shows the same streamed cloud simulator. Botflow works in a phone browser, but it’s built for a bigger screen.',
       },
       {
-        title: 'Media generation built in',
-        body: 'Images, sounds, and AI-API integrations are first-class inside Vibecode — generate your app’s assets where you build it. Botflow has no equivalent built in today.',
-      },
-      {
-        title: 'A slick guided submission flow',
-        body: 'Vibecode wraps Expo’s cloud builds in a genuinely friendly in-app GUI that walks you from project to App Store submission without touching a terminal.',
+        title: 'AI integrations for your app',
+        body: 'GPT, Gemini, image generation, maps, and more are available to the apps you build, billed through your Vibecode credits. Botflow has no equivalent built in today.',
       },
     ],
     ourStrengths: [
       {
-        title: 'An architecture Apple isn’t cracking down on',
-        body: 'In March 2026 Apple began enforcing Guideline 2.5.2 against on-device app builders — Vibecode was named, previews were forced into external browsers, and one competitor was pulled from the store entirely. Botflow’s builder is a web app: there is no iOS builder app for Apple to reject. Your project can’t be orphaned by a policy change aimed at the tool that built it.',
-      },
-      {
-        title: 'Native SwiftUI, not a JavaScript bridge',
-        body: 'Botflow writes the framework Apple builds its own apps with — native performance, native look, and first-class access to Apple frameworks as the agent needs them. React Native is a fine technology, but for App-Store-first products, real SwiftUI is the higher fidelity path.',
-      },
-      {
-        title: 'A real backend from the first prompt',
-        body: 'Apps need accounts and data. Botflow provisions a typed, real-time Convex backend with auth wired automatically. On Vibecode, persistent multi-user backends are largely your problem to assemble.',
-      },
-      {
         title: 'Your Claude subscription, not another bill',
-        body: 'Both products run Claude under the hood. The difference: Vibecode pays Anthropic and charges you credits; Botflow can run the real Claude Code agent directly on your existing Claude Pro/Max subscription — zero credits consumed.',
+        body: 'Vibecode is powered by Claude Code and bills model usage through its credits. Botflow can run the real Claude Code agent directly on your existing Claude Pro/Max subscription — zero credits consumed.',
+      },
+      {
+        title: 'Model choice and your own keys',
+        body: 'Pick from 9+ models with per-token pricing and published multipliers, or bring your own API keys at zero markup. Vibecode’s plans bundle credits for its models, with no option to use API keys of your own for building.',
+      },
+      {
+        title: 'A real-time backend that can leave with you',
+        body: 'Botflow provisions Convex — a typed, real-time database with auth wired by the agent — on the first prompt, and it’s standard Convex you can take with you. Vibecode Cloud also includes a database, auth, and storage, on its paid plans.',
+      },
+      {
+        title: 'Real git on every project',
+        body: 'Every Botflow workspace has GitHub sync plus snapshots you can roll back to, on every project. Vibecode lets you download your source code on paid plans, from its web app.',
       },
     ],
     deepDives: [
       {
-        title: 'The 2.5.2',
-        em: 'problem',
+        title: 'Two native pipelines,',
+        em: 'compared honestly',
         paragraphs: [
-          'In March 2026, Apple started blocking updates to vibe-coding builder apps under Guideline 2.5.2 — the rule that apps must be self-contained and may not download or execute code that changes their functionality. Vibecode and Replit were named in coverage; the builder app “Anything” was removed from the store entirely. The accepted workaround — previews must open in an external browser — landed in the middle of Vibecode’s core experience.',
-          'This isn’t a Vibecode quality problem; it’s a structural problem with building an app-builder inside an iOS app. Botflow sits on the other side of that line: the builder is a browser app Apple never reviews, the preview is a real iOS Simulator streamed from managed Macs, and what ships to the store is a normal, self-contained, reviewed app. The category risk simply doesn’t attach.',
-          'Worth saying honestly: a generated app can still violate 2.5.2 if it does dynamic-code tricks — no builder can waive Apple’s rules for your app. The difference is whether the tool itself lives inside Apple’s jurisdiction.',
+          'Both tools now take the same approach to native iOS: the agent writes Swift and SwiftUI, the app compiles on cloud Macs, and a live iOS Simulator streams into your browser — or, on Vibecode, into its iPhone app too. Both handle the App Store build, signing, and upload for you, and both require your own Apple Developer account ($99/year).',
+          'The honest difference is maturity: Vibecode’s Swift publishing flow is generally available and goes all the way to submitting for review, while Botflow’s pipeline is in early access with capacity opening in waves. What Botflow adds around it is cost structure and ownership — your own Claude subscription, model choice, a Convex backend, and real git history.',
         ],
       },
       {
-        title: 'React Native or',
-        em: 'real SwiftUI',
+        title: 'Swift, React Native, or',
+        em: 'web',
         paragraphs: [
-          'React Native is a good pragmatic choice — it’s how Vibecode ships one codebase to many places, and for plenty of apps nobody will notice. But it puts a JavaScript bridge between your app and the platform, and the newest Apple features tend to arrive on native first.',
-          'Botflow made the opposite bet: the agent writes Swift 6 and SwiftUI directly. You feel it in scrolling and animations, and you see it when your app needs something platform-deep. The trade-off is honest too: SwiftUI means Apple-only — Botflow has no Android story today, and if Android matters to you now, a React Native tool is the right call.',
+          'Vibecode asks you to pick a project type up front: native Swift for iPhone and iPad, React Native + Expo for iOS and Android, or a web app. Swift projects skip Expo entirely; React Native projects publish through Expo’s cloud builds with your own Expo token.',
+          'Botflow offers two: native SwiftUI or a full-stack React + Convex web app, from the same chat and account. There’s no Android story today — if Android is a hard requirement, Vibecode or another React Native tool is the right call.',
         ],
       },
       {
         title: 'Same engine,',
         em: 'different bill',
         paragraphs: [
-          'Vibecode and Botflow both build with Claude — Anthropic has even featured Vibecode as a customer. The economics differ: on Vibecode, model usage flows through their credits on every message.',
+          'Vibecode and Botflow both build with Claude Code — Anthropic has even featured Vibecode as a customer. The economics differ: Vibecode’s plans include monthly credits for Claude, GPT, and Gemini, and every build draws on them.',
           'Botflow is, as far as we know, the only builder where you can sign in with your own Claude Pro or Max subscription and have the genuine Claude Code agent build inside your workspace, consuming zero platform credits. If you already pay Anthropic monthly, your builder effectively stops charging you for the model.',
         ],
       },
     ],
     chooseThem: [
-      'You want to build apps entirely from your iPhone, wherever you are',
-      'Built-in image and sound generation matters for your app’s assets',
-      'You’re making small, fun apps and the phone-first workflow is the point',
-      'You want Android reach eventually via React Native',
+      'Android matters — Vibecode’s React Native projects cover iOS and Android',
+      'You need native App Store publishing that’s generally available today',
+      'You want to build from your phone as well as your computer',
+      'You want AI integrations like image generation available to your app out of the box',
     ],
     chooseUs: [
-      'You’re building something meant to live in the App Store for years, on an architecture Apple isn’t targeting',
-      'You want real native SwiftUI performance and platform depth',
-      'Your app needs accounts and data — a real backend comes wired',
-      'You already pay for Claude and want it building at zero extra cost',
+      'You already pay for Claude Pro or Max and want it building at zero credit cost',
+      'You want model choice and the option to bring your own API keys',
+      'You want a real-time Convex backend and GitHub sync on every project',
+      'Your plan is native iOS plus a full-stack web app from one workspace',
     ],
     compareFaqs: [
       {
         q: 'Is Botflow a good alternative to Vibecode?',
-        a: 'Yes, if your goal is a durable native app: Botflow writes real SwiftUI, includes a Convex backend with auth, and manages App Store signing server-side (early access) — all from a browser IDE that isn’t exposed to Apple’s crackdown on on-device builder apps. Vibecode remains the better pick for building from your phone with built-in media generation.',
+        a: 'It depends on what you value. Both build native SwiftUI apps with a streamed cloud simulator and managed App Store publishing. Botflow’s edge is cost and control: build on your own Claude subscription, choose from 9+ models or bring your own keys, and get a Convex backend plus GitHub sync. Vibecode’s edge is breadth and maturity: React Native for Android, a phone app, and a native publishing flow that’s generally available while Botflow’s is in early access.',
       },
       {
-        q: 'How does Apple’s Guideline 2.5.2 affect Vibecode and Botflow?',
-        a: 'Apple’s March 2026 enforcement targets iOS apps that build or execute apps inside themselves — Vibecode was named in coverage and moved previews to an external browser. Botflow is a web application, so the builder isn’t subject to App Review at all; only the finished, self-contained apps it produces go through Apple.',
+        q: 'Does Vibecode build native Swift apps?',
+        a: 'Yes. A Vibecode project can be a native Swift/SwiftUI iPhone app (delivered as an Xcode project), a React Native + Expo app for iOS and Android, or a web app — you pick per project. For Swift apps, Vibecode builds, signs, uploads, and submits to the App Store itself, without Expo.',
       },
       {
         q: 'Do Vibecode and Botflow use the same AI?',
-        a: 'Both build with Anthropic’s Claude models and Claude Code agent technology. The difference is cost structure: Vibecode meters usage through its own credits, while Botflow can run the real Claude Code agent on your personal Claude Pro/Max subscription at zero credit cost, or let you choose from 9+ models with per-token pricing.',
+        a: 'Both build with Claude Code. The difference is cost structure: Vibecode’s plans include credits for Claude, GPT, and Gemini with no API keys of your own, while Botflow can run the real Claude Code agent on your personal Claude Pro/Max subscription at zero credit cost, or let you choose from 9+ models with per-token pricing.',
       },
       {
         q: 'Which one publishes to the App Store more easily?',
-        a: 'Both manage the mechanics for you in different ways: Vibecode wraps Expo’s cloud build service in a friendly GUI (you supply an Expo token), while Botflow builds and signs on managed Macs server-side with a guided wizard (early access). Both require your own Apple Developer account — Apple doesn’t allow anyone to skip that.',
+        a: 'For Swift apps, both manage the mechanics: Vibecode builds, signs, uploads, and submits for review from its Publish flow, while Botflow builds and signs on managed Macs with a guided wizard and TestFlight upload (early access). Vibecode’s React Native projects publish through Expo with your own Expo token. Both require your own Apple Developer account — Apple doesn’t allow anyone to skip that.',
+      },
+      {
+        q: 'Did Apple’s Guideline 2.5.2 affect Vibecode?',
+        a: 'In March 2026 Apple held App Store updates for several vibe-coding apps, Vibecode among them, citing Guideline 2.5.2. Vibecode says Apple approved its held update on March 18, 2026, and that it has shipped regular updates since. Botflow’s builder is a web app, so it isn’t subject to App Review; the apps either tool produces must each pass review on their own.',
       },
     ],
     alt: {
       heroIntro:
-        'Vibecode made building an app from your phone feel like magic, and it deserves credit for that. But Apple’s Guideline 2.5.2 enforcement has made life structurally hard for on-device builders, the output is React Native rather than native Swift, and shipping still runs through your own Expo and Apple accounts. Here are the alternatives worth knowing, compared honestly.',
+        'Vibecode has grown from a build-from-your-phone app into a three-platform builder: native Swift/SwiftUI, React Native for iOS and Android, and web apps, from its phone app or any browser. It’s a strong tool. People look elsewhere for specific reasons — building on an AI subscription they already pay for, wanting model choice or their own API keys, or preferring a different backend and workflow. Here are the alternatives worth knowing, compared honestly.',
       whySwitch: [
         {
-          title: 'The 2.5.2 cloud overhead',
-          body: 'Apple’s crackdown on builder apps named Vibecode directly and forced previews into external browsers. Tools that build from the browser instead of from an iOS app sidestep the whole category of risk.',
+          title: 'Credits on every build',
+          body: 'Vibecode bundles model usage into its plan credits, with no API keys of your own. Some alternatives let you build on an existing Claude subscription or bring your own keys.',
         },
         {
-          title: 'React Native output',
-          body: 'Vibecode ships React Native + Expo. If you want native SwiftUI fidelity — or Apple-framework depth — you need a tool that writes Swift.',
+          title: 'Paid plans for the essentials',
+          body: 'App Store submission, Vibecode Cloud, and code download all sit on Vibecode’s paid plans. When comparing costs, check what each tool includes at each tier.',
         },
         {
-          title: 'Thin backend, your accounts',
-          body: 'Persistent multi-user apps need real infrastructure. Alternatives range from “backend included” to “bring your own Firebase” — it’s worth choosing deliberately.',
+          title: 'Backend and workflow fit',
+          body: 'Vibecode Cloud hosts your backend on Vibecode’s infrastructure. If you want a real-time Convex backend, GitHub sync, or rollback in your workspace, the alternatives differ widely — worth choosing deliberately.',
         },
       ],
       list: ['botflow', 'rork', 'bloom', 'a0'],
       faqs: [
         {
           q: 'What is the best Vibecode alternative?',
-          a: 'For native SwiftUI with a managed App Store pipeline and a built-in backend, Botflow (our product — bias declared). Rork is the most established mobile-first alternative with store-listing AI and Android via Rork Pro. Bloom is best for instantly shareable prototypes. a0.dev is a lighter tool for quick React Native tests.',
+          a: 'For native SwiftUI with a managed App Store pipeline, a Convex backend, and building on your own Claude subscription, Botflow (our product — bias declared). Rork is the most established mobile-first alternative, with store-listing AI and Android via Rork Pro. Bloom is best for instantly shareable prototypes. a0.dev is a lighter tool for quick React Native tests.',
         },
         {
-          q: 'Which alternatives avoid the Apple 2.5.2 problem?',
-          a: 'Browser-based builders — Botflow, Rork, and Bloom’s web surface — aren’t iOS apps, so Apple’s rules for self-contained app bundles don’t apply to the builder itself. Any tool’s generated apps must still individually pass App Review.',
+          q: 'Which alternatives also build native SwiftUI?',
+          a: 'Botflow (early access) and Rork Max both write real SwiftUI with cloud Mac builds and managed App Store publishing. Bloom and a0.dev output React Native.',
         },
         {
           q: 'Can I keep building from my phone?',
-          a: 'Bloom retains a strong phone-first flow, and Botflow’s workspace runs in a mobile browser though it shines on a bigger screen. If phone-first building is non-negotiable, that narrows your list — weigh it against output quality and publishing support.',
+          a: 'Vibecode itself is one of the strongest phone-first options. Bloom also has a strong phone-first flow, and Botflow’s workspace runs in a mobile browser, though it shines on a bigger screen.',
         },
       ],
     },
@@ -1127,7 +1130,7 @@ export const COMPETITORS: Record<CompetitorSlug, Competitor> = {
       faqs: [
         {
           q: 'What is the best Bloom alternative?',
-          a: 'For keeping Bloom’s Convex backend philosophy but adding native SwiftUI and managed App Store publishing, Botflow (our product — bias declared) is the most direct step up. Rork is the established mobile-first player with store-listing AI. Vibecode keeps the build-from-phone magic. a0.dev suits quick React Native experiments.',
+          a: 'For keeping Bloom’s Convex backend philosophy but adding native SwiftUI and managed App Store publishing, Botflow (our product — bias declared) is the most direct step up. Rork is the established mobile-first player with store-listing AI. Vibecode adds native Swift publishing, React Native for Android, and a phone app. a0.dev suits quick React Native experiments.',
         },
         {
           q: 'Which alternatives keep the Convex backend?',
@@ -1135,7 +1138,7 @@ export const COMPETITORS: Record<CompetitorSlug, Competitor> = {
         },
         {
           q: 'Do any alternatives match Bloom’s instant sharing?',
-          a: 'Honestly, no — Bloom’s App Clip sharing is the best in the category and if that’s your primary need, stay. The alternatives trade that immediacy for depth: managed publishing (Botflow, Rork), native SwiftUI (Botflow, Rork Max), or web apps (Botflow).',
+          a: 'Honestly, no — Bloom’s App Clip sharing is the best in the category and if that’s your primary need, stay. The alternatives trade that immediacy for depth: managed publishing (Botflow, Rork, Vibecode), native SwiftUI (Botflow, Rork Max, Vibecode), or web apps (Botflow, Vibecode).',
         },
       ],
     },

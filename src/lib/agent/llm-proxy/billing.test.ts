@@ -4,7 +4,7 @@
  * − write) → calculateCredits, personal creds ⇒ 0) for every priced model,
  * including the long-context surcharges keyed off uncached+cachedRead.
  */
-import { test, describe } from "node:test";
+import { test, describe } from "vitest";
 import assert from "node:assert/strict";
 
 import { calculateCredits, MODEL_PRICING } from "@/lib/credits";

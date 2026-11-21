@@ -4,9 +4,9 @@
  * vs pause-repeat dedup, sticky pause, and clear hysteresis.
  *
  * Uses Node's built-in test runner (no extra dependency). Run with:
- *   node --import tsx --test src/lib/convex-usage/policy.test.ts
+ *   npx vitest run src/lib/convex-usage/policy.test.ts
  */
-import { test, describe } from 'node:test';
+import { test, describe } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_PAUSE_CALLS_PER_DAY,

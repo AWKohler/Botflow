@@ -4,7 +4,7 @@
  * ${ or backtick in the embedded JS) bit the CC bridge before — this catches
  * them at test time instead of inside a live sandbox.
  */
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { writeFileSync, mkdtempSync } from "node:fs";
