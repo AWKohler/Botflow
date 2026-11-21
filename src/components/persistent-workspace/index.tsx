@@ -1089,7 +1089,10 @@ function StoppedPreviewPlaceholder({
                 onClick={() => pickDevice(id)}
                 className={cn(
                   "flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] transition pointer-coarse:h-7 pointer-coarse:px-2.5 pointer-coarse:text-xs",
-                  device === id ? "bg-accent text-bg" : "text-muted hover:text-fg",
+                  // The same raised neutral chip as every other segmented control.
+                  device === id
+                    ? "bg-bg text-fg shadow-sm ring-1 ring-border-strong/50 dark:bg-soft dark:ring-border-strong"
+                    : "text-muted hover:text-fg",
                 )}
               >
                 <Icon size={12} />

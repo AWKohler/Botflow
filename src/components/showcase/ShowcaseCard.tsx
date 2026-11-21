@@ -58,7 +58,7 @@ export function ShowcaseCard({ project, compact = false }: { project: ShowcasePr
 
         {/* Platform chip */}
         <div className="absolute left-2.5 top-2.5">
-          <Badge className="bg-bg/90 text-fg backdrop-blur-sm">
+          <Badge className="bg-bg text-fg shadow-sm ring-1 ring-black/5">
             {getProjectPlatformLabel(project.platform)}
           </Badge>
         </div>

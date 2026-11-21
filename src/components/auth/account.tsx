@@ -42,7 +42,10 @@ export function AccountPanel() {
     const nav = tabsRef.current;
     const current = nav?.querySelector<HTMLElement>('[aria-current="page"]');
     if (!nav || !current || nav.scrollWidth <= nav.clientWidth) return;
-    // The current tab starts at the page gutter, or the row ends flush right.
+    // Only when it is not already fully in view (so the row does not move under
+    // a finger): the current tab starts at the page gutter, or the row ends flush right.
+    const left = current.offsetLeft - nav.scrollLeft;
+    if (left >= 20 && left + current.offsetWidth <= nav.clientWidth - 20) return;
     nav.scrollTo({ left: current.offsetLeft - 24 });
     // Also when the page first renders its tabs (they are absent while the session loads).
   }, [tab, tabsShown]);

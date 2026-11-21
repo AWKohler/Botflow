@@ -245,7 +245,7 @@ export default function ProjectsPage() {
                       )}
 
                       <div className="absolute left-2.5 top-2.5 flex items-center gap-1.5">
-                        <Badge className="bg-bg/90 text-fg backdrop-blur-sm">
+                        <Badge className="bg-bg text-fg shadow-sm ring-1 ring-black/5">
                           {getProjectPlatformLabel(project.platform)}
                         </Badge>
                         {/* Convex usage guardrail badge (managed backends only) */}

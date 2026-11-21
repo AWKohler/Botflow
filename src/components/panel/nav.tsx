@@ -27,6 +27,8 @@ export function PanelNav({ activePath }: { activePath?: string } = {}) {
     const nav = navRef.current;
     const active = nav?.querySelector<HTMLElement>('[aria-current="page"]');
     if (!nav || !active || nav.scrollWidth <= nav.clientWidth) return;
+    const left = active.offsetLeft - nav.scrollLeft;
+    if (left >= 16 && left + active.offsetWidth <= nav.clientWidth - 16) return;
     nav.scrollTo({ left: active.offsetLeft - 20 });
   }, [pathname]);
   return (

@@ -7,6 +7,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  ListChecks,
   Loader2,
   Maximize2,
   MoreHorizontal,
@@ -200,6 +201,17 @@ function ActiveSwiftSimulatorPreview({
   const [liveOrientation, setLiveOrientation] = useState<OrientationUI | null>(null);
   const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setMoreOpen(false);
+      moreButtonRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [moreOpen]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // The orientation currently shown (live takes precedence). Held in a ref so the
@@ -1086,7 +1098,8 @@ function ActiveSwiftSimulatorPreview({
   return (
     <div
       className={cn(
-        "absolute inset-0 flex flex-col",
+        // A container: the toolbar below adapts to this pane's width, not the window's.
+        "@container absolute inset-0 flex flex-col",
         // Full mode: flush to top/left, 10px gap on right/bottom — matches the
         // Code/Database cards exactly. PIP keeps its tight all-around padding.
         isPip ? "gap-1 p-1.5" : "gap-2 pb-2.5 pr-2.5",
@@ -1097,21 +1110,21 @@ function ActiveSwiftSimulatorPreview({
       <div
         className={cn(
           "flex-shrink-0 items-center rounded-xl border border-border bg-elevated/60",
-          // Phone: the two actions used most keep their labels (Refresh build,
+          // Narrow pane: the two actions used most keep their labels (Refresh build,
           // Stop); device, rotation, webcam and issues move into a "More" menu.
-          isPip ? "flex h-7 gap-1 px-1.5" : "flex h-9 gap-2 px-3 max-md:h-12 max-md:pr-1.5",
+          isPip ? "flex h-7 gap-1 px-1.5" : "flex h-9 gap-2 px-3 @max-[40rem]:h-12 @max-[40rem]:pr-1.5",
         )}
       >
         <StatusPill pill={pill} compact={isPip} />
         <div className={cn("ml-auto flex items-center", isPip ? "gap-1" : "gap-1.5")}>
           {/* FPS counter — full mode only */}
           {!isPip && pill.kind === "live" && (
-            <span className="rounded-md bg-elevated px-2 py-0.5 font-mono text-[11px] text-muted max-md:hidden">
+            <span className="rounded-md bg-elevated px-2 py-0.5 font-mono text-[11px] text-muted @max-[40rem]:hidden">
               {fps} fps
             </span>
           )}
           {/* Device picker — switch iPhone ↔ iPad (restarts the session). */}
-          <div className={cn("relative", !isPip && "max-md:hidden")}>
+          <div className={cn("relative", !isPip && "@max-[40rem]:hidden")}>
             <button
               onClick={() => setDeviceMenuOpen((v) => !v)}
               className={cn(
@@ -1163,7 +1176,7 @@ function ActiveSwiftSimulatorPreview({
             className={cn(
               "flex items-center rounded-md border border-border bg-elevated text-muted hover:text-fg",
               "disabled:cursor-not-allowed disabled:opacity-40",
-              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] max-md:hidden",
+              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] @max-[40rem]:hidden",
             )}
             title={`Rotate to ${orientation === "portrait" ? "landscape" : "portrait"}`}
           >
@@ -1185,7 +1198,7 @@ function ActiveSwiftSimulatorPreview({
             className={cn(
               "flex items-center rounded-md border border-border bg-elevated text-muted hover:text-fg",
               "disabled:cursor-not-allowed disabled:opacity-40",
-              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] max-md:h-9 max-md:px-2.5 max-md:text-xs",
+              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] @max-[40rem]:h-9 @max-[40rem]:px-2.5 @max-[40rem]:text-xs",
             )}
             title="Tar the sandbox and rebuild"
           >
@@ -1204,7 +1217,7 @@ function ActiveSwiftSimulatorPreview({
                 : cameraState === "denied"
                   ? "text-danger"
                   : "text-muted",
-              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] max-md:hidden",
+              isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] @max-[40rem]:hidden",
             )}
             title={
               provider === "local" ? "Webcam forwarding is available with cloud previews" : cameraState === "active"
@@ -1227,7 +1240,7 @@ function ActiveSwiftSimulatorPreview({
           {!isPip && (
             <button
               onClick={() => setIssuesOpen((v) => !v)}
-              className="flex items-center gap-1 rounded-md border border-border bg-elevated px-2 py-1 text-[11px] text-muted hover:text-fg max-md:hidden"
+              className="flex items-center gap-1 rounded-md border border-border bg-elevated px-2 py-1 text-[11px] text-muted hover:text-fg @max-[40rem]:hidden"
               title={issuesOpen ? "Hide issues" : "Show issues"}
             >
               Issues
@@ -1251,8 +1264,9 @@ function ActiveSwiftSimulatorPreview({
           )}
           {/* Phone: the less-used controls, each with its name. */}
           {!isPip && (
-            <div className="relative md:hidden">
+            <div className="relative @[40rem]:hidden">
               <button
+                ref={moreButtonRef}
                 onClick={() => setMoreOpen((v) => !v)}
                 aria-haspopup="menu"
                 aria-expanded={moreOpen}
@@ -1294,7 +1308,7 @@ function ActiveSwiftSimulatorPreview({
                       {cameraState === "active" ? "Stop sharing webcam" : "Share webcam"}
                     </MenuItem>
                     <MenuItem onClick={() => { setMoreOpen(false); setIssuesOpen((v) => !v); }}>
-                      {issuesOpen ? <ChevronUp size={15} className="text-muted" /> : <ChevronDown size={15} className="text-muted" />}
+                      <ListChecks size={15} className="text-muted" />
                       <span className="flex-1">{issuesOpen ? "Hide issues" : "Show issues"}</span>
                       {diagnostics.length > 0 && <span className="tabular-nums text-muted">{diagnostics.length}</span>}
                     </MenuItem>
@@ -1309,7 +1323,7 @@ function ActiveSwiftSimulatorPreview({
               onClick={handleStop}
               className={cn(
                 "flex items-center rounded-md border border-border bg-elevated text-muted hover:text-danger",
-                isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] max-md:h-9 max-md:px-2.5 max-md:text-xs",
+                isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px] @max-[40rem]:h-9 @max-[40rem]:px-2.5 @max-[40rem]:text-xs",
               )}
               title="Stop the simulator"
             >

@@ -750,8 +750,15 @@ export function Preview({
           // (see VisualEditorPanel): ask the page to bring the element into
           // the part of the preview that stays visible above it.
           if (sel.loc && iframeRef.current && window.matchMedia("(max-width: 639px)").matches) {
-            const visible = window.innerHeight * 0.48 - 8 - iframeRef.current.getBoundingClientRect().top;
-            postToIframe({ type: "BF_EDITOR_REVEAL", loc: sel.loc, height: Math.max(80, visible) });
+            const frameTop = iframeRef.current.getBoundingClientRect().top;
+            const loc = sel.loc;
+            // Once the panel has been laid out, its real top edge says how much
+            // of the preview stays visible (it is shorter when the keyboard is up).
+            requestAnimationFrame(() => {
+              const panel = document.querySelector('[role="dialog"][aria-label="Edit element"]');
+              const panelTop = panel ? panel.getBoundingClientRect().top : window.innerHeight * 0.48;
+              postToIframe({ type: "BF_EDITOR_REVEAL", loc, height: Math.max(60, panelTop - 8 - frameTop) });
+            });
           }
           break;
         }

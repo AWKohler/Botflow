@@ -20,26 +20,35 @@ import { useEffect } from 'react';
 export function KeyboardInset() {
   useEffect(() => {
     const vv = window.visualViewport;
-    if (!vv || !window.matchMedia('(pointer: coarse)').matches) return;
+    if (!vv) return;
     const root = document.documentElement;
+    const touch = window.matchMedia('(pointer: coarse)');
     let last = -1;
+    let pinning = 0;
     const apply = () => {
       const zoomed = Math.abs(vv.scale - 1) > 0.01;
-      const covered = zoomed ? 0 : window.innerHeight - vv.height;
+      const covered = zoomed || !touch.matches ? 0 : window.innerHeight - vv.height;
       // Anything smaller is browser chrome moving, not a keyboard.
       const inset = covered > 120 ? Math.round(covered) : 0;
       if (inset !== last) {
         last = inset;
         root.style.setProperty('--keyboard-inset', `${inset}px`);
       }
-      if (inset > 0 && document.querySelector('[data-fills-screen]') && (window.scrollY || vv.offsetTop)) {
-        window.scrollTo(0, 0);
+      // At most once a frame, so it settles rather than fights Safari's own scrolling.
+      if (inset > 0 && !pinning && (window.scrollY || vv.offsetTop) && document.querySelector('[data-fills-screen]')) {
+        pinning = requestAnimationFrame(() => {
+          pinning = 0;
+          window.scrollTo(0, 0);
+        });
       }
     };
     apply();
     vv.addEventListener('resize', apply);
     vv.addEventListener('scroll', apply);
+    touch.addEventListener('change', apply);
     return () => {
+      touch.removeEventListener('change', apply);
+      cancelAnimationFrame(pinning);
       vv.removeEventListener('resize', apply);
       vv.removeEventListener('scroll', apply);
       root.style.removeProperty('--keyboard-inset');

@@ -279,7 +279,9 @@ export function VisualEditorPanel({
         "fixed z-[70] flex flex-col overflow-hidden text-sm shadow-xl",
         // Phone: docked across the bottom half of the screen (these win over the
         // measured position below), so the element being edited stays in view above it.
-        "max-sm:bottom-[calc(0.5rem+var(--keyboard-inset,0px))]! max-sm:left-2! max-sm:right-2! max-sm:top-auto! max-sm:w-auto! max-sm:max-h-[min(52dvh,calc(100dvh-var(--keyboard-inset,0px)-6rem))]!",
+        // With the keyboard up it is shorter still: the two header rows and a
+        // strip of the preview (17rem in all) stay visible above it.
+        "max-sm:bottom-[calc(0.5rem+var(--keyboard-inset,0px))]! max-sm:left-2! max-sm:right-2! max-sm:top-auto! max-sm:w-auto! max-sm:max-h-[min(52dvh,calc(100dvh-var(--keyboard-inset,0px)-17rem))]!",
       )}
       style={{ left: pos.left, top: pos.top, width: PANEL_WIDTH, maxHeight: pos.maxHeight }}
       onMouseDown={(e) => e.stopPropagation()}
@@ -329,7 +331,7 @@ export function VisualEditorPanel({
               {classes.map((c) => (
                 <span
                   key={c}
-// Touch: a taller chip whose remove button is a 36px target at its end.
+                  // Touch: a taller chip whose remove button is a 36px target at its end.
                   className="inline-flex items-center gap-1 rounded-md border border-border bg-surface py-0.5 pl-1.5 pr-1 font-mono text-[11px] text-fg dark:bg-soft pointer-coarse:h-9 pointer-coarse:gap-0 pointer-coarse:py-0 pointer-coarse:pl-2.5 pointer-coarse:pr-0 pointer-coarse:text-[13px]"
                 >
                   {c}
