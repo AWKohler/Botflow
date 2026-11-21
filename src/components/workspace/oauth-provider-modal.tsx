@@ -10,6 +10,7 @@ import {
   oauthCallbackUrl,
   type OAuthProviderField,
 } from "@/lib/oauth-providers/registry";
+import { phoneOverlayClass, phonePanelClass } from "@/components/ui/dialog";
 
 interface OAuthProviderModalProps {
   requestId: string;
@@ -255,12 +256,12 @@ export function OAuthProviderModal({
 
   return (
     /* Full-screen overlay */
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+    <div className={cn("fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]", phoneOverlayClass)}>
       {/* Modal card */}
       <div
         ref={modalRef}
         tabIndex={-1}
-        className="relative w-full max-w-lg bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden max-h-[90vh] flex flex-col outline-none"
+        className={cn("relative w-full max-w-lg bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden max-h-[90vh] flex flex-col outline-none", phonePanelClass, "max-sm:overflow-hidden")}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

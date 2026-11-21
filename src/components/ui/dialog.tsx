@@ -14,10 +14,18 @@ const SIZES = {
   xl: "max-w-4xl",
 } as const;
 
-// On a phone the panel sits toward the top, so the on-screen keyboard (which
-// takes the lower half) does not cover a dialog's field or its actions.
+// On a phone a dialog sits toward the top, so the on-screen keyboard (which
+// takes the lower half) does not cover its field or its actions, and its
+// height stops above the keyboard (see KeyboardInset). The same three classes
+// are used by the dialogs that build their own frame.
+export const phoneOverlayClass = "max-sm:items-start max-sm:pt-[max(1rem,9dvh)]";
+export const phonePanelClass =
+  "max-sm:max-h-[calc(100dvh-1rem-max(1rem,9dvh)-var(--keyboard-inset,0px))] max-sm:overflow-y-auto";
+/** For a native <dialog> centred with `m-auto`. */
+export const phoneNativeDialogClass =
+  "max-sm:mb-auto max-sm:mt-[max(1rem,9dvh)] max-sm:max-h-[calc(100dvh-1rem-max(1rem,9dvh)-var(--keyboard-inset,0px))]";
 export const overlayClass =
-  "fixed inset-0 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px] max-sm:items-start max-sm:pt-[max(1rem,9dvh)]";
+  `fixed inset-0 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px] ${phoneOverlayClass}`;
 export const dialogPanelClass =
   "relative w-full rounded-2xl border border-border bg-bg text-fg shadow-2xl inset-shadow-bevel-top dark:border-border-strong";
 

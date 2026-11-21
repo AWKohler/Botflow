@@ -4,6 +4,8 @@ import { Input } from "@/components/ui/input";
 import { useModal } from "@/components/ui/use-modal";
 import { useState } from "react";
 import { Eye, EyeOff, KeyRound, Loader2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { phoneOverlayClass, phonePanelClass } from "@/components/ui/dialog";
 
 interface EnvVarModalProps {
   requestId: string;
@@ -96,14 +98,14 @@ export function EnvVarModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+    <div className={cn("fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]", phoneOverlayClass)}>
       <div
         ref={modalRef}
         role="dialog"
         aria-modal="true"
         aria-label="Set an environment variable"
         tabIndex={-1}
-        className="relative w-full max-w-lg bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden outline-none"
+        className={cn("relative w-full max-w-lg bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden outline-none", phonePanelClass)}
       >
 
         {/* Header */}

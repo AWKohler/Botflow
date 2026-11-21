@@ -8,6 +8,7 @@ import Link from "next/link";
 import { LogOut, Settings2, X } from "lucide-react";
 import { buttonClass } from "@/components/ui/button";
 import { Menu, MenuItem, MenuSeparator, menuItemClass } from "@/components/ui/menu";
+import { phoneNativeDialogClass } from "@/components/ui/dialog";
 export { PricingTable } from "./pricing-table";
 
 interface User {
@@ -133,7 +134,7 @@ export function SignInButton({
         <dialog
           ref={dialogRef}
           onClose={() => setOpen(false)}
-          className="fixed inset-0 m-auto max-h-[90vh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-2xl border border-border bg-bg p-0 text-fg shadow-2xl backdrop:bg-black/40 backdrop:backdrop-blur-[2px]"
+          className={`fixed inset-0 m-auto max-h-[90vh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-2xl border border-border bg-bg p-0 text-fg shadow-2xl backdrop:bg-black/40 backdrop:backdrop-blur-[2px] ${phoneNativeDialogClass}`}
         >
           <button
             autoFocus

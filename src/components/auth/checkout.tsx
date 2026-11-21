@@ -12,6 +12,7 @@ import {
   type BillingInterval,
 } from "@/lib/billing/plans";
 import { primaryClass } from "./sign-in";
+import { phoneNativeDialogClass } from "@/components/ui/dialog";
 const key = process.env.NEXT_PUBLIC_BILLING_STRIPE_PUBLISHABLE_KEY;
 const stripePromise = key ? loadStripe(key) : null;
 function CheckoutForm() {
@@ -112,7 +113,7 @@ export function CheckoutModal({
     <dialog
       ref={ref}
       onClose={onClose}
-      className="fixed inset-0 m-auto max-h-[90vh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-2xl border border-border bg-bg p-6 text-fg shadow-2xl backdrop:bg-black/40 backdrop:backdrop-blur-[2px]"
+      className={`fixed inset-0 m-auto max-h-[90vh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-2xl border border-border bg-bg p-6 text-fg shadow-2xl backdrop:bg-black/40 backdrop:backdrop-blur-[2px] ${phoneNativeDialogClass}`}
     >
       <button
         className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg text-lg leading-none text-muted transition-colors hover:bg-elevated hover:text-fg"

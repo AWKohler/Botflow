@@ -54,6 +54,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { AppStoreReadinessStep } from "./app-store-readiness-step";
+import { phoneOverlayClass, phonePanelClass } from "@/components/ui/dialog";
 
 // ── Types matching the swift-publish server contracts ───────────────────────
 
@@ -745,7 +746,7 @@ export function PublishToAppStore({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center px-4">
+    <div className={cn("fixed inset-0 z-[300] flex items-center justify-center px-4", phoneOverlayClass)}>
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
         onClick={() => {
@@ -756,7 +757,7 @@ export function PublishToAppStore({
         }}
       />
       <div
-        className="relative flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl"
+        className={cn("relative flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl", phonePanelClass, "max-sm:overflow-hidden")}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

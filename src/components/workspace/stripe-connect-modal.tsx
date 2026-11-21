@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useModal } from "@/components/ui/use-modal";
 import { ExternalLink, Loader2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { phoneOverlayClass, phonePanelClass } from "@/components/ui/dialog";
 
 interface StripeConnectModalProps {
   requestId: string;
@@ -77,14 +79,14 @@ export function StripeConnectModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+    <div className={cn("fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]", phoneOverlayClass)}>
       <div
         ref={modalRef}
         role="dialog"
         aria-modal="true"
         aria-label="Connect Stripe"
         tabIndex={-1}
-        className="relative w-full max-w-md bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden outline-none"
+        className={cn("relative w-full max-w-md bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden outline-none", phonePanelClass)}
       >
         {/* Header */}
         <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-border">
