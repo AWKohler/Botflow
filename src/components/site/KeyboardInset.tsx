@@ -15,7 +15,9 @@ import { useEffect } from 'react';
  * measured, since zooming shrinks the visual viewport too.
  *
  * A screen marked `data-fills-screen` is also kept pinned to the top, undoing
- * the pan Safari applies before the layout has shrunk.
+ * the pan Safari applies before the layout has shrunk. When the keyboard
+ * opens, the focused field is scrolled back into view inside whatever panel
+ * has just become shorter.
  */
 export function KeyboardInset() {
   useEffect(() => {
@@ -31,8 +33,21 @@ export function KeyboardInset() {
       // Anything smaller is browser chrome moving, not a keyboard.
       const inset = covered > 120 ? Math.round(covered) : 0;
       if (inset !== last) {
+        const opened = inset > last;
         last = inset;
         root.style.setProperty('--keyboard-inset', `${inset}px`);
+        // Panels above the keyboard have just become shorter: once they have
+        // been laid out, bring the field being typed in back into view.
+        if (opened) {
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+              const active = document.activeElement;
+              if (active instanceof HTMLElement && active !== document.body) {
+                active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+              }
+            }),
+          );
+        }
       }
       // At most once a frame, so it settles rather than fights Safari's own scrolling.
       if (inset > 0 && !pinning && (window.scrollY || vv.offsetTop) && document.querySelector('[data-fills-screen]')) {
