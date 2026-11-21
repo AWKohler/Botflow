@@ -457,7 +457,7 @@ export function AppStoreReadinessStep({
 
       {/* Out-of-credits banner (shared across actions). */}
       {outOfCredits && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-400">
+        <div className="flex items-start gap-2 rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-[11px] leading-snug text-warning">
           <AlertTriangle size={13} className="mt-0.5 shrink-0" />
           You&apos;re out of credits this week. Your weekly credits will refresh — try
           again then, or upgrade for more.
@@ -468,7 +468,7 @@ export function AppStoreReadinessStep({
       <div>
         <Button
           size="sm"
-          className="gap-2 font-semibold"
+          className="gap-2"
           disabled={runDisabled}
           onClick={() => void runReadinessCheck()}
         >
@@ -515,8 +515,8 @@ export function AppStoreReadinessStep({
             </label>
             <span
               className={cn(
-                "text-[10px] tabular-nums",
-                iconPrompt.length >= ICON_PROMPT_MAX ? "text-amber-400" : "text-muted",
+                "text-[11px] tabular-nums",
+                iconPrompt.length >= ICON_PROMPT_MAX ? "text-warning" : "text-muted",
               )}
             >
               {iconPrompt.length}/{ICON_PROMPT_MAX}
@@ -529,7 +529,7 @@ export function AppStoreReadinessStep({
             maxLength={ICON_PROMPT_MAX}
             onChange={(e) => setIconPrompt(e.target.value.slice(0, ICON_PROMPT_MAX))}
             placeholder="A minimal teal compass on a dark gradient, rounded, flat"
-            className="w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-fg outline-none focus:ring-2 focus:ring-border"
+            className="w-full rounded-lg border border-control bg-bg px-3 py-2 text-sm text-fg inset-shadow-well outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
           />
         </div>
 
@@ -537,7 +537,7 @@ export function AppStoreReadinessStep({
           <Button
             size="sm"
             variant="outline"
-            className="gap-2 font-semibold"
+            className="gap-2"
             disabled={!iconPrompt.trim() || iconGenerating || iconUploading}
             onClick={() => void generateIcon()}
           >
@@ -592,12 +592,12 @@ export function AppStoreReadinessStep({
               />
               <div className="text-[11px] leading-4 text-muted">
                 {iconWritten ? (
-                  <div className="flex items-center gap-1 text-green-500">
+                  <div className="flex items-center gap-1 text-success">
                     <CheckCircle2 size={12} className="shrink-0" />
                     Saved into your app
                   </div>
                 ) : (
-                  <div className="flex items-center gap-1 text-amber-400">
+                  <div className="flex items-center gap-1 text-warning">
                     <AlertTriangle size={12} className="shrink-0" />
                     Generated, but not saved — try again
                   </div>
@@ -611,7 +611,7 @@ export function AppStoreReadinessStep({
         </div>
 
         {iconError && (
-          <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] leading-snug text-red-400">
+          <div className="flex items-start gap-2 rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-[11px] leading-snug text-danger">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
             {iconError}
           </div>
@@ -624,7 +624,7 @@ export function AppStoreReadinessStep({
           <Sparkles size={14} className="shrink-0 text-accent" />
           <h3 className="text-sm font-semibold text-fg">Store listing</h3>
           {metaCredits != null && (
-            <span className="ml-auto text-[10px] text-muted">{metaCredits} credits</span>
+            <span className="ml-auto text-[11px] text-muted">{metaCredits} credits</span>
           )}
           {metaReady && (
             <button
@@ -648,7 +648,7 @@ export function AppStoreReadinessStep({
         </div>
 
         {metaError && (
-          <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] leading-snug text-red-400">
+          <div className="flex items-start gap-2 rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-[11px] leading-snug text-danger">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
             {metaError}
           </div>
@@ -705,9 +705,9 @@ export function AppStoreReadinessStep({
                 </label>
                 <span
                   className={cn(
-                    "text-[10px] tabular-nums",
+                    "text-[11px] tabular-nums",
                     metadata.description.length >= META_MAX.description
-                      ? "text-amber-400"
+                      ? "text-warning"
                       : "text-muted",
                   )}
                 >
@@ -721,15 +721,15 @@ export function AppStoreReadinessStep({
                 onChange={(e) => setMetaField("description", e.target.value)}
                 rows={6}
                 placeholder="What your app does, who it's for, why it's great…"
-                className="w-full resize-y rounded-lg border border-border bg-elevated px-3 py-2 text-sm leading-5 text-fg outline-none focus:ring-2 focus:ring-border modern-scrollbar"
+                className="modern-scrollbar w-full resize-y rounded-lg border border-control bg-bg px-3 py-2 text-sm leading-5 text-fg inset-shadow-well outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
               />
             </div>
 
             {/* Push result / failure-mode nudges. */}
             {pushResult && (
-              <div className="space-y-2 rounded-md border border-green-500/30 bg-green-500/10 p-3">
+              <div className="space-y-2 rounded-md border border-success-border bg-success-soft p-3">
                 <div className="flex items-start gap-2 text-xs text-fg">
-                  <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-green-500" />
+                  <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-success" />
                   <span>
                     {pushResult.pushed.length > 0 ? (
                       <>
@@ -745,7 +745,7 @@ export function AppStoreReadinessStep({
                   </span>
                 </div>
                 {pushResult.warnings.length > 0 && (
-                  <ul className="space-y-1 pl-6 text-[11px] leading-4 text-amber-400">
+                  <ul className="space-y-1 pl-6 text-[11px] leading-4 text-warning">
                     {pushResult.warnings.map((w, i) => (
                       <li key={i} className="list-disc">
                         {w}
@@ -757,14 +757,14 @@ export function AppStoreReadinessStep({
             )}
 
             {appRecordMissing && (
-              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-400">
+              <div className="flex items-start gap-2 rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-[11px] leading-snug text-warning">
                 <AlertTriangle size={13} className="mt-0.5 shrink-0" />
                 Create your app record first (in the Submit step), then push.
               </div>
             )}
 
             {missingCredentials && (
-              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-400">
+              <div className="flex items-start gap-2 rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-[11px] leading-snug text-warning">
                 <AlertTriangle size={13} className="mt-0.5 shrink-0" />
                 Connect your App Store Connect key first (Apple Developer step), then
                 push.
@@ -772,7 +772,7 @@ export function AppStoreReadinessStep({
             )}
 
             {pushError && (
-              <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] leading-snug text-red-400">
+              <div className="flex items-start gap-2 rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-[11px] leading-snug text-danger">
                 <AlertTriangle size={13} className="mt-0.5 shrink-0" />
                 {pushError}
               </div>
@@ -780,7 +780,7 @@ export function AppStoreReadinessStep({
 
             <Button
               size="sm"
-              className="gap-2 font-semibold"
+              className="gap-2"
               disabled={pushing || !metaReady}
               onClick={() => void pushMetadata()}
             >
@@ -809,9 +809,9 @@ const STATUS_META: Record<
   CheckStatus,
   { icon: typeof CheckCircle2; tone: string; row: string }
 > = {
-  pass: { icon: CheckCircle2, tone: "text-green-500", row: "border-border bg-elevated/40" },
-  warn: { icon: AlertTriangle, tone: "text-amber-400", row: "border-amber-500/30 bg-amber-500/10" },
-  fail: { icon: XCircle, tone: "text-red-400", row: "border-red-500/30 bg-red-500/10" },
+  pass: { icon: CheckCircle2, tone: "text-success", row: "border-border bg-elevated/40" },
+  warn: { icon: AlertTriangle, tone: "text-warning", row: "border-warning-border bg-warning-soft" },
+  fail: { icon: XCircle, tone: "text-danger", row: "border-danger-border bg-danger-soft" },
 };
 
 function PreflightChecklist({
@@ -825,7 +825,7 @@ function PreflightChecklist({
 }) {
   if (error) {
     return (
-      <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] leading-snug text-red-400">
+      <div className="flex items-start gap-2 rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-[11px] leading-snug text-danger">
         <AlertTriangle size={13} className="mt-0.5 shrink-0" />
         {error}
       </div>
@@ -851,11 +851,11 @@ function PreflightChecklist({
       <div className="flex items-center gap-2.5 text-xs">
         <span className="font-medium text-fg">Pre-flight</span>
         <span className="flex items-center gap-2 text-[11px] tabular-nums text-muted">
-          <span className={cn(summary.fail > 0 && "text-red-400")}>{summary.fail} fail</span>
+          <span className={cn(summary.fail > 0 && "text-danger")}>{summary.fail} fail</span>
           <span aria-hidden>·</span>
-          <span className={cn(summary.warn > 0 && "text-amber-400")}>{summary.warn} warn</span>
+          <span className={cn(summary.warn > 0 && "text-warning")}>{summary.warn} warn</span>
           <span aria-hidden>·</span>
-          <span className={cn(summary.pass > 0 && "text-green-500")}>{summary.pass} pass</span>
+          <span className={cn(summary.pass > 0 && "text-success")}>{summary.pass} pass</span>
         </span>
         {loading && <Loader2 size={12} className="ml-auto animate-spin text-muted" />}
       </div>
@@ -917,8 +917,8 @@ function MetaField({
         </label>
         <span
           className={cn(
-            "text-[10px] tabular-nums",
-            value.length >= max ? "text-amber-400" : "text-muted",
+            "text-[11px] tabular-nums",
+            value.length >= max ? "text-warning" : "text-muted",
           )}
         >
           {value.length}/{max}
@@ -933,7 +933,7 @@ function MetaField({
         placeholder={placeholder}
         spellCheck={!mono}
         className={cn(
-          "w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-fg outline-none focus:ring-2 focus:ring-border",
+          "w-full rounded-lg border border-control bg-bg px-3 py-2 text-sm text-fg inset-shadow-well outline-none transition-[border-color,box-shadow] placeholder:text-subtle hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15",
           mono && "font-mono",
         )}
       />

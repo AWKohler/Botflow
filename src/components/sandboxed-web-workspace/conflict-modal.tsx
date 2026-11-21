@@ -19,6 +19,7 @@
  * naming the file(s) and the gitResolveConflict tool. The user clicks send.
  */
 import { useCallback, useMemo, useState } from "react";
+import { useModal } from "@/components/ui/use-modal";
 import { createPortal } from "react-dom";
 import {
   AlertCircle,
@@ -227,11 +228,19 @@ export function ConflictModal({
     }
   }, [onClose, onResolved, projectId, toast]);
 
+  // No Escape-to-close here: closing by accident would throw away choices.
+  const modalRef = useModal<HTMLDivElement>(true);
+
   const modal = (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]">
       <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Resolve changes from GitHub"
+        tabIndex={-1}
         className={cn(
-          "rounded-2xl border border-border bg-surface shadow-2xl overflow-hidden flex flex-col",
+          "rounded-2xl border border-border bg-bg shadow-2xl overflow-hidden flex flex-col outline-none",
           mode === "manual" ? "w-[92vw] max-w-5xl h-[85vh]" : "w-full max-w-xl max-h-[80vh]",
         )}
       >
@@ -329,7 +338,7 @@ export function ConflictModal({
               type="button"
               onClick={discardLocalChanges}
               disabled={aborting}
-              className="text-muted hover:text-red-400"
+              className="text-muted hover:text-danger"
             >
               {aborting ? "Aborting…" : "Discard my changes"}
             </button>
@@ -394,7 +403,7 @@ function ConflictFileCard({
       <div className="flex items-center justify-between gap-2">
         <div className="font-mono text-xs text-fg truncate">{path}</div>
         {choice && (
-          <span className="inline-flex items-center gap-1 text-[10px] text-accent">
+          <span className="inline-flex items-center gap-1 text-[11px] text-accent">
             <Check size={10} />
             {labelForChoice(choice)}
           </span>
@@ -402,7 +411,7 @@ function ConflictFileCard({
       </div>
 
       {previewLines && (
-        <pre className="mt-2 text-[10px] text-muted bg-surface border border-border rounded p-2 max-h-24 overflow-hidden whitespace-pre-wrap">
+        <pre className="mt-2 text-[11px] text-muted bg-surface border border-border rounded p-2 max-h-24 overflow-hidden whitespace-pre-wrap">
           {previewLines}
           {(blob?.marked.split("\n").length ?? 0) > 8 ? "\n…" : ""}
         </pre>
@@ -476,7 +485,7 @@ function ManualModeBody({
     <div className="flex flex-1 min-h-0">
       {/* File sidebar */}
       <div className="w-56 border-r border-border flex flex-col shrink-0 overflow-y-auto modern-scrollbar">
-        <div className="px-3 py-2 text-[10px] font-medium text-muted uppercase tracking-wider border-b border-border/60">
+        <div className="px-3 py-2 text-[11px] font-medium text-muted uppercase tracking-wider border-b border-border/60">
           Conflicted files
         </div>
         {conflicts.map((p, i) => {
@@ -502,17 +511,17 @@ function ManualModeBody({
                 className={cn(
                   "mt-0.5 w-3 h-3 rounded-full border shrink-0 flex items-center justify-center",
                   resolved
-                    ? "border-green-500 bg-green-500/20"
-                    : "border-yellow-500 bg-yellow-500/10",
+                    ? "border-success-border bg-success-soft"
+                    : "border-warning-border bg-warning-soft",
                 )}
               >
-                {resolved && <Check size={7} className="text-green-500" />}
+                {resolved && <Check size={7} className="text-success" />}
               </span>
               <span className="flex-1 min-w-0">
                 <span className="block text-xs font-medium truncate">
                   {filename(p)}
                 </span>
-                <span className="block text-[10px] opacity-60 truncate">
+                <span className="block text-[11px] opacity-60 truncate">
                   {dirname(p)}
                 </span>
               </span>
@@ -539,7 +548,7 @@ function ManualModeBody({
           {/* Resolution editor */}
           <div className="flex flex-col shrink-0" style={{ height: "35%" }}>
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/40 bg-elevated/30 shrink-0">
-              <span className="text-[10px] font-medium text-muted uppercase tracking-wider">
+              <span className="text-[11px] font-medium text-muted uppercase tracking-wider">
                 Resolved content
               </span>
               <div className="flex items-center gap-1 ml-auto">
@@ -552,9 +561,9 @@ function ManualModeBody({
                     setChoice(path, { kind: "theirs" });
                   }}
                   className={cn(
-                    "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+                    "px-2 py-0.5 rounded text-[11px] font-medium transition-colors",
                     choice?.kind === "theirs"
-                      ? "bg-blue-500/20 text-blue-400"
+                      ? "bg-info-soft text-info"
                       : "hover:bg-soft/60 text-muted",
                   )}
                 >
@@ -569,9 +578,9 @@ function ManualModeBody({
                     setChoice(path, { kind: "ours" });
                   }}
                   className={cn(
-                    "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+                    "px-2 py-0.5 rounded text-[11px] font-medium transition-colors",
                     choice?.kind === "ours"
-                      ? "bg-green-500/20 text-green-400"
+                      ? "bg-success-soft text-success"
                       : "hover:bg-soft/60 text-muted",
                   )}
                 >
@@ -619,15 +628,15 @@ function DiffPane({
     <div className={cn("flex-1 flex flex-col min-w-0", border && "border-r border-border/60")}>
       <div className={cn(
         "flex items-center gap-1.5 px-3 py-1.5 border-b border-border/40 shrink-0",
-        color === "blue" ? "bg-blue-500/5" : "bg-green-500/5",
+        color === "blue" ? "bg-info-soft" : "bg-success-soft",
       )}>
         <span className={cn(
           "w-2 h-2 rounded-full opacity-70",
-          color === "blue" ? "bg-blue-500" : "bg-green-500",
+          color === "blue" ? "bg-info-solid" : "bg-success-solid",
         )} />
         <span className={cn(
-          "text-[10px] font-medium uppercase tracking-wider",
-          color === "blue" ? "text-blue-400" : "text-green-400",
+          "text-[11px] font-medium uppercase tracking-wider",
+          color === "blue" ? "text-info" : "text-success",
         )}>
           {label}
         </span>

@@ -1,4 +1,5 @@
 import { LandingNav, LandingFooter } from "@/components/landing/shared";
+import { serif } from "@/components/landing/fonts";
 
 export const metadata = {
   title: "Privacy Policy — Botflow",
@@ -10,8 +11,9 @@ export default function PrivacyPage() {
     <div className="min-h-screen bg-[var(--sand-bg)]">
       <LandingNav />
 
-      <main className="mx-auto max-w-3xl px-4 sm:px-6 py-16 sm:py-24">
-        <h1 className="text-3xl sm:text-4xl font-bold text-[var(--sand-text)] mb-2">
+      <main className="mx-auto max-w-3xl px-6 py-16 sm:px-10 sm:py-24">
+        <p className="mb-5 text-[11px] font-medium uppercase tracking-[0.2em] text-muted">Legal</p>
+        <h1 className={`${serif.className} mb-4 text-5xl leading-[1.05] tracking-tight text-fg sm:text-6xl`}>
           Privacy Policy
         </h1>
         <p className="text-sm text-[var(--sand-text-muted)] mb-12">
@@ -24,7 +26,7 @@ export default function PrivacyPage() {
             <p>
               Botflow LLC (&quot;Botflow,&quot; &quot;we,&quot; &quot;us,&quot; or &quot;our&quot;) is a limited liability company
               incorporated in North Carolina. We operate the Botflow platform, accessible at{" "}
-              <a href="https://botflow.io" className="text-[var(--sand-text)] hover:underline">
+              <a href="https://botflow.io" className="text-fg underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-fg">
                 botflow.io
               </a>
               , which is powered by{" "}
@@ -35,7 +37,7 @@ export default function PrivacyPage() {
               Questions about this Privacy Policy can be directed to{" "}
               <a
                 href="mailto:awkohler@botflow.io"
-                className="text-[var(--sand-text)] hover:underline"
+                className="text-fg underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-fg"
               >
                 awkohler@botflow.io
               </a>
@@ -92,7 +94,7 @@ export default function PrivacyPage() {
                   href="https://openai.com/policies/privacy-policy"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[var(--sand-text)] hover:underline"
+                  className="text-fg underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-fg"
                 >
                   OpenAI
                 </a>
@@ -101,7 +103,7 @@ export default function PrivacyPage() {
                   href="https://www.anthropic.com/legal/privacy"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[var(--sand-text)] hover:underline"
+                  className="text-fg underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-fg"
                 >
                   Anthropic
                 </a>
@@ -110,7 +112,7 @@ export default function PrivacyPage() {
                   href="https://fireworks.ai/privacy"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[var(--sand-text)] hover:underline"
+                  className="text-fg underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-fg"
                 >
                   Fireworks AI
                 </a>{" "}
@@ -212,7 +214,7 @@ export default function PrivacyPage() {
               contact us at{" "}
               <a
                 href="mailto:awkohler@botflow.io"
-                className="text-[var(--sand-text)] hover:underline"
+                className="text-fg underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-fg"
               >
                 awkohler@botflow.io
               </a>{" "}
@@ -227,7 +229,7 @@ export default function PrivacyPage() {
               at{" "}
               <a
                 href="mailto:awkohler@botflow.io"
-                className="text-[var(--sand-text)] hover:underline"
+                className="text-fg underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-fg"
               >
                 awkohler@botflow.io
               </a>
@@ -265,7 +267,7 @@ export default function PrivacyPage() {
               <div>
                 <a
                   href="mailto:awkohler@botflow.io"
-                  className="text-[var(--sand-text)] hover:underline"
+                  className="text-fg underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-fg"
                 >
                   awkohler@botflow.io
                 </a>

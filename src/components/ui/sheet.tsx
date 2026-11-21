@@ -1,0 +1,154 @@
+"use client";
+
+import { cn } from "@/lib/utils";
+import { X } from "lucide-react";
+import { useId, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { buttonClass } from "./button";
+import { useMediaQuery } from "./use-media-query";
+import { useModal } from "./use-modal";
+
+// Below Tailwind's `sm`. This is the width at which an anchored 420px popover
+// stops fitting, which is why sheets use it; the workspaces switch to one pane
+// at a time earlier (below `md`), where those popovers still fit.
+export const PHONE_QUERY = "(max-width: 639px)";
+
+/**
+ * True on a phone-width window (below Tailwind's `sm`). False on the server
+ * and for the first client render, so use it for things that only appear
+ * after an interaction (an open menu), never for the page's first paint.
+ */
+export function useIsPhone() {
+  return useMediaQuery(PHONE_QUERY);
+}
+
+/**
+ * For a popover that is anchored to its button on larger screens (fixed, with
+ * inline `top`/`right`): on a phone these classes turn the same element into a
+ * bottom sheet instead, where a 420px panel hanging off a button would run off
+ * the side of the screen. Put `phoneSheetBackdropClass` on its click-away layer.
+ */
+export const phoneSheetClass =
+  // Sits on the on-screen keyboard when one is up (see KeyboardInset).
+  "max-sm:inset-x-0 max-sm:bottom-[var(--keyboard-inset,0px)] max-sm:top-auto! max-sm:right-0! max-sm:w-full max-sm:max-w-none " +
+  "max-sm:rounded-b-none max-sm:rounded-t-2xl max-sm:border-x-0 max-sm:border-b-0 " +
+  "max-sm:pb-[env(safe-area-inset-bottom)] max-sm:motion-safe:animate-[sheet-up_0.24s_cubic-bezier(0.2,0.8,0.2,1)]";
+export const phoneSheetBackdropClass =
+  "max-sm:touch-none max-sm:bg-black/40 max-sm:backdrop-blur-[2px] max-sm:motion-safe:animate-[sheet-fade_0.18s_ease-out]";
+/** The grabber at the top of a sheet (phones only), the same mark `BottomSheet` carries. */
+export const phoneSheetGrabberClass = "mx-auto mt-2 hidden h-1 w-9 shrink-0 rounded-full bg-border-strong max-sm:block";
+/** Title row and scrolling body of such a popover, sized for a phone. */
+export const phoneSheetTitleClass = "max-sm:pl-5 max-sm:pr-2 max-sm:pb-2 max-sm:pt-1 max-sm:[&_h3]:text-base";
+export const phoneSheetCloseClass = "max-sm:flex max-sm:size-11 max-sm:items-center max-sm:justify-center max-sm:[&_svg]:size-5";
+export const phoneSheetBodyClass =
+  "max-sm:max-h-[calc(min(85dvh,100dvh-var(--keyboard-inset,0px)-1rem)-4.25rem)] max-sm:overflow-y-auto max-sm:overscroll-contain";
+
+/**
+ * The behaviour that goes with `phoneSheetClass`: while such a popover is a
+ * sheet (a phone), it is a modal — focus moves into it and stays there, the
+ * page behind is inert, and focus returns to the control that opened it. On
+ * larger screens it stays a plain anchored popover. Spread `props` on the
+ * panel and give it an accessible name.
+ *
+ * The panel and its click-away layer must share one wrapper element, because
+ * everything outside the panel's root is made inert.
+ */
+export function usePhoneSheetModal<T extends HTMLElement>(
+  open: boolean,
+  onClose?: () => void,
+  trigger?: { current: HTMLElement | null },
+) {
+  const isPhone = useIsPhone();
+  // Escape goes through the modal stack, so only the top modal answers it. The
+  // popover's own Escape listener should stand down while `isPhone` is true.
+  const ref = useModal<T>(open && isPhone, onClose, trigger);
+  return {
+    isPhone,
+    props: { ref, role: "dialog", "aria-modal": isPhone || undefined, tabIndex: -1 } as const,
+  };
+}
+
+/**
+ * A panel that slides up from the bottom edge of a phone screen. On a phone a
+ * long menu anchored to its button has nowhere to go: it runs under the header
+ * or off the side. A sheet gives the same content the full width, a reachable
+ * position and rows big enough to tap.
+ *
+ * It is a modal like `Dialog`: rendered at the end of <body>, focus is held
+ * inside, the page behind is inert, and Escape, the close button or a tap on
+ * the dimmed backdrop close it.
+ */
+export function BottomSheet({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+  className,
+  zIndex = 200,
+  trigger,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** The control that opened the sheet; focus returns to it on close. */
+  trigger?: { current: HTMLElement | null };
+  title: ReactNode;
+  description?: ReactNode;
+  children: ReactNode;
+  footer?: ReactNode;
+  className?: string;
+  zIndex?: number;
+}) {
+  const panelRef = useModal<HTMLDivElement>(open, onClose, trigger);
+  const titleId = useId();
+  const descriptionId = useId();
+
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      // touch-none: a drag on the dimmed area (or the sheet's title) must not scroll the page behind.
+      className="fixed inset-0 flex touch-none items-end bg-black/40 pb-[var(--keyboard-inset,0px)] backdrop-blur-[2px] motion-safe:animate-[sheet-fade_0.18s_ease-out]"
+      style={{ zIndex }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={description ? descriptionId : undefined}
+        tabIndex={-1}
+        className={cn(
+          "flex max-h-[min(85dvh,calc(100dvh-var(--keyboard-inset,0px)-1rem))] w-full flex-col rounded-t-2xl border-t border-border bg-bg text-fg shadow-2xl outline-none",
+          "inset-shadow-bevel-top dark:border-border-strong dark:bg-elevated",
+          "pb-[env(safe-area-inset-bottom)] motion-safe:animate-[sheet-up_0.24s_cubic-bezier(0.2,0.8,0.2,1)]",
+          className,
+        )}
+      >
+        {/* Grabber: says "sheet" at a glance. Decorative; the close button does the work. */}
+        <div aria-hidden="true" className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-border-strong" />
+        <div className="flex shrink-0 items-center justify-between gap-3 pb-1 pl-5 pr-2 pt-1">
+          <div className="min-w-0">
+            <h2 id={titleId} className="text-base font-semibold leading-6 text-fg">{title}</h2>
+            {description && <p id={descriptionId} className="text-[13px] leading-relaxed text-muted">{description}</p>}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className={buttonClass({ variant: "ghost", size: "icon", className: "size-11 shrink-0" })}
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="modern-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
+        {footer && <div className="shrink-0 border-t border-border px-5 py-3">{footer}</div>}
+      </div>
+    </div>,
+    document.body,
+  );
+}

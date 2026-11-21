@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useModal } from "@/components/ui/use-modal";
 import { ExternalLink, Loader2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { phoneOverlayClass, phonePanelClass } from "@/components/ui/dialog";
 
 interface StripeConnectModalProps {
   requestId: string;
@@ -21,6 +24,8 @@ export function StripeConnectModal({
   const [opening, setOpening] = useState(false);
   const [popupOpen, setPopupOpen] = useState(false);
   const popupRef = useRef<Window | null>(null);
+
+  const modalRef = useModal<HTMLDivElement>(true);
 
   // Detect when the user closes the Stripe popup without authorizing — we
   // don't auto-dismiss the modal (the agent is still polling and they may
@@ -74,8 +79,15 @@ export function StripeConnectModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="relative w-full max-w-md bg-surface border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden">
+    <div className={cn("fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]", phoneOverlayClass)}>
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Connect Stripe"
+        tabIndex={-1}
+        className={cn("relative w-full max-w-md bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden outline-none", phonePanelClass)}
+      >
         {/* Header */}
         <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-border">
           {/* Stripe wordmark "S" */}
@@ -87,10 +99,10 @@ export function StripeConnectModal({
               Connect Stripe
               <span
                 className={
-                  "text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded " +
+                  "text-[11px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded " +
                   (mode === "live"
-                    ? "bg-red-500/15 text-red-400"
-                    : "bg-amber-500/15 text-amber-400")
+                    ? "bg-danger-soft text-danger"
+                    : "bg-warning-soft text-warning")
                 }
               >
                 {mode} mode

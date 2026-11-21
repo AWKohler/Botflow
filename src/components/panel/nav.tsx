@@ -2,27 +2,55 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useRef } from 'react';
 import { UserButton } from '@/components/auth';
 import { cn } from '@/lib/utils';
-import { Activity, Boxes, Gauge, Users } from 'lucide-react';
+import { BrandMark } from '@/components/site/SiteHeader';
+import { Badge } from '@/components/ui/badge';
+import { Activity, Boxes, Gauge, UserCog, Users } from 'lucide-react';
 
 const TABS = [
-  { href: '/panel/accounts', label: 'Accounts', icon: Users },
   { href: '/panel', label: 'Overview', icon: Gauge },
   { href: '/panel/users', label: 'Users', icon: Users },
+  { href: '/panel/accounts', label: 'Accounts', icon: UserCog },
   { href: '/panel/infra', label: 'Infrastructure', icon: Boxes },
   { href: '/panel/providers', label: 'Providers', icon: Activity },
 ];
 
-export function PanelNav() {
-  const pathname = usePathname();
+/** `activePath` lets a preview or test render the nav for a given tab; it defaults to the current route. */
+export function PanelNav({ activePath }: { activePath?: string } = {}) {
+  const current = usePathname();
+  const pathname = activePath ?? current;
+  // Phone: the tabs are one scrolling row; keep the current one in view.
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const nav = navRef.current;
+    const active = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!nav || !active || nav.scrollWidth <= nav.clientWidth) return;
+    const left = active.offsetLeft - nav.scrollLeft;
+    if (left >= 16 && left + active.offsetWidth <= nav.clientWidth - 16) return;
+    nav.scrollTo({ left: active.offsetLeft - 20 });
+  }, [pathname]);
   return (
-    <header className="sticky top-0 z-20 border-b border-border bg-bg/90 backdrop-blur">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 flex items-center gap-6 h-14">
-        <Link href="/projects" className="text-sm font-semibold text-fg shrink-0">
-          Botflow <span className="text-muted font-normal">Admin</span>
+    <header className="sticky top-0 z-20 border-b border-border bg-bg/85 backdrop-blur-lg">
+      {/* Phone: two rows — brand and account, then the tabs across the full
+          width (beside the brand they had room for about one letter). */}
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-6 px-6 sm:px-10 md:h-14 md:flex-nowrap md:justify-start">
+        <Link href="/projects" aria-label="Back to Botflow" className="flex h-14 shrink-0 items-center gap-2.5 rounded-md">
+          <BrandMark />
+          {/* Dropped on the narrowest phones, where brand, badge and avatar do not fit one row. */}
+          <Badge className="max-[359px]:hidden">Admin</Badge>
         </Link>
-        <nav className="flex items-center gap-1 flex-1 overflow-x-auto">
+        <nav
+          ref={navRef}
+          aria-label="Admin"
+          className={cn(
+            'relative flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-1',
+            'max-md:order-last max-md:-mx-6 max-md:w-[calc(100%+3rem)] max-md:border-t max-md:border-border max-md:px-5 max-md:py-1.5',
+            // Faded at the right edge, where the row runs on.
+            'max-md:[mask-image:linear-gradient(to_right,transparent,black_1.25rem,black_calc(100%-2.5rem),transparent)]',
+          )}
+        >
           {TABS.map((t) => {
             const active =
               t.href === '/panel' ? pathname === '/panel' : pathname.startsWith(t.href);
@@ -30,14 +58,13 @@ export function PanelNav() {
               <Link
                 key={t.href}
                 href={t.href}
+                aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm whitespace-nowrap transition-colors',
-                  active
-                    ? 'bg-elevated text-fg font-medium'
-                    : 'text-muted hover:text-fg hover:bg-surface',
+                  'flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors pointer-coarse:py-2.5',
+                  active ? 'bg-elevated text-fg' : 'text-muted hover:text-fg',
                 )}
               >
-                <t.icon className="w-3.5 h-3.5" />
+                <t.icon className="h-3.5 w-3.5" strokeWidth={1.75} />
                 {t.label}
               </Link>
             );

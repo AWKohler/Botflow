@@ -89,7 +89,7 @@ function Eyebrow({
   return (
     <p
       className={cn(
-        "text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--sand-accent)]",
+        "text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--sand-text-muted)]",
         className,
       )}
     >
@@ -108,7 +108,7 @@ function Title({
   return (
     <h3
       className={cn(
-        "mt-1.5 text-[19px] font-semibold leading-snug tracking-[-0.01em] text-[var(--sand-text)]",
+        "mt-1.5 text-balance text-[19px] font-semibold leading-snug tracking-[-0.01em] text-[var(--sand-text)]",
         className,
       )}
     >
@@ -203,6 +203,9 @@ export function FeatureBento({
               alt="An iPhone showing an authentication flow built by Botflow"
               width={700}
               height={1431}
+              // Eager like the rest of the grid: a lazy image here can leave the
+              // tallest tile empty until the browser gets round to it.
+              loading="eager"
               sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 90vw"
               className="absolute left-1/2 top-0 w-[78%] max-w-[250px] -translate-x-1/2 transition-transform duration-500 group-hover:-translate-y-1.5"
               style={{ filter: "drop-shadow(0 24px 38px rgba(0,0,0,0.3))" }}
@@ -241,6 +244,7 @@ export function FeatureBento({
               src="/bento/dynamic-island.webp"
               alt="iPhones showing Live Activities in the Dynamic Island"
               fill
+              loading="eager"
               sizes="(min-width: 1024px) 25vw, 100vw"
               className="object-contain object-bottom transition-transform duration-500 group-hover:scale-[1.015] sm:object-right-bottom"
             />
@@ -257,12 +261,12 @@ export function FeatureBento({
             style={{
               position: "relative",
               width: "95%",
-              height: "100px",
+              height: "72px",
               margin: "0 auto",
             }}
           >
             <Image
-              src="/botflow_black.svg"
+              src="/brand/botflow_logo_black.png"
               alt="Botflow"
               fill
               style={{ objectFit: "contain" }}
@@ -271,7 +275,7 @@ export function FeatureBento({
             />
 
             <Image
-              src="/botflow_white.svg"
+              src="/brand/botflow_logo_white.png"
               alt="Botflow"
               fill
               style={{ objectFit: "contain" }}
@@ -317,6 +321,7 @@ export function FeatureBento({
               alt="Swift"
               width={500}
               height={313}
+              loading="eager"
               className="relative w-[72%] max-w-[190px] dark:hidden"
             />
             <Image
@@ -324,11 +329,12 @@ export function FeatureBento({
               alt="Swift"
               width={500}
               height={313}
+              loading="eager"
               className="relative hidden w-[72%] max-w-[190px] dark:block"
             />
           </div>
           <div className="pt-4">
-            <Eyebrow className="text-[#f46a13]">Under the hood</Eyebrow>
+            <Eyebrow>Under the hood</Eyebrow>
             <Title className="text-[17px]">
               SwiftUI, compiled for&nbsp;real.
             </Title>
@@ -336,12 +342,14 @@ export function FeatureBento({
         </div>
       </Tile>
 
-      {/* 6 — Webcam → Simulator */}
-      <Tile delay={0}>
+      {/* 6 — Webcam → Simulator. In the one- and two-column layouts the tile
+          is given height and the screenshot is shown whole-width, fading out
+          downward; in the wide grid it bleeds off the corner. */}
+      <Tile delay={0} className="min-h-[330px] lg:min-h-0">
         <div className="flex h-full flex-col p-6">
           {/*<Eyebrow>Simulator superpowers</Eyebrow>*/}
           <Title className="text-[17px]">
-            iPhone simulator, piped into your&nbsp;Browser.
+            iPhone simulator, piped into your&nbsp;browser.
           </Title>
           <div className="relative flex flex-1 items-center justify-center py-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -354,31 +362,19 @@ export function FeatureBento({
 
             <div
               aria-hidden
-              className="pointer-events-none absolute left-6 right-0 top-[15px] bottom-0"
+              className="pointer-events-none absolute left-6 right-6 top-[15px] bottom-0 lg:right-0"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/bento/sim-light.png"
                 alt=""
-                className="absolute left-0 top-0 w-[110%] max-w-none rounded-md border border-border block dark:hidden"
-                style={{
-                  WebkitMaskImage:
-                    "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-                  maskImage:
-                    "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-                }}
+                className="absolute left-0 top-0 w-full max-w-none rounded-md border border-border block dark:hidden lg:w-[110%] [mask-image:linear-gradient(to_bottom,#000_55%,transparent)] lg:[mask-image:linear-gradient(to_bottom_right,#000_26%,transparent_74%)]"
               />
 
               <img
                 src="/bento/sim-dark.png"
                 alt=""
-                className="absolute left-0 top-0 w-[110%] max-w-none rounded-tl-md border border-border hidden dark:block"
-                style={{
-                  WebkitMaskImage:
-                    "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-                  maskImage:
-                    "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-                }}
+                className="absolute left-0 top-0 w-full max-w-none rounded-md border border-border hidden dark:block lg:w-[110%] lg:rounded-none lg:rounded-tl-md [mask-image:linear-gradient(to_bottom,#000_55%,transparent)] lg:[mask-image:linear-gradient(to_bottom_right,#000_26%,transparent_74%)]"
               />
             </div>
           </div>
@@ -429,36 +425,24 @@ export function FeatureBento({
       <Tile delay={180} className="min-h-[300px] lg:min-h-0">
         <div
           aria-hidden
-          className="pointer-events-none absolute left-6 right-0 top-[100px] bottom-0"
+          className="pointer-events-none absolute left-6 right-6 top-[76px] bottom-0 lg:right-0 lg:top-[100px]"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/bento/convex-dash-light.png"
             alt=""
-            className="absolute left-0 top-0 w-[128%] max-w-none rounded-tl-md border border-white/10 block dark:hidden"
-            style={{
-              WebkitMaskImage:
-                "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-              maskImage:
-                "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-            }}
+            className="absolute left-0 top-0 w-full max-w-none rounded-md border border-border block dark:hidden lg:w-[128%] lg:rounded-none lg:rounded-tl-md lg:border-white/10 [mask-image:linear-gradient(to_bottom,#000_55%,transparent)] lg:[mask-image:linear-gradient(to_bottom_right,#000_26%,transparent_74%)]"
           />
 
           <img
             src="/bento/convex-dash-dark.png"
             alt=""
-            className="absolute left-0 top-0 w-[128%] max-w-none rounded-tl-md border border-white/10 hidden dark:block"
-            style={{
-              WebkitMaskImage:
-                "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-              maskImage:
-                "linear-gradient(to bottom right, #000 26%, transparent 74%)",
-            }}
+            className="absolute left-0 top-0 w-full max-w-none rounded-md border border-white/10 hidden dark:block lg:w-[128%] lg:rounded-none lg:rounded-tl-md [mask-image:linear-gradient(to_bottom,#000_55%,transparent)] lg:[mask-image:linear-gradient(to_bottom_right,#000_26%,transparent_74%)]"
           />
         </div>
         <div className="relative z-10 p-6">
           {/*<Eyebrow>Not just iOS</Eyebrow>*/}
-          <Title className="text-[17px]">Full-stack, Backend included.</Title>
+          <Title className="text-[17px]">Full-stack, backend included.</Title>
         </div>
       </Tile>
     </div>

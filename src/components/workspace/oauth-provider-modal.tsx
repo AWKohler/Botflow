@@ -1,6 +1,7 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
+import { useModal } from "@/components/ui/use-modal";
 import { useId, useMemo, useState } from "react";
 import { Check, Copy, ExternalLink, X, Loader2, KeyRound, FileUp } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -9,6 +10,7 @@ import {
   oauthCallbackUrl,
   type OAuthProviderField,
 } from "@/lib/oauth-providers/registry";
+import { phoneOverlayClass, phonePanelClass } from "@/components/ui/dialog";
 
 interface OAuthProviderModalProps {
   requestId: string;
@@ -40,6 +42,7 @@ export function OAuthProviderModal({
     ? oauthCallbackUrl(convexSiteUrl, provider)
     : "Convex site URL not available — deploy your Convex functions first";
 
+  const modalRef = useModal<HTMLDivElement>(true);
   const [values, setValues] = useState<Record<string, string>>({});
   const [fileNames, setFileNames] = useState<Record<string, string>>({});
   const [fileErrors, setFileErrors] = useState<Record<string, string>>({});
@@ -240,8 +243,8 @@ export function OAuthProviderModal({
         >
           {copiedValue === key ? (
             <>
-              <Check size={14} className="text-green-400" />
-              <span className="text-[11px] text-green-400">Copied</span>
+              <Check size={14} className="text-success" />
+              <span className="text-[11px] text-success">Copied</span>
             </>
           ) : (
             <Copy size={14} />
@@ -253,10 +256,12 @@ export function OAuthProviderModal({
 
   return (
     /* Full-screen overlay */
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className={cn("fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]", phoneOverlayClass)}>
       {/* Modal card */}
       <div
-        className="relative w-full max-w-lg bg-surface border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden max-h-[90vh] flex flex-col"
+        ref={modalRef}
+        tabIndex={-1}
+        className={cn("relative w-full max-w-lg bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden max-h-[90vh] flex flex-col outline-none", phonePanelClass, "max-sm:overflow-hidden")}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -265,11 +270,11 @@ export function OAuthProviderModal({
 
         {/* Header */}
         <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-border">
-          <span className="flex items-center justify-center w-9 h-9 shrink-0 rounded-lg bg-accent/15 text-accent">
+          <span className="flex items-center justify-center w-9 h-9 shrink-0 rounded-lg border border-border bg-elevated text-muted">
             <KeyRound size={18} />
           </span>
           <div className="flex-1 min-w-0">
-            <h2 id={titleId} className="text-base font-semibold text-fg">Connect {def.displayName} Sign-In</h2>
+            <h2 id={titleId} className="text-base font-semibold text-fg">Connect {def.displayName} sign-in</h2>
             <p id={descriptionId} className="text-xs text-muted mt-0.5">{def.blurb}</p>
           </div>
           <button
@@ -288,7 +293,7 @@ export function OAuthProviderModal({
           {/* Step 1 — register the app */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="flex items-center justify-center w-5 h-5 rounded-full bg-accent/20 text-accent text-xs font-bold">1</span>
+              <span className="flex items-center justify-center w-5 h-5 rounded-full border border-border bg-elevated text-[11px] font-medium text-muted">1</span>
               <span className="text-sm font-medium text-fg">Register your app in {def.consoleName}</span>
             </div>
             <div className="pl-7 space-y-2">
@@ -322,7 +327,7 @@ export function OAuthProviderModal({
           {/* Step 2 — credentials */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="flex items-center justify-center w-5 h-5 rounded-full bg-accent/20 text-accent text-xs font-bold">2</span>
+              <span className="flex items-center justify-center w-5 h-5 rounded-full border border-border bg-elevated text-[11px] font-medium text-muted">2</span>
               <span className="text-sm font-medium text-fg">Enter your credentials</span>
             </div>
             <div className="pl-7 space-y-3">
@@ -370,13 +375,13 @@ export function OAuthProviderModal({
                   return (
                     <div key={field.key} className="space-y-1.5">
                       <label htmlFor={inputId} className="block text-xs font-medium text-muted">
-                        {field.label}{isRequired && <span className="text-accent"> *</span>}
+                        {field.label}{isRequired && <span className="text-danger"> *</span>}
                       </label>
                       <label
                         htmlFor={inputId}
                         className={cn(
                           "flex items-center gap-2 rounded-lg border bg-elevated px-3 py-2 text-sm cursor-pointer transition-colors",
-                          fieldError ? "border-red-400/60" : "border-border hover:border-accent/50",
+                          fieldError ? "border-danger-border" : "border-border hover:border-accent/50",
                         )}
                       >
                         <FileUp size={14} className="text-muted shrink-0" />
@@ -395,14 +400,14 @@ export function OAuthProviderModal({
                         />
                       </label>
                       {field.help && <p id={helpId} className="text-[11px] text-muted leading-relaxed">{field.help}</p>}
-                      {fieldError && <p id={fieldErrorId} className="text-[11px] text-red-400 leading-relaxed">{fieldError}</p>}
+                      {fieldError && <p id={fieldErrorId} className="text-[11px] text-danger leading-relaxed">{fieldError}</p>}
                     </div>
                   );
                 }
                 return (
                   <div key={field.key} className="space-y-1.5">
                     <label htmlFor={inputId} className="block text-xs font-medium text-muted">
-                      {field.label}{isRequired && <span className="text-accent"> *</span>}
+                      {field.label}{isRequired && <span className="text-danger"> *</span>}
                     </label>
                     <Input
                       id={inputId}
@@ -416,14 +421,14 @@ export function OAuthProviderModal({
                       aria-invalid={Boolean(fieldError)}
                       aria-describedby={describedBy}
                       className={cn(
-                        "w-full bg-elevated border rounded-lg px-3 py-2 text-sm text-fg placeholder:text-muted outline-none focus:ring-1 focus:ring-accent/50 focus:border-accent/50 transition-colors",
-                        fieldError ? "border-red-400/60" : "border-border",
+                        "w-full bg-elevated border rounded-lg px-3 py-2 text-sm text-fg placeholder:text-muted outline-none focus:ring-3 focus:ring-accent/15 focus:border-accent transition-colors",
+                        fieldError ? "border-danger-border" : "border-border",
                       )}
                       autoComplete="off"
                       spellCheck={false}
                     />
                     {field.help && <p id={helpId} className="text-[11px] text-muted leading-relaxed">{field.help}</p>}
-                    {fieldError && <p id={fieldErrorId} className="text-[11px] text-red-400 leading-relaxed">{fieldError}</p>}
+                    {fieldError && <p id={fieldErrorId} className="text-[11px] text-danger leading-relaxed">{fieldError}</p>}
                   </div>
                 );
               })}
@@ -444,7 +449,7 @@ export function OAuthProviderModal({
 
           {/* Error banner */}
           {error && (
-            <p id={errorId} role="alert" className="text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">
+            <p id={errorId} role="alert" className="text-xs text-danger bg-danger-soft border border-danger-border rounded-lg px-3 py-2">
               {error}
             </p>
           )}
@@ -457,14 +462,14 @@ export function OAuthProviderModal({
             onClick={handleDismiss}
             className="text-sm text-muted hover:text-fg transition-colors"
           >
-            Cancel — do this later
+            Do this later
           </button>
           <button
             type="button"
             onClick={handleSave}
             disabled={saving || missing || hasValidationErrors || !convexSiteUrl}
             aria-describedby={error ? errorId : undefined}
-            className="flex items-center gap-2 bg-accent text-accent-foreground text-sm font-medium rounded-lg px-4 py-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none text-bg text-sm font-medium rounded-lg px-4 h-9 shadow-xs hover:bg-fg/88 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? (
               <>
@@ -472,7 +477,7 @@ export function OAuthProviderModal({
                 Saving…
               </>
             ) : (
-              "Save Credentials"
+              "Save credentials"
             )}
           </button>
         </div>

@@ -3,6 +3,7 @@
 import {
   Card,
   ErrorState,
+  displayName,
   fmtNum,
   HBarList,
   LoadingState,
@@ -15,6 +16,8 @@ import {
   usePanelData,
   type StatusKind,
 } from '@/components/panel/ui';
+import { tableFrameClass, tableHeadCellClass, tableHeadRowClass } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 
 interface InfraData {
   projects: {
@@ -75,6 +78,14 @@ interface InfraData {
   generatedAt: string;
 }
 
+// "failed" in the outbox means an attempt failed and will be retried;
+// "exhausted" means it gave up. Say so, and keep red for the one that gave up.
+function deliveryStatusLabel(status: string): string {
+  if (status === 'failed') return 'retrying';
+  if (status === 'exhausted') return 'failed';
+  return status;
+}
+
 function deliveryStatusKind(status: string): StatusKind {
   if (status === 'delivered') return 'good';
   if (status === 'pending') return 'neutral';
@@ -87,6 +98,12 @@ function convexStatusKind(status: string): StatusKind {
   if (status === 'warned' || status === 'migrating') return 'warning';
   if (status === 'paused') return 'serious';
   return 'neutral';
+}
+
+/** "invoice.paid" → "Invoice paid", "RENEWAL" → "Renewal". The raw type stays in the tooltip. */
+function eventName(raw: string): string {
+  const words = raw.replace(/[._]+/g, ' ').trim().toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 export default function PanelInfraPage() {
@@ -112,12 +129,12 @@ export default function PanelInfraPage() {
         <StatGrid>
           <StatTile label="Active projects" value={fmtNum(projects.active)}
             sub={`${projects.deleted} soft-deleted`} />
-          <StatTile label="Live sessions" value={String(projects.liveSessionCount)} accent />
+          <StatTile label="Live sessions" value={fmtNum(projects.liveSessionCount)} />
           {sandboxes.byProvider.map((p) => (
-            <StatTile key={p.provider} label={`${p.provider} sandboxes`} value={fmtNum(p.count)} />
+            <StatTile key={p.provider} label={`${displayName(p.provider)} sandboxes`} value={fmtNum(p.count)} />
           ))}
-          <StatTile label="Public projects" value={String(projects.publicProjects)} />
-          <StatTile label="GitHub linked" value={String(projects.githubLinked)} />
+          <StatTile label="Public projects" value={fmtNum(projects.publicProjects)} />
+          <StatTile label="GitHub linked" value={fmtNum(projects.githubLinked)} />
         </StatGrid>
         <p className="text-xs text-muted mt-3">
           Snapshot storage: {sandboxes.snapshotPolicy}. Per-sandbox sizes aren&apos;t
@@ -130,14 +147,14 @@ export default function PanelInfraPage() {
         <Section title="By platform" className="mb-0">
           <Card>
             <HBarList
-              rows={projects.byPlatform.map((p) => ({ label: p.platform, value: p.count }))}
+              rows={projects.byPlatform.map((p) => ({ label: displayName(p.platform), value: p.count }))}
             />
           </Card>
         </Section>
         <Section title="Reaper pipeline" hint="free-tier lifecycle stages" className="mb-0">
           <Card>
             <HBarList
-              rows={projects.byReapStage.map((s) => ({ label: s.stage, value: s.count }))}
+              rows={projects.byReapStage.map((s) => ({ label: displayName(s.stage), value: s.count }))}
             />
           </Card>
         </Section>
@@ -145,35 +162,37 @@ export default function PanelInfraPage() {
 
       <Section title="Convex backends">
         <StatGrid>
-          <StatTile label="Platform instances" value={fmtNum(convex.platformInstances)} accent
+          <StatTile label="Platform instances" value={fmtNum(convex.platformInstances)}
             sub="on the Botflow Convex team" />
           <StatTile label="BYOC instances" value={fmtNum(convex.byocInstances)}
             sub="user-billed" />
           <StatTile label="Calls, last 30d" value={fmtNum(convex.totalCallsLast30d)} />
-          <StatTile label="Orphaned" value={String(convex.orphanedInstances)}
-            warn={convex.orphanedInstances > 0}
+          <StatTile label="Orphaned" value={fmtNum(convex.orphanedInstances)}
+            tone={convex.orphanedInstances > 0 ? 'warning' : undefined}
             sub="backends on deleted projects" />
         </StatGrid>
-        <div className="flex flex-wrap gap-2 mt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span className="text-xs text-muted">Platform backends by status</span>
           {convex.byStatus.map((s) => (
             <span key={s.status} className="flex items-center gap-1.5 text-sm text-fg">
               <StatusPill kind={convexStatusKind(s.status)} label={s.status} />
-              <span className="tabular-nums">{s.count}</span>
+              <span className="tabular-nums">{fmtNum(s.count)}</span>
             </span>
           ))}
         </div>
         {convex.topByCalls.length > 0 && (
           <Card className="mt-4 overflow-x-auto modern-scrollbar">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted mb-3">
+            <h3 className="mb-3 text-[13px] font-medium text-fg">
               Top backends by calls (30d)
             </h3>
-            <table className="w-full text-sm min-w-[560px]">
+            <div className={tableFrameClass}>
+            <table className="w-full text-sm min-w-[560px] [&_td]:px-3 [&_td]:py-2">
               <thead>
-                <tr className="text-left text-muted border-b border-border">
-                  <th className="py-1.5 pr-3 font-medium">Project</th>
-                  <th className="py-1.5 pr-3 font-medium">Owner</th>
-                  <th className="py-1.5 pr-3 font-medium">Status</th>
-                  <th className="py-1.5 font-medium text-right">Calls</th>
+                <tr className={tableHeadRowClass}>
+                  <th className={tableHeadCellClass}>Project</th>
+                  <th className={tableHeadCellClass}>Owner</th>
+                  <th className={tableHeadCellClass}>Status</th>
+                  <th className={cn(tableHeadCellClass, 'text-right')}>Calls</th>
                 </tr>
               </thead>
               <tbody>
@@ -193,6 +212,7 @@ export default function PanelInfraPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </Card>
         )}
       </Section>
@@ -200,7 +220,7 @@ export default function PanelInfraPage() {
       <Section title="Payment webhook pipelines" hint="durable outbox delivery to project backends">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted mb-3">Stripe</h3>
+            <h3 className="mb-3 text-[13px] font-medium text-fg">Stripe</h3>
             {webhooks.stripe.length === 0 ? (
               <p className="text-sm text-muted">No deliveries yet.</p>
             ) : (
@@ -208,7 +228,7 @@ export default function PanelInfraPage() {
                 {webhooks.stripe.map((s) => (
                   <div key={`${s.status}-${s.mode}`} className="flex items-center justify-between">
                     <span className="flex items-center gap-2">
-                      <StatusPill kind={deliveryStatusKind(s.status)} label={s.status} />
+                      <StatusPill kind={deliveryStatusKind(s.status)} label={deliveryStatusLabel(s.status)} />
                       <span className="text-xs text-muted">{s.mode}</span>
                     </span>
                     <span className="text-sm tabular-nums text-fg">{fmtNum(s.count)}</span>
@@ -218,14 +238,14 @@ export default function PanelInfraPage() {
             )}
           </Card>
           <Card>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted mb-3">RevenueCat</h3>
+            <h3 className="mb-3 text-[13px] font-medium text-fg">RevenueCat</h3>
             {webhooks.revenuecat.length === 0 ? (
               <p className="text-sm text-muted">No deliveries yet.</p>
             ) : (
               <div className="space-y-1.5">
                 {webhooks.revenuecat.map((s) => (
                   <div key={s.status} className="flex items-center justify-between">
-                    <StatusPill kind={deliveryStatusKind(s.status)} label={s.status} />
+                    <StatusPill kind={deliveryStatusKind(s.status)} label={deliveryStatusLabel(s.status)} />
                     <span className="text-sm tabular-nums text-fg">{fmtNum(s.count)}</span>
                   </div>
                 ))}
@@ -235,24 +255,25 @@ export default function PanelInfraPage() {
         </div>
         {webhooks.recentFailures.length > 0 && (
           <Card className="mt-4 overflow-x-auto modern-scrollbar">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted mb-3">
-              Recent delivery failures
+            <h3 className="mb-3 text-[13px] font-medium text-fg">
+              Recent failed attempts
             </h3>
-            <table className="w-full text-sm min-w-[640px]">
+            <div className={tableFrameClass}>
+            <table className="w-full text-sm min-w-[640px] [&_td]:px-3 [&_td]:py-2">
               <thead>
-                <tr className="text-left text-muted border-b border-border">
-                  <th className="py-1.5 pr-3 font-medium">Source</th>
-                  <th className="py-1.5 pr-3 font-medium">Event</th>
-                  <th className="py-1.5 pr-3 font-medium">Attempts</th>
-                  <th className="py-1.5 pr-3 font-medium">Last error</th>
-                  <th className="py-1.5 font-medium">When</th>
+                <tr className={tableHeadRowClass}>
+                  <th className={tableHeadCellClass}>Source</th>
+                  <th className={tableHeadCellClass}>Event</th>
+                  <th className={tableHeadCellClass}>Attempts</th>
+                  <th className={tableHeadCellClass}>Last error</th>
+                  <th className={tableHeadCellClass}>When</th>
                 </tr>
               </thead>
               <tbody>
                 {webhooks.recentFailures.map((f, i) => (
                   <tr key={i} className="border-b border-border/60 last:border-0">
-                    <td className="py-1.5 pr-3 text-fg capitalize">{f.source}</td>
-                    <td className="py-1.5 pr-3 text-fg">{f.canonicalType}</td>
+                    <td className="py-1.5 pr-3 text-fg">{displayName(f.source)}</td>
+                    <td className="py-1.5 pr-3 text-fg" title={f.canonicalType}>{eventName(f.canonicalType)}</td>
                     <td className="py-1.5 pr-3 tabular-nums text-fg">
                       {f.attempts}
                       {f.lastStatus != null && (
@@ -267,6 +288,7 @@ export default function PanelInfraPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </Card>
         )}
       </Section>
@@ -277,9 +299,9 @@ export default function PanelInfraPage() {
             sub="last poll" />
           <StatTile label="Stripe delivery activity" value={timeAgo(ops.stripeDeliveryLastActivity)} />
           <StatTile label="RC delivery activity" value={timeAgo(ops.revenuecatDeliveryLastActivity)} />
-          <StatTile label="Pending OAuth modals" value={String(ops.pendingOauthRequests)} />
-          <StatTile label="Pending env-var modals" value={String(ops.pendingEnvVarRequests)} />
-          <StatTile label="Pending agent questions" value={String(ops.pendingChatQuestions)} />
+          <StatTile label="Pending OAuth modals" value={fmtNum(ops.pendingOauthRequests)} />
+          <StatTile label="Pending env-var modals" value={fmtNum(ops.pendingEnvVarRequests)} />
+          <StatTile label="Pending agent questions" value={fmtNum(ops.pendingChatQuestions)} />
         </StatGrid>
       </Section>
     </div>

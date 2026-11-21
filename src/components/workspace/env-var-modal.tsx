@@ -1,8 +1,11 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
+import { useModal } from "@/components/ui/use-modal";
 import { useState } from "react";
 import { Eye, EyeOff, KeyRound, Loader2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { phoneOverlayClass, phonePanelClass } from "@/components/ui/dialog";
 
 interface EnvVarModalProps {
   requestId: string;
@@ -41,6 +44,8 @@ export function EnvVarModal({
 
   const targetLabel =
     target === "server" ? "Backend · Convex deployment" : "Frontend · Vite .env";
+
+  const modalRef = useModal<HTMLDivElement>(true);
 
   const handleDismiss = () => {
     // Fire-and-forget — the agent's poll sees status='dismissed' within ~2.5s.
@@ -93,12 +98,19 @@ export function EnvVarModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="relative w-full max-w-lg bg-surface border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden">
+    <div className={cn("fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]", phoneOverlayClass)}>
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Set an environment variable"
+        tabIndex={-1}
+        className={cn("relative w-full max-w-lg bg-bg border border-border rounded-2xl shadow-2xl mx-4 overflow-hidden outline-none", phonePanelClass)}
+      >
 
         {/* Header */}
         <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-border">
-          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-accent/15 text-accent shrink-0">
+          <div className="flex items-center justify-center w-9 h-9 rounded-lg border border-border bg-elevated text-muted shrink-0">
             <KeyRound size={18} />
           </div>
           <div className="flex-1 min-w-0">
@@ -131,7 +143,7 @@ export function EnvVarModal({
               <code className="flex-1 bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-fg font-mono break-all">
                 {envKey}
               </code>
-              <span className="shrink-0 text-[10px] uppercase tracking-wider text-muted bg-elevated border border-border rounded-md px-2 py-1.5">
+              <span className="shrink-0 rounded-md border border-border bg-elevated px-2 py-1.5 text-[11px] font-medium text-muted">
                 {targetLabel}
               </span>
             </div>
@@ -146,7 +158,7 @@ export function EnvVarModal({
                 value={value}
                 onChange={(e) => { setValue(e.target.value); setError(null); }}
                 placeholder="Paste the value here"
-                className="w-full bg-elevated border border-border rounded-lg pl-3 pr-9 py-2 text-sm text-fg placeholder:text-muted outline-none focus:ring-1 focus:ring-accent/50 focus:border-accent/50 transition-colors font-mono"
+                className="h-9 w-full rounded-lg border border-control bg-bg pl-3 pr-9 font-mono text-[13px] text-fg inset-shadow-well outline-none transition-[border-color,box-shadow] placeholder:font-sans placeholder:text-subtle hover:border-subtle focus:border-accent focus:ring-3 focus:ring-accent/15"
                 autoComplete="off"
                 spellCheck={false}
                 autoFocus
@@ -170,7 +182,7 @@ export function EnvVarModal({
           </div>
 
           {error && (
-            <p className="text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">
+            <p className="text-xs text-danger bg-danger-soft border border-danger-border rounded-lg px-3 py-2">
               {error}
             </p>
           )}
@@ -182,12 +194,12 @@ export function EnvVarModal({
             onClick={handleDismiss}
             className="text-sm text-muted hover:text-fg transition-colors"
           >
-            Cancel — do this later
+            Do this later
           </button>
           <button
             onClick={handleSave}
             disabled={saving || !value.trim()}
-            className="flex items-center gap-2 bg-accent text-accent-foreground text-sm font-medium rounded-lg px-4 py-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none text-bg text-sm font-medium rounded-lg px-4 h-9 shadow-xs hover:bg-fg/88 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? (
               <>
@@ -195,7 +207,7 @@ export function EnvVarModal({
                 Saving…
               </>
             ) : (
-              "Save Variable"
+              "Save variable"
             )}
           </button>
         </div>

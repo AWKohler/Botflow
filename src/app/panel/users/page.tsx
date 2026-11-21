@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { ArrowDown, ArrowUp, Search } from 'lucide-react';
+import { TextInput } from '@/components/ui/field';
+import { Tabs } from '@/components/ui/tabs';
 import {
   ErrorState,
   fmtNum,
@@ -14,6 +16,7 @@ import {
   timeAgo,
   usePanelData,
 } from '@/components/panel/ui';
+import { tableHeadRowClass } from '@/components/ui/table';
 
 interface UserRow {
   userId: string;
@@ -90,6 +93,11 @@ const COLUMNS: Array<{ key: SortKey; label: string; title?: string }> = [
   { key: 'joinedAt', label: 'Joined' },
 ];
 
+/** Columns whose values are numbers — right-aligned so digits line up. */
+const NUMERIC = new Set<SortKey>([
+  'monthMarginUsd', 'monthRevenueUsd', 'monthCostUsd', 'lifetimeRevenueUsd', 'lifetimeCostUsd', 'projectCount', 'convexInstances',
+]);
+
 function sortValue(row: UserRow, key: SortKey): number {
   if (key === 'lastActiveAt' || key === 'joinedAt') {
     const v = row[key];
@@ -142,7 +150,7 @@ export default function PanelUsersPage() {
     <div>
       <PageHeader
         title="Users"
-        subtitle={`${data.totalCount} users${data.truncated ? ' (showing first 5,000)' : ''} — sorted by ${
+        subtitle={`${fmtNum(data.totalCount)} users${data.truncated ? ' (showing first 5,000)' : ''} — sorted by ${
           COLUMNS.find((c) => c.key === sortKey)?.label
         }`}
         onRefresh={refresh}
@@ -150,45 +158,46 @@ export default function PanelUsersPage() {
         generatedAt={data.generatedAt}
       />
 
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="relative">
-          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-          <input
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="relative max-sm:w-full">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
+          <TextInput
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search email, name, id…"
-            className={cn(
-              'rounded-lg border border-border bg-surface pl-8 pr-3 py-1.5 text-sm text-fg',
-              'placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent w-64',
-            )}
+            placeholder="Search by email, name or ID"
+            aria-label="Search users"
+            className="w-full pl-9 sm:w-64"
           />
         </div>
-        {(['all', 'free', 'pro', 'max', 'live'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTierFilter(t)}
-            className={cn(
-              'rounded-lg px-3 py-1.5 text-sm capitalize transition-colors',
-              tierFilter === t
-                ? 'bg-elevated text-fg font-medium border border-border'
-                : 'text-muted hover:text-fg',
-            )}
-          >
-            {t === 'live' ? 'Live now' : t}
-          </button>
-        ))}
+        <Tabs
+          options={[
+            { value: 'all', text: 'All' },
+            { value: 'free', text: 'Free' },
+            { value: 'pro', text: 'Pro' },
+            { value: 'max', text: 'Max' },
+            { value: 'live', text: 'Live now' },
+          ]}
+          selected={tierFilter}
+          onSelect={setTierFilter}
+        />
       </div>
 
       <div className="rounded-xl border border-border bg-surface overflow-x-auto modern-scrollbar">
-        <table className="w-full text-sm min-w-[1000px]">
+        <table className="w-full min-w-[1040px] text-sm">
           <thead>
-            <tr className="border-b border-border text-left">
-              <th className="px-3 py-2.5 font-medium text-muted">User</th>
+            <tr className={tableHeadRowClass}>
+              <th className="py-2.5 pl-4 pr-2 font-medium text-muted">User</th>
               {COLUMNS.map((c) => (
-                <th key={c.key} className="px-3 py-2.5 font-medium text-muted whitespace-nowrap">
+                <th
+                  key={c.key}
+                  className={cn(
+                    'whitespace-nowrap px-2 py-2.5 font-medium text-muted last:pr-4',
+                    NUMERIC.has(c.key) && 'text-right',
+                  )}
+                >
                   <button
                     onClick={() => toggleSort(c.key)}
-                    className="flex items-center gap-1 hover:text-fg"
+                    className={cn('tap-44 inline-flex items-center gap-1 hover:text-fg', NUMERIC.has(c.key) && 'flex-row-reverse')}
                     title={c.title}
                   >
                     {c.label}
@@ -219,8 +228,8 @@ export default function PanelUsersPage() {
         </table>
       </div>
       <p className="text-xs text-muted mt-3">
-        Revenue/mo is a live Stripe subscription where one is linked to the user,
-        otherwise the plan sticker price. Lifetime rev is real Stripe money, net of
+        Revenue/mo comes from the user&apos;s live Stripe subscription; a value marked
+        &ldquo;est.&rdquo; has no linked subscription and uses the plan&apos;s list price. Lifetime rev is real Stripe money, net of
         refunds. Margin = revenue − platform LLM cost this month; sandbox and Convex
         costs aren&apos;t metered per-user yet, so margin is an upper bound. Revenue from
         unrelated older products on the same Stripe account is excluded entirely.
@@ -246,8 +255,8 @@ function UserTableRow({
         onClick={onToggle}
         className="border-b border-border/60 last:border-0 hover:bg-elevated/50 cursor-pointer"
       >
-        <td className="px-3 py-2.5">
-          <div className="flex items-center gap-2 min-w-[220px]">
+        <td className="py-2.5 pl-4 pr-2">
+          <div className="flex min-w-[200px] items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {row.imageUrl && (
               <img src={row.imageUrl} alt="" className="w-6 h-6 rounded-full shrink-0" />
@@ -268,35 +277,36 @@ function UserTableRow({
             </div>
           </div>
         </td>
-        <td className={cn('px-3 py-2.5 tabular-nums font-medium whitespace-nowrap',
-          marginNegative ? 'text-red-600 dark:text-red-400' : 'text-fg')}>
-          {fmtUsd(row.monthMarginUsd)}
+        <td className={cn('px-2 py-2.5 text-right tabular-nums font-medium whitespace-nowrap',
+          marginNegative ? 'text-danger' : 'text-fg')}>
+          {fmtUsd(row.monthMarginUsd, { cents: true })}
         </td>
-        <td className="px-3 py-2.5 tabular-nums text-fg whitespace-nowrap">
-          {fmtUsd(row.monthRevenueUsd)}
-          {row.revenueBasis === 'stripe' && (
-            <span className="text-xs text-muted ml-1" title="from a live Stripe subscription">
-              live
+        <td className="whitespace-nowrap px-2 py-2.5 text-right tabular-nums text-fg">
+          {fmtUsd(row.monthRevenueUsd, { cents: true })}
+          {/* Stripe-backed is the norm and goes unmarked; only estimates are flagged. */}
+          {row.revenueBasis !== 'stripe' && row.monthRevenueUsd > 0 && (
+            <span className="text-xs text-muted ml-1" title="Estimated from the plan's list price: no Stripe subscription is linked">
+              est.
             </span>
           )}
         </td>
-        <td className="px-3 py-2.5 tabular-nums text-fg">{fmtUsd(row.monthCostUsd)}</td>
-        <td className={cn('px-3 py-2.5 tabular-nums', row.lifetimeRevenueUsd > 0 ? 'text-fg font-medium' : 'text-muted')}>
-          {fmtUsd(row.lifetimeRevenueUsd)}
+        <td className="px-2 py-2.5 text-right tabular-nums text-fg">{fmtUsd(row.monthCostUsd, { cents: true })}</td>
+        <td className={cn('px-2 py-2.5 text-right tabular-nums', row.lifetimeRevenueUsd > 0 ? 'text-fg font-medium' : 'text-muted')}>
+          {fmtUsd(row.lifetimeRevenueUsd, { cents: true })}
         </td>
-        <td className="px-3 py-2.5 tabular-nums text-fg">{fmtUsd(row.lifetimeCostUsd)}</td>
-        <td className="px-3 py-2.5"><Meter pct={row.budgetUtilPct} /></td>
-        <td className="px-3 py-2.5 tabular-nums text-fg">{row.projectCount}</td>
-        <td className="px-3 py-2.5 tabular-nums text-fg">
+        <td className="px-2 py-2.5 text-right tabular-nums text-fg">{fmtUsd(row.lifetimeCostUsd, { cents: true })}</td>
+        <td className="px-2 py-2.5"><Meter pct={row.budgetUtilPct} /></td>
+        <td className="px-2 py-2.5 text-right tabular-nums text-fg">{row.projectCount}</td>
+        <td className="whitespace-nowrap px-2 py-2.5 text-right tabular-nums text-fg">
           {row.convexInstances}
           {row.convexPaused > 0 && (
-            <span className="text-amber-600 dark:text-amber-400 text-xs ml-1">
+            <span className="text-warning text-xs ml-1">
               ({row.convexPaused} paused)
             </span>
           )}
         </td>
-        <td className="px-3 py-2.5 text-muted whitespace-nowrap">{timeAgo(row.lastActiveAt)}</td>
-        <td className="px-3 py-2.5 text-muted whitespace-nowrap">{timeAgo(row.joinedAt)}</td>
+        <td className="px-2 py-2.5 text-muted whitespace-nowrap">{timeAgo(row.lastActiveAt)}</td>
+        <td className="whitespace-nowrap py-2.5 pl-2 pr-4 text-muted">{timeAgo(row.joinedAt)}</td>
       </tr>
       {expanded && (
         <tr className="border-b border-border/60 bg-elevated/30">
@@ -313,12 +323,12 @@ function UserTableRow({
               <Detail label="RevenueCat" value={String(row.revenuecatProjects)} />
               <Detail label="Managed domains" value={String(row.managedDomains)} />
               <Detail label="Last sign-in" value={timeAgo(row.lastSignInAt)} />
-              <Detail label="Stripe rev, this month" value={fmtUsd(row.stripeMonthRevenueUsd)} />
+              <Detail label="Stripe rev, this month" value={fmtUsd(row.stripeMonthRevenueUsd, { cents: true })} />
               <Detail
                 label="Stripe subscription"
                 value={
                   row.stripeSubscription
-                    ? `${row.stripeSubscription.product} · ${fmtUsd(row.stripeSubscription.monthlyUsd)}/mo · ${row.stripeSubscription.status}`
+                    ? `${row.stripeSubscription.product} · ${fmtUsd(row.stripeSubscription.monthlyUsd, { cents: true })}/mo · ${row.stripeSubscription.status}`
                     : '—'
                 }
               />

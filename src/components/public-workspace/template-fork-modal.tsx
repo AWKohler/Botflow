@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, X, Sparkles, KeyRound, Lock, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isManagedConvexEnabled } from "@/lib/project-platform";
+import { phoneOverlayClass, phonePanelClass } from "@/components/ui/dialog";
 
 const CLOUD_CONVEX_FOR_ALL =
   process.env.NEXT_PUBLIC_ALLOW_CLOUD_CONVEX_FOR_ALL === "true";
@@ -100,9 +101,9 @@ export function TemplateForkModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md rounded-2xl border border-border bg-surface shadow-2xl">
+    <div className={cn("fixed inset-0 z-[100] flex items-center justify-center p-4", phoneOverlayClass)}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className={cn("relative w-full max-w-md rounded-2xl border border-border bg-bg shadow-2xl", phonePanelClass)}>
         <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-accent" />
@@ -122,7 +123,7 @@ export function TemplateForkModal({
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
               maxLength={100}
-              className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:ring-2 focus:ring-border"
+              className="w-full rounded-lg border border-control bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-3 focus:ring-accent/15"
               placeholder="My project"
             />
           </div>
@@ -152,7 +153,7 @@ export function TemplateForkModal({
                       <img src="/convex-color.svg" className={cn("h-4 w-4", managedLocked && "grayscale")} alt="" />
                       <span className="text-sm font-medium text-fg">Botflow Managed</span>
                       {managedLocked && (
-                        <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                        <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-warning-soft px-1.5 py-0.5 text-[11px] font-semibold text-warning">
                           <Lock className="h-2.5 w-2.5" /> Pro
                         </span>
                       )}
@@ -165,7 +166,7 @@ export function TemplateForkModal({
                       <a
                         href="/pricing"
                         onClick={(e) => e.stopPropagation()}
-                        className="mt-2 inline-flex items-center gap-1 rounded-lg bg-fg px-2.5 py-1 text-[11px] font-medium text-bg hover:opacity-90"
+                        className="mt-2 inline-flex items-center gap-1 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink px-2.5 py-1 text-[11px] font-medium text-bg hover:opacity-90"
                       >
                         Upgrade to Pro
                       </a>
@@ -205,13 +206,13 @@ export function TemplateForkModal({
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3.5">
-          <button onClick={onClose} className="rounded-lg border border-border bg-bg px-3.5 py-2 text-sm font-medium text-fg hover:bg-elevated">
+          <button onClick={onClose} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-linear-to-b from-bg to-surface inset-shadow-bevel disabled:bg-none disabled:bg-surface disabled:shadow-none disabled:inset-shadow-none dark:from-elevated dark:to-surface px-3 text-[13px] font-medium text-fg shadow-xs transition-colors hover:border-border-strong hover:from-surface hover:to-elevated dark:hover:from-soft dark:hover:to-elevated disabled:opacity-50">
             Cancel
           </button>
           <button
             onClick={submit}
             disabled={!canSubmit}
-            className="inline-flex items-center gap-2 rounded-lg bg-fg px-3.5 py-2 text-sm font-medium text-bg shadow hover:opacity-90 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg bg-fg bg-linear-to-b from-white/[0.09] to-white/0 inset-shadow-bevel-ink disabled:bg-none disabled:shadow-none disabled:inset-shadow-none px-3.5 h-9 text-sm font-medium text-bg shadow-xs transition-colors hover:bg-fg/88 disabled:opacity-50"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {needsConnect ? "Connect Convex first" : "Create project"}

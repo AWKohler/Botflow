@@ -79,7 +79,7 @@ export function ConvexDashboard({ projectId, convexStatus, isOwner = true }: Con
     // paused backend reads as "the platform broke my database".
     return (
       <div className="flex items-center justify-center w-full h-full p-6">
-        <div className="max-w-md rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-400 space-y-2">
+        <div className="max-w-md rounded-xl border border-danger-border bg-danger-soft px-5 py-4 text-sm text-danger space-y-2">
           <p className="font-semibold">This backend is paused</p>
           <p className="opacity-90">
             Usage exceeded platform limits, so the database and functions are
@@ -107,7 +107,7 @@ export function ConvexDashboard({ projectId, convexStatus, isOwner = true }: Con
 
   if (error) {
     return (
-      <div className="flex items-center justify-center w-full h-full text-sm text-red-500">
+      <div className="flex items-center justify-center w-full h-full text-sm text-danger">
         {error}
       </div>
     );

@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CreditGauge } from '@/components/ui/CreditGauge';
-import { Loader2, Info } from 'lucide-react';
+import { tableHeadRowClass } from '@/components/ui/table';
 
 interface ModelRow {
   model: string;
@@ -26,8 +25,9 @@ interface CreditsData {
 }
 
 function fmt(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  const trim = (v: number) => v.toFixed(1).replace(/\.0$/, '');
+  if (n >= 1_000_000) return `${trim(n / 1_000_000)}M`;
+  if (n >= 1_000) return `${trim(n / 1_000)}K`;
   return String(n);
 }
 
@@ -70,6 +70,38 @@ const MODEL_DISPLAY: Record<string, string> = {
   'grok-4.5': 'Grok 4.5', // historical usage records
 };
 
+function UsageMeter({ label, used, limit, pct }: { label: string; used: number; limit: number; pct: number }) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-[13px] font-medium text-fg">{label}</p>
+        <p className="text-xs tabular-nums text-muted">{Math.round(clamped)}% used</p>
+      </div>
+      <div
+        className="mt-2 h-1.5 overflow-hidden rounded-full bg-soft"
+        role="progressbar"
+        aria-label={`Credits used ${label.toLowerCase()}`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(clamped)}
+      >
+        <div
+          className="h-full rounded-full transition-all"
+          style={{
+            width: `${clamped}%`,
+            backgroundColor:
+              clamped >= 80 ? 'var(--danger-solid)' : clamped >= 60 ? 'var(--warning-solid)' : 'var(--success-solid)',
+          }}
+        />
+      </div>
+      <p className="mt-2 text-xs tabular-nums text-muted">
+        <span className="font-medium text-fg">{fmt(used)}</span> of {fmt(limit)} credits
+      </p>
+    </div>
+  );
+}
+
 export function UsageTab() {
   const [data, setData] = useState<CreditsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,9 +115,45 @@ export function UsageTab() {
   }, []);
 
   if (loading) {
+    // Placeholder in the shape of the loaded tab (two meters, the cache card,
+    // the model table), so nothing jumps when the numbers arrive.
+    const bar = 'animate-pulse rounded bg-soft';
     return (
-      <div className="py-10 flex items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-muted" />
+      <div className="space-y-6" aria-busy="true" aria-label="Loading usage">
+        <div>
+          <div className="grid gap-5 sm:grid-cols-2">
+            {[0, 1].map((i) => (
+              <div key={i}>
+                <div className="flex items-baseline justify-between gap-3">
+                  <div className={`${bar} h-4 w-20`} />
+                  <div className={`${bar} h-3 w-14`} />
+                </div>
+                <div className={`${bar} mt-2 h-1.5 w-full rounded-full`} />
+                <div className={`${bar} mt-2 h-3 w-28`} />
+              </div>
+            ))}
+          </div>
+          <div className={`${bar} mt-4 h-3 w-full max-w-xl`} />
+          <div className={`${bar} mt-2 h-3 w-2/5`} />
+        </div>
+        <div className="space-y-3 rounded-lg border border-border px-4 py-3.5">
+          <div className={`${bar} h-3 w-36`} />
+          <div className="flex gap-6">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className={`${bar} h-9 w-24`} />
+            ))}
+          </div>
+          <div className={`${bar} h-3 w-80 max-w-full`} />
+        </div>
+        <div>
+          <div className={`${bar} mb-2 h-3 w-32`} />
+          <div className="overflow-hidden rounded-lg border border-border">
+            <div className="h-9 border-b border-border bg-elevated/60" />
+            <div className="flex h-10 items-center px-3">
+              <div className={`${bar} h-3 w-40`} />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -101,68 +169,31 @@ export function UsageTab() {
 
   return (
     <div className="space-y-6">
-      {/* Credits ≠ tokens note */}
-      <div className="flex gap-2 items-start rounded-lg bg-soft border border-border px-3 py-2.5">
-        <Info className="h-3.5 w-3.5 text-muted mt-0.5 shrink-0" />
-        <p className="text-xs text-muted leading-relaxed">
-          <span className="font-medium text-fg">Credits ≠ tokens.</span>{' '}
-          Credits are normalized across models — 1 MiniMax token = 1 credit. Cached input tokens cost significantly less.
-          Your own API keys (OAuth / BYOK) don&apos;t count toward your platform budget.
-        </p>
-      </div>
-
-      {/* Weekly gauge + stats */}
-      <div className="flex items-center gap-8">
-        <CreditGauge pct={data.pct} size="lg" />
-        <div className="space-y-3 flex-1">
-          <div>
-            <p className="text-xs text-muted mb-1">Weekly credits</p>
-            <p className="text-sm font-medium text-fg">
-              {fmt(data.weeklyUsed)} <span className="text-muted font-normal">/ {fmt(data.weeklyLimit)}</span>
-            </p>
-            <div className="mt-1.5 h-1.5 rounded-full bg-soft overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${data.pct}%`,
-                  backgroundColor: data.pct >= 80 ? '#ef4444' : data.pct >= 60 ? '#f59e0b' : '#22c55e',
-                }}
-              />
-            </div>
-          </div>
-          <div>
-            <p className="text-xs text-muted mb-1">Monthly credits</p>
-            <p className="text-sm font-medium text-fg">
-              {fmt(data.monthlyUsed)} <span className="text-muted font-normal">/ {fmt(data.monthlyLimit)}</span>
-            </p>
-            <div className="mt-1.5 h-1.5 rounded-full bg-soft overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${data.monthlyPct}%`,
-                  backgroundColor: data.monthlyPct >= 80 ? '#ef4444' : data.monthlyPct >= 60 ? '#f59e0b' : '#22c55e',
-                }}
-              />
-            </div>
-          </div>
-          <p className="text-xs text-muted">
-            Plan: <span className="capitalize font-medium text-fg">{data.tier}</span>
-            {' · '}Credits reset weekly (Mon) and monthly.
-          </p>
+      {/* The two allowances, each named, with its own bar and percentage. */}
+      <div>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <UsageMeter label="This week" used={data.weeklyUsed} limit={data.weeklyLimit} pct={data.pct} />
+          <UsageMeter label="This month" used={data.monthlyUsed} limit={data.monthlyLimit} pct={data.monthlyPct} />
         </div>
+        <p className="mt-4 text-xs leading-relaxed text-muted">
+          <span className="font-medium text-fg">{data.tier.charAt(0).toUpperCase() + data.tier.slice(1)} plan.</span>{' '}
+          Credits measure model use billed to Botflow, and reset every Monday and every month. Turns that run on
+          your own subscription or API keys don&apos;t use credits.
+        </p>
       </div>
 
       {/* Cache summary */}
       {hasCacheData && (
-        <div className="rounded-xl border border-border px-3 py-3 space-y-1.5">
-          <p className="text-xs font-semibold text-muted uppercase tracking-wide">Prompt cache this month</p>
-          <div className="flex gap-6 text-sm">
+        <div className="space-y-2 rounded-lg border border-border px-4 py-3.5">
+          <p className="text-xs font-medium text-muted">Prompt cache this month</p>
+          {/* Labels stay on one line; on a phone the shorter names fit three across. */}
+          <div className="flex gap-x-6 gap-y-2 text-sm max-sm:justify-between max-sm:gap-x-3 [&_span]:whitespace-nowrap">
             <div>
-              <span className="text-muted text-xs">Cache hits</span>
+              <span className="text-muted text-xs"><span className="sm:hidden">Cached input</span><span className="max-sm:hidden">Cached input tokens</span></span>
               <p className="font-medium text-fg tabular-nums">{fmt(totalCachedRead)}</p>
             </div>
             <div>
-              <span className="text-muted text-xs">Cache writes</span>
+              <span className="text-muted text-xs"><span className="sm:hidden">Cache write</span><span className="max-sm:hidden">Cache write tokens</span></span>
               <p className="font-medium text-fg tabular-nums">{fmt(totalCachedWrite)}</p>
             </div>
             <div>
@@ -174,22 +205,23 @@ export function UsageTab() {
               </p>
             </div>
           </div>
-          <p className="text-xs text-muted">Cache hits are billed at a fraction of normal input cost, saving credits.</p>
+          <p className="text-xs text-muted">Cached input tokens are billed at a fraction of the normal input rate, which saves credits.</p>
         </div>
       )}
 
       {/* Model breakdown */}
       {data.models.length > 0 && (
         <div>
-          <h3 className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">This month by model</h3>
-          <div className="rounded-xl border border-border overflow-hidden">
+          <h3 className="text-xs font-medium text-muted mb-2">This month by model</h3>
+          {/* Phone: cached tokens are left to the summary above, so four columns fit. */}
+          <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border bg-surface">
+                <tr className={tableHeadRowClass}>
                   <th className="text-left px-3 py-2 text-xs font-medium text-muted">Model</th>
                   <th className="text-right px-3 py-2 text-xs font-medium text-muted">Credits</th>
                   <th className="text-right px-3 py-2 text-xs font-medium text-muted">Tokens</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-muted">Cache hits</th>
+                  <th className="hidden text-right px-3 py-2 text-xs font-medium text-muted sm:table-cell">Cached tokens</th>
                   <th className="text-right px-3 py-2 text-xs font-medium text-muted">Turns</th>
                 </tr>
               </thead>
@@ -201,7 +233,7 @@ export function UsageTab() {
                     </td>
                     <td className="px-3 py-2 text-right text-muted tabular-nums">{fmt(row.credits)}</td>
                     <td className="px-3 py-2 text-right text-muted tabular-nums">{fmt(row.tokensIn + row.tokensOut)}</td>
-                    <td className="px-3 py-2 text-right text-muted tabular-nums">
+                    <td className="hidden px-3 py-2 text-right text-muted tabular-nums sm:table-cell">
                       {row.cachedTokensRead > 0 ? fmt(row.cachedTokensRead) : '—'}
                     </td>
                     <td className="px-3 py-2 text-right text-muted tabular-nums">{row.turns}</td>

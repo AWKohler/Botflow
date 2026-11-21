@@ -9,13 +9,21 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide-react';
+import { buttonClass } from '@/components/ui/button';
+import { PageHeader as AppPageHeader } from '@/components/ui/card';
+import { MODEL_CONFIGS } from '@/lib/agent/models';
+import { AlertTriangle, CheckCircle2, Loader2, MinusCircle, RefreshCw, XCircle } from 'lucide-react';
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 
+/**
+ * Whole dollars by default, so a row of figures reads in one format; pass
+ * `cents: true` in detail tables where the cents matter. Amounts under $1
+ * always show cents (otherwise they would all read "$0").
+ */
 export function fmtUsd(v: number, opts?: { cents?: boolean }): string {
   const abs = Math.abs(v);
-  const cents = opts?.cents ?? abs < 100;
+  const cents = opts?.cents ?? (abs > 0 && abs < 1);
   return v.toLocaleString('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -24,16 +32,48 @@ export function fmtUsd(v: number, opts?: { cents?: boolean }): string {
   });
 }
 
+/**
+ * One rule for every count in the panel: exact, with a thousands separator,
+ * below 10,000 ("2,841"); compact from there up ("48K", "1.2M").
+ */
 export function fmtNum(v: number): string {
-  if (Math.abs(v) >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}B`;
-  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  const trim = (n: number) => n.toFixed(1).replace(/\.0$/, '');
+  if (Math.abs(v) >= 1_000_000_000) return `${trim(v / 1_000_000_000)}B`;
+  if (Math.abs(v) >= 1_000_000) return `${trim(v / 1_000_000)}M`;
   if (Math.abs(v) >= 10_000) return `${(v / 1_000).toFixed(0)}K`;
-  if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
   return v.toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
+const NAMES: Record<string, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  google: 'Google',
+  xai: 'xAI',
+  fireworks: 'Fireworks',
+  together: 'Together',
+  moonshot: 'Moonshot',
+  stripe: 'Stripe',
+  revenuecat: 'RevenueCat',
+  vercel: 'Vercel',
+  byoc: 'BYOC',
+};
+
+/** Display name for a raw identifier: "openai" → "OpenAI", "sandbox-host" → "Sandbox host". */
+export function displayName(raw: string): string {
+  const known = NAMES[raw.toLowerCase()];
+  if (known) return known;
+  const words = raw.replace(/[-_.]+/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** "claude-sonnet-5-5" → "Claude Sonnet 5.5"; unknown ids are shown as they are. */
+export function modelName(id: string): string {
+  return (MODEL_CONFIGS as Record<string, { displayName: string } | undefined>)[id]?.displayName ?? id;
+}
+
 export function fmtPct(v: number): string {
-  return `${v.toFixed(v >= 10 ? 0 : 1)}%`;
+  // One decimal below 10%, and never a trailing ".0" ("9%", "8.4%", "0%").
+  return `${v.toFixed(v >= 10 ? 0 : 1).replace(/\.0$/, '')}%`;
 }
 
 export function timeAgo(iso: string | null): string {
@@ -115,33 +155,31 @@ export function PageHeader({
   refreshing?: boolean;
   generatedAt?: string;
 }) {
+  // The same title block as every other app page, with the timestamp and
+  // Refresh as its action.
   return (
-    <div className="flex items-start justify-between gap-4 mb-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-fg">{title}</h1>
-        {subtitle && <p className="text-sm text-muted mt-1">{subtitle}</p>}
-      </div>
-      {onRefresh && (
-        <div className="flex items-center gap-3 shrink-0">
-          {generatedAt && (
-            <span className="text-xs text-muted hidden sm:inline">
-              as of {timeAgo(generatedAt)}
-            </span>
-          )}
-          <button
-            onClick={onRefresh}
-            disabled={refreshing}
-            className={cn(
-              'flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5',
-              'text-sm text-fg hover:bg-elevated transition-colors disabled:opacity-50',
+    <AppPageHeader
+      className="mb-8"
+      title={title}
+      description={subtitle}
+      action={
+        onRefresh && (
+          <>
+            {generatedAt && (
+              <span className="mr-1 hidden text-xs text-muted sm:inline">as of {timeAgo(generatedAt)}</span>
             )}
-          >
-            <RefreshCw className={cn('w-3.5 h-3.5', refreshing && 'animate-spin')} />
-            Refresh
-          </button>
-        </div>
-      )}
-    </div>
+            <button
+              onClick={onRefresh}
+              disabled={refreshing}
+              className={buttonClass({ variant: 'secondary', size: 'sm' })}
+            >
+              <RefreshCw className={cn('w-3.5 h-3.5', refreshing && 'animate-spin')} />
+              Refresh
+            </button>
+          </>
+        )
+      }
+    />
   );
 }
 
@@ -158,11 +196,9 @@ export function Section({
 }) {
   return (
     <section className={cn('mb-8', className)}>
-      <div className="flex items-baseline gap-2 mb-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">
-          {title}
-        </h2>
-        {hint && <span className="text-xs text-muted/70">{hint}</span>}
+      <div className="mb-3 flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
+        <h2 className="text-[15px] font-semibold text-fg">{title}</h2>
+        {hint && <span className="text-xs text-muted">{hint}</span>}
       </div>
       {children}
     </section>
@@ -180,7 +216,7 @@ export function LoadingState() {
 
 export function ErrorState({ message }: { message: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-red-600/30 bg-red-600/5 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+    <div className="flex items-center gap-2 rounded-lg border border-danger-border bg-danger-soft px-4 py-3 text-sm text-danger">
       <XCircle className="w-4 h-4 shrink-0" />
       {message}
     </div>
@@ -193,24 +229,25 @@ export function StatTile({
   label,
   value,
   sub,
-  accent,
-  warn,
+  tone,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   sub?: string;
-  /** Highlight the value in the accent color (use sparingly — one per row). */
-  accent?: boolean;
-  /** Negative/at-risk numbers. */
-  warn?: boolean;
+  /**
+   * Colour is for state only, never decoration, and means the same thing as in
+   * the status pills: amber for something at risk that can still recover, red
+   * for something that has already gone wrong.
+   */
+  tone?: 'warning' | 'danger';
 }) {
   return (
     <div className="rounded-xl border border-border bg-surface px-4 py-3.5">
-      <div className="text-xs text-muted mb-1">{label}</div>
+      <div className="mb-1.5 text-xs text-muted">{label}</div>
       <div
         className={cn(
           'text-2xl font-semibold tracking-tight tabular-nums',
-          accent ? 'text-accent' : warn ? 'text-red-600 dark:text-red-400' : 'text-fg',
+          tone === 'danger' ? 'text-danger' : tone === 'warning' ? 'text-warning' : 'text-fg',
         )}
       >
         {value}
@@ -240,10 +277,10 @@ export function Meter({ pct, label }: { pct: number; label?: string }) {
           className={cn(
             'h-full rounded-full',
             state === 'critical'
-              ? 'bg-red-500'
+              ? 'bg-danger-solid'
               : state === 'warning'
-                ? 'bg-amber-500'
-                : 'bg-accent',
+                ? 'bg-warning-solid'
+                : 'bg-accent/70',
           )}
           style={{ width: `${clamped}%` }}
         />
@@ -267,28 +304,65 @@ export function MiniBars({
   formatValue?: (v: number) => string;
 }) {
   const max = Math.max(1, ...data.map((d) => d.value));
+  // With few bars there is room to label each one directly (value on top,
+  // period underneath); dense series fall back to the hover tooltip.
+  const labelled = data.length <= 14;
   return (
-    <div className="flex items-end gap-[2px]" style={{ height }} role="img"
-      aria-label={data.map((d) => `${d.label}: ${formatValue(d.value)}`).join(', ')}>
-      {data.map((d) => (
-        <div key={d.label} className="group relative flex-1 flex flex-col justify-end h-full min-w-[6px]">
-          <div
-            className="rounded-t-[4px] bg-accent/80 group-hover:bg-accent transition-colors"
-            style={{ height: `${Math.max(2, (d.value / max) * 100)}%` }}
-          />
-          <div
-            className={cn(
-              'pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-10',
-              'whitespace-nowrap rounded-md border border-border bg-elevated px-2 py-1 text-xs text-fg shadow-sm',
+    <div role="img" aria-label={data.map((d) => `${d.label}: ${formatValue(d.value)}`).join(', ')}>
+      <div className="flex items-end gap-1.5" style={{ height }}>
+        {data.map((d) => (
+          <div key={d.label} className="group relative flex h-full min-w-[6px] flex-1 flex-col justify-end">
+            {labelled && (
+              <span className="mb-1 text-center text-[11px] tabular-nums text-muted">
+                {formatValue(d.value)}
+              </span>
             )}
-          >
-            <span className="text-muted">{d.label}</span>{' '}
-            <span className="font-medium tabular-nums">{formatValue(d.value)}</span>
+            <div
+              className="rounded-t-[4px] bg-accent/70 transition-colors group-hover:bg-accent/90"
+              style={{ height: `${Math.max(2, (d.value / max) * (labelled ? 82 : 100))}%` }}
+            />
+            {!labelled && (
+              <div
+                className={cn(
+                  'pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 hidden -translate-x-1/2 group-hover:block',
+                  'whitespace-nowrap rounded-md border border-border bg-bg px-2 py-1 text-xs text-fg shadow-sm',
+                )}
+              >
+                <span className="text-muted">{periodLabel(d.label)}</span>{' '}
+                <span className="font-medium tabular-nums">{formatValue(d.value)}</span>
+              </div>
+            )}
           </div>
+        ))}
+      </div>
+      {labelled ? (
+        <div className="mt-1.5 flex gap-1.5 border-t border-border pt-1.5">
+          {data.map((d) => (
+            <span key={d.label} className="min-w-[6px] flex-1 truncate text-center text-[11px] text-muted">
+              {periodLabel(d.label)}
+            </span>
+          ))}
         </div>
-      ))}
+      ) : (
+        // Dense series: first, middle and last period, plus the peak for scale.
+        <div className="mt-1.5 flex justify-between border-t border-border pt-1.5 text-[11px] tabular-nums text-muted">
+          <span>{periodLabel(data[0]?.label ?? '')}</span>
+          <span>{periodLabel(data[Math.floor((data.length - 1) / 2)]?.label ?? '')}</span>
+          <span>{periodLabel(data[data.length - 1]?.label ?? '')}</span>
+        </div>
+      )}
     </div>
   );
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "2026-06" → "Jun", "2026-11-03" → "Nov 3"; anything else is shown as is. */
+function periodLabel(raw: string): string {
+  const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(raw);
+  if (!m) return raw;
+  const month = MONTHS[Number(m[2]) - 1] ?? raw;
+  return m[3] ? `${month} ${Number(m[3])}` : month;
 }
 
 // ─── Horizontal labeled bars (per-row identity from the label, one hue) ──────
@@ -302,23 +376,25 @@ export function HBarList({
 }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
-    <div className="space-y-2">
+    <div className="space-y-3.5 sm:space-y-2">
       {rows.map((r) => (
-        <div key={r.label} className="flex items-center gap-3">
-          <div className="w-44 shrink-0 truncate text-sm text-fg" title={r.label}>
+        // Phone: label and value on one line, the bar under them, the note under that.
+        // Wider: one row of four columns.
+        <div key={r.label} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 sm:flex sm:gap-3">
+          <div className="truncate text-sm text-fg sm:w-40 sm:shrink-0" title={r.label}>
             {r.label}
           </div>
-          <div className="flex-1 h-4 rounded-[4px] bg-soft/50 overflow-hidden">
+          <div className="order-3 col-span-2 h-2.5 overflow-hidden rounded-[4px] bg-soft/50 sm:order-none sm:h-4 sm:flex-1">
             <div
-              className="h-full rounded-[4px] bg-accent/80"
+              className="h-full rounded-[4px] bg-accent/70"
               style={{ width: `${(r.value / max) * 100}%` }}
             />
           </div>
-          <div className="w-20 shrink-0 text-right text-sm tabular-nums text-fg">
+          <div className="text-right text-sm tabular-nums text-fg sm:w-20 sm:shrink-0">
             {formatValue(r.value)}
           </div>
           {r.sub !== undefined && (
-            <div className="w-24 shrink-0 text-right text-xs text-muted tabular-nums">
+            <div className="order-4 col-span-2 text-xs tabular-nums text-muted sm:order-none sm:w-36 sm:shrink-0 sm:whitespace-nowrap sm:text-right">
               {r.sub}
             </div>
           )}
@@ -333,20 +409,21 @@ export function HBarList({
 export type StatusKind = 'good' | 'warning' | 'serious' | 'neutral';
 
 export function StatusPill({ kind, label }: { kind: StatusKind; label: string }) {
+  // A tick means "good" and nothing else; neutral states get a neutral mark.
   const Icon =
-    kind === 'good' ? CheckCircle2 : kind === 'neutral' ? CheckCircle2 : kind === 'warning' ? AlertTriangle : XCircle;
+    kind === 'good' ? CheckCircle2 : kind === 'neutral' ? MinusCircle : kind === 'warning' ? AlertTriangle : XCircle;
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-        kind === 'good' && 'bg-emerald-600/10 text-emerald-700 dark:text-emerald-400',
-        kind === 'warning' && 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
-        kind === 'serious' && 'bg-red-600/10 text-red-700 dark:text-red-400',
-        kind === 'neutral' && 'bg-soft text-muted',
+        'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-px text-[11px] font-medium leading-4',
+        kind === 'good' && 'border-success-border bg-success-soft text-success',
+        kind === 'warning' && 'border-warning-border bg-warning-soft text-warning',
+        kind === 'serious' && 'border-danger-border bg-danger-soft text-danger',
+        kind === 'neutral' && 'border-border bg-elevated text-muted',
       )}
     >
       <Icon className="w-3 h-3" />
-      {label}
+      {label.charAt(0).toUpperCase() + label.slice(1)}
     </span>
   );
 }

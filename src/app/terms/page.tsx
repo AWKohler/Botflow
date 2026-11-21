@@ -1,4 +1,5 @@
 import { LandingNav, LandingFooter } from "@/components/landing/shared";
+import { serif } from "@/components/landing/fonts";
 
 export const metadata = {
   title: "Terms of Service — Botflow",
@@ -10,8 +11,9 @@ export default function TermsPage() {
     <div className="min-h-screen bg-[var(--sand-bg)]">
       <LandingNav />
 
-      <main className="mx-auto max-w-3xl px-4 sm:px-6 py-16 sm:py-24">
-        <h1 className="text-3xl sm:text-4xl font-bold text-[var(--sand-text)] mb-2">
+      <main className="mx-auto max-w-3xl px-6 py-16 sm:px-10 sm:py-24">
+        <p className="mb-5 text-[11px] font-medium uppercase tracking-[0.2em] text-muted">Legal</p>
+        <h1 className={`${serif.className} mb-4 text-5xl leading-[1.05] tracking-tight text-fg sm:text-6xl`}>
           Terms of Service
         </h1>
         <p className="text-sm text-[var(--sand-text-muted)] mb-12">
@@ -26,7 +28,7 @@ export default function TermsPage() {
               <strong className="text-[var(--sand-text)]">Botflow LLC</strong> (&quot;Botflow,&quot; &quot;we,&quot;
               &quot;us,&quot; or &quot;our&quot;), a limited liability company organized under the laws of North Carolina.
               By creating an account or using Botflow at{" "}
-              <a href="https://botflow.io" className="text-[var(--sand-text)] hover:underline">
+              <a href="https://botflow.io" className="text-fg underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-fg">
                 botflow.io
               </a>{" "}
               (the &quot;Service&quot;), you agree to be bound by these Terms. If you do not agree, do not use
@@ -55,7 +57,7 @@ export default function TermsPage() {
               occurs under your account. You agree to notify us immediately at{" "}
               <a
                 href="mailto:awkohler@botflow.io"
-                className="text-[var(--sand-text)] hover:underline"
+                className="text-fg underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-fg"
               >
                 awkohler@botflow.io
               </a>{" "}
@@ -183,7 +185,7 @@ export default function TermsPage() {
                 href="https://docs.github.com/en/site-policy/github-terms/github-terms-of-service"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[var(--sand-text)] hover:underline"
+                className="text-fg underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-fg"
               >
                 GitHub&apos;s Terms of Service
               </a>
@@ -308,7 +310,7 @@ export default function TermsPage() {
               <div>
                 <a
                   href="mailto:awkohler@botflow.io"
-                  className="text-[var(--sand-text)] hover:underline"
+                  className="text-fg underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-fg"
                 >
                   awkohler@botflow.io
                 </a>
