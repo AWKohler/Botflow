@@ -2836,14 +2836,16 @@ function AgentThreadPanel({
               : null;
           if (!showContext && !usage) return null;
           return (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-3.5 py-2 text-xs tabular-nums">
+            // A container: in a narrow chat column the bar steps aside so the two
+            // figures stay on one line (and they wrap, never overlap, if even that is too wide).
+            <div className="@container flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-3.5 py-2 text-xs tabular-nums">
               {showContext ? (
                 <div
-                  className="flex min-w-0 flex-1 cursor-help items-center gap-2.5"
+                  className="flex flex-1 cursor-help items-center gap-2.5"
                   aria-label="Context window used"
                   title="Context window used vs. total — how much of the model's memory this conversation is using. Older messages are auto-summarized as it fills up."
                 >
-                  <div className="h-1 min-w-6 flex-1 overflow-hidden rounded-full bg-soft">
+                  <div className="hidden h-1 min-w-6 flex-1 overflow-hidden rounded-full bg-soft @[20rem]:block">
                     <div
                       className={cn(
                         'h-full rounded-full transition-all duration-300',
