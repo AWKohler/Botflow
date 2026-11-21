@@ -26,3 +26,6 @@ export function useMediaQuery(query: string) {
 
 /** One pane at a time: the width below which the workspaces and the site header use their phone layout (Tailwind's `md`). */
 export const NARROW_QUERY = "(max-width: 767px)";
+
+/** Short of room either way: a phone, or a short window such as a phone on its side. */
+export const COMPACT_QUERY = "(max-width: 767px), (max-height: 520px)";

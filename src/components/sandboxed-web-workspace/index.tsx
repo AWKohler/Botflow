@@ -1399,6 +1399,9 @@ export function SandboxedWebWorkspace({
         {/* A container: what the toolbar shows depends on the room this pane
             has, not on the window (the chat column takes a fixed share of it). */}
         <div className="@container flex h-12 shrink-0 items-center gap-2 pl-2.5 pr-2.5 md:pl-0">
+          {/* Up to four tabs (a backend adds Database, payments adds Stripe): in a
+              narrow pane they scroll sideways rather than push Share and Publish off. */}
+          <div className="min-w-0 shrink overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <Tabs
             options={
               [
@@ -1415,6 +1418,7 @@ export function SandboxedWebWorkspace({
             selected={currentView}
             onSelect={setCurrentView}
           />
+          </div>
 
           {currentView === "stripe" && (
             <StripeModeToggle
@@ -1521,7 +1525,7 @@ export function SandboxedWebWorkspace({
             </div>
           )}
 
-          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
+          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 @max-[36rem]:flex-none">
             {currentView === "database" && hasBackend && (
               <Button
                 variant="secondary"
@@ -1641,7 +1645,8 @@ export function SandboxedWebWorkspace({
               ) : (
                 <Globe size={14} />
               )}
-              {cloudflareProjectName ? "Published" : "Publish"}
+              {/* In the narrowest panes (a 320px phone) the mark alone; the title names it. */}
+              <span className="@max-[19rem]:sr-only">{cloudflareProjectName ? "Published" : "Publish"}</span>
             </Button>
           </div>
         </div>

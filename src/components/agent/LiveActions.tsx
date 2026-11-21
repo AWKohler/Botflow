@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { NARROW_QUERY, useMediaQuery } from '@/components/ui/use-media-query';
+import { COMPACT_QUERY, useMediaQuery } from '@/components/ui/use-media-query';
 import { formatToolName } from '@/lib/agent/tool-labels';
 import type { ToolCallData } from '@/lib/agent/ui-types';
 import { ChevronDown, ChevronRight, Loader2, Check } from 'lucide-react';
@@ -33,13 +33,14 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
     )
   ), [fileActions]);
 
-  // On a phone the card is one line (the latest step) until it is opened: with
-  // the keyboard up, a five-row list would leave almost no room for the chat.
-  const [expanded, setExpanded] = useState<boolean | null>(null);
-  const narrow = useMediaQuery(NARROW_QUERY);
-  // Crossing between the phone and the wider layout (a rotated phone) returns
-  // the card to that layout's default, so it can never be left folded where it has no toggle.
-  useEffect(() => setExpanded(null), [narrow]);
+  // Where the chat is short of room — a phone, or a short window such as a
+  // phone on its side — the card is one line (the latest step) until it is
+  // opened: a five-row list would leave almost no room for the conversation.
+  const compact = useMediaQuery(COMPACT_QUERY);
+  const [opened, setOpened] = useState(false);
+  // Changing layout (a rotation) returns the card to that layout's default.
+  useEffect(() => setOpened(false), [compact]);
+  const expanded = !compact || opened;
 
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -61,27 +62,27 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
 
   const latest = actions[actions.length - 1];
   const latestRunning = latest.status === 'invoked';
-  // null: not toggled yet, so CSS decides (a list on larger screens, one line on a phone).
-  const listHidden = expanded === null ? 'max-md:hidden' : !expanded && 'hidden';
-  const summaryHidden = expanded === null ? 'md:hidden' : expanded && 'hidden';
 
   return (
     <div className={cn('rounded-lg border border-border bg-elevated p-2 space-y-1', className)}>
       <div className="flex items-center justify-between gap-2 px-1">
         <button
           type="button"
-          // A toggle on a phone only; on wider screens the list is always open.
-          onClick={() => narrow && setExpanded((v) => !(v ?? false))}
-          aria-expanded={narrow ? (expanded ?? false) : undefined}
-          tabIndex={narrow ? undefined : -1}
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium text-muted md:pointer-events-none pointer-coarse:min-h-8"
+          // A toggle only where the card is compact; elsewhere the list is always open.
+          onClick={() => compact && setOpened((v) => !v)}
+          aria-expanded={compact ? opened : undefined}
+          tabIndex={compact ? undefined : -1}
+          className={cn(
+            'flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium text-muted pointer-coarse:min-h-8',
+            !compact && 'pointer-events-none',
+          )}
         >
           <ChevronRight
             size={12}
-            className={cn('shrink-0 transition-transform md:hidden', expanded && 'rotate-90')}
+            className={cn('shrink-0 transition-transform', !compact && 'hidden', opened && 'rotate-90')}
           />
           <span className="shrink-0">Activity</span>
-          <span className={cn('flex min-w-0 items-center gap-1.5 font-normal', summaryHidden)}>
+          <span className={cn('flex min-w-0 items-center gap-1.5 font-normal', expanded && 'hidden')}>
             <span className="text-subtle">·</span>
             {latestRunning && <Loader2 size={11} className="shrink-0 animate-spin" />}
             <span className="truncate">{actionSummary(latest).title}</span>
@@ -110,7 +111,7 @@ export function LiveActions({ actions: allActions, onClear, className }: Props) 
 
       <div
         ref={scrollRef}
-        className={cn('modern-scrollbar relative max-h-28 overflow-auto pl-1 pr-1', listHidden)}
+        className={cn('modern-scrollbar relative max-h-28 overflow-auto pl-1 pr-1', !expanded && 'hidden')}
       >
         {actions.map((a, i) => (
           <LiveActionStep key={a.toolCallId} action={a} isLast={i === actions.length - 1} />
