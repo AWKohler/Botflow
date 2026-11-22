@@ -688,7 +688,7 @@ function buildCustomTools(customTools, oauthProviderIds) {
           priceUsd: z.number().positive().optional().describe("Test Store price in US dollars, e.g. 4.99"),
           subscriptionDuration: z.enum(["P1W", "P1M", "P2M", "P3M", "P6M", "P1Y"]).optional(),
           entitlement: z.string().optional().describe("Entitlement this purchase unlocks, e.g. pro"),
-          offering: z.string().optional().describe("Offering to place it in; defaults to 'default'"),
+          offering: z.string().optional().describe("Offering to place it in; omit to use the one the paywall already shows"),
           package: z.string().optional().describe("Package slot: $rc_monthly, $rc_annual, $rc_lifetime, or a custom key"),
         },
         makeHostToolHandler("create_revenuecat_product"),

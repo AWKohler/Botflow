@@ -165,6 +165,16 @@ describe('create_revenuecat_product', () => {
     expect(rc.offerings.find((o) => o.is_current)?.lookup_key).toBe('default');
   });
 
+  test('with no offering named, the product goes where the paywall already looks', async () => {
+    const rc = fakeRevenueCat();
+    // A RevenueCat project that already has a current offering under another name.
+    rc.offerings.push({ id: 'ofrng_existing', lookup_key: 'launch', display_name: 'Launch', is_current: true });
+    const result = await provisionProduct(ctxFor(rc), MONTHLY);
+    expect(result).toMatchObject({ ok: true, identifiers: { offering: 'launch' }, created: { offering: false } });
+    expect(rc.offerings).toHaveLength(1);
+    expect((await catalogOf(rc)).readyForTestPurchases).toBe(true);
+  });
+
   test('a consumable needs no entitlement or duration', async () => {
     const rc = fakeRevenueCat();
     const result = await provisionProduct(ctxFor(rc), {

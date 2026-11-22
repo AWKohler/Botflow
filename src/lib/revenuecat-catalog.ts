@@ -285,7 +285,7 @@ export interface ProvisionInput {
   subscriptionDuration?: RevenueCatTestDuration;
   entitlement?: string;
   entitlementDisplayName?: string;
-  /** Offering to place it in. Defaults to "default" when a package is given. */
+  /** Offering to place it in. Defaults to the current offering (or a new "default"). */
   offering?: string;
   offeringDisplayName?: string;
   /** Package slot, e.g. "$rc_monthly", "$rc_annual", "$rc_lifetime" or a custom key. */
@@ -457,33 +457,38 @@ export async function provisionProduct(
     notes.push('No entitlement was given, so buying this product unlocks nothing. Call again with entitlement.');
   }
 
-  // 4. Offering + package: where it appears on the paywall.
+  // 4. Offering + package: where it appears on the paywall. Unless told
+  //    otherwise, use the offering the paywall already shows (the current
+  //    one, whatever it is called), so the product is never created somewhere
+  //    the app does not look.
   const packageKey = input.package?.trim() || null;
-  const offeringKey = input.offering?.trim() || (packageKey ? 'default' : null);
-  if (offeringKey) {
+  let offeringKey = input.offering?.trim() || null;
+  if (offeringKey || packageKey) {
     const before = await listOfferings(secretKey, rcProjectId);
     if (!before.ok) return step('read the offerings', before);
+    offeringKey = offeringKey ?? before.data.items.find((o) => o.is_current)?.lookup_key ?? 'default';
+    const key = offeringKey;
     const offering = await ensure(
       () => listOfferings(secretKey, rcProjectId),
-      (o) => o.lookup_key === offeringKey,
+      (o) => o.lookup_key === key,
       () =>
         createOffering(secretKey, rcProjectId, {
-          lookup_key: offeringKey,
-          display_name: input.offeringDisplayName?.trim() || (offeringKey === 'default' ? 'Default' : offeringKey),
+          lookup_key: key,
+          display_name: input.offeringDisplayName?.trim() || (key === 'default' ? 'Default' : key),
         }),
     );
     if (!offering.ok) return step('create the offering', offering);
     created.offering = offering.created;
 
     // The paywall shows the CURRENT offering. Take the role only when nobody has it.
-    const anotherIsCurrent = before.data.items.some((o) => o.is_current && o.lookup_key !== offeringKey);
+    const anotherIsCurrent = before.data.items.some((o) => o.is_current && o.lookup_key !== key);
     if (!offering.item.is_current && !anotherIsCurrent) {
       const madeCurrent = await setOfferingCurrent(secretKey, rcProjectId, offering.item.id);
-      if (!madeCurrent.ok) notes.push(`The offering "${offeringKey}" could not be made current (${madeCurrent.error}).`);
+      if (!madeCurrent.ok) notes.push(`The offering "${key}" could not be made current (${madeCurrent.error}).`);
     } else if (!offering.item.is_current && anotherIsCurrent) {
       const currentKey = before.data.items.find((o) => o.is_current)?.lookup_key;
       notes.push(
-        `"${offeringKey}" is not the current offering ("${currentKey}" is), so a paywall that shows the current offering will not include this product.`,
+        `"${key}" is not the current offering ("${currentKey}" is), so a paywall that shows the current offering will not include this product.`,
       );
     }
 

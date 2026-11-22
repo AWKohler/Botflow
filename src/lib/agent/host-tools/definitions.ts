@@ -202,7 +202,7 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
         priceUsd: { type: "number", description: "Test Store price in US dollars, e.g. 4.99" },
         subscriptionDuration: { type: "string", enum: ["P1W", "P1M", "P2M", "P3M", "P6M", "P1Y"] },
         entitlement: { type: "string", description: "Entitlement this purchase unlocks, e.g. pro" },
-        offering: { type: "string", description: "Offering to place it in; defaults to 'default'" },
+        offering: { type: "string", description: "Offering to place it in; omit to use the one the paywall already shows" },
         package: { type: "string", description: "Package slot: $rc_monthly, $rc_annual, $rc_lifetime, or a custom key" },
       },
       required: ["storeIdentifier", "type"],

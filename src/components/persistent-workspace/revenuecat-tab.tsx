@@ -57,15 +57,31 @@ interface ActivityItem {
   currency: string | null;
   environment: string | null;
   appUserId: string | null;
+  rcEventType: string | null;
   delivery: { status: string; attempts: number; lastError: string | null };
   at: string;
 }
 
+/** What happened, in the buyer's terms. Keyed by RevenueCat's event type. */
+const RC_EVENT_LABELS: Record<string, string> = {
+  INITIAL_PURCHASE: "Purchased",
+  NON_RENEWING_PURCHASE: "Purchased",
+  RENEWAL: "Renewed",
+  UNCANCELLATION: "Auto-renew turned back on",
+  PRODUCT_CHANGE: "Changed plan",
+  SUBSCRIPTION_EXTENDED: "Subscription extended",
+  TEMPORARY_ENTITLEMENT_GRANT: "Temporary access granted",
+  EXPIRATION: "Expired",
+  CANCELLATION: "Auto-renew turned off",
+  BILLING_ISSUE: "Payment failed",
+};
+
+/** Fallback when the RevenueCat type is unknown: our normalized type. */
 const EVENT_LABELS: Record<string, string> = {
   "entitlement.granted": "Access granted",
   "entitlement.revoked": "Access ended",
   "entitlement.cancellation": "Auto-renew turned off",
-  "billing.issue": "Billing issue",
+  "billing.issue": "Payment failed",
 };
 
 const PRODUCT_TYPE_LABELS: Record<string, string> = {
@@ -281,20 +297,34 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
     void loadStatus();
   }, [loadStatus, status]);
 
-  // The catalog and the event log only exist once connected. Refresh them
-  // while the tab is on screen: the agent creates products and the user makes
-  // test purchases in the simulator while this tab is open.
+  // The catalog and the event log only exist once connected. The event log is
+  // our own table, so it is polled while the tab is on screen (test purchases
+  // land within seconds). The catalog costs several RevenueCat API calls per
+  // read and RevenueCat rate-limits per project, so it is read when the tab
+  // opens, on "Check again", and whenever the agent finishes a turn (that is
+  // when products get created).
   useEffect(() => {
     if (!connected || !active) return;
     void loadCatalog();
     void loadActivity();
     const interval = setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      void loadActivity();
-      void loadCatalog();
+      if (document.visibilityState === "visible") void loadActivity();
     }, 15_000);
     return () => clearInterval(interval);
   }, [connected, active, loadCatalog, loadActivity]);
+
+  useEffect(() => {
+    if (!connected) return;
+    const onTurnFinished = (e: Event) => {
+      const detail = (e as CustomEvent<{ projectId?: string }>).detail;
+      if (detail?.projectId && detail.projectId !== projectId) return;
+      setAskedAgent(false);
+      void loadStatus();
+      void loadCatalog();
+    };
+    window.addEventListener("agent-turn-finished", onTurnFinished);
+    return () => window.removeEventListener("agent-turn-finished", onTurnFinished);
+  }, [connected, projectId, loadStatus, loadCatalog]);
 
   // Hand the rest of the work to the agent through the chat's system-note
   // queue (same channel the OAuth / env-var / Stripe modals use).
@@ -495,7 +525,7 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
                     In that project, open <Strong>API keys</Strong> in the left sidebar and choose{" "}
                     <Strong>New secret API key</Strong>. Then set:
                   </p>
-                  <ul className="space-y-1 text-xs leading-relaxed text-muted">
+                  <ul className="list-disc space-y-1 pl-4 text-xs leading-relaxed text-muted">
                     <li>
                       <Strong>API version</Strong> to <Strong>V2</Strong>
                     </li>
@@ -553,20 +583,28 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
     checks?.key.ok && checks.testStore.ok && catalog?.readyForTestPurchases,
   );
 
-  const askAgentButton = isOwner ? (
-    <Button
-      variant="outline"
-      size="sm"
-      disabled={askedAgent}
-      onClick={() => {
-        notifyAgent("finish-setup", null);
-        setAskedAgent(true);
-      }}
-    >
-      <Sparkles size={13} className="mr-1.5" aria-hidden />
-      {askedAgent ? "Asked the agent" : "Ask the agent to finish"}
-    </Button>
-  ) : null;
+  // The one thing left to do, if any, with a single way to hand it to the agent.
+  const nextStep: { title: string; body: string } | null = !checks?.key.ok
+    ? null
+    : catalog && catalog.products.length === 0
+      ? {
+          title: "Next: add something to sell",
+          body: "The agent creates the products, their test prices and the paywall, then deploys the backend. If the chat does not already say what to sell, it will ask.",
+        }
+      : blockers.length > 0
+        ? {
+            title: "Next: finish the paywall setup",
+            body:
+              blockers.length === 1
+                ? "One thing stops purchases from working (listed under What your app sells). The agent can fix it."
+                : `${blockers.length} things stop purchases from working (listed under What your app sells). The agent can fix them.`,
+          }
+        : backendNeedsAgent
+          ? {
+              title: "Next: deploy your app's backend",
+              body: "Purchases already unlock in the app. Deploying the backend lets it record them as well.",
+            }
+          : null;
 
   return (
     <div className="modern-scrollbar h-full overflow-auto p-4 sm:p-8">
@@ -609,7 +647,29 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
           </div>
         ) : null}
 
-        {readyToTest ? (
+        {nextStep ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-info-border bg-info-soft p-4">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-fg">{nextStep.title}</div>
+              <p className="mt-1 text-xs leading-relaxed text-muted">{nextStep.body}</p>
+            </div>
+            {isOwner ? (
+              <Button
+                size="sm"
+                disabled={askedAgent}
+                onClick={() => {
+                  notifyAgent("finish-setup", null);
+                  setAskedAgent(true);
+                }}
+              >
+                <Sparkles size={13} className="mr-1.5" aria-hidden />
+                {askedAgent ? "Asked the agent" : "Ask the agent to finish"}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {readyToTest && !nextStep ? (
           <div className="rounded-xl border border-success-border bg-success-soft p-4">
             <div className="text-sm font-semibold text-fg">Ready for a test purchase</div>
             <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-xs leading-relaxed text-muted">
@@ -721,7 +781,6 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
             <HealthRow
               state={backendState === "live" ? "ok" : backendState === "unknown" ? "pending" : "attention"}
               title="Your app's backend"
-              action={backendNeedsAgent ? askAgentButton : null}
             >
               {backendState === "live"
                 ? "Listening for purchase events."
@@ -747,13 +806,10 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
               <Loader2 size={13} className="animate-spin" /> Loading products…
             </div>
           ) : catalog.products.length === 0 ? (
-            <div className="space-y-2 py-3">
-              <p className="text-xs leading-relaxed text-muted">
-                Nothing yet. Tell the agent what to sell, for example &quot;add a Pro subscription for
-                $4.99 a month&quot;, and it creates the product, its price and the paywall.
-              </p>
-              {askAgentButton}
-            </div>
+            <p className="py-3 text-xs leading-relaxed text-muted">
+              Nothing yet. Tell the agent what to sell, for example &quot;add a Pro subscription for $4.99
+              a month&quot;, and it creates the product, its price and the paywall.
+            </p>
           ) : (
             <div className="space-y-3 py-3">
               <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
@@ -798,7 +854,6 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
                       <li key={`${issue.code}-${i}`}>{issue.message}</li>
                     ))}
                   </ul>
-                  {askAgentButton}
                 </div>
               ) : null}
               {warnings.length > 0 ? (
@@ -841,7 +896,9 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
                   >
                     {item.environment === "PRODUCTION" ? "LIVE" : "TEST"}
                   </span>
-                  <span className="shrink-0 font-medium text-fg">{EVENT_LABELS[item.type] ?? item.type}</span>
+                  <span className="shrink-0 font-medium text-fg">
+                    {(item.rcEventType ? RC_EVENT_LABELS[item.rcEventType] : undefined) ?? EVENT_LABELS[item.type] ?? item.type}
+                  </span>
                   <span className="min-w-0 truncate text-muted">{item.productId ?? ""}</span>
                   {typeof item.price === "number" && item.price > 0 ? (
                     <span className="shrink-0 tabular-nums text-muted">
