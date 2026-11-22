@@ -22,6 +22,7 @@ import {
   projects,
   type ProjectRevenueCatConnection,
 } from '@/db/schema';
+import { redis } from '@/lib/redis';
 import { decryptSecret, encryptSecret } from '@/lib/secrets';
 import {
   checkSecretKeyShape,
@@ -315,8 +316,8 @@ export async function connectRevenueCat(opts: {
   if (!shape.ok) return { ok: false, status: 400, code: 'not-secret-key', error: shape.message };
 
   // One connect per project at a time: two at once (a double click, two tabs)
-  // would each create a webhook, and only one would be remembered.
-  const { redis } = await import('@/lib/redis');
+  // would each create a webhook, and only one would be remembered. Nothing is
+  // awaited before this, so of two calls made in the same tick exactly one wins.
   const locked = await redis.set(connectLockKey(opts.projectId), '1', { nx: true, ex: CONNECT_LOCK_SECONDS });
   if (!locked) {
     return {
@@ -625,7 +626,6 @@ const agentWaitingKey = (projectId: string) => `revenuecat:agent-waiting:${proje
 
 export async function markAgentWaitingForConnect(projectId: string, threadId: string | null | undefined): Promise<void> {
   try {
-    const { redis } = await import('@/lib/redis');
     await redis.setex(agentWaitingKey(projectId), AGENT_WAITING_TTL_SECONDS, threadId || 'current');
   } catch (err) {
     console.error('[revenuecat] could not record the waiting agent thread:', err);
@@ -640,7 +640,6 @@ export async function markAgentWaitingForConnect(projectId: string, threadId: st
  */
 export async function peekAgentWaitingForConnect(projectId: string): Promise<string | null> {
   try {
-    const { redis } = await import('@/lib/redis');
     const value = await redis.get<string>(agentWaitingKey(projectId));
     return value ? String(value) : null;
   } catch (err) {
@@ -652,7 +651,6 @@ export async function peekAgentWaitingForConnect(projectId: string): Promise<str
 /** The agent has picked the work back up; nobody is waiting any more. */
 export async function clearAgentWaitingForConnect(projectId: string): Promise<void> {
   try {
-    const { redis } = await import('@/lib/redis');
     await redis.del(agentWaitingKey(projectId));
   } catch (err) {
     console.error('[revenuecat] could not clear the waiting agent thread:', err);
