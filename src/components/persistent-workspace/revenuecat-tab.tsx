@@ -238,7 +238,12 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
   const [sharedWith, setSharedWith] = useState<string[] | null>(null);
   const [replacingKey, setReplacingKey] = useState(false);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
-  const [askedAgent, setAskedAgent] = useState(false);
+  // After handing work to the agent, how many of its turns must still finish
+  // before what this tab shows is the agent's result. A note sent while the
+  // agent is busy is queued behind the running turn, so that is two finishes.
+  const [agentTurnsPending, setAgentTurnsPending] = useState(0);
+  const agentBusyRef = useRef(false);
+  const askedAgent = agentTurnsPending > 0;
 
   const connected = status === "connected";
 
@@ -314,22 +319,31 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
   }, [connected, active, loadCatalog, loadActivity]);
 
   useEffect(() => {
-    if (!connected) return;
+    const onBusy = (e: Event) => {
+      agentBusyRef.current = Boolean((e as CustomEvent<{ isBusy?: boolean }>).detail?.isBusy);
+    };
     const onTurnFinished = (e: Event) => {
       const detail = (e as CustomEvent<{ projectId?: string }>).detail;
       if (detail?.projectId && detail.projectId !== projectId) return;
-      setAskedAgent(false);
-      void loadStatus();
-      void loadCatalog();
+      setAgentTurnsPending((n) => Math.max(0, n - 1));
+      if (connected) {
+        void loadStatus();
+        void loadCatalog();
+      }
     };
+    window.addEventListener("agent-busy-change", onBusy);
     window.addEventListener("agent-turn-finished", onTurnFinished);
-    return () => window.removeEventListener("agent-turn-finished", onTurnFinished);
+    return () => {
+      window.removeEventListener("agent-busy-change", onBusy);
+      window.removeEventListener("agent-turn-finished", onTurnFinished);
+    };
   }, [connected, projectId, loadStatus, loadCatalog]);
 
   // Hand the rest of the work to the agent through the chat's system-note
   // queue (same channel the OAuth / env-var / Stripe modals use).
   const notifyAgent = useCallback(
     (subject: "connected" | "finish-setup", threadId: string | null) => {
+      setAgentTurnsPending(agentBusyRef.current ? 2 : 1);
       window.dispatchEvent(
         new CustomEvent("agent-modal-completed", {
           detail: { projectId, kind: "revenuecat", subject, threadId },
@@ -376,7 +390,6 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
         });
         if (body.agentThread) {
           notifyAgent("connected", body.agentThread === "current" ? null : body.agentThread);
-          setAskedAgent(true);
         }
         onChanged?.();
         await loadStatus();
@@ -402,7 +415,7 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
       setConfirmingDisconnect(false);
       setCatalog(null);
       setActivity(null);
-      setAskedAgent(false);
+      setAgentTurnsPending(0);
       toast({
         title: connected ? "RevenueCat disconnected" : "Setup cancelled",
         description: connected ? "The stored key and the webhook were removed." : undefined,
@@ -435,7 +448,9 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
       <label htmlFor="rc-secret-key" className="block text-xs font-medium text-fg">
         RevenueCat secret key
       </label>
-      <div className="flex flex-col gap-2 sm:flex-row">
+      {/* Stacked, button on the left: the floating simulator window sits over
+          the right edge of this tab while a build is running. */}
+      <div className="flex flex-col items-start gap-2">
         <Input
           id="rc-secret-key"
           ref={keyInputRef}
@@ -452,7 +467,7 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
           placeholder="sk_…"
           aria-invalid={Boolean(connectError)}
           aria-describedby={connectError ? "rc-secret-key-error" : undefined}
-          className="min-w-0 flex-1 rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm text-fg"
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm text-fg"
         />
         <Button onClick={() => void handleConnect()} disabled={submitting || !isOwner}>
           {submitting ? <Loader2 size={16} className="mr-1.5 animate-spin" /> : null}
@@ -580,7 +595,8 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
   const onPaywall = catalog?.products.filter((p) => p.onPaywall) ?? [];
   const offPaywall = catalog?.products.filter((p) => !p.onPaywall) ?? [];
   const backendState = checks?.backend.state ?? "unknown";
-  const backendNeedsAgent = backendState === "not-deployed" || backendState === "not-configured";
+  const backendNeedsAgent =
+    backendState === "not-deployed" || backendState === "not-configured" || backendState === "no-backend";
   const readyToTest = Boolean(
     checks?.key.ok && checks.testStore.ok && catalog?.readyForTestPurchases,
   );
@@ -649,29 +665,31 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
           </div>
         ) : null}
 
-        {nextStep ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-info-border bg-info-soft p-4">
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-fg">{nextStep.title}</div>
-              <p className="mt-1 text-xs leading-relaxed text-muted">{nextStep.body}</p>
+        {askedAgent ? (
+          <div className="flex items-start gap-3 rounded-xl border border-info-border bg-info-soft p-4">
+            <Loader2 size={16} className="mt-0.5 shrink-0 animate-spin text-info" aria-hidden />
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-fg">The agent is finishing the setup</div>
+              <p className="mt-1 text-xs leading-relaxed text-muted">
+                It is creating what your app sells and deploying the backend. This page updates when it is
+                done; you can follow along in the chat.
+              </p>
             </div>
+          </div>
+        ) : nextStep ? (
+          <div className="rounded-xl border border-info-border bg-info-soft p-4">
+            <div className="text-sm font-semibold text-fg">{nextStep.title}</div>
+            <p className="mt-1 text-xs leading-relaxed text-muted">{nextStep.body}</p>
             {isOwner ? (
-              <Button
-                size="sm"
-                disabled={askedAgent}
-                onClick={() => {
-                  notifyAgent("finish-setup", null);
-                  setAskedAgent(true);
-                }}
-              >
+              <Button size="sm" className="mt-3" onClick={() => notifyAgent("finish-setup", null)}>
                 <Sparkles size={13} className="mr-1.5" aria-hidden />
-                {askedAgent ? "Asked the agent" : "Ask the agent to finish"}
+                Ask the agent to finish
               </Button>
             ) : null}
           </div>
         ) : null}
 
-        {readyToTest && !nextStep ? (
+        {readyToTest && !nextStep && !askedAgent ? (
           <div className="rounded-xl border border-success-border bg-success-soft p-4">
             <div className="text-sm font-semibold text-fg">Ready for a test purchase</div>
             <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-xs leading-relaxed text-muted">
@@ -686,7 +704,7 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
             </ol>
             <p className="mt-1.5 text-xs leading-relaxed text-muted">
               The purchase shows up under Activity below within a few seconds. A test subscription renews
-              every few minutes and ends by itself after five renewals.
+              every few minutes and ends by itself after about half an hour.
             </p>
           </div>
         ) : null}
@@ -792,7 +810,7 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
                   : backendState === "not-configured"
                     ? "The receiver is deployed but its secret is missing. Choose Check again to set it."
                     : backendState === "no-backend"
-                      ? "This project's backend has not been created yet. It is set up the first time the agent deploys it."
+                      ? "This project has no backend deployed yet. Purchases still unlock in the app, but nothing records them on the server. If the agent cannot deploy it, check in Settings that your Convex account is connected and has room for another project."
                       : "Could not reach the backend just now. Choose Check again in a moment."}
             </HealthRow>
           </div>
@@ -930,6 +948,8 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
                       <span className="text-danger" title={item.delivery.lastError ?? undefined}>
                         Backend never accepted it
                       </span>
+                    ) : item.delivery.lastError === "no_convex_site" ? (
+                      <span className="text-warning">No backend to deliver to yet</span>
                     ) : (
                       <span className="text-warning" title={item.delivery.lastError ?? undefined}>
                         Retrying delivery to your backend

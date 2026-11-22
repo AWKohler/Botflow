@@ -3,6 +3,8 @@ import { cn } from "@/lib/utils";
 export type TabOption<T extends string> = {
   value: T;
   text: string;
+  /** Show a small dot: something on this tab is waiting for the user. */
+  attention?: boolean;
 };
 
 interface TabsProps<T extends string> {
@@ -55,6 +57,11 @@ export function Tabs<T extends string>({ options, selected, onSelect, className,
             )}
           >
             {option.text}
+            {option.attention && !active ? (
+              <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-warning-solid align-middle">
+                <span className="sr-only">, needs your attention</span>
+              </span>
+            ) : null}
           </button>
         );
       })}

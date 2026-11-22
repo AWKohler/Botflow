@@ -21,12 +21,35 @@ export type RevenueCatResult<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; error: string };
 
+/**
+ * 423 (RevenueCat locks a project while another change to it is in flight —
+ * e.g. an agent issuing two catalog edits at once) and 429 (rate limit) both
+ * mean "not executed, ask again", so they are safe to retry even for writes.
+ */
+const RETRYABLE_STATUS = new Set([423, 429]);
+const MAX_ATTEMPTS = 3;
+
 /** Low-level authenticated fetch against the RevenueCat v2 API. Never throws. */
 async function rcFetch<T>(
   secretKey: string,
   path: string,
   init?: { method?: string; body?: unknown; timeoutMs?: number },
 ): Promise<RevenueCatResult<T>> {
+  let last: RevenueCatResult<T> = { ok: false, status: 502, error: 'RevenueCat request was not attempted' };
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const { result, retryAfterMs } = await rcFetchOnce<T>(secretKey, path, init);
+    last = result;
+    if (result.ok || !RETRYABLE_STATUS.has(result.status) || attempt === MAX_ATTEMPTS) break;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(retryAfterMs ?? 400 * attempt, 2_000)));
+  }
+  return last;
+}
+
+async function rcFetchOnce<T>(
+  secretKey: string,
+  path: string,
+  init?: { method?: string; body?: unknown; timeoutMs?: number },
+): Promise<{ result: RevenueCatResult<T>; retryAfterMs?: number }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), init?.timeoutMs ?? 15_000);
   try {
@@ -52,17 +75,23 @@ async function rcFetch<T>(
       const message =
         (json as { message?: string } | null)?.message ||
         `RevenueCat API ${res.status}${text ? `: ${text.slice(0, 200)}` : ''}`;
-      return { ok: false, status: res.status, error: message };
+      const retryAfter = Number(res.headers.get('retry-after'));
+      return {
+        result: { ok: false, status: res.status, error: message },
+        ...(Number.isFinite(retryAfter) && retryAfter > 0 ? { retryAfterMs: retryAfter * 1000 } : {}),
+      };
     }
-    return { ok: true, data: (json as T) ?? ({} as T) };
+    return { result: { ok: true, data: (json as T) ?? ({} as T) } };
   } catch (err) {
     const aborted = err instanceof Error && err.name === 'AbortError';
     return {
-      ok: false,
-      status: aborted ? 504 : 502,
-      error: aborted
-        ? 'RevenueCat API timed out'
-        : `RevenueCat request failed: ${err instanceof Error ? err.message : String(err)}`,
+      result: {
+        ok: false,
+        status: aborted ? 504 : 502,
+        error: aborted
+          ? 'RevenueCat API timed out'
+          : `RevenueCat request failed: ${err instanceof Error ? err.message : String(err)}`,
+      },
     };
   } finally {
     clearTimeout(timer);

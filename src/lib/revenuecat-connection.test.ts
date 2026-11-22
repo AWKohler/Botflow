@@ -4,11 +4,13 @@
  * webhook lifecycle, and what disconnect leaves behind.
  */
 import { eq } from 'drizzle-orm';
+import { http, HttpResponse } from 'msw';
 import { describe, expect, test, vi } from 'vitest';
 import { projectRevenueCatConnections, projects } from '@/db/schema';
 import { decryptSecret } from '@/lib/secrets';
 import { currentTestDb, setupTestDb } from '@/test/db';
 import { createProject } from '@/test/factories';
+import { server } from '@/test/network';
 import { fakeRevenueCat } from '@/test/revenuecat-fake';
 import {
   connectRevenueCat,
@@ -16,7 +18,7 @@ import {
   getRevenueCatConnection,
   refreshRevenueCatConnection,
 } from './revenuecat-connection';
-import { checkSecretKeyShape, dashboardUrl, explainRevenueCatError } from './revenuecat';
+import { checkSecretKeyShape, dashboardUrl, explainRevenueCatError, listProjects } from './revenuecat';
 
 vi.hoisted(() => {
   process.env.SECRETS_ENCRYPTION_KEY = 'test-secrets-encryption-key-0123456789abcdef';
@@ -265,6 +267,49 @@ describe('disconnecting', () => {
     expect(await disconnectRevenueCat(project.id)).toEqual({ webhookRemoved: false });
     const [p] = await currentTestDb().select().from(projects).where(eq(projects.id, project.id));
     expect(p.revenuecatStatus).toBe('none');
+  });
+});
+
+describe('RevenueCat answering "busy"', () => {
+  // Observed live: two catalog edits issued at the same moment, the second
+  // came back 423 Locked. Neither 423 nor 429 executes the request.
+  test.each([423, 429])('a %i is retried and the caller sees the eventual success', async (status) => {
+    let calls = 0;
+    server.use(
+      http.get('https://api.revenuecat.com/v2/projects', () => {
+        calls += 1;
+        return calls < 3
+          ? HttpResponse.json({ type: 'locked', message: 'busy' }, { status })
+          : HttpResponse.json({ items: [{ object: 'project', id: 'proj1', name: 'A', created_at: 1 }], next_page: null });
+      }),
+    );
+    const result = await listProjects('sk_full');
+    expect(result.ok).toBe(true);
+    expect(calls).toBe(3);
+  });
+
+  test('it gives up after three attempts and reports the last answer', async () => {
+    let calls = 0;
+    server.use(
+      http.get('https://api.revenuecat.com/v2/projects', () => {
+        calls += 1;
+        return HttpResponse.json({ message: 'still locked' }, { status: 423 });
+      }),
+    );
+    expect(await listProjects('sk_full')).toEqual({ ok: false, status: 423, error: 'still locked' });
+    expect(calls).toBe(3);
+  });
+
+  test('other failures are not retried (a write must never run twice)', async () => {
+    let calls = 0;
+    server.use(
+      http.get('https://api.revenuecat.com/v2/projects', () => {
+        calls += 1;
+        return HttpResponse.json({ message: 'boom' }, { status: 500 });
+      }),
+    );
+    expect((await listProjects('sk_full')).ok).toBe(false);
+    expect(calls).toBe(1);
   });
 });
 

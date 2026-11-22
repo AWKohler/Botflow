@@ -1093,7 +1093,8 @@ export async function POST(req: Request) {
           "convex/revenueCatWebhook.ts (read-only receiver), convex/revenueCatBilling.ts (yours: record entitlements here), " +
           "and the /revenuecat/webhook route in convex/http.ts." +
           (scaffold && (scaffold.filesError || scaffold.envError)
-            ? ` WARNING: backend setup was incomplete (${scaffold.filesError ?? scaffold.envError}); call this tool again after your edits.`
+            ? ` WARNING: the backend part is incomplete (${scaffold.filesError ?? scaffold.envError}). Purchases still work in the app; ` +
+              "run convex_deploy, and if it fails for the same reason tell the user their backend needs attention, quoting the reason."
             : "");
 
         if (!connection) {

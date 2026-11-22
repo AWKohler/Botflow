@@ -257,3 +257,13 @@ export function pauseConvexDeployment(deployUrl: string, deployKey: string): Pro
 export function unpauseConvexDeployment(deployUrl: string, deployKey: string): Promise<void> {
   return changeConvexDeploymentState(deployUrl, deployKey, 'running');
 }
+
+/**
+ * Convex refuses a new project when the team is full. The code it returns is
+ * DeploymentQuotaReached (the limit counts deployments); older responses used
+ * ProjectQuotaReached. Either way the fix is the user's: delete unused Convex
+ * projects or upgrade.
+ */
+export function isConvexQuotaError(message: string): boolean {
+  return /(Project|Deployment)QuotaReached/.test(message);
+}

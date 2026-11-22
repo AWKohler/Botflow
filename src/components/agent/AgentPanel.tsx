@@ -3118,11 +3118,13 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             (detail.subject === 'connected'
               ? '[system-note] The user just connected RevenueCat in the Payments tab. '
               : '[system-note] The user asked, from the Payments tab, for in-app purchase setup to be finished. ') +
-            'Finish it now: call initialize_revenuecat_payments (it confirms the connection and refreshes the project files), ' +
-            'then get_revenuecat_products, and create anything this app sells that is missing with create_revenuecat_product ' +
-            '(if nothing in the app or the conversation says what to sell, ask the user before creating products). ' +
-            'Make sure the app has the RevenueCat SDK, a paywall and entitlement checks as your instructions describe, ' +
-            'run convex_deploy so the purchase receiver is live, start the simulator, and tell the user how to try a test purchase.';
+            'Finish it now, following the in-app purchases section of your instructions: call initialize_revenuecat_payments ' +
+            '(it confirms the connection and refreshes the project files), then get_revenuecat_products, and make the catalog ' +
+            'match what this app sells: create what is missing with create_revenuecat_product and take paywall slots the user ' +
+            'did not ask for off with remove_revenuecat_package (if nothing in the app or the conversation says what to sell, ' +
+            'ask the user first). Make sure the app has the RevenueCat SDK, a paywall and entitlement checks that use the ' +
+            'identifiers from the catalog, run convex_deploy so the purchase receiver is live, start the simulator, and tell ' +
+            'the user how to try a test purchase.';
           break;
       }
       fetch(`/api/projects/${encodeURIComponent(projectId)}/threads/${encodeURIComponent(target)}/queue`, {
