@@ -39,6 +39,11 @@ export interface FakeRevenueCat {
   webhooks: Array<{ id: string; name: string; url: string; authorization_header: string | null; status: string }>;
   /** "METHOD /path" of every request, in order. */
   calls: string[];
+  /**
+   * Make matching requests fail, to model RevenueCat being briefly unavailable.
+   * `match` is tested against "METHOD /path"; `times` defaults to forever.
+   */
+  failures: Array<{ match: RegExp; status: number; times?: number }>;
   /** Number of state-changing requests, to assert idempotency. */
   writes(): number;
 }
@@ -70,6 +75,7 @@ export function fakeRevenueCat(
     packages: [],
     webhooks: [],
     calls: [],
+    failures: [],
     writes: () => rc.calls.filter((c) => !c.startsWith('GET ')).length,
   };
   if (init.testStore !== false) {
@@ -88,7 +94,13 @@ export function fakeRevenueCat(
   ) =>
     async ({ request, params }: { request: Request; params: Record<string, string | readonly string[] | undefined> }) => {
       const url = new URL(request.url);
-      rc.calls.push(`${request.method} ${url.pathname.replace('/v2', '')}`);
+      const signature = `${request.method} ${url.pathname.replace('/v2', '')}`;
+      rc.calls.push(signature);
+      const failing = rc.failures.find((f) => f.match.test(signature) && (f.times === undefined || f.times > 0));
+      if (failing) {
+        if (failing.times !== undefined) failing.times -= 1;
+        return error(failing.status, `simulated ${failing.status}`, 'server_error');
+      }
       const key = (request.headers.get('authorization') ?? '').replace(/^Bearer /, '');
       const kind = rc.keys.get(key);
       if (!kind) return error(401, 'Invalid API key.', 'authentication_error');

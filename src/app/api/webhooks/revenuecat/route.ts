@@ -13,9 +13,11 @@
  *   4. Deliver to the project's Convex HTTP endpoint, HMAC-signed with the
  *      project's revenuecat_webhook_secret; the cron retries failures.
  *
- * When the owner deliberately shares one RevenueCat project between two apps,
- * both webhooks receive every event; the project-namespaced app_user_id
- * (bfp_<projectId>__…) then keeps each app's customers to itself.
+ * A RevenueCat project is connected to exactly one Botflow project (unique
+ * index), so no other project's webhook ever sees these events. Apps generated
+ * by the first version of this integration tagged their customers
+ * bfp_<projectId>__<id>; that prefix is still stripped before delivery, and an
+ * event tagged for a different project is dropped.
  *
  * Returns 401 only when the Authorization header matches no connection (so a
  * misconfigured webhook is visible in RevenueCat); after that, always 200 — we
@@ -272,9 +274,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, ignored: rcEvent.type ?? 'unknown' });
   }
 
-  // The app tags its customers bfp_<projectId>__<its own user id>. An event
-  // tagged for a DIFFERENT project (a RevenueCat project shared by two apps)
-  // belongs to that app's webhook, not this one.
+  // Older generated apps tag their customers bfp_<projectId>__<their user id>.
+  // A tag naming a different project means the event is not this project's.
   const appUserId = (canonical.data.appUserId as string | null) ?? null;
   const taggedProjectId = parseProjectIdFromAppUserId(appUserId);
   if (taggedProjectId && taggedProjectId !== connection.projectId) {

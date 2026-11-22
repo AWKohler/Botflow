@@ -235,7 +235,10 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
   const [secretKey, setSecretKey] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
-  const [sharedWith, setSharedWith] = useState<string[] | null>(null);
+  const submittingRef = useRef(false);
+  // Disconnect could not remove Botflow's webhook from RevenueCat (usually
+  // because the key was revoked): where the user can delete it by hand.
+  const [leftoverWebhookUrl, setLeftoverWebhookUrl] = useState<string | null>(null);
   const [replacingKey, setReplacingKey] = useState(false);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
   // After handing work to the agent, how many of its turns must still finish
@@ -244,6 +247,13 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
   const [agentTurnsPending, setAgentTurnsPending] = useState(0);
   const agentBusyRef = useRef(false);
   const askedAgent = agentTurnsPending > 0;
+  // If the note never reaches the agent (a failed request, a closed chat), do
+  // not show "the agent is finishing" forever.
+  useEffect(() => {
+    if (agentTurnsPending === 0) return;
+    const timer = setTimeout(() => setAgentTurnsPending(0), 15 * 60_000);
+    return () => clearTimeout(timer);
+  }, [agentTurnsPending]);
 
   const connected = status === "connected";
 
@@ -353,54 +363,50 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
     [projectId],
   );
 
-  const handleConnect = useCallback(
-    async (allowSharedProject = false) => {
-      const key = secretKey.trim();
-      if (!key) {
-        setConnectError("Paste the secret key from RevenueCat first. It starts with sk_.");
+  const handleConnect = useCallback(async () => {
+    const key = secretKey.trim();
+    if (!key) {
+      setConnectError("Paste the secret key from RevenueCat first. It starts with sk_.");
+      return;
+    }
+    // A ref, not state: two Enter presses in one frame both see stale state.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setConnectError(null);
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/revenuecat/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rcSecretKey: key }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body.ok === false) {
+        setConnectError(body.error || `Connecting failed (HTTP ${res.status}). Try again.`);
         return;
       }
-      setConnectError(null);
-      setSubmitting(true);
-      try {
-        const res = await fetch(`/api/projects/${projectId}/revenuecat/connect`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rcSecretKey: key, allowSharedProject }),
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok || body.ok === false) {
-          if (body.code === "shared-project") {
-            setSharedWith(Array.isArray(body.sharedWith) ? body.sharedWith : []);
-          } else {
-            setSharedWith(null);
-          }
-          setConnectError(body.error || `Connecting failed (HTTP ${res.status}). Try again.`);
-          return;
-        }
-        // The key is stored server-side now; drop it from the page.
-        setSecretKey("");
-        setSharedWith(null);
-        setReplacingKey(false);
-        toast({
-          title: "RevenueCat connected",
-          description: body.testStoreReady
-            ? `Linked to "${body.projectName}". Test purchases are ready.`
-            : `Linked to "${body.projectName}".`,
-        });
-        if (body.agentThread) {
-          notifyAgent("connected", body.agentThread === "current" ? null : body.agentThread);
-        }
-        onChanged?.();
-        await loadStatus();
-      } catch {
-        setConnectError("Could not reach Botflow. Check your connection and try again.");
-      } finally {
-        setSubmitting(false);
+      // The key is stored server-side now; drop it from the page.
+      setSecretKey("");
+      setReplacingKey(false);
+      setLeftoverWebhookUrl(null);
+      toast({
+        title: "RevenueCat connected",
+        description: body.testStoreReady
+          ? `Linked to "${body.projectName}". Test purchases are ready.`
+          : `Linked to "${body.projectName}".`,
+      });
+      if (body.agentThread) {
+        notifyAgent("connected", body.agentThread === "current" ? null : body.agentThread);
       }
-    },
-    [projectId, secretKey, toast, notifyAgent, onChanged, loadStatus],
-  );
+      onChanged?.();
+      await loadStatus();
+    } catch {
+      setConnectError("Could not reach Botflow. Check your connection and try again.");
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  }, [projectId, secretKey, toast, notifyAgent, onChanged, loadStatus]);
 
   const handleCheckAgain = useCallback(async () => {
     setChecking(true);
@@ -412,13 +418,26 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
     try {
       const res = await fetch(`/api/projects/${projectId}/revenuecat/disconnect`, { method: "POST" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json().catch(() => ({}))) as {
+        hadWebhook?: boolean;
+        webhookRemoved?: boolean;
+        integrationsUrl?: string | null;
+      };
       setConfirmingDisconnect(false);
       setCatalog(null);
       setActivity(null);
       setAgentTurnsPending(0);
+      const leftover = body.hadWebhook && !body.webhookRemoved;
+      setLeftoverWebhookUrl(leftover ? (body.integrationsUrl ?? REVENUECAT_HOME) : null);
       toast({
         title: connected ? "RevenueCat disconnected" : "Setup cancelled",
-        description: connected ? "The stored key and the webhook were removed." : undefined,
+        description: !connected
+          ? undefined
+          : leftover
+            ? "The stored key was removed. The webhook in RevenueCat could not be removed; see the note on this page."
+            : body.hadWebhook
+              ? "The stored key and the webhook were removed."
+              : "The stored key was removed.",
       });
       onChanged?.();
       await loadStatus();
@@ -459,7 +478,6 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
           onChange={(e) => {
             setSecretKey(e.target.value);
             if (connectError) setConnectError(null);
-            if (sharedWith) setSharedWith(null);
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !submitting) void handleConnect();
@@ -481,13 +499,6 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
           className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-xs leading-relaxed text-warning"
         >
           {connectError}
-          {sharedWith ? (
-            <div className="mt-2">
-              <Button variant="outline" size="sm" onClick={() => void handleConnect(true)} disabled={submitting}>
-                Connect anyway
-              </Button>
-            </div>
-          ) : null}
         </div>
       ) : null}
     </div>
@@ -510,6 +521,15 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
           {loadError ? (
             <div role="alert" className="rounded-xl border border-warning-border bg-warning-soft p-4 text-xs text-warning">
               {loadError}
+            </div>
+          ) : null}
+
+          {leftoverWebhookUrl ? (
+            <div role="alert" className="rounded-xl border border-warning-border bg-warning-soft p-4 text-xs leading-relaxed text-warning">
+              RevenueCat is disconnected here, but Botflow could not remove its webhook from your RevenueCat
+              project (the key no longer works). RevenueCat will keep trying to send purchase events and
+              report them as failing. Delete the webhook named &quot;Botflow: …&quot; under Integrations,
+              Webhooks. <ExternalLink href={leftoverWebhookUrl}>Open Integrations</ExternalLink>
             </div>
           ) : null}
 

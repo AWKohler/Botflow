@@ -26,6 +26,8 @@ const MARKETING_VERSION_RE = /^\d+\.\d+(\.\d+)?$/;
 interface SubmitBody {
   bundleId?: unknown;
   marketingVersion?: unknown;
+  /** The user chose to upload a build whose in-app purchases are switched off. */
+  allowPurchasesOff?: unknown;
   appName?: unknown;
   scheme?: unknown;
 }
@@ -133,10 +135,26 @@ export async function POST(
     //    The App Store app is usually added to RevenueCat long after the
     //    first connect, so look for its key again right before baking it.
     if (project.revenuecatStatus === "connected") {
-      const { refreshRevenueCatConnection } = await import("@/lib/revenuecat-connection");
+      const { getRevenueCatConnection, refreshRevenueCatConnection } = await import("@/lib/revenuecat-connection");
       await refreshRevenueCatConnection(projectId).catch((err) =>
         console.error("[swift-publish/submit] RevenueCat refresh failed:", err),
       );
+      // An App Store build without the App Store key has purchases switched
+      // off. That is a legitimate choice (a first TestFlight build before the
+      // products exist), but never a silent one: Apple would review an app
+      // whose paywall says purchases are not set up.
+      const connection = await getRevenueCatConnection(projectId);
+      if (!connection?.rcAppStoreSdkKey && body?.allowPurchasesOff !== true) {
+        return NextResponse.json(
+          {
+            error:
+              "This app sells in-app purchases, but its RevenueCat project has no App Store app yet, so this build would ship with purchases switched off. " +
+              "Follow \"Selling for real on the App Store\" in the Payments tab and choose Check again there, or submit anyway to upload a build without purchases.",
+            purchasesOff: true,
+          },
+          { status: 409 },
+        );
+      }
     }
     await materializeSwiftBuildConfig(projectId, "release");
     const tarball = await tarSandboxProject(projectId, { excludeConvex: true });

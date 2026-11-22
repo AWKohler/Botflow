@@ -342,6 +342,73 @@ describe("a RevenueCat project that already has RevenueCat's starter products", 
   });
 });
 
+describe('Test Store and App Store are separate products', () => {
+  test('an App Store product that unlocks nothing is flagged even though its Test Store twin is fine', async () => {
+    const rc = fakeRevenueCat({ appStore: true });
+    await provisionProduct(ctxFor(rc), MONTHLY);
+    // Someone detached the App Store product from the entitlement in the dashboard.
+    const appStoreProduct = rc.products.find((p) => p.app_id === 'app_ios')!;
+    rc.entitlements[0].productIds = rc.entitlements[0].productIds.filter((id) => id !== appStoreProduct.id);
+
+    const catalog = await catalogOf(rc);
+    // What the simulator sees is still right…
+    expect(catalog.products[0].entitlements).toEqual(['pro']);
+    expect(catalog.readyForTestPurchases).toBe(true);
+    // …but a real purchase would unlock nothing, and the diagnosis says so.
+    expect(catalog.issues).toEqual([
+      expect.objectContaining({
+        severity: 'warning',
+        code: 'app-store-product-incomplete',
+        message: expect.stringContaining('does not unlock pro'),
+      }),
+    ]);
+  });
+
+  test('a package missing its App Store product is flagged', async () => {
+    const rc = fakeRevenueCat({ appStore: true });
+    await provisionProduct(ctxFor(rc), MONTHLY);
+    const appStoreProduct = rc.products.find((p) => p.app_id === 'app_ios')!;
+    rc.packages[0].productIds = rc.packages[0].productIds.filter((id) => id !== appStoreProduct.id);
+
+    const catalog = await catalogOf(rc);
+    expect(catalog.issues.map((i) => i.code)).toEqual(['app-store-product-incomplete']);
+    expect(catalog.issues[0].message).toContain('will not appear in the published app');
+    // Creating the product again repairs it.
+    await provisionProduct(ctxFor(rc), MONTHLY);
+    expect((await catalogOf(rc)).issues).toEqual([]);
+  });
+});
+
+describe('prices in a catalog with many old products', () => {
+  test('what the paywall sells is priced first, and an unread price is not reported as missing', async () => {
+    const rc = fakeRevenueCat();
+    // Fourteen retired products (re-pricing always makes a new one)…
+    for (let i = 0; i < 14; i++) {
+      await provisionProduct(ctxFor(rc), { storeIdentifier: `old_${i}`, type: 'subscription', priceUsd: 1 + i });
+    }
+    // …and the one actually for sale, created last.
+    await provisionProduct(ctxFor(rc), MONTHLY);
+
+    const catalog = await catalogOf(rc);
+    const selling = catalog.products.find((p) => p.identifier === 'pro_monthly');
+    expect(selling).toMatchObject({ onPaywall: true, testPrice: { currency: 'USD', amount: 4.99 } });
+    expect(catalog.issues).toEqual([]);
+  });
+});
+
+describe('setting a price that is already there', () => {
+  test('a refused second price is read back instead of reported as a failure', async () => {
+    const rc = fakeRevenueCat();
+    await provisionProduct(ctxFor(rc), MONTHLY);
+    // The read that decides whether to set the price is stale once (RevenueCat
+    // applies prices asynchronously), so the tool tries to set it again.
+    rc.failures.push({ match: /GET .*\/store_state$/, status: 503, times: 1 });
+    const again = await provisionProduct(ctxFor(rc), MONTHLY);
+    expect(again).toMatchObject({ ok: true, testStore: { price: '$4.99' } });
+    expect(again.ok ? again.notes.join(' ') : '').not.toMatch(/could not be set/);
+  });
+});
+
 describe('tool input validation', () => {
   test('accepts the documented shape', () => {
     expect(parseProvisionInput({ ...MONTHLY })).toEqual({ ok: true, input: expect.objectContaining(MONTHLY) });

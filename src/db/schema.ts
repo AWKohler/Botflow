@@ -877,9 +877,10 @@ export type StripeObjectProjectMap = typeof stripeObjectProjectMap.$inferSelect;
 // ─── RevenueCat (iOS in-app purchases) ─────────────────────────────────────────
 
 // One row per connected Botflow project. A RevenueCat project maps to ONE app
-// (its SDK keys, Test Store, offerings and entitlements are all per RevenueCat
-// project), so the connection lives on the Botflow project, not the user: each
-// app pastes the secret key of its own RevenueCat project. Everything except
+// (its SDK keys, Test Store, offerings, entitlements and webhooks are all per
+// RevenueCat project), so the connection lives on the Botflow project, not the
+// user, and a RevenueCat project can be connected to only one Botflow project:
+// each app pastes the secret key of its own RevenueCat project. Everything except
 // that key is discovered through the RevenueCat API at connect time and cached
 // here so builds and webhooks never wait on RevenueCat.
 // See drizzle/0016_revenuecat_project_connections.sql.
@@ -912,7 +913,9 @@ export const projectRevenueCatConnections = pgTable('project_revenuecat_connecti
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (t) => ({
   inboundDigestUnique: uniqueIndex('project_revenuecat_connections_inbound_digest_unique').on(t.inboundWebhookSecretDigest),
-  rcProjectIdx: index('project_revenuecat_connections_rc_project_idx').on(t.rcProjectId),
+  // One RevenueCat project per Botflow project: its webhooks are project-wide,
+  // so two apps on one RevenueCat project would receive each other's purchases.
+  rcProjectUnique: uniqueIndex('project_revenuecat_connections_rc_project_unique').on(t.rcProjectId),
 }));
 
 export type ProjectRevenueCatConnection = typeof projectRevenueCatConnections.$inferSelect;

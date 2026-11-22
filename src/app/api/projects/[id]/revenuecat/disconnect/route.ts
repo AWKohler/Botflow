@@ -37,7 +37,7 @@ export async function POST(
     return NextResponse.json({ ok: false, error: 'Project not found' }, { status: 404 });
   }
 
-  const { webhookRemoved } = await disconnectRevenueCat(projectId);
+  const result = await disconnectRevenueCat(projectId);
 
   // The next build must not carry the old SDK key.
   after(async () => {
@@ -49,5 +49,5 @@ export async function POST(
     }
   });
 
-  return NextResponse.json({ ok: true, status: 'none', webhookRemoved });
+  return NextResponse.json({ ok: true, status: 'none', ...result });
 }

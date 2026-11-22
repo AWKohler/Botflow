@@ -165,28 +165,64 @@ describe('keys that cannot be used are refused with advice, and nothing is store
 });
 
 describe('one RevenueCat project per app', () => {
-  test('a second app on the same RevenueCat project needs an explicit yes', async () => {
+  test('a RevenueCat project already used by another of your apps is refused, naming that app', async () => {
     const rc = fakeRevenueCat();
     const first = await swiftProject('owner_a', 'StreakPal');
     const second = await swiftProject('owner_a', 'FocusTimer');
     await connect(first, 'sk_full');
 
     const refused = await connect(second, 'sk_full');
-    expect(refused).toMatchObject({ ok: false, status: 409, code: 'shared-project', sharedWith: ['StreakPal'] });
+    expect(refused).toMatchObject({ ok: false, status: 409, code: 'project-in-use' });
+    expect(refused.ok ? '' : refused.error).toContain('your app "StreakPal"');
     expect(await connectionRow(second.id)).toBeUndefined();
-
-    const allowed = await connect(second, 'sk_full', { allowSharedProject: true });
-    expect(allowed.ok).toBe(true);
-    // Each app has its own webhook with its own secret, so events never cross.
-    expect(rc.webhooks).toHaveLength(2);
-    expect(new Set(rc.webhooks.map((w) => w.authorization_header)).size).toBe(2);
+    // Nothing was created in RevenueCat for the refused app.
+    expect(rc.webhooks).toHaveLength(1);
   });
 
-  test("another owner's use of the same RevenueCat project is not revealed", async () => {
+  test("another owner's app is refused too, without naming it", async () => {
     fakeRevenueCat();
-    await connect(await swiftProject('owner_a'), 'sk_full');
-    const result = await connect(await swiftProject('owner_b'), 'sk_full');
-    expect(result.ok).toBe(true);
+    await connect(await swiftProject('owner_a', 'Secret Side Project'), 'sk_full');
+    const refused = await connect(await swiftProject('owner_b', 'Other'), 'sk_full');
+    expect(refused).toMatchObject({ ok: false, code: 'project-in-use' });
+    expect(refused.ok ? '' : refused.error).toContain('another Botflow app');
+    expect(refused.ok ? '' : refused.error).not.toContain('Secret Side Project');
+  });
+
+  test('after the first app disconnects, the RevenueCat project is free again', async () => {
+    fakeRevenueCat();
+    const first = await swiftProject('owner_a', 'StreakPal');
+    const second = await swiftProject('owner_a', 'FocusTimer');
+    await connect(first, 'sk_full');
+    await disconnectRevenueCat(first.id);
+    expect((await connect(second, 'sk_full')).ok).toBe(true);
+  });
+
+  test('the database refuses a second claim even if the check is raced', async () => {
+    fakeRevenueCat();
+    const first = await swiftProject('owner_a', 'StreakPal');
+    const second = await swiftProject('owner_a', 'FocusTimer');
+    await connect(first, 'sk_full');
+    const row = await connectionRow(first.id);
+    await expect(
+      currentTestDb()
+        .insert(projectRevenueCatConnections)
+        .values({ ...row, projectId: second.id, inboundWebhookSecretDigest: 'different' }),
+    ).rejects.toThrow();
+  });
+});
+
+describe('two connects at once', () => {
+  test('the second is told to wait, and only one webhook exists afterwards', async () => {
+    const rc = fakeRevenueCat();
+    const project = await swiftProject();
+    const [a, b] = await Promise.all([connect(project, 'sk_full'), connect(project, 'sk_full')]);
+    const results = [a, b];
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.find((r) => !r.ok)).toMatchObject({ status: 409, code: 'busy' });
+    expect(rc.webhooks).toHaveLength(1);
+    // The lock is released: connecting again works.
+    expect((await connect(project, 'sk_full')).ok).toBe(true);
+    expect(rc.webhooks).toHaveLength(1);
   });
 });
 
@@ -215,6 +251,89 @@ describe('reconnecting and repairing', () => {
     expect(refreshed).toMatchObject({ keyValid: true, webhookReady: true });
     expect(rc.webhooks).toHaveLength(1);
     expect((await connectionRow(project.id)).rcWebhookIntegrationId).toBe(rc.webhooks[0].id);
+  });
+
+  test('switching to another RevenueCat project with a key that cannot write leaves the working connection untouched', async () => {
+    const rc = fakeRevenueCat();
+    const project = await swiftProject();
+    await connect(project, 'sk_full');
+    const before = await connectionRow(project.id);
+    const webhookBefore = rc.webhooks[0].id;
+
+    // A different RevenueCat project, reached with a read-only key: discovery
+    // passes, the webhook write is refused.
+    rc.projectId = 'proj_other';
+    const refused = await connect(project, 'sk_readonly');
+    expect(refused).toMatchObject({ ok: false, code: 'read-only' });
+
+    // The original webhook is still in RevenueCat and the row still points at it.
+    expect(rc.webhooks.map((w) => w.id)).toEqual([webhookBefore]);
+    expect(await connectionRow(project.id)).toEqual(before);
+  });
+
+  test('switching to another RevenueCat project removes the webhook from the old one afterwards', async () => {
+    const rc = fakeRevenueCat();
+    const project = await swiftProject();
+    await connect(project, 'sk_full');
+    const oldWebhook = rc.webhooks[0].id;
+
+    rc.projectId = 'proj_other';
+    expect(await connect(project, 'sk_full')).toMatchObject({ ok: true, rcProjectId: 'proj_other' });
+    expect(rc.webhooks).toHaveLength(1);
+    expect(rc.webhooks[0].id).not.toBe(oldWebhook);
+    expect((await connectionRow(project.id)).rcWebhookIntegrationId).toBe(rc.webhooks[0].id);
+  });
+
+  test.each([
+    ['the Test Store key lookup', /GET .*\/apps\/app_test\/public_api_keys/],
+    ['the App Store key lookup', /GET .*\/apps\/app_ios\/public_api_keys/],
+    ['the app list', /GET .*\/apps$/],
+  ])('a failed lookup (%s) during a refresh keeps every cached key', async (_label, match) => {
+    const rc = fakeRevenueCat({ appStore: true });
+    const project = await swiftProject();
+    await connect(project, 'sk_full');
+    const before = await connectionRow(project.id);
+
+    rc.failures.push({ match, status: 503 });
+    const refreshed = await refreshRevenueCatConnection(project.id, ORIGIN);
+    expect(refreshed).toMatchObject({
+      unreachable: true,
+      keyValid: true, // RevenueCat did not reject the key; it just did not answer
+      keyError: null,
+      testStoreReady: true,
+      appStoreReady: true,
+    });
+    const after = await connectionRow(project.id);
+    expect(after.rcTestStoreSdkKey).toBe('test_PUBLICKEY');
+    expect(after.rcAppStoreSdkKey).toBe('appl_PUBLICKEY');
+    expect(after.rcWebhookIntegrationId).toBe(before.rcWebhookIntegrationId);
+  });
+
+  test('a connect during a RevenueCat outage fails cleanly instead of storing "no keys"', async () => {
+    const rc = fakeRevenueCat();
+    rc.failures.push({ match: /public_api_keys/, status: 503 });
+    const project = await swiftProject();
+    const result = await connect(project, 'sk_full');
+    expect(result).toMatchObject({ ok: false, status: 502, code: 'unreachable' });
+    expect(await connectionRow(project.id)).toBeUndefined();
+    expect(rc.webhooks).toEqual([]);
+  });
+
+  test('a webhook update that fails briefly does not make Botflow forget its webhook', async () => {
+    const rc = fakeRevenueCat();
+    const project = await swiftProject();
+    await connect(project, 'sk_full');
+    const id = rc.webhooks[0].id;
+
+    rc.failures.push({ match: /POST .*\/integrations\/webhooks\//, status: 503, times: 1 });
+    const refreshed = await refreshRevenueCatConnection(project.id, ORIGIN);
+    expect(refreshed?.webhookReady).toBe(true);
+    const row = await connectionRow(project.id);
+    expect(row.rcWebhookIntegrationId).toBe(id);
+    expect(row.webhookError).toMatch(/503/);
+    // …so a later disconnect still removes it.
+    expect(await disconnectRevenueCat(project.id)).toMatchObject({ hadWebhook: true, webhookRemoved: true });
+    expect(rc.webhooks).toEqual([]);
   });
 
   test('an App Store app added later is picked up by a refresh', async () => {
@@ -247,7 +366,7 @@ describe('reconnecting and repairing', () => {
     rc.keys.delete('sk_full');
 
     const refreshed = await refreshRevenueCatConnection(project.id);
-    expect(refreshed).toMatchObject({ keyValid: false, testStoreReady: true });
+    expect(refreshed).toMatchObject({ keyValid: false, unreachable: false, testStoreReady: true });
     expect(refreshed?.keyError).toMatch(/does not recognise/);
     expect((await connectionRow(project.id)).rcTestStoreSdkKey).toBe('test_PUBLICKEY');
   });
@@ -259,7 +378,11 @@ describe('disconnecting', () => {
     const project = await swiftProject();
     await connect(project, 'sk_full');
 
-    expect(await disconnectRevenueCat(project.id)).toEqual({ webhookRemoved: true });
+    expect(await disconnectRevenueCat(project.id)).toEqual({
+      hadWebhook: true,
+      webhookRemoved: true,
+      integrationsUrl: null,
+    });
     expect(rc.webhooks).toEqual([]);
     expect(await connectionRow(project.id)).toBeUndefined();
     expect(await getRevenueCatConnection(project.id)).toBeNull();
@@ -267,9 +390,31 @@ describe('disconnecting', () => {
     expect(p).toMatchObject({ revenuecatStatus: 'none', revenuecatProjectId: null, revenuecatWebhookSecret: null });
   });
 
+  test.each([
+    ['the key was revoked first', (rc: ReturnType<typeof fakeRevenueCat>) => void rc.keys.delete('sk_full')],
+    ['RevenueCat is down', (rc: ReturnType<typeof fakeRevenueCat>) => void rc.failures.push({ match: /DELETE /, status: 503 })],
+  ])('when %s: the key is still deleted here, and the caller learns the webhook is left behind', async (_label, arrange) => {
+    const rc = fakeRevenueCat();
+    const project = await swiftProject();
+    await connect(project, 'sk_full');
+    arrange(rc);
+
+    expect(await disconnectRevenueCat(project.id)).toEqual({
+      hadWebhook: true,
+      webhookRemoved: false,
+      integrationsUrl: 'https://app.revenuecat.com/projects/1a2b3c4d/integrations',
+    });
+    expect(rc.webhooks).toHaveLength(1);
+    expect(await connectionRow(project.id)).toBeUndefined();
+  });
+
   test('is safe before any key was pasted (cancelling setup)', async () => {
     const project = await createProject({ userId: 'owner_a', platform: 'swift', revenuecatStatus: 'connecting' });
-    expect(await disconnectRevenueCat(project.id)).toEqual({ webhookRemoved: false });
+    expect(await disconnectRevenueCat(project.id)).toEqual({
+      hadWebhook: false,
+      webhookRemoved: false,
+      integrationsUrl: null,
+    });
     const [p] = await currentTestDb().select().from(projects).where(eq(projects.id, project.id));
     expect(p.revenuecatStatus).toBe('none');
   });

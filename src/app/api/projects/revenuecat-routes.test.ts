@@ -12,7 +12,7 @@ import { addMember, createProject } from '@/test/factories';
 import { server } from '@/test/network';
 import { fakeRevenueCat } from '@/test/revenuecat-fake';
 import { callRoute, readJson } from '@/test/route';
-import { markAgentWaitingForConnect } from '@/lib/revenuecat-connection';
+import { clearAgentWaitingForConnect, markAgentWaitingForConnect } from '@/lib/revenuecat-connection';
 
 const background = vi.hoisted(() => {
   process.env.REVENUECAT_ENABLED = 'true';
@@ -96,16 +96,32 @@ describe('POST revenuecat/connect', () => {
     expect(background.tasks.length).toBeGreaterThan(0);
   });
 
-  test('tells the workspace which chat asked for payments', async () => {
+  test('tells the workspace which chat asked for payments, until that agent picks the work up', async () => {
     await proOwner();
     fakeRevenueCat();
     const p = await swiftProject({ revenuecatStatus: 'connecting' });
     await markAgentWaitingForConnect(p.id, 'thread_123');
     const body = await readJson(await connect(p.id, { rcSecretKey: 'sk_full' }));
     expect(body.agentThread).toBe('thread_123');
-    // Delivered once: a later reconnect does not nudge the agent again.
+    // The browser may fail to deliver the note, so the marker is kept: a
+    // reconnect offers it again.
     const again = await readJson(await connect(p.id, { rcSecretKey: 'sk_full' }));
-    expect(again.agentThread).toBeNull();
+    expect(again.agentThread).toBe('thread_123');
+    // Once the agent is working on payments again, nobody is waiting.
+    await clearAgentWaitingForConnect(p.id);
+    const later = await readJson(await connect(p.id, { rcSecretKey: 'sk_full' }));
+    expect(later.agentThread).toBeNull();
+  });
+
+  test('a RevenueCat project used by another app → 409 project-in-use', async () => {
+    await proOwner();
+    fakeRevenueCat();
+    const first = await swiftProject({ name: 'First' });
+    const second = await swiftProject({ name: 'Second' });
+    await connect(first.id, { rcSecretKey: 'sk_full' });
+    const res = await connect(second.id, { rcSecretKey: 'sk_full' });
+    expect(res.status).toBe(409);
+    expect(await readJson(res)).toMatchObject({ ok: false, code: 'project-in-use' });
   });
 
   test.each([
@@ -307,7 +323,13 @@ describe('POST revenuecat/disconnect', () => {
     await connect(p.id, { rcSecretKey: 'sk_full' });
 
     const res = await callRoute(disconnectRoute.POST, { method: 'POST', params: { id: p.id } });
-    expect(await readJson(res)).toEqual({ ok: true, status: 'none', webhookRemoved: true });
+    expect(await readJson(res)).toEqual({
+      ok: true,
+      status: 'none',
+      hadWebhook: true,
+      webhookRemoved: true,
+      integrationsUrl: null,
+    });
     expect(rc.webhooks).toEqual([]);
     expect(await currentTestDb().select().from(projectRevenueCatConnections)).toEqual([]);
     expect(await readJson(await status(p.id))).toMatchObject({ status: 'none', connection: null });

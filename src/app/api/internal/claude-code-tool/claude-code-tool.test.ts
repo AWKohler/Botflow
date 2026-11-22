@@ -84,7 +84,7 @@ describe('editor restrictions', () => {
     return mintToolToken({ userId: 'editor', projectId: p.id });
   }
 
-  test.each(['initialize_stripe_payments', 'setup_oauth_provider'])(
+  test.each(['initialize_stripe_payments', 'initialize_revenuecat_payments', 'setup_oauth_provider'])(
     'owner-only integration tool %s is refused for editors',
     async (tool) => {
       const token = await editorToken();

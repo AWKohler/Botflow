@@ -98,7 +98,8 @@ export interface CatalogIssue {
     | 'package-missing-test-product'
     | 'missing-test-price'
     | 'mixed-entitlements'
-    | 'product-not-in-app-store';
+    | 'product-not-in-app-store'
+    | 'app-store-product-incomplete';
   message: string;
 }
 
@@ -135,9 +136,20 @@ export async function readCatalog(ctx: CatalogContext): Promise<{ ok: true; cata
   const hasAppStore = apps.data.items.some((a) => a.type === 'app_store');
   const active = products.data.items.filter((p) => p.state !== 'inactive');
 
-  // Test Store prices live on the product's store state. Capped so a large
-  // catalog cannot turn one tab load into dozens of RevenueCat calls.
-  const testProducts = active.filter((p) => storeOf(p.app_id, ctx, appTypes) === 'test_store').slice(0, 12);
+  const currentOffering = offerings.data.items.find((o) => o.is_current) ?? null;
+  const paywallIdentifiers = new Set(
+    (currentOffering?.packages?.items ?? []).flatMap((pkg) =>
+      (pkg.products?.items ?? []).map((x) => x.product.store_identifier),
+    ),
+  );
+
+  // Test Store prices live on the product's store state: one call per product,
+  // so the number is capped. What the paywall sells is looked up first; a
+  // re-priced catalog accumulates old products and those can wait.
+  const testProducts = active
+    .filter((p) => storeOf(p.app_id, ctx, appTypes) === 'test_store')
+    .sort((a, b) => Number(paywallIdentifiers.has(b.store_identifier)) - Number(paywallIdentifiers.has(a.store_identifier)))
+    .slice(0, 12);
   const prices = new Map<string, { currency: string; amount: number } | null>();
   await Promise.all(
     testProducts.map(async (p) => {
@@ -147,27 +159,31 @@ export async function readCatalog(ctx: CatalogContext): Promise<{ ok: true; cata
       prices.set(p.store_identifier, usd ? { currency: usd[0], amount: usd[1].amount_micros / 1_000_000 } : null);
     }),
   );
+  const priceUnknown = new Set(
+    active
+      .filter((p) => storeOf(p.app_id, ctx, appTypes) === 'test_store' && !prices.has(p.store_identifier))
+      .map((p) => p.store_identifier),
+  );
 
-  const entitlementsByProduct = new Map<string, Set<string>>();
+  // Entitlements attach to a product in ONE store. The same identifier can
+  // unlock "pro" in the Test Store and nothing in the App Store, so keep the
+  // two apart: keyed by RevenueCat product id, not by store identifier.
+  const entitlementsByProductId = new Map<string, Set<string>>();
   for (const entitlement of entitlements.data.items) {
     for (const product of entitlement.products?.items ?? []) {
-      const set = entitlementsByProduct.get(product.store_identifier) ?? new Set<string>();
+      const set = entitlementsByProductId.get(product.id) ?? new Set<string>();
       set.add(entitlement.lookup_key);
-      entitlementsByProduct.set(product.store_identifier, set);
+      entitlementsByProductId.set(product.id, set);
     }
   }
-
-  const currentOffering = offerings.data.items.find((o) => o.is_current) ?? null;
-  const paywallIdentifiers = new Set(
-    (currentOffering?.packages?.items ?? []).flatMap((pkg) =>
-      (pkg.products?.items ?? []).map((x) => x.product.store_identifier),
-    ),
-  );
+  const perStore = new Map<string, Partial<Record<'test_store' | 'app_store' | 'other', string[]>>>();
 
   // One row per store identifier: the same id exists once per store.
   const byIdentifier = new Map<string, CatalogProduct>();
   for (const p of active) {
     const store = storeOf(p.app_id, ctx, appTypes);
+    const own = [...(entitlementsByProductId.get(p.id) ?? [])];
+    perStore.set(p.store_identifier, { ...perStore.get(p.store_identifier), [store]: own });
     const row = byIdentifier.get(p.store_identifier) ?? {
       identifier: p.store_identifier,
       type: p.type,
@@ -175,12 +191,18 @@ export async function readCatalog(ctx: CatalogContext): Promise<{ ok: true; cata
       duration: p.subscription?.duration ?? null,
       stores: [],
       testPrice: null,
-      entitlements: [...(entitlementsByProduct.get(p.store_identifier) ?? [])],
+      entitlements: [],
       onPaywall: paywallIdentifiers.has(p.store_identifier),
     };
     if (!row.stores.includes(store)) row.stores.push(store);
     if (store === 'test_store') row.testPrice = prices.get(p.store_identifier) ?? null;
     byIdentifier.set(p.store_identifier, row);
+  }
+  for (const row of byIdentifier.values()) {
+    // What a development build sees when there is a Test Store product;
+    // otherwise whatever the only store says.
+    const stores = perStore.get(row.identifier) ?? {};
+    row.entitlements = stores.test_store ?? stores.app_store ?? stores.other ?? [];
   }
   // What the paywall sells first, then anything else in the RevenueCat project.
   const catalogProducts = [...byIdentifier.values()].sort((a, b) => Number(b.onPaywall) - Number(a.onPaywall));
@@ -255,7 +277,7 @@ export async function readCatalog(ctx: CatalogContext): Promise<{ ok: true; cata
           message: `"${product.identifier}" is not attached to an entitlement, so buying it unlocks nothing.`,
         });
       }
-      if (product.stores.includes('test_store') && !product.testPrice) {
+      if (product.stores.includes('test_store') && !product.testPrice && !priceUnknown.has(product.identifier)) {
         issues.push({
           severity: 'warning',
           code: 'missing-test-price',
@@ -268,6 +290,33 @@ export async function readCatalog(ctx: CatalogContext): Promise<{ ok: true; cata
           code: 'product-not-in-app-store',
           message: `"${product.identifier}" exists only in the Test Store. Before publishing it also needs an App Store product with the same id.`,
         });
+      }
+      // The App Store product is a separate RevenueCat product: it needs the
+      // same entitlements, and its own place in the package.
+      const stores = perStore.get(product.identifier) ?? {};
+      if (stores.test_store && stores.app_store) {
+        const missing = stores.test_store.filter((e) => !stores.app_store!.includes(e));
+        if (missing.length > 0) {
+          issues.push({
+            severity: 'warning',
+            code: 'app-store-product-incomplete',
+            message: `In the App Store, "${product.identifier}" does not unlock ${missing.join(', ')} (it does in the Test Store), so a real purchase would unlock nothing. Create the product again to attach it.`,
+          });
+        }
+      }
+    }
+    if (hasAppStore && currentOffering) {
+      for (const pkg of currentOffering.packages?.items ?? []) {
+        const inPackage = pkg.products?.items ?? [];
+        const test = inPackage.find((x) => storeOf(x.product.app_id, ctx, appTypes) === 'test_store');
+        const appStore = inPackage.some((x) => storeOf(x.product.app_id, ctx, appTypes) === 'app_store');
+        if (test && !appStore && byIdentifier.get(test.product.store_identifier)?.stores.includes('app_store')) {
+          issues.push({
+            severity: 'warning',
+            code: 'app-store-product-incomplete',
+            message: `Package "${pkg.lookup_key}" has no App Store product, so it will not appear in the published app. Create "${test.product.store_identifier}" again to add it.`,
+          });
+        }
       }
     }
     const unlocked = new Set(selling.flatMap((p) => p.entitlements));
@@ -436,8 +485,17 @@ export async function provisionProduct(
         currency: 'USD',
         amountMicros: Math.round(input.priceUsd * 1_000_000),
       });
-      if (priced.ok) testPrice = formatUsd(input.priceUsd);
-      else notes.push(`The Test Store price could not be set (${priced.error}). The product works but shows no real price in the simulator.`);
+      if (priced.ok) {
+        // Applied asynchronously: a read in the next second or two may not show it yet.
+        testPrice = formatUsd(input.priceUsd);
+      } else {
+        // RevenueCat refuses a second price for a currency. An earlier call may
+        // have set it while this one's read was still stale: look again.
+        const again = await getProductStoreState(secretKey, rcProjectId, product.item.id);
+        const now = again.ok ? again.data.common?.pricing?.currency_prices?.USD?.amount_micros : undefined;
+        if (now !== undefined) testPrice = formatUsd(now / 1_000_000);
+        else notes.push(`The Test Store price could not be set (${priced.error}). The product works but shows no real price in the simulator.`);
+      }
     } else {
       notes.push(`No priceUsd was given, so "${input.storeIdentifier}" has no Test Store price. Call again with priceUsd to set one.`);
     }

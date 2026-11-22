@@ -26,6 +26,7 @@ import { decryptSecret, encryptSecret } from '@/lib/secrets';
 import {
   checkSecretKeyShape,
   createWebhookIntegration,
+  dashboardUrl,
   deleteWebhookIntegration,
   explainRevenueCatError,
   listApps,
@@ -93,27 +94,35 @@ export interface DiscoveredApps {
   appStoreAmbiguous: boolean;
 }
 
+type Failure = { ok: false; status: number; error: string };
+
+/**
+ * The app's public SDK key. A failed lookup is reported as a failure, never as
+ * "no key": callers cache the answer, and caching a transient error as
+ * "this app has no key" would ship a build with purchases switched off.
+ */
 async function firstSdkKey(
   secretKey: string,
   rcProjectId: string,
   app: RevenueCatApp,
   prefix: string,
-): Promise<string | null> {
+): Promise<{ ok: true; key: string | null } | Failure> {
   const keys = await listPublicApiKeys(secretKey, rcProjectId, app.id);
-  if (!keys.ok) return null;
-  return keys.data.items.find((k) => k.key?.startsWith(prefix))?.key ?? null;
+  if (!keys.ok) return keys;
+  return { ok: true, key: keys.data.items.find((k) => k.key?.startsWith(prefix))?.key ?? null };
 }
 
 /**
- * Find the Test Store and App Store apps and their public SDK keys.
- * `preferAppStoreAppId` keeps an earlier choice stable when the RevenueCat
- * project has several App Store apps.
+ * Find the Test Store and App Store apps and their public SDK keys. Fails as a
+ * whole when any lookup fails, so a caller either gets the full picture or
+ * keeps what it had. `preferAppStoreAppId` keeps an earlier choice stable when
+ * the RevenueCat project has several App Store apps.
  */
 export async function discoverApps(
   secretKey: string,
   rcProjectId: string,
   preferAppStoreAppId?: string | null,
-): Promise<{ ok: true; apps: DiscoveredApps } | { ok: false; status: number; error: string }> {
+): Promise<{ ok: true; apps: DiscoveredApps } | Failure> {
   const listed = await listApps(secretKey, rcProjectId);
   if (!listed.ok) return listed;
 
@@ -127,12 +136,16 @@ export async function discoverApps(
     testStoreApp ? firstSdkKey(secretKey, rcProjectId, testStoreApp, 'test_') : null,
     appStoreApp ? firstSdkKey(secretKey, rcProjectId, appStoreApp, 'appl_') : null,
   ]);
+  if (testKey && !testKey.ok) return testKey;
+  if (appStoreKey && !appStoreKey.ok) return appStoreKey;
 
   return {
     ok: true,
     apps: {
-      testStore: testStoreApp ? { appId: testStoreApp.id, sdkKey: testKey } : null,
-      appStore: appStoreApp ? { appId: appStoreApp.id, sdkKey: appStoreKey, name: appStoreApp.name } : null,
+      testStore: testStoreApp ? { appId: testStoreApp.id, sdkKey: testKey?.key ?? null } : null,
+      appStore: appStoreApp
+        ? { appId: appStoreApp.id, sdkKey: appStoreKey?.key ?? null, name: appStoreApp.name }
+        : null,
       appStoreAmbiguous: !appStoreApp && appStoreApps.length > 1,
     },
   };
@@ -142,7 +155,15 @@ export async function discoverApps(
 
 export type WebhookSetup =
   | { ok: true; integrationId: string }
-  | { ok: false; fatal: boolean; status: number; error: string };
+  | {
+      ok: false;
+      /** The key may not write at all (401/403): it could not create products either. */
+      fatal: boolean;
+      /** The integration we had no longer exists in RevenueCat and was not replaced. */
+      previousGone: boolean;
+      status: number;
+      error: string;
+    };
 
 /**
  * Make sure RevenueCat has exactly one webhook for this Botflow project,
@@ -162,10 +183,11 @@ async function ensureWebhook(opts: {
   const { secretKey, rcProjectId, projectId, url, authorizationHeader } = opts;
   const name = webhookName(projectId, opts.projectName);
   const marker = `[${projectId.slice(0, 8)}]`;
-  // A read-only key fails here; that is fatal (it could not create products either).
+  let previousGone = false;
   const failure = (r: { status: number; error: string }): WebhookSetup => ({
     ok: false,
     fatal: r.status === 401 || r.status === 403,
+    previousGone,
     status: r.status,
     error: r.error,
   });
@@ -178,8 +200,10 @@ async function ensureWebhook(opts: {
       status: 'active',
     });
     if (updated.ok) return { ok: true, integrationId: updated.data.id };
+    // Anything but 404 (a timeout, a 5xx): the integration is still there.
     if (updated.status !== 404) return failure(updated);
-    // 404: the user deleted it in the RevenueCat dashboard. Fall through and recreate.
+    // 404: the user deleted it in the RevenueCat dashboard. Recreate it.
+    previousGone = true;
   }
 
   const existing = await listWebhookIntegrations(secretKey, rcProjectId);
@@ -215,13 +239,13 @@ export type ConnectResult =
       ok: false;
       /** HTTP status the route should answer with. */
       status: number;
-      code: RevenueCatKeyProblem | 'shared-project';
+      code: RevenueCatKeyProblem | 'project-in-use' | 'busy';
       error: string;
-      /** Other Botflow projects of this owner on the same RevenueCat project. */
-      sharedWith?: string[];
     };
 
-function keyFailure(result: { status: number; error: string }): Extract<ConnectResult, { ok: false }> {
+type ConnectFailure = Extract<ConnectResult, { ok: false }>;
+
+function keyFailure(result: { status: number; error: string }): ConnectFailure {
   const explained = explainRevenueCatError(result);
   return {
     ok: false,
@@ -231,6 +255,48 @@ function keyFailure(result: { status: number; error: string }): Extract<ConnectR
     error: explained.message,
   };
 }
+
+/**
+ * A RevenueCat project is connected to ONE Botflow project. Its webhooks are
+ * project-wide, so two apps on one RevenueCat project would each receive the
+ * other's purchases (and, with matching user ids, grant each other's access);
+ * they would also share one Test Store, one paywall and one App Store key.
+ */
+async function projectInUse(
+  rcProjectId: string,
+  rcProjectName: string,
+  projectId: string,
+  userId: string,
+): Promise<ConnectFailure | null> {
+  const db = getDb();
+  const [other] = await db
+    .select({ name: projects.name, ownerId: projects.userId })
+    .from(projectRevenueCatConnections)
+    .innerJoin(projects, eq(projects.id, projectRevenueCatConnections.projectId))
+    .where(
+      and(
+        eq(projectRevenueCatConnections.rcProjectId, rcProjectId),
+        ne(projectRevenueCatConnections.projectId, projectId),
+      ),
+    )
+    .limit(1);
+  if (!other) return null;
+  // Name the other app only to its own owner.
+  const where = other.ownerId === userId ? `your app "${other.name}"` : 'another Botflow app';
+  return {
+    ok: false,
+    status: 409,
+    code: 'project-in-use',
+    error:
+      `The RevenueCat project "${rcProjectName}" is already connected to ${where}. ` +
+      'Each app needs its own RevenueCat project, because a RevenueCat project holds one app\'s products, ' +
+      'paywall and purchase events. Create a new RevenueCat project for this app and paste its key, ' +
+      'or disconnect the other app first.',
+  };
+}
+
+const CONNECT_LOCK_SECONDS = 90;
+const connectLockKey = (projectId: string) => `revenuecat:connecting:${projectId}`;
 
 /**
  * Verify a pasted secret key, discover everything else, set up the webhook and
@@ -243,13 +309,38 @@ export async function connectRevenueCat(opts: {
   userId: string;
   secretKey: string;
   requestOrigin: string;
-  /** The user confirmed sharing a RevenueCat project with another of their apps. */
-  allowSharedProject?: boolean;
 }): Promise<ConnectResult> {
   const secretKey = opts.secretKey.trim();
   const shape = checkSecretKeyShape(secretKey);
   if (!shape.ok) return { ok: false, status: 400, code: 'not-secret-key', error: shape.message };
 
+  // One connect per project at a time: two at once (a double click, two tabs)
+  // would each create a webhook, and only one would be remembered.
+  const { redis } = await import('@/lib/redis');
+  const locked = await redis.set(connectLockKey(opts.projectId), '1', { nx: true, ex: CONNECT_LOCK_SECONDS });
+  if (!locked) {
+    return {
+      ok: false,
+      status: 409,
+      code: 'busy',
+      error: 'This project is already being connected. Wait a few seconds for it to finish.',
+    };
+  }
+  try {
+    return await connectLocked({ ...opts, secretKey });
+  } finally {
+    await redis.del(connectLockKey(opts.projectId)).catch(() => undefined);
+  }
+}
+
+async function connectLocked(opts: {
+  projectId: string;
+  projectName: string;
+  userId: string;
+  secretKey: string;
+  requestOrigin: string;
+}): Promise<ConnectResult> {
+  const { secretKey } = opts;
   const listed = await listProjects(secretKey);
   if (!listed.ok) return keyFailure(listed);
   const rcProject = listed.data.items[0];
@@ -263,37 +354,10 @@ export async function connectRevenueCat(opts: {
   }
 
   const db = getDb();
-  const existing = await getRevenueCatConnection(opts.projectId);
+  const inUse = await projectInUse(rcProject.id, rcProject.name, opts.projectId, opts.userId);
+  if (inUse) return inUse;
 
-  // A RevenueCat project holds one app's products and one Test Store. Two
-  // Botflow apps on the same project would show each other's products, so the
-  // owner has to opt in.
-  if (!opts.allowSharedProject) {
-    const sharing = await db
-      .select({ name: projects.name })
-      .from(projectRevenueCatConnections)
-      .innerJoin(projects, eq(projects.id, projectRevenueCatConnections.projectId))
-      .where(
-        and(
-          eq(projectRevenueCatConnections.rcProjectId, rcProject.id),
-          eq(projects.userId, opts.userId),
-          ne(projectRevenueCatConnections.projectId, opts.projectId),
-        ),
-      );
-    if (sharing.length > 0) {
-      const names = sharing.map((p) => p.name);
-      return {
-        ok: false,
-        status: 409,
-        code: 'shared-project',
-        sharedWith: names,
-        error:
-          `The RevenueCat project "${rcProject.name}" is already connected to ${names.slice(0, 3).join(', ')}` +
-          `${names.length > 3 ? ' and others' : ''}. Apps that share a RevenueCat project share their products, ` +
-          'paywall and test purchases. Create a separate RevenueCat project for this app, or connect anyway.',
-      };
-    }
-  }
+  const existing = await getRevenueCatConnection(opts.projectId);
 
   // Read access to everything the tab and the agent tools use.
   const [discovered, products, entitlements, offerings] = await Promise.all([
@@ -314,11 +378,8 @@ export async function connectRevenueCat(opts: {
   const inboundSecret =
     sameRcProject && existing ? existing.inboundWebhookSecret : `bfrcin_${randomBytes(24).toString('hex')}`;
 
-  // Reconnecting to a different RevenueCat project: remove our webhook from the old one.
-  if (existing && !sameRcProject && existing.rcWebhookIntegrationId) {
-    await deleteWebhookIntegration(existing.secretKey, existing.rcProjectId, existing.rcWebhookIntegrationId);
-  }
-
+  // The new webhook comes FIRST. If it is refused (a read-only key), nothing
+  // has been touched and the connection this project already had keeps working.
   const webhook = await ensureWebhook({
     secretKey,
     rcProjectId: rcProject.id,
@@ -349,10 +410,25 @@ export async function connectRevenueCat(opts: {
     connectedAt: sameRcProject && existing ? existing.connectedAt : now,
     updatedAt: now,
   };
-  await db
-    .insert(projectRevenueCatConnections)
-    .values(values)
-    .onConflictDoUpdate({ target: projectRevenueCatConnections.projectId, set: values });
+  try {
+    await db
+      .insert(projectRevenueCatConnections)
+      .values(values)
+      .onConflictDoUpdate({ target: projectRevenueCatConnections.projectId, set: values });
+  } catch (err) {
+    // The unique index on rc_project_id: another project claimed this
+    // RevenueCat project between our check and our write. Undo our webhook.
+    if (webhook.ok) await deleteWebhookIntegration(secretKey, rcProject.id, webhook.integrationId);
+    const raced = await projectInUse(rcProject.id, rcProject.name, opts.projectId, opts.userId);
+    if (raced) return raced;
+    throw err;
+  }
+
+  // Only now that the new connection is stored: take our webhook off the
+  // RevenueCat project this app was connected to before.
+  if (existing && !sameRcProject && existing.rcWebhookIntegrationId) {
+    await deleteWebhookIntegration(existing.secretKey, existing.rcProjectId, existing.rcWebhookIntegrationId);
+  }
 
   await db
     .update(projects)
@@ -379,9 +455,11 @@ export async function connectRevenueCat(opts: {
 // ─── Refresh ──────────────────────────────────────────────────────────────────
 
 export interface RefreshResult {
-  /** The key still works. False = revoked/deleted in RevenueCat. */
+  /** False only when RevenueCat REJECTED the key (revoked, deleted, permissions removed). */
   keyValid: boolean;
   keyError: string | null;
+  /** RevenueCat could not be reached; everything cached was kept as it was. */
+  unreachable: boolean;
   testStoreReady: boolean;
   appStoreReady: boolean;
   appStoreAmbiguous: boolean;
@@ -391,7 +469,9 @@ export interface RefreshResult {
 /**
  * Re-run discovery for a connected project and repair the webhook if it is
  * missing. Cheap enough for the tab's "Check again" and for a release build;
- * never throws.
+ * never throws. On any failed lookup the cached SDK keys and webhook id are
+ * left exactly as they were: a transient RevenueCat error must not turn into
+ * "this app has no key".
  */
 export async function refreshRevenueCatConnection(
   projectId: string,
@@ -404,9 +484,12 @@ export async function refreshRevenueCatConnection(
 
   const discovered = await discoverApps(secretKey, rcProjectId, connection.rcAppStoreAppId);
   if (!discovered.ok) {
+    const explained = explainRevenueCatError(discovered);
+    const unreachable = explained.problem === 'unreachable';
     return {
-      keyValid: false,
-      keyError: explainRevenueCatError(discovered).message,
+      keyValid: unreachable,
+      keyError: unreachable ? null : explained.message,
+      unreachable,
       testStoreReady: Boolean(connection.rcTestStoreSdkKey),
       appStoreReady: Boolean(connection.rcAppStoreSdkKey),
       appStoreAmbiguous: false,
@@ -428,8 +511,15 @@ export async function refreshRevenueCatConnection(
       authorizationHeader: connection.inboundWebhookSecret,
       existingIntegrationId: integrationId,
     });
-    integrationId = webhook.ok ? webhook.integrationId : null;
-    webhookError = webhook.ok ? null : webhook.error;
+    if (webhook.ok) {
+      integrationId = webhook.integrationId;
+      webhookError = null;
+    } else {
+      // Forget the id only when RevenueCat said the integration is gone. After
+      // a timeout or a 5xx it is still there, and still ours to remove later.
+      if (webhook.previousGone) integrationId = null;
+      webhookError = webhook.error;
+    }
   }
 
   await db
@@ -448,6 +538,7 @@ export async function refreshRevenueCatConnection(
   return {
     keyValid: true,
     keyError: null,
+    unreachable: false,
     testStoreReady: Boolean(apps.testStore?.sdkKey),
     appStoreReady: Boolean(apps.appStore?.sdkKey),
     appStoreAmbiguous: apps.appStoreAmbiguous,
@@ -457,14 +548,28 @@ export async function refreshRevenueCatConnection(
 
 // ─── Disconnect ───────────────────────────────────────────────────────────────
 
+export interface DisconnectResult {
+  /** Botflow had created a webhook in the RevenueCat project. */
+  hadWebhook: boolean;
+  /** …and it is gone from RevenueCat now. False = the user has to delete it there. */
+  webhookRemoved: boolean;
+  /** Where to delete it by hand when we could not. */
+  integrationsUrl: string | null;
+}
+
 /**
  * Remove everything Botflow holds for this connection: the webhook it created
  * in RevenueCat and the stored secret key. Products, customers and purchases in
  * RevenueCat are the user's and are left alone. Safe to call when not connected.
+ *
+ * The stored key is deleted even when the webhook could not be (the usual
+ * reason to disconnect is a revoked key, which cannot delete anything); the
+ * caller is told, so the user can remove the leftover webhook in RevenueCat.
  */
-export async function disconnectRevenueCat(projectId: string): Promise<{ webhookRemoved: boolean }> {
+export async function disconnectRevenueCat(projectId: string): Promise<DisconnectResult> {
   const db = getDb();
   const connection = await getRevenueCatConnection(projectId);
+  const hadWebhook = Boolean(connection?.rcWebhookIntegrationId);
   let webhookRemoved = false;
   if (connection?.rcWebhookIntegrationId) {
     const removed = await deleteWebhookIntegration(
@@ -487,7 +592,12 @@ export async function disconnectRevenueCat(projectId: string): Promise<{ webhook
       updatedAt: new Date(),
     })
     .where(eq(projects.id, projectId));
-  return { webhookRemoved };
+  return {
+    hadWebhook,
+    webhookRemoved,
+    integrationsUrl:
+      hadWebhook && !webhookRemoved && connection ? dashboardUrl(connection.rcProjectId, 'integrations') : null,
+  };
 }
 
 // ─── Helpers for callers ──────────────────────────────────────────────────────
@@ -522,16 +632,29 @@ export async function markAgentWaitingForConnect(projectId: string, threadId: st
   }
 }
 
-/** Read and clear the marker. Returns the thread id, 'current', or null when no agent asked. */
-export async function takeAgentWaitingForConnect(projectId: string): Promise<string | null> {
+/**
+ * The thread whose agent is waiting for the connection: a thread id, 'current',
+ * or null when no agent asked. The marker is NOT cleared here: the browser
+ * still has to deliver the note, and may fail to (tab closed, request lost).
+ * It is cleared when that agent next uses a RevenueCat tool.
+ */
+export async function peekAgentWaitingForConnect(projectId: string): Promise<string | null> {
   try {
     const { redis } = await import('@/lib/redis');
     const value = await redis.get<string>(agentWaitingKey(projectId));
-    if (!value) return null;
-    await redis.del(agentWaitingKey(projectId));
-    return String(value);
+    return value ? String(value) : null;
   } catch (err) {
     console.error('[revenuecat] could not read the waiting agent thread:', err);
     return null;
+  }
+}
+
+/** The agent has picked the work back up; nobody is waiting any more. */
+export async function clearAgentWaitingForConnect(projectId: string): Promise<void> {
+  try {
+    const { redis } = await import('@/lib/redis');
+    await redis.del(agentWaitingKey(projectId));
+  } catch (err) {
+    console.error('[revenuecat] could not clear the waiting agent thread:', err);
   }
 }

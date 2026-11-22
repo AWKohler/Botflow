@@ -103,24 +103,30 @@ export const REVENUECAT_BILLING_TS = `// EDITABLE — how purchases change your 
 // - appUserId is the id the app passed to Purchases.shared.logIn(...). For a
 //   buyer who never signed in it is RevenueCat's anonymous id ($RCAnonymousID:…),
 //   which matches none of your users: return early.
-// - environment is "SANDBOX" for test purchases (simulator, Test Store) and
-//   "PRODUCTION" for real ones.
+// - environment is "SANDBOX" for test purchases (simulator, Test Store,
+//   TestFlight) and "PRODUCTION" for real ones. Development and App Store
+//   builds talk to this same backend, so KEEP THE TWO APART: a test
+//   subscription expires within the hour, and its expiry must never switch off
+//   access someone paid for. One row per user, entitlement AND environment.
 // - Delivery is at-least-once: make every write idempotent (patch a row to a
 //   state; never "add one").
 //
-// A typical setup records one row per user and entitlement:
+// A typical setup:
 //
 //   // convex/schema.ts
 //   entitlements: defineTable({
 //     userId: v.string(),
 //     entitlement: v.string(),
+//     environment: v.string(),          // "SANDBOX" | "PRODUCTION"
 //     active: v.boolean(),
 //     productId: v.optional(v.string()),
 //     expiresAt: v.optional(v.number()),
-//     environment: v.string(),
-//   }).index("by_user_entitlement", ["userId", "entitlement"]),
+//   }).index("by_user_entitlement_env", ["userId", "entitlement", "environment"]),
 //
-// and upserts it below; mutations that must enforce access read that table.
+// upserted below. A mutation that must enforce access asks "is there an ACTIVE
+// row for this user and entitlement?" (any environment, which lets you and
+// your testers try paid features), or adds .eq("environment", "PRODUCTION")
+// to count real purchases only.
 
 import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
@@ -136,19 +142,21 @@ export const applyRevenueCatEvent = internalMutation({
 
     if (type !== "entitlement.granted" && type !== "entitlement.revoked") return;
     // const active = type === "entitlement.granted";
+    // const environment = (data.environment as string | undefined) ?? "SANDBOX";
     // for (const entitlement of (data.entitlementIds ?? []) as string[]) {
     //   const row = await ctx.db
     //     .query("entitlements")
-    //     .withIndex("by_user_entitlement", (q) => q.eq("userId", appUserId).eq("entitlement", entitlement))
+    //     .withIndex("by_user_entitlement_env", (q) =>
+    //       q.eq("userId", appUserId).eq("entitlement", entitlement).eq("environment", environment),
+    //     )
     //     .unique();
     //   const fields = {
     //     active,
     //     productId: data.productId ?? undefined,
     //     expiresAt: data.expirationAtMs ?? undefined,
-    //     environment: data.environment ?? "SANDBOX",
     //   };
     //   if (row) await ctx.db.patch(row._id, fields);
-    //   else await ctx.db.insert("entitlements", { userId: appUserId, entitlement, ...fields });
+    //   else await ctx.db.insert("entitlements", { userId: appUserId, entitlement, environment, ...fields });
     // }
   },
 });

@@ -152,7 +152,14 @@ export async function POST(req: Request) {
   // switch. Read-only git (status/diff), convex, dev-server, sim, and
   // build/env tools stay available to editors.
   if (access.role !== "owner") {
-    const OWNER_ONLY_TOOLS = new Set(["initialize_stripe_payments", "setup_oauth_provider"]);
+    // Connecting a payment provider is the owner's call. Managing the catalog
+    // once connected (Stripe / RevenueCat products) is open to editors, like
+    // the rest of the backend.
+    const OWNER_ONLY_TOOLS = new Set([
+      "initialize_stripe_payments",
+      "initialize_revenuecat_payments",
+      "setup_oauth_provider",
+    ]);
     const PUSH_TOOLS = new Set([
       "git_commit",
       "git_push",
@@ -1055,11 +1062,15 @@ export async function POST(req: Request) {
 
       const {
         catalogContext,
+        clearAgentWaitingForConnect,
         getRevenueCatConnection,
         markAgentWaitingForConnect,
         refreshRevenueCatConnection,
       } = await import("@/lib/revenuecat-connection");
       let connection = await getRevenueCatConnection(binding.projectId);
+      // Connected and the agent is working on payments again: nobody is waiting
+      // to be told about the connection any more.
+      if (connection) await clearAgentWaitingForConnect(binding.projectId);
       const needsConnect =
         "RevenueCat is not connected yet. The Payments tab is open for the user with a one-step setup (they paste one RevenueCat secret key). " +
         "Do NOT wait for them and do not ask them for keys in chat.";

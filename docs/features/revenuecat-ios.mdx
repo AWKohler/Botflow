@@ -90,7 +90,7 @@ There is no switch to remember. Botflow puts the right key in each build:
 | Simulator preview and development builds | Simulated through RevenueCat's Test Store |
 | App Store builds | Your real products, real money |
 
-A test build can never charge anyone. An App Store build never contains the Test Store key; until you finish the App Store steps below, it ships with purchases switched off.
+A test build can never charge anyone. An App Store build never contains the Test Store key. Until you finish the App Store steps below, a build would have purchases switched off, so **Publish** stops and asks before uploading one.
 
 ## Sell for real on the App Store
 
@@ -119,7 +119,7 @@ Apple reviews in-app purchases together with the app, so real purchases start wo
 | "That key is missing a permission" | In RevenueCat, open **API keys**, choose **Edit** in the key's **···** menu, set **Project configuration permissions** to **Read & write**, then connect again. |
 | "That is an SDK key (public)" | You pasted a `test_` or `appl_` key. Botflow needs the secret key, which starts with `sk_`. |
 | "RevenueCat does not recognise that secret key" | The key was deleted, or part of it was cut off when copying. Create a new one. |
-| "Already connected to another app" | Two apps on one RevenueCat project share products and test purchases. Create a separate RevenueCat project for the second app. |
+| "The RevenueCat project … is already connected to …" | A RevenueCat project can be connected to one Botflow app, because it holds one app's products, paywall and purchase events. Create a new RevenueCat project for this app, or disconnect the other app first. |
 | Test purchases: "no Test Store" | In RevenueCat, open **Apps**, add a **Test Store**, then choose **Check again** in the Payments tab. |
 | The paywall is empty | Open the Payments tab. "What your app sells" names what is missing; **Ask the agent to finish** fixes it. |
 | A purchase succeeds but the backend never hears about it | Under **Setup**, "Your app's backend" shows whether the receiver is deployed. **Ask the agent to finish** deploys it. |
@@ -127,3 +127,5 @@ Apple reviews in-app purchases together with the app, so real purchases start wo
 ## Disconnecting
 
 **Disconnect RevenueCat from this project**, at the bottom of the Payments tab, deletes the stored key and the webhook Botflow added. Your RevenueCat project, products and customers stay as they are. Deleting the project in Botflow does the same.
+
+If the key no longer works when you disconnect (for example, you revoked it first), Botflow cannot remove its webhook. The Payments tab then tells you so and links to **Integrations** in RevenueCat, where you can delete the webhook named "Botflow: …".

@@ -6,7 +6,7 @@
  * verifies it, finds the RevenueCat project and its SDK keys, creates the
  * webhook, stores the key encrypted and flips the project to 'connected'.
  *
- * Body: { rcSecretKey, allowSharedProject? }
+ * Body: { rcSecretKey }
  *
  * Errors carry a `code` (see ConnectResult) and a message that says what to
  * change, because RevenueCat keys cannot be edited after creation: almost every
@@ -16,7 +16,7 @@ import { NextRequest, NextResponse, after } from 'next/server';
 import { auth } from '@/lib/auth/server';
 import { requireProjectAccess } from '@/lib/project-access';
 import { canUseRevenueCat } from '@/lib/tier';
-import { connectRevenueCat, takeAgentWaitingForConnect } from '@/lib/revenuecat-connection';
+import { connectRevenueCat, peekAgentWaitingForConnect } from '@/lib/revenuecat-connection';
 import { scaffoldRevenueCatIntoProject } from '@/lib/revenuecat-scaffold';
 import { REVENUECAT_ENABLED } from '@/lib/feature-flags';
 
@@ -68,7 +68,7 @@ export async function POST(
     );
   }
 
-  let body: { rcSecretKey?: unknown; allowSharedProject?: unknown };
+  let body: { rcSecretKey?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -88,17 +88,15 @@ export async function POST(
     userId: project.userId,
     secretKey: rcSecretKey,
     requestOrigin: new URL(req.url).origin,
-    allowSharedProject: body.allowSharedProject === true,
   });
   if (!result.ok) {
-    return NextResponse.json(
-      { ok: false, code: result.code, error: result.error, ...(result.sharedWith ? { sharedWith: result.sharedWith } : {}) },
-      { status: result.status },
-    );
+    return NextResponse.json({ ok: false, code: result.code, error: result.error }, { status: result.status });
   }
 
   // The agent that asked for payments (if any) is told the connection is done.
-  const agentThread = await takeAgentWaitingForConnect(projectId);
+  // The marker stays until that agent picks the work up, so a note the browser
+  // fails to deliver can be sent again on the next connect.
+  const agentThread = await peekAgentWaitingForConnect(projectId);
 
   // Add the receiver to the app's backend and write the SDK key into the
   // Swift source, so the very next build can make test purchases.
