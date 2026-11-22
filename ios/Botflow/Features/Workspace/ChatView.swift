@@ -13,20 +13,39 @@ struct ChatView: View {
     @State private var showModels = false
     @State private var atBottom = true
     @State private var position = ScrollPosition(edge: .bottom)
+    /// How many of the latest messages are rendered.
+    @State private var shownCount = 60
 
     var body: some View {
-        let messages = session.allMessages
+        let all = session.allMessages
+        // A plain stack, not a lazy one: with rows of very different heights a
+        // lazy stack keeps re-estimating its length, which fights a scroll
+        // position pinned to the end. Long threads show their latest stretch
+        // and load earlier messages on request.
+        let hidden = max(0, all.count - shownCount)
+        let messages = Array(all.suffix(shownCount))
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 22) {
                 if let error = session.loadError, messages.isEmpty {
                     ErrorBanner(message: error) {
                         Task { await session.load(isRunning: false, liveTurnId: nil) }
                     }
                 }
                 if session.phase == .loading {
-                    ProgressView().frame(maxWidth: .infinity).containerRelativeFrame(.vertical) { height, _ in height * 0.7 }
+                    ProgressView().frame(maxWidth: .infinity, minHeight: 320)
                 } else if messages.isEmpty, !session.phase.isBusy {
                     ChatEmptyState(project: store.project)
+                }
+                if hidden > 0 {
+                    Button {
+                        shownCount += 60
+                    } label: {
+                        Label(hidden == 1 ? "Show 1 earlier message" : "Show \(min(hidden, 60)) earlier messages", systemImage: "arrow.up")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Sand.muted)
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                    }
+                    .buttonStyle(.plain)
                 }
                 ForEach(messages) { message in
                     MessageView(
@@ -38,10 +57,13 @@ struct ChatView: View {
                         },
                         onInspect: { inspected = $0 }
                     )
+                    // Rows redraw only when their own message changes, so a
+                    // streaming reply does not re-render the whole transcript.
+                    .equatable()
                     .id(message.id)
                 }
                 if session.phase == .starting || (session.phase == .streaming && session.live == nil) {
-                    StartingIndicator(label: session.phase == .starting ? "Starting the agent" : "Working")
+                    StartingIndicator(since: session.phase == .starting ? session.startedSendingAt : nil)
                         .transition(.opacity)
                 }
                 if case .failed(let reason) = session.phase {
@@ -106,16 +128,10 @@ struct ChatView: View {
 }
 
 extension ChatView {
-    /// Lazy rows report their height late, so one jump can stop short; a
-    /// second pass after layout lands on the true end.
     fileprivate func scrollToLatest(animated: Bool) {
         if animated {
             withAnimation(.snappy) { position.scrollTo(edge: .bottom) }
         } else {
-            position.scrollTo(edge: .bottom)
-        }
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 180_000_000)
             position.scrollTo(edge: .bottom)
         }
     }
@@ -143,18 +159,33 @@ struct ChatEmptyState: View {
     }
 }
 
+/// "The agent is on its way." A cold sandbox can take half a minute to wake,
+/// so the wording changes as the wait goes on instead of looking stuck.
 struct StartingIndicator: View {
-    var label: String
+    /// When the prompt was sent; nil once the agent is running.
+    var since: Date?
 
     var body: some View {
-        HStack(spacing: Space.s) {
-            StatusDot(status: .running, size: 8)
-            Text(label)
-                .font(.subheadline)
-                .foregroundStyle(Sand.muted)
-                .shimmer()
+        TimelineView(.periodic(from: .now, by: 2)) { context in
+            HStack(spacing: Space.s) {
+                StatusDot(status: .running, size: 8)
+                Text(label(at: context.date))
+                    .font(.subheadline)
+                    .foregroundStyle(Sand.muted)
+                    .contentTransition(.opacity)
+                    .shimmer()
+            }
+            .animation(.easeInOut(duration: 0.3), value: label(at: context.date))
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func label(at date: Date) -> String {
+        guard let since else { return "Working" }
+        let waited = date.timeIntervalSince(since)
+        if waited < 6 { return "Starting the agent" }
+        if waited < 25 { return "Waking the sandbox" }
+        return "Almost ready. The first start takes the longest"
     }
 }
 
@@ -189,7 +220,7 @@ struct Composer: View {
 
     var body: some View {
         VStack(spacing: Space.s) {
-            if !store.queue.isEmpty { queueStrip }
+            if !visibleQueue.isEmpty { queueStrip }
             VStack(alignment: .leading, spacing: 0) {
                 if !attachments.isEmpty { attachmentRow }
                 TextField(busy ? "Queue a follow-up…" : "Ask Botflow…", text: $draft, axis: .vertical)
@@ -277,6 +308,13 @@ struct Composer: View {
         }
     }
 
+    /// Waiting messages, minus the one already shown as the bubble being started.
+    private var visibleQueue: [QueueItem] {
+        store.queue.filter { item in
+            !(session.startingText != nil && item.status != "failed" && item.text == session.startingText)
+        }
+    }
+
     private var footer: some View {
         let limit = access.source == .planCredits || access.source == nil ? model.contextTokens : (model.personalContextTokens ?? model.contextTokens)
         let used = session.usage?.tokens ?? 0
@@ -354,7 +392,7 @@ struct Composer: View {
 
     private var queueStrip: some View {
         VStack(spacing: 6) {
-            ForEach(store.queue) { item in
+            ForEach(visibleQueue) { item in
                 HStack(spacing: Space.s) {
                     Image(systemName: item.status == "failed" ? "exclamationmark.triangle.fill" : "clock")
                         .font(.footnote)

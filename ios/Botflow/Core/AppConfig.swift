@@ -41,6 +41,17 @@ enum AppConfig {
         UserDefaults.standard.string(forKey: "BotflowDemoRoute")
     }
 
+    /// Debug builds can open one project at launch, for tests and screenshots:
+    /// `-BotflowOpenProject <id> [-BotflowOpenThread <id>] [-BotflowOpenApp YES]`.
+    static var debugOpenProject: (id: String, threadId: String?, onApp: Bool)? {
+        #if DEBUG
+        guard let id = UserDefaults.standard.string(forKey: "BotflowOpenProject") else { return nil }
+        return (id, UserDefaults.standard.string(forKey: "BotflowOpenThread"), UserDefaults.standard.bool(forKey: "BotflowOpenApp"))
+        #else
+        return nil
+        #endif
+    }
+
     /// Which APNs servers can reach this build: Apple's sandbox for debug builds.
     static var apnsEnvironment: String {
         #if DEBUG

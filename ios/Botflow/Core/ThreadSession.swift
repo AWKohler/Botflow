@@ -27,6 +27,8 @@ final class ThreadSession: ObservableObject {
     @Published private(set) var usage: ContextUsage?
     @Published private(set) var loadError: String?
     @Published var model: String
+    /// The prompt being started, shown as a bubble (so the queue strip can skip its row).
+    @Published private(set) var startingText: String?
     /// The assistant message being written, kept apart from `messages` so
     /// only one row re-renders while text streams in.
     @Published private(set) var live: ChatMessage?
@@ -34,8 +36,13 @@ final class ThreadSession: ObservableObject {
     /// Called when a turn ends, so the thread list can refresh.
     var onTurnEnded: (() -> Void)?
 
+    /// Replies streamed in this session that the server's history does not
+    /// show yet. They stay on screen until it does.
+    private var unconfirmed: [ChatMessage] = []
     private var followTask: Task<Void, Never>?
     private var turnStartedAt: Date?
+    /// When the prompt in flight was sent, for the "starting" indicator's wording.
+    private(set) var startedSendingAt: Date?
     private var lastReportedTool: String?
 
     init(projectId: String, projectName: String, thread: ThreadSummary, service: BotflowService = Services.shared) {
@@ -67,7 +74,7 @@ final class ThreadSession: ObservableObject {
     func load(isRunning: Bool, liveTurnId: String?) async {
         do {
             let history = try await service.history(projectId: projectId, threadId: threadId)
-            messages = history.messages
+            apply(history.messages)
             model = history.model
             loadError = nil
             if phase == .loading { phase = .idle }
@@ -84,8 +91,16 @@ final class ThreadSession: ObservableObject {
     func refreshIfIdle() async {
         guard !phase.isBusy else { return }
         if let history = try? await service.history(projectId: projectId, threadId: threadId) {
-            messages = history.messages
+            apply(history.messages)
         }
+    }
+
+    /// Take the server's history, keeping any reply streamed here that it
+    /// does not contain yet (its own save, or ours, may still be in flight).
+    private func apply(_ history: [ChatMessage]) {
+        let known = Set(history.map(\.id))
+        unconfirmed.removeAll { known.contains($0.id) }
+        messages = history + unconfirmed
     }
 
     /// The thread list says this thread started running (someone else's
@@ -109,6 +124,8 @@ final class ThreadSession: ObservableObject {
             withAnimation(.snappy) {
                 messages.append(ChatMessage(id: messageId, role: .user, parts: parts, createdAt: Date()))
                 phase = .starting
+                startingText = trimmed
+                startedSendingAt = Date()
             }
             if threadTitle == "New chat" { threadTitle = String(trimmed.prefix(80)) }
             LiveActivityManager.shared.start(
@@ -244,6 +261,7 @@ final class ThreadSession: ObservableObject {
 
     private func publish(_ assembler: MessageAssembler) {
         if phase == .starting { phase = .streaming }
+        startingText = nil
         if assembler.message.parts.isEmpty { return }
         live = assembler.message
         if let usage = assembler.usage { self.usage = usage }
@@ -278,6 +296,7 @@ final class ThreadSession: ObservableObject {
         live = nil
         followTask = nil
         phase = .idle
+        startingText = nil
         lastReportedTool = nil
 
         let summary = Self.summary(of: assembler.message)
@@ -292,9 +311,18 @@ final class ThreadSession: ObservableObject {
         )
         failed ? Haptics.warning() : Haptics.success()
 
-        // The server saved the same turn under the same id; take its copy.
-        if let history = try? await service.history(projectId: projectId, threadId: threadId), !history.messages.isEmpty {
-            messages = history.messages
+        // The server saves the turn itself, under the same message id. Take
+        // its copy when it has one; when it does not (its own save has not
+        // landed, or failed), keep what was streamed here and save that, as
+        // the website does. The save is an upsert, so the two never duplicate.
+        let streamed = assembler.message
+        if !streamed.parts.isEmpty, !unconfirmed.contains(where: { $0.id == streamed.id }) { unconfirmed.append(streamed) }
+        if let history = try? await service.history(projectId: projectId, threadId: threadId) {
+            let saved = history.messages.contains { $0.id == streamed.id }
+            apply(history.messages)
+            if !saved, !streamed.parts.isEmpty {
+                await service.saveMessage(projectId: projectId, threadId: threadId, message: StoredMessage.encodeAssistantMessage(streamed))
+            }
         }
         await service.markViewed(projectId: projectId, threadId: threadId)
         onTurnEnded?()
@@ -339,6 +367,15 @@ enum ToolSummary {
                 if let value = input[key]?.stringValue, !value.isEmpty { return value }
             }
             return nil
+        }
+        // A patch names its file inside the patch text ("*** Update File: path").
+        if let patch = string("patchText", "patch"), let range = patch.range(of: #"\*\*\* (?:Update|Add|Delete) File: ([^\n]+)"#, options: .regularExpression) {
+            let line = String(patch[range])
+            if let colon = line.range(of: "File: ") { return shortPath(String(line[colon.upperBound...]).trimmingCharacters(in: .whitespaces)) }
+        }
+        // A search is described by what it looks for, not where.
+        if ToolPresentation.info(for: call.name).verb == "Searching", let pattern = string("pattern", "query", "regex") {
+            return "“\(firstLine(pattern, limit: 40))”"
         }
         if let path = string("file_path", "filePath", "path", "notebook_path") {
             return shortPath(path)

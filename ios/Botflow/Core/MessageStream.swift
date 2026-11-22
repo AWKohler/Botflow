@@ -33,6 +33,7 @@ struct MessageAssembler: Sendable {
     private(set) var sawEndTurn = false
     private(set) var errorText: String?
     private(set) var usage: ContextUsage?
+    private var endTurnIds: Set<String> = []
 
     init(messageId: String) {
         message = ChatMessage(id: messageId, role: .assistant, parts: [], streaming: true)
@@ -80,6 +81,7 @@ struct MessageAssembler: Sendable {
             let name = p["toolName"]?.stringValue
             if name == "endTurn" {
                 sawEndTurn = true
+                endTurnIds.insert(id)
                 return
             }
             upsertTool(id) { call in
@@ -87,7 +89,7 @@ struct MessageAssembler: Sendable {
                 call.input = p["input"] ?? .object([:])
             }
         case "tool-output-available":
-            guard let id = p["toolCallId"]?.stringValue, id != "claude-code-end-turn" else { return }
+            guard let id = p["toolCallId"]?.stringValue, !endTurnIds.contains(id), !id.hasSuffix("-end-turn") else { return }
             upsertTool(id) { call in
                 call.output = p["output"]
                 call.state = .done
@@ -198,7 +200,9 @@ enum StoredMessage {
             default:
                 guard type.hasPrefix("tool-") || type == "dynamic-tool" else { continue }
                 let name = type == "dynamic-tool" ? (part["toolName"]?.stringValue ?? "tool") : String(type.dropFirst(5))
-                if name == "endTurn" { continue }
+                // The synthetic end-of-turn call, and the placeholder an older
+                // build saved for it, are not steps.
+                if name == "endTurn" || (name == "tool" && (part["toolCallId"]?.stringValue ?? "").hasSuffix("-end-turn")) { continue }
                 let state = part["state"]?.stringValue ?? "output-available"
                 parts.append(.tool(ToolCall(
                     id: part["toolCallId"]?.stringValue ?? "\(id)-\(index)",
@@ -228,6 +232,59 @@ enum StoredMessage {
             createdAt: raw["createdAt"]?.stringValue.flatMap(DateParsing.parse),
             segmentId: raw["segmentId"]?.stringValue
         )
+    }
+
+    /// An assistant message in the stored UI-message shape, for the app's own
+    /// save of a finished turn (the same fallback the website performs).
+    static func encodeAssistantMessage(_ message: ChatMessage) -> JSONValue {
+        var parts: [JSONValue] = []
+        for part in message.parts {
+            switch part {
+            case .text(_, let text):
+                parts.append(.object(["type": .string("text"), "text": .string(text), "state": .string("done")]))
+            case .reasoning(_, let text, _):
+                parts.append(.object(["type": .string("reasoning"), "text": .string(text), "state": .string("done")]))
+            case .tool(let call):
+                var object: [String: JSONValue] = [
+                    "type": .string("tool-\(call.name)"),
+                    "toolCallId": .string(call.id),
+                    "input": call.input,
+                ]
+                if call.state == .error {
+                    object["state"] = .string("output-error")
+                    object["errorText"] = .string(call.errorText ?? "Tool failed")
+                } else {
+                    object["state"] = .string("output-available")
+                    object["output"] = call.output ?? .string("")
+                }
+                parts.append(.object(object))
+                if !call.subagentSteps.isEmpty {
+                    parts.append(.object([
+                        "type": .string("data-claude-code-subagent"),
+                        "id": .string(call.id),
+                        "data": .object([
+                            "parentToolUseId": .string(call.id),
+                            "steps": .array(call.subagentSteps.map { step in
+                                var item: [String: JSONValue] = ["kind": .string(step.kind.rawValue)]
+                                if step.kind == .tool {
+                                    item["toolCallId"] = .string(step.id)
+                                    item["toolName"] = .string(step.toolName ?? "tool")
+                                    item["input"] = step.input ?? .object([:])
+                                    item["status"] = .string(step.state == .error ? "error" : "done")
+                                    if !step.text.isEmpty { item["output"] = .string(step.text) }
+                                } else {
+                                    item["text"] = .string(step.text)
+                                }
+                                return .object(item)
+                            }),
+                        ]),
+                    ]))
+                }
+            case .image, .notice:
+                continue
+            }
+        }
+        return .object(["id": .string(message.id), "role": .string("assistant"), "parts": .array(parts)])
     }
 
     /// The UI message the server expects for a new user prompt.

@@ -27,6 +27,8 @@ protocol BotflowService: AnyObject, Sendable {
     func deleteThread(projectId: String, threadId: String) async throws
     func markViewed(projectId: String, threadId: String) async
     func history(projectId: String, threadId: String) async throws -> ChatHistory
+    /// Save a finished assistant message (an idempotent upsert by message id).
+    func saveMessage(projectId: String, threadId: String, message: JSONValue) async
     func send(projectId: String, threadId: String, messageId: String, text: String, images: [ImageAttachment]) async throws -> SendOutcome
     func turnStatus(projectId: String, threadId: String) async throws -> TurnStatus
     func followTurn(projectId: String, threadId: String, turnId: String?) -> AsyncThrowingStream<StreamChunk, Error>

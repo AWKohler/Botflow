@@ -148,3 +148,11 @@ final class PresentationTests: XCTestCase {
         XCTAssertNotNil(DateParsing.parse("2026-11-22T12:00:00Z"))
     }
 }
+
+final class ToolDetailTests: XCTestCase {
+    func testAPatchIsDescribedByItsFile() {
+        let call = ToolCall(id: "c", name: "apply_patch", input: .object(["patchText": .string("*** Begin Patch\n*** Update File: /vercel/sandbox/src/App.tsx\n@@\n-a\n+b\n*** End Patch")]), state: .done)
+        XCTAssertEqual(ToolSummary.detail(for: call), "src/App.tsx")
+        XCTAssertEqual(ToolPresentation.info(for: call.name).verb, "Editing")
+    }
+}

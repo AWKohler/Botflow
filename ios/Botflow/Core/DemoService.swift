@@ -199,6 +199,16 @@ final class DemoService: BotflowService, @unchecked Sendable {
         return ChatHistory(threadId: threadId, model: thread?.model ?? ModelCatalog.defaultId, title: thread?.title, messages: messages, currentSegmentId: "seg")
     }
 
+    func saveMessage(projectId: String, threadId: String, message: JSONValue) async {
+        guard let decoded = StoredMessage.decode(message) else { return }
+        lock.withLock {
+            var list = histories[threadId] ?? DemoContent.history(for: threadId)
+            list.removeAll { $0.id == decoded.id }
+            list.append(decoded)
+            histories[threadId] = list
+        }
+    }
+
     func send(projectId: String, threadId: String, messageId: String, text: String, images: [ImageAttachment]) async throws -> SendOutcome {
         await delay(0.6)
         let turnId = "turn-\(UUID().uuidString.prefix(8).lowercased())"

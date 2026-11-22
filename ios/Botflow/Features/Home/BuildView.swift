@@ -80,7 +80,9 @@ struct BuildView: View {
     }
 
     private var greeting: String {
-        if let name = session.user?.firstName ?? session.user?.fullName?.split(separator: " ").first.map(String.init), !name.isEmpty {
+        // A real first name only: a handle like "sam_42" reads wrong in a greeting.
+        let candidate = session.user?.firstName ?? session.user?.fullName?.split(separator: " ").first.map(String.init)
+        if let name = candidate, !name.isEmpty, name.count <= 14, name.allSatisfy({ $0.isLetter || $0 == "-" || $0 == "'" }) {
             return "What will you build, \(name)?"
         }
         return "What will you build?"
@@ -182,11 +184,17 @@ struct BuildView: View {
                 }
                 .buttonStyle(.plain)
             }
-            HStack(spacing: Space.s) {
-                ConnectionChip(title: "Claude", connected: session.connections.hasClaudeOAuth == true, provider: .anthropic)
-                ConnectionChip(title: "ChatGPT", connected: session.connections.hasCodexOAuth == true, provider: .openai)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Space.s) { connectionChips }
+                VStack(spacing: Space.xs) { connectionChips }
             }
         }
+    }
+
+    @ViewBuilder
+    private var connectionChips: some View {
+        ConnectionChip(title: "Claude", connected: session.connections.hasClaudeOAuth == true, provider: .anthropic)
+        ConnectionChip(title: "ChatGPT", connected: session.connections.hasCodexOAuth == true, provider: .openai)
     }
 
     private var activeStrip: some View {
@@ -361,6 +369,8 @@ struct ConnectionChip: View {
             HStack(spacing: 6) {
                 ProviderMark(provider: provider, size: 15)
                 Text(connected ? "\(title) connected" : "Connect \(title)")
+                    .lineLimit(1)
+                    .fixedSize()
                 if connected {
                     Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(Sand.success)
                 }

@@ -137,6 +137,12 @@ final class LiveService: BotflowService, @unchecked Sendable {
         )
     }
 
+    func saveMessage(projectId: String, threadId: String, message: JSONValue) async {
+        _ = try? await api.json("POST", "api/chat", body: .object([
+            "projectId": .string(projectId), "threadId": .string(threadId), "message": message,
+        ]))
+    }
+
     /// Every prompt goes through the thread's server-side queue. An idle agent
     /// starts on it at once; a busy one takes it when its turn ends. Either
     /// way the turn belongs to the server, so it survives this app being

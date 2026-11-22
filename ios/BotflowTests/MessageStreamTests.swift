@@ -117,3 +117,35 @@ final class MessageStreamTests: XCTestCase {
         XCTAssertEqual(ThreadSession.summary(of: message), "The cart is in src/Cart.tsx. Open the App tab.")
     }
 }
+
+final class EndTurnTests: XCTestCase {
+    private func chunk(_ type: String, _ fields: [String: JSONValue]) -> StreamChunk {
+        var payload = fields
+        payload["type"] = .string(type)
+        return StreamChunk(type: type, payload: .object(payload))
+    }
+
+    /// OpenCode's end-of-turn call has its own id; neither agent's is a step.
+    func testEitherAgentsEndOfTurnCallIsNotAStep() {
+        for id in ["claude-code-end-turn", "opencode-end-turn"] {
+            var assembler = MessageAssembler(messageId: "m")
+            assembler.apply(chunk("tool-input-available", ["toolCallId": .string(id), "toolName": .string("endTurn"), "input": .object([:])]))
+            assembler.apply(chunk("tool-output-available", ["toolCallId": .string(id), "output": .string("Done.")]))
+            XCTAssertTrue(assembler.message.toolCalls.isEmpty, id)
+            XCTAssertTrue(assembler.sawEndTurn)
+        }
+    }
+
+    func testAStreamedReplyRoundTripsThroughTheSavedShape() throws {
+        let original = ChatMessage(id: "turn-1", role: .assistant, parts: [
+            .tool(ToolCall(id: "c1", name: "read", input: .object(["filePath": .string("src/App.tsx")]), output: .string("ok"), state: .done)),
+            .tool(ToolCall(id: "c2", name: "bash", input: .object(["command": .string("x")]), errorText: "boom", state: .error)),
+            .text(id: "t", text: "No changes were needed."),
+        ])
+        let decoded = try XCTUnwrap(StoredMessage.decode(StoredMessage.encodeAssistantMessage(original)))
+        XCTAssertEqual(decoded.id, "turn-1")
+        XCTAssertEqual(decoded.toolCalls.map(\.name), ["read", "bash"])
+        XCTAssertEqual(decoded.toolCalls.map(\.state), [.done, .error])
+        XCTAssertEqual(decoded.plainText, "No changes were needed.")
+    }
+}

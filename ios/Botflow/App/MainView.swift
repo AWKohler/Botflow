@@ -37,8 +37,11 @@ struct MainView: View {
         .task { agents.start() }
         .onDisappear { agents.stop() }
         .task {
-            guard let route = AppConfig.demoRoute else { return }
-            await DemoRouting.open(route, router: router, session: session)
+            if let route = AppConfig.demoRoute {
+                await DemoRouting.open(route, router: router, session: session)
+            } else if let target = AppConfig.debugOpenProject {
+                await DemoRouting.openProject(target.id, threadId: target.threadId, onApp: target.onApp, router: router, session: session)
+            }
         }
     }
 
@@ -71,6 +74,12 @@ struct AccountButton: View {
 
 /// Opens a named screen straight away in demo mode, for screenshots and UI tests.
 enum DemoRouting {
+    @MainActor
+    static func openProject(_ id: String, threadId: String?, onApp: Bool, router: Router, session: AppSession) async {
+        guard let project = try? await session.service.project(id) else { return }
+        router.open(WorkspaceRoute(project: project, threadId: threadId, startOnApp: onApp), in: .projects)
+    }
+
     @MainActor
     static func open(_ route: String, router: Router, session: AppSession) async {
         let service = session.service

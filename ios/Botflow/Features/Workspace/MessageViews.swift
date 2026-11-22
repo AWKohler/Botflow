@@ -64,12 +64,17 @@ enum MessageSegment: Identifiable {
 
 // MARK: - Messages
 
-struct MessageView: View {
+struct MessageView: View, Equatable {
     var message: ChatMessage
     var author: ThreadPerson?
     var showAuthor = false
     var onAnswer: (ToolCall, [String], [String], String?) -> Void = { _, _, _, _ in }
     var onInspect: (ToolCall) -> Void = { _ in }
+
+    /// The callbacks never change what is drawn, so they are left out.
+    static func == (a: MessageView, b: MessageView) -> Bool {
+        a.message == b.message && a.author == b.author && a.showAuthor == b.showAuthor
+    }
 
     var body: some View {
         if message.role == .user {
@@ -314,18 +319,19 @@ struct ToolGroupView: View {
         var edits = Set<String>()
         var commands = 0
         var reads = 0
+        // Group by what the step does, so each agent's own tool names count.
         for call in calls {
-            switch call.name.lowercased() {
-            case "edit", "write", "multiedit", "applydiff": edits.insert(ToolSummary.detail(for: call))
-            case "bash": commands += 1
-            case "read", "grep", "glob": reads += 1
+            switch ToolPresentation.info(for: call.name).verb {
+            case "Editing", "Writing": edits.insert(ToolSummary.detail(for: call))
+            case "Running": commands += 1
+            case "Reading", "Searching": reads += 1
             default: break
             }
         }
         var bits: [String] = []
         if !edits.isEmpty { bits.append(edits.count == 1 ? "edited 1 file" : "edited \(edits.count) files") }
         if commands > 0 { bits.append(commands == 1 ? "ran 1 command" : "ran \(commands) commands") }
-        if bits.isEmpty, reads > 0 { bits.append(reads == 1 ? "read 1 file" : "read \(reads) files") }
+        if bits.isEmpty, reads > 0 { bits.append("looked through the code") }
         let tail = failures > 0 ? " · \(failures) failed" : ""
         let lead = "\(calls.count) steps"
         return bits.isEmpty ? lead + tail : "\(lead) · \(bits.joined(separator: ", "))\(tail)"
@@ -466,6 +472,7 @@ struct ToolDetailSheet: View {
 
     private var inputText: String {
         if let command = call.input["command"]?.stringValue { return command }
+        if let patch = call.input["patchText"]?.stringValue { return patch }
         if let content = call.input["content"]?.stringValue { return content }
         if let newString = call.input["new_string"]?.stringValue {
             let old = call.input["old_string"]?.stringValue ?? ""
