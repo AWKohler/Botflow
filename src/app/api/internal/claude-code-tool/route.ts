@@ -1130,6 +1130,9 @@ export async function POST(req: Request) {
             (refreshed && !refreshed.keyValid
               ? `WARNING: the stored key no longer works (${refreshed.keyError}). Tell the user to reconnect in the Payments tab. `
               : "") +
+            (refreshed?.unreachable
+              ? "NOTE: RevenueCat did not answer just now, so this is the last known state; if the catalog tools fail, wait a moment and retry. "
+              : "") +
             (refreshed && !refreshed.testStoreReady
               ? "WARNING: this RevenueCat project has no Test Store, so simulator purchases stay disabled until the user adds one in RevenueCat (Apps) and chooses Check again in the Payments tab. "
               : "Simulator builds use the Test Store: purchases are simulated, no Apple setup, no real money. ") +

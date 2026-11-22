@@ -155,7 +155,12 @@ export async function discoverApps(
 // ─── Webhook ──────────────────────────────────────────────────────────────────
 
 export type WebhookSetup =
-  | { ok: true; integrationId: string }
+  | {
+      ok: true;
+      integrationId: string;
+      /** True = made by this call. False = the integration we already had, updated in place. */
+      created: boolean;
+    }
   | {
       ok: false;
       /** The key may not write at all (401/403): it could not create products either. */
@@ -200,7 +205,7 @@ async function ensureWebhook(opts: {
       authorization_header: authorizationHeader,
       status: 'active',
     });
-    if (updated.ok) return { ok: true, integrationId: updated.data.id };
+    if (updated.ok) return { ok: true, integrationId: updated.data.id, created: false };
     // Anything but 404 (a timeout, a 5xx): the integration is still there.
     if (updated.status !== 404) return failure(updated);
     // 404: the user deleted it in the RevenueCat dashboard. Recreate it.
@@ -221,7 +226,7 @@ async function ensureWebhook(opts: {
     authorization_header: authorizationHeader,
   });
   if (!created.ok) return failure(created);
-  return { ok: true, integrationId: created.data.id };
+  return { ok: true, integrationId: created.data.id, created: true };
 }
 
 // ─── Connect ──────────────────────────────────────────────────────────────────
@@ -262,6 +267,11 @@ function keyFailure(result: { status: number; error: string }): ConnectFailure {
  * project-wide, so two apps on one RevenueCat project would each receive the
  * other's purchases (and, with matching user ids, grant each other's access);
  * they would also share one Test Store, one paywall and one App Store key.
+ *
+ * A connection whose key RevenueCat no longer accepts does not count: it is
+ * dead, its owner can do nothing with it, and it must not lock the RevenueCat
+ * project's owner out (an agency's old app, an abandoned account). Revoking
+ * the old key in RevenueCat is how they take the project back.
  */
 async function projectInUse(
   rcProjectId: string,
@@ -271,7 +281,12 @@ async function projectInUse(
 ): Promise<ConnectFailure | null> {
   const db = getDb();
   const [other] = await db
-    .select({ name: projects.name, ownerId: projects.userId })
+    .select({
+      projectId: projectRevenueCatConnections.projectId,
+      encryptedKey: projectRevenueCatConnections.rcSecretKey,
+      name: projects.name,
+      ownerId: projects.userId,
+    })
     .from(projectRevenueCatConnections)
     .innerJoin(projects, eq(projects.id, projectRevenueCatConnections.projectId))
     .where(
@@ -282,22 +297,60 @@ async function projectInUse(
     )
     .limit(1);
   if (!other) return null;
-  // Name the other app only to its own owner.
-  const where = other.ownerId === userId ? `your app "${other.name}"` : 'another Botflow app';
+
+  const otherKey = decryptSecret(other.encryptedKey);
+  const alive = otherKey ? await listProjects(otherKey) : null;
+  const rejected = !otherKey || (alive && !alive.ok && (alive.status === 401 || alive.status === 403));
+  if (rejected) {
+    // RevenueCat refuses the other connection's key outright: release the claim.
+    await disconnectRevenueCat(other.projectId);
+    return null;
+  }
+
+  const mine = other.ownerId === userId;
   return {
     ok: false,
     status: 409,
     code: 'project-in-use',
     error:
-      `The RevenueCat project "${rcProjectName}" is already connected to ${where}. ` +
+      `The RevenueCat project "${rcProjectName}" is already connected to ${mine ? `your app "${other.name}"` : 'another Botflow app'}. ` +
       'Each app needs its own RevenueCat project, because a RevenueCat project holds one app\'s products, ' +
       'paywall and purchase events. Create a new RevenueCat project for this app and paste its key, ' +
-      'or disconnect the other app first.',
+      (mine
+        ? 'or disconnect the other app first.'
+        : 'or, if that connection should no longer exist, revoke the key it uses in RevenueCat (API keys) and connect again.'),
   };
 }
 
-const CONNECT_LOCK_SECONDS = 90;
-const connectLockKey = (projectId: string) => `revenuecat:connecting:${projectId}`;
+const LIFECYCLE_LOCK_SECONDS = 90;
+const lifecycleLockKey = (projectId: string) => `revenuecat:connecting:${projectId}`;
+
+/**
+ * One lifecycle change (connect, or a refresh that repairs the webhook) per
+ * project at a time. Returns a release function, 'busy' when another change
+ * holds the lock, or a no-op release when Redis itself is unavailable: the lock
+ * prevents duplicate webhooks, it must not make connecting depend on Redis.
+ */
+async function acquireLifecycleLock(projectId: string): Promise<'busy' | (() => Promise<void>)> {
+  const token = randomBytes(12).toString('hex');
+  const key = lifecycleLockKey(projectId);
+  try {
+    const locked = await redis.set(key, token, { nx: true, ex: LIFECYCLE_LOCK_SECONDS });
+    if (!locked) return 'busy';
+  } catch (err) {
+    console.error('[revenuecat] lifecycle lock unavailable, continuing without it:', err);
+    return async () => undefined;
+  }
+  return async () => {
+    try {
+      // Release only our own lock: after a very slow call it may have expired
+      // and been taken by someone else.
+      if ((await redis.get<string>(key)) === token) await redis.del(key);
+    } catch {
+      /* it expires by itself */
+    }
+  };
+}
 
 /**
  * Verify a pasted secret key, discover everything else, set up the webhook and
@@ -318,8 +371,8 @@ export async function connectRevenueCat(opts: {
   // One connect per project at a time: two at once (a double click, two tabs)
   // would each create a webhook, and only one would be remembered. Nothing is
   // awaited before this, so of two calls made in the same tick exactly one wins.
-  const locked = await redis.set(connectLockKey(opts.projectId), '1', { nx: true, ex: CONNECT_LOCK_SECONDS });
-  if (!locked) {
+  const release = await acquireLifecycleLock(opts.projectId);
+  if (release === 'busy') {
     return {
       ok: false,
       status: 409,
@@ -330,7 +383,7 @@ export async function connectRevenueCat(opts: {
   try {
     return await connectLocked({ ...opts, secretKey });
   } finally {
-    await redis.del(connectLockKey(opts.projectId)).catch(() => undefined);
+    await release();
   }
 }
 
@@ -406,7 +459,14 @@ async function connectLocked(opts: {
     rcAppStoreSdkKey: apps.appStore?.sdkKey ?? null,
     inboundWebhookSecret: inboundSecret,
     inboundWebhookSecretDigest: digestOf(inboundSecret),
-    rcWebhookIntegrationId: webhook.ok ? webhook.integrationId : null,
+    // A failed update that did not say "gone" (a timeout, a 5xx) leaves the
+    // integration we already had in place: keep its id, so it is still ours to
+    // repair and to remove on disconnect.
+    rcWebhookIntegrationId: webhook.ok
+      ? webhook.integrationId
+      : sameRcProject && !webhook.previousGone
+        ? existing?.rcWebhookIntegrationId ?? null
+        : null,
     webhookError,
     connectedAt: sameRcProject && existing ? existing.connectedAt : now,
     updatedAt: now,
@@ -417,9 +477,14 @@ async function connectLocked(opts: {
       .values(values)
       .onConflictDoUpdate({ target: projectRevenueCatConnections.projectId, set: values });
   } catch (err) {
-    // The unique index on rc_project_id: another project claimed this
-    // RevenueCat project between our check and our write. Undo our webhook.
-    if (webhook.ok) await deleteWebhookIntegration(secretKey, rcProject.id, webhook.integrationId);
+    // The write failed, so nothing points at a webhook this call CREATED:
+    // remove it. One it merely updated belongs to the connection that is still
+    // stored and must stay.
+    if (webhook.ok && webhook.created) {
+      await deleteWebhookIntegration(secretKey, rcProject.id, webhook.integrationId);
+    }
+    // The usual cause is the unique index on rc_project_id: another project
+    // claimed this RevenueCat project between our check and our write.
     const raced = await projectInUse(rcProject.id, rcProject.name, opts.projectId, opts.userId);
     if (raced) return raced;
     throw err;
@@ -501,28 +566,39 @@ export async function refreshRevenueCatConnection(
 
   let integrationId = connection.rcWebhookIntegrationId;
   let webhookError = connection.webhookError;
-  if (requestOrigin) {
-    const [project] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, projectId));
-    const webhook = await ensureWebhook({
-      secretKey,
-      rcProjectId,
-      projectId,
-      projectName: project?.name ?? 'app',
-      url: revenueCatWebhookUrl(requestOrigin),
-      authorizationHeader: connection.inboundWebhookSecret,
-      existingIntegrationId: integrationId,
-    });
-    if (webhook.ok) {
-      integrationId = webhook.integrationId;
-      webhookError = null;
-    } else {
-      // Forget the id only when RevenueCat said the integration is gone. After
-      // a timeout or a 5xx it is still there, and still ours to remove later.
-      if (webhook.previousGone) integrationId = null;
-      webhookError = webhook.error;
+  // Repairing the webhook writes to RevenueCat, so it takes the same lock as
+  // connect. If a connect is in flight, leave the webhook to it.
+  const release = requestOrigin ? await acquireLifecycleLock(projectId) : null;
+  if (requestOrigin && release && release !== 'busy') {
+    try {
+      const [project] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, projectId));
+      const webhook = await ensureWebhook({
+        secretKey,
+        rcProjectId,
+        projectId,
+        projectName: project?.name ?? 'app',
+        url: revenueCatWebhookUrl(requestOrigin),
+        authorizationHeader: connection.inboundWebhookSecret,
+        existingIntegrationId: integrationId,
+      });
+      if (webhook.ok) {
+        integrationId = webhook.integrationId;
+        webhookError = null;
+      } else {
+        // Forget the id only when RevenueCat said the integration is gone. After
+        // a timeout or a 5xx it is still there, and still ours to remove later.
+        if (webhook.previousGone) integrationId = null;
+        webhookError = webhook.error;
+      }
+    } finally {
+      await release();
     }
   }
 
+  // Everything above was learned about the connection read at the top. If the
+  // project was reconnected or disconnected while RevenueCat was answering,
+  // that knowledge is about a different connection: write nothing. Matching on
+  // the stored (encrypted) key identifies the exact connection that was read.
   await db
     .update(projectRevenueCatConnections)
     .set({
@@ -534,7 +610,13 @@ export async function refreshRevenueCatConnection(
       webhookError,
       updatedAt: new Date(),
     })
-    .where(eq(projectRevenueCatConnections.projectId, projectId));
+    .where(
+      and(
+        eq(projectRevenueCatConnections.projectId, projectId),
+        eq(projectRevenueCatConnections.rcProjectId, connection.rcProjectId),
+        eq(projectRevenueCatConnections.rcSecretKey, connection.rcSecretKey),
+      ),
+    );
 
   return {
     keyValid: true,

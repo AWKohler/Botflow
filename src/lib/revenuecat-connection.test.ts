@@ -9,6 +9,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { projectRevenueCatConnections, projects } from '@/db/schema';
 import { decryptSecret } from '@/lib/secrets';
 import { currentTestDb, setupTestDb } from '@/test/db';
+import { fakeRedis } from '@/test/redis-fake';
 import { createProject } from '@/test/factories';
 import { server } from '@/test/network';
 import { fakeRevenueCat } from '@/test/revenuecat-fake';
@@ -369,6 +370,131 @@ describe('reconnecting and repairing', () => {
     expect(refreshed).toMatchObject({ keyValid: false, unreachable: false, testStoreReady: true });
     expect(refreshed?.keyError).toMatch(/does not recognise/);
     expect((await connectionRow(project.id)).rcTestStoreSdkKey).toBe('test_PUBLICKEY');
+  });
+});
+
+describe('changes that overlap or fail half-way', () => {
+  test('a refresh that was reading the old connection does not overwrite a reconnect that happened meanwhile', async () => {
+    const rc = fakeRevenueCat({ appStore: true });
+    const project = await swiftProject();
+    await connect(project, 'sk_full');
+
+    // While the refresh waits on RevenueCat, the project is reconnected to a
+    // different RevenueCat project (modelled as the row a reconnect would write).
+    rc.during.push({
+      match: /public_api_keys/,
+      run: async () => {
+        await currentTestDb()
+          .update(projectRevenueCatConnections)
+          .set({
+            rcProjectId: 'proj_new',
+            rcSecretKey: 'v1.other-encrypted-key',
+            rcTestStoreSdkKey: 'test_NEW',
+            rcAppStoreSdkKey: 'appl_NEW',
+            rcWebhookIntegrationId: 'wh_new',
+          })
+          .where(eq(projectRevenueCatConnections.projectId, project.id));
+      },
+    });
+    await refreshRevenueCatConnection(project.id);
+
+    expect(await connectionRow(project.id)).toMatchObject({
+      rcProjectId: 'proj_new',
+      rcTestStoreSdkKey: 'test_NEW',
+      rcAppStoreSdkKey: 'appl_NEW',
+      rcWebhookIntegrationId: 'wh_new',
+    });
+  });
+
+  test('a database error while reconnecting never deletes the webhook the stored connection uses', async () => {
+    const rc = fakeRevenueCat();
+    rc.keys.set('sk_full_2', 'full');
+    const project = await swiftProject();
+    await connect(project, 'sk_full');
+    const before = await connectionRow(project.id);
+
+    const insert = vi.spyOn(currentTestDb(), 'insert').mockImplementationOnce(() => {
+      throw new Error('database unavailable');
+    });
+    await expect(connect(project, 'sk_full_2')).rejects.toThrow('database unavailable');
+    insert.mockRestore();
+
+    // The webhook was only updated in place; it is still there and still stored.
+    expect(rc.webhooks.map((w) => w.id)).toEqual([before.rcWebhookIntegrationId]);
+    expect(await connectionRow(project.id)).toEqual(before);
+  });
+
+  test('a database error on a first connect removes the webhook that call created', async () => {
+    const rc = fakeRevenueCat();
+    const project = await swiftProject();
+    const insert = vi.spyOn(currentTestDb(), 'insert').mockImplementationOnce(() => {
+      throw new Error('database unavailable');
+    });
+    await expect(connect(project, 'sk_full')).rejects.toThrow('database unavailable');
+    insert.mockRestore();
+    expect(rc.webhooks).toEqual([]);
+    expect(await connectionRow(project.id)).toBeUndefined();
+  });
+
+  test('replacing the key while the webhook update fails briefly keeps the webhook id', async () => {
+    const rc = fakeRevenueCat();
+    rc.keys.set('sk_full_2', 'full');
+    const project = await swiftProject();
+    await connect(project, 'sk_full');
+    const id = rc.webhooks[0].id;
+
+    rc.failures.push({ match: /POST .*\/integrations\/webhooks\//, status: 503, times: 1 });
+    expect(await connect(project, 'sk_full_2')).toMatchObject({ ok: true, webhook: 'manual' });
+    const row = await connectionRow(project.id);
+    expect(row.rcWebhookIntegrationId).toBe(id);
+    expect(decryptSecret(row.rcSecretKey)).toBe('sk_full_2');
+    // Still ours to remove.
+    expect(await disconnectRevenueCat(project.id)).toMatchObject({ hadWebhook: true, webhookRemoved: true });
+  });
+
+  test('connecting still works when the lock store is down', async () => {
+    fakeRevenueCat();
+    const project = await swiftProject();
+    const set = vi.spyOn(fakeRedis, 'set').mockRejectedValueOnce(new Error('redis down'));
+    expect((await connect(project, 'sk_full')).ok).toBe(true);
+    set.mockRestore();
+  });
+});
+
+describe('a claim held by a dead connection', () => {
+  test("another app's connection whose key RevenueCat rejects is released, and the new app connects", async () => {
+    const rc = fakeRevenueCat();
+    rc.keys.set('sk_old_agency_key', 'full');
+    const abandoned = await swiftProject('owner_agency', 'Client app (old)');
+    await connect(abandoned, 'sk_old_agency_key');
+
+    // The RevenueCat project's owner revokes the agency's key, then connects
+    // their own app with a key of their own.
+    rc.keys.delete('sk_old_agency_key');
+    const client = await swiftProject('owner_client', 'Client app');
+    expect((await connect(client, 'sk_full')).ok).toBe(true);
+
+    expect(await connectionRow(abandoned.id)).toBeUndefined();
+    const [p] = await currentTestDb().select().from(projects).where(eq(projects.id, abandoned.id));
+    expect(p.revenuecatStatus).toBe('none');
+    expect((await connectionRow(client.id)).rcProjectId).toBe(rc.projectId);
+  });
+
+  test('a claim whose key still works is not released just because RevenueCat is briefly down', async () => {
+    const rc = fakeRevenueCat();
+    rc.keys.set('sk_other', 'full');
+    const first = await swiftProject('owner_a', 'First');
+    await connect(first, 'sk_other');
+    const second = await swiftProject('owner_b', 'Second');
+    // The new key's own check (the first GET /projects) succeeds; the liveness
+    // check of the first connection's key (the second) gets a 503, which is
+    // not a rejection.
+    rc.failures.push({ match: /GET \/projects$/, status: 503, times: 1, skip: 1 });
+    const result = await connect(second, 'sk_full');
+    expect(result).toMatchObject({ ok: false, code: 'project-in-use' });
+    expect(await connectionRow(first.id)).toBeDefined();
+    // One per connect, plus the liveness check of the existing claim.
+    expect(rc.calls.filter((c) => c === 'GET /projects')).toHaveLength(3);
   });
 });
 

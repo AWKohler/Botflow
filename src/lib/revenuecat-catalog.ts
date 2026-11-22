@@ -300,7 +300,7 @@ export async function readCatalog(ctx: CatalogContext): Promise<{ ok: true; cata
           issues.push({
             severity: 'warning',
             code: 'app-store-product-incomplete',
-            message: `In the App Store, "${product.identifier}" does not unlock ${missing.join(', ')} (it does in the Test Store), so a real purchase would unlock nothing. Create the product again to attach it.`,
+            message: `In the App Store, "${product.identifier}" does not unlock ${missing.join(', ')} (it does in the Test Store), so a real purchase would unlock nothing. The agent repairs this by creating the product again.`,
           });
         }
       }
@@ -314,7 +314,7 @@ export async function readCatalog(ctx: CatalogContext): Promise<{ ok: true; cata
           issues.push({
             severity: 'warning',
             code: 'app-store-product-incomplete',
-            message: `Package "${pkg.lookup_key}" has no App Store product, so it will not appear in the published app. Create "${test.product.store_identifier}" again to add it.`,
+            message: `Package "${pkg.lookup_key}" has no App Store product, so it will not appear in the published app. The agent repairs this by creating "${test.product.store_identifier}" again.`,
           });
         }
       }

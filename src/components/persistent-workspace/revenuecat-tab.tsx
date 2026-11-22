@@ -527,9 +527,9 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
           {leftoverWebhookUrl ? (
             <div role="alert" className="rounded-xl border border-warning-border bg-warning-soft p-4 text-xs leading-relaxed text-warning">
               RevenueCat is disconnected here, but Botflow could not remove its webhook from your RevenueCat
-              project (the key no longer works). RevenueCat will keep trying to send purchase events and
-              report them as failing. Delete the webhook named &quot;Botflow: …&quot; under Integrations,
-              Webhooks. <ExternalLink href={leftoverWebhookUrl}>Open Integrations</ExternalLink>
+              project. RevenueCat will keep trying to send purchase events and report them as failing.
+              Delete the webhook named &quot;Botflow: …&quot; under Integrations, Webhooks.{" "}
+              <ExternalLink href={leftoverWebhookUrl}>Open Integrations</ExternalLink>
             </div>
           ) : null}
 

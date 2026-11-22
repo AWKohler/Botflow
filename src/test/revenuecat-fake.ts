@@ -43,7 +43,12 @@ export interface FakeRevenueCat {
    * Make matching requests fail, to model RevenueCat being briefly unavailable.
    * `match` is tested against "METHOD /path"; `times` defaults to forever.
    */
-  failures: Array<{ match: RegExp; status: number; times?: number }>;
+  failures: Array<{ match: RegExp; status: number; times?: number; /** let this many matches through first */ skip?: number }>;
+  /**
+   * Run something while a matching request is in flight (once), to model work
+   * that overlaps a slow RevenueCat call: a reconnect during a refresh.
+   */
+  during: Array<{ match: RegExp; run: () => Promise<void> }>;
   /** Number of state-changing requests, to assert idempotency. */
   writes(): number;
 }
@@ -76,6 +81,7 @@ export function fakeRevenueCat(
     webhooks: [],
     calls: [],
     failures: [],
+    during: [],
     writes: () => rc.calls.filter((c) => !c.startsWith('GET ')).length,
   };
   if (init.testStore !== false) {
@@ -96,7 +102,16 @@ export function fakeRevenueCat(
       const url = new URL(request.url);
       const signature = `${request.method} ${url.pathname.replace('/v2', '')}`;
       rc.calls.push(signature);
-      const failing = rc.failures.find((f) => f.match.test(signature) && (f.times === undefined || f.times > 0));
+      const overlap = rc.during.findIndex((d) => d.match.test(signature));
+      if (overlap >= 0) await rc.during.splice(overlap, 1)[0].run();
+      const failing = rc.failures.find((f) => {
+        if (!f.match.test(signature) || (f.times !== undefined && f.times <= 0)) return false;
+        if (f.skip && f.skip > 0) {
+          f.skip -= 1;
+          return false;
+        }
+        return true;
+      });
       if (failing) {
         if (failing.times !== undefined) failing.times -= 1;
         return error(failing.status, `simulated ${failing.status}`, 'server_error');
