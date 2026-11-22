@@ -336,7 +336,7 @@ struct Composer: View {
             }
             Spacer(minLength: 0)
             if access.source == .claudeSubscription, let pct = account.claudePlan?.fiveHour {
-                Text("Claude session \(pct)% used")
+                Text("Claude \(pct)% used")
             } else if access.source == .planCredits, let credits = account.credits {
                 Text("Credits \(credits.pct)% used")
             } else if let source = access.source, source != .planCredits {

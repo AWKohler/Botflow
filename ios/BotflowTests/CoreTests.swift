@@ -156,3 +156,21 @@ final class ToolDetailTests: XCTestCase {
         XCTAssertEqual(ToolPresentation.info(for: call.name).verb, "Editing")
     }
 }
+
+final class WorkspaceLayoutTests: XCTestCase {
+    func testPhonesShowOnePane() {
+        XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 402, height: 874), hinge: nil), .single)
+        // The Duo's cover screen, folded shut.
+        XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 466, height: 678), hinge: .closed), .single)
+    }
+
+    func testAnOpenDuoAndAnIPadShowTwoPanes() {
+        XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 669, height: 951), hinge: .fullyOpen), .sideBySide)
+        XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 834, height: 1210), hinge: nil), .sideBySide)
+    }
+
+    func testAHalfOpenDuoPutsAPaneEachSideOfTheFold() {
+        XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 669, height: 951), hinge: .partiallyOpen), .halves)
+        XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 951, height: 669), hinge: .partiallyOpen), .stacked)
+    }
+}

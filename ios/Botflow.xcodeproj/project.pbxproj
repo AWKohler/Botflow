@@ -62,6 +62,7 @@
 		DE37C475138C730ADBDB18FE /* SimulatorController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B1683888C53962116A21E1 /* SimulatorController.swift */; };
 		E11AAA5FB0455B167BA93681 /* BotflowGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFD7F8111C96AE0EB5449235 /* BotflowGlyph.swift */; };
 		E731F98A510563F10949016C /* BotflowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED34B6FD69DF498EE6F5428D /* BotflowApp.swift */; };
+		EAC85EE4E9C6CFD936189A3C /* DeviceHinge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34362CAE53CF508C037B3BA2 /* DeviceHinge.swift */; };
 		F31E9501F4EF950F745826F0 /* BuildView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62C404D595C8991E65D96556 /* BuildView.swift */; };
 		F36FBE7C7235D2A66F9FED33 /* MessageStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = B76D8D6ED32ADB12A52A709F /* MessageStream.swift */; };
 		F38CB27ACD7BDF454F31A67C /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7E0C9000BF56241BC5D9F59 /* APIClient.swift */; };
@@ -121,6 +122,7 @@
 		24B1683888C53962116A21E1 /* SimulatorController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulatorController.swift; sourceTree = "<group>"; };
 		2F7F1DEA325815122D2443FF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		33DB4BF28BDA84894E5EF214 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		34362CAE53CF508C037B3BA2 /* DeviceHinge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceHinge.swift; sourceTree = "<group>"; };
 		353B1E815FF2792B78FB29AC /* ProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>"; };
 		38EA29354590FBA60B106F74 /* InstrumentSerif-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "InstrumentSerif-Regular.ttf"; sourceTree = "<group>"; };
 		44C706634B7F857EED7AD975 /* InstrumentSerif-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "InstrumentSerif-Italic.ttf"; sourceTree = "<group>"; };
@@ -335,6 +337,7 @@
 			children = (
 				BB3E9B8031D2A0584467B091 /* AppSession.swift */,
 				ED34B6FD69DF498EE6F5428D /* BotflowApp.swift */,
+				34362CAE53CF508C037B3BA2 /* DeviceHinge.swift */,
 				4A950171B25EBD74BCE0F56F /* MainView.swift */,
 				8C03A5480D00FEBCBAC6710B /* Router.swift */,
 			);
@@ -602,6 +605,7 @@
 				A9306A361C61C6DE0F293F55 /* Components.swift in Sources */,
 				82DC5079D8546D6C6E573F8E /* DemoContent.swift in Sources */,
 				7933699247AB54C5CFB447FE /* DemoService.swift in Sources */,
+				EAC85EE4E9C6CFD936189A3C /* DeviceHinge.swift in Sources */,
 				856A9DF3693CB129D6A012C1 /* ExploreView.swift in Sources */,
 				4BBDF56485AA4E36043B6BCB /* JSONValue.swift in Sources */,
 				3CBED9A4F5FCC720DB1E8B02 /* LiveActivityManager.swift in Sources */,

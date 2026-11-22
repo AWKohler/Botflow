@@ -214,7 +214,7 @@ struct SimulatorView: View {
                 startButton(title: nil)
             }
         case .starting(let label):
-            progress(label, detail: "A Mac in the cloud is getting a simulator ready.")
+            progress(label == "Reserving" ? "Reserving a simulator" : label == "Connecting" ? "Connecting" : label == "Starting" ? "Starting the simulator" : label, detail: "A Mac in the cloud is getting a simulator ready.")
         case .building:
             progress("Building your app", detail: controller.logTail.last.map { ToolSummary.firstLine($0, limit: 60) } ?? "Compiling Swift")
         case .installing:

@@ -5,14 +5,15 @@ enum WorkspacePane: Hashable {
 }
 
 /// A project: the agents on one side, the app they are building on the other.
-/// Side by side where there is room (iPad, an unfolded iPhone Duo), one at a
-/// time on a phone.
+/// Side by side where there is room (iPad, an open iPhone Duo), one at a time
+/// on a phone. On a Duo propped half open the two panes sit either side of
+/// the fold, so nothing lies across the crease.
 struct WorkspaceView: View {
     let route: WorkspaceRoute
     @StateObject private var store: WorkspaceStore
     @EnvironmentObject private var session: AppSession
     @EnvironmentObject private var router: Router
-    @Environment(\.horizontalSizeClass) private var sizeClass
+    @EnvironmentObject private var hinge: DeviceHingeModel
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var pane: WorkspacePane
@@ -28,12 +29,24 @@ struct WorkspaceView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let split = sizeClass == .regular && proxy.size.width >= 820
+            // Width decides, not the size class: an open Duo (about 670 points)
+            // and an iPad both have room for two panes.
+            let layout = WorkspaceLayout.choose(size: proxy.size, hinge: hinge.posture)
+            let split = layout != .single
             Group {
-                if split {
+                if layout == .stacked {
+                    // Half open and held like a laptop: the app on the upright
+                    // half, the conversation and keyboard on the flat half.
+                    VStack(spacing: 0) {
+                        AppPane(store: store, sheet: $sheet, immersive: $immersive)
+                            .frame(height: proxy.size.height / 2)
+                        Divider().overlay(Sand.border)
+                        chatColumn
+                    }
+                } else if split {
                     HStack(spacing: 0) {
                         chatColumn
-                            .frame(width: min(460, max(360, proxy.size.width * 0.38)))
+                            .frame(width: layout == .halves ? proxy.size.width / 2 : min(460, max(300, proxy.size.width * 0.4)))
                         Divider().overlay(Sand.border)
                         AppPane(store: store, sheet: $sheet, immersive: $immersive)
                     }
@@ -155,6 +168,27 @@ struct WorkspaceView: View {
             Label("More", systemImage: "ellipsis")
         }
         .accessibilityIdentifier("workspace.more")
+    }
+}
+
+enum WorkspaceLayout: Equatable {
+    /// One pane at a time, switched with Chat / App.
+    case single
+    /// Chat beside the app, chat the narrower.
+    case sideBySide
+    /// Two equal panes either side of a vertical fold.
+    case halves
+    /// The app above the chat, either side of a horizontal fold.
+    case stacked
+
+    static func choose(size: CGSize, hinge: HingePosture?) -> WorkspaceLayout {
+        if hinge == .partiallyOpen {
+            // A book-style fold: the crease runs down the middle in portrait
+            // and across the middle in landscape.
+            if size.width > size.height, size.height >= 560 { return .stacked }
+            if size.width >= 560 { return .halves }
+        }
+        return size.width >= 640 ? .sideBySide : .single
     }
 }
 

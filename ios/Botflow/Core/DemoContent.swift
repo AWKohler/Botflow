@@ -148,6 +148,26 @@ enum DemoContent {
                     ]), state: .running)),
                 ]),
             ]
+        case "t-onboard":
+            return [
+                ChatMessage(id: "u1", role: .user, parts: [.text(id: "u1", text: "Design a three-step onboarding flow: welcome, pick a currency, then set a monthly budget.")], userId: "u-demo", createdAt: Date().addingTimeInterval(-18_400)),
+                ChatMessage(id: "a1", role: .assistant, parts: [
+                    .text(id: "a1t", text: "I'll add the flow as three pages in a paged tab view and show it once, on first launch."),
+                    tool("c1", "read", ["file_path": .string("PocketLedger/PocketLedgerApp.swift")]),
+                    tool("c2", "write", ["file_path": .string("PocketLedger/Views/OnboardingFlow.swift")], output: "Wrote 142 lines"),
+                    tool("c3", "edit", ["file_path": .string("PocketLedger/PocketLedgerApp.swift")], output: "Applied 2 edits"),
+                    tool("c4", "startSimulator", [:], output: "Build succeeded. The app is running on iPhone."),
+                    .text(id: "a1t2", text: """
+                    Onboarding is in and running in the simulator:
+
+                    1. **Welcome:** the app icon, a one-line pitch and a **Get started** button.
+                    2. **Currency:** a searchable list, with your region's currency preselected.
+                    3. **Budget:** a large amount field with a slider underneath for quick changes.
+
+                    It shows only on first launch; the choice is saved with `@AppStorage`. Press play in the App tab to walk through it.
+                    """),
+                ], createdAt: Date().addingTimeInterval(-18_000)),
+            ]
         case "t-charts":
             return [
                 ChatMessage(id: "u1", role: .user, parts: [.text(id: "u1", text: "Add a monthly spending chart to the summary screen using Swift Charts, one bar per category.")], userId: "u-demo"),

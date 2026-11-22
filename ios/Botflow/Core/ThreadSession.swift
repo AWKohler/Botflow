@@ -203,6 +203,16 @@ final class ThreadSession: ObservableObject {
         followTask?.cancel()
         turnStartedAt = startedAt ?? Date()
         if phase != .starting { phase = .streaming }
+        // Following a turn that was already running (started on the web, or
+        // before the app was reopened) gets a Live Activity too.
+        LiveActivityManager.shared.start(
+            projectId: projectId,
+            projectName: projectName,
+            threadId: threadId,
+            threadTitle: threadTitle,
+            modelName: ModelCatalog.name(model),
+            startedAt: turnStartedAt ?? Date()
+        )
         followTask = Task { [weak self] in
             await self?.runFollow(turnId: turnId)
         }

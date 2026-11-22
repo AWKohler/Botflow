@@ -64,4 +64,40 @@ final class LiveWorkspaceUITests: XCTestCase {
         let steps = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Read' OR label BEGINSWITH 'Edited' OR label BEGINSWITH 'Wrote' OR label BEGINSWITH 'Ran' OR label CONTAINS 'steps'"))
         XCTAssertGreaterThan(steps.count, 0, "The reply disappeared after the turn ended")
     }
+
+    /// The cloud simulator for a Swift project (TEST_RUNNER_BOTFLOW_LIVE_SWIFT_PROJECT):
+    /// press play, wait for live video, then touch it.
+    func testTheSimulatorStreamsAndTakesTouches() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let baseURL = environment["BOTFLOW_BASE_URL"], let project = environment["BOTFLOW_LIVE_SWIFT_PROJECT"] else {
+            throw XCTSkip("No live Swift project was provided.")
+        }
+        let app = XCUIApplication()
+        app.launchArguments += ["-BotflowBaseURL", baseURL, "-BotflowOpenProject", project, "-BotflowOpenApp", "YES"]
+        app.launch()
+
+        let play = app.buttons["simulator.play"]
+        XCTAssertTrue(play.waitForExistence(timeout: 90), "The simulator view did not appear")
+        play.tap()
+
+        let fullScreen = app.buttons["simulator.fullscreen"]
+        XCTAssertTrue(fullScreen.waitForExistence(timeout: 360), "The simulator did not go live")
+        sleep(6)
+
+        // Touch the middle of the screen, then swipe up, as a person would.
+        let surface = app.windows.firstMatch
+        surface.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)).tap()
+        sleep(3)
+        let from = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+        let to = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+        from.press(forDuration: 0.05, thenDragTo: to)
+        sleep(4)
+
+        // Full screen and back.
+        fullScreen.tap()
+        sleep(5)
+        app.buttons["Exit full screen"].tap()
+        XCTAssertTrue(fullScreen.waitForExistence(timeout: 10))
+        sleep(2)
+    }
 }

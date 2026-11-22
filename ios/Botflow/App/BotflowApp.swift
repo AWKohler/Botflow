@@ -6,6 +6,7 @@ struct BotflowApp: App {
     @StateObject private var session = AppSession()
     @StateObject private var router = Router()
     @StateObject private var store = StoreManager.shared
+    @StateObject private var hinge = DeviceHingeModel()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -14,6 +15,8 @@ struct BotflowApp: App {
                 .environmentObject(session)
                 .environmentObject(router)
                 .environmentObject(store)
+                .environmentObject(hinge)
+                .observingHinge(hinge)
                 .tint(Sand.accent)
                 .task {
                     await session.bootstrap()

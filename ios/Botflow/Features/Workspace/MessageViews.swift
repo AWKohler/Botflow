@@ -274,7 +274,7 @@ struct ToolGroupView: View {
                     withAnimation(.snappy(duration: 0.28)) { expanded.toggle() }
                 } label: {
                     HStack(spacing: Space.s) {
-                        Image(systemName: live ? "bolt.horizontal.fill" : "checklist")
+                        Image(systemName: live ? "bolt.fill" : "checklist")
                             .font(.footnote)
                             .foregroundStyle(live ? Sand.accent : Sand.subtle)
                             .symbolEffect(.pulse, isActive: live)

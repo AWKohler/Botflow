@@ -105,7 +105,7 @@ final class SimulatorController: ObservableObject {
 
     func start() async {
         guard !phase.isActive else { return }
-        setPhase(.starting("Reserving a simulator"))
+        setPhase(.starting("Reserving"))
         diagnostics = []
         logTail = []
         hasFrame = false
@@ -249,11 +249,11 @@ final class SimulatorController: ObservableObject {
     private func handle(_ event: SimEvent) {
         switch event {
         case .open:
-            if case .starting = phase { setPhase(.starting("Waiting for the Mac")) }
+            if case .starting = phase { setPhase(.starting("Starting")) }
         case .state(let state, let queuePosition, let reason):
             switch state {
             case "queued":
-                setPhase(.starting(queuePosition.map { "In line, number \($0)" } ?? "Reserving a simulator"))
+                setPhase(.starting(queuePosition.map { "In line, #\($0)" } ?? "Reserving"))
             case "building":
                 if phase != .building {
                     buildStartedAt = buildStartedAt ?? Date()
