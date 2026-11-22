@@ -10,6 +10,7 @@ import { encryptPrivateData } from "./crypto";
 import { sendAuthEmail } from "./email";
 import { emailAliases } from "./email-aliases";
 import { captchaPlugin } from "./captcha";
+import { nativeApp } from "./native-app";
 import { gateNewUser, isGateBannedUser } from "./username-gate";
 
 export function createIdentityAuth(
@@ -143,6 +144,7 @@ export function createIdentityAuth(
     },
     plugins: [
       captchaPlugin(),
+      nativeApp(),
       emailAliases(),
       username(),
       admin({

@@ -1,5 +1,6 @@
 import { getIdentityDb } from "@/lib/auth/database";
 import type { Tier } from "@/lib/tier-shared";
+import { getAppleTier } from "@/lib/native/app-store";
 
 export interface SubscriptionRecord {
   user_id: string;
@@ -51,6 +52,19 @@ export async function getSubscription(
   );
   return rows[0] ?? null;
 }
+/** The higher of two tiers. */
+export function higherTier(a: Tier, b: Tier): Tier {
+  const rank: Record<Tier, number> = { free: 0, pro: 1, max: 2 };
+  return rank[a] >= rank[b] ? a : b;
+}
+/**
+ * A person's paid plan: their Stripe subscription or one bought in the iOS
+ * app through the App Store, whichever is higher.
+ */
 export async function getPaidTier(userId: string): Promise<Tier> {
-  return subscriptionTier(await getSubscription(userId));
+  const [stripe, apple] = await Promise.all([
+    getSubscription(userId).then((subscription) => subscriptionTier(subscription)),
+    getAppleTier(userId),
+  ]);
+  return higherTier(stripe, apple);
 }

@@ -109,6 +109,7 @@ import {
 } from "@/lib/agent/host-tools/definitions";
 import type { TurnStartContext, TurnStartResult } from "./types";
 import { acquireThreadSpawnLock, releaseThreadSpawnLock } from "./spawn-lock";
+import { wantsProgressBeacon } from "@/lib/native/agent-push";
 
 /**
  * Start one turn on this agent in a thread: derive and check credentials,
@@ -335,6 +336,9 @@ export async function startClaudeCodeTurn(ctx: TurnStartContext): Promise<TurnSt
     BOTFLOW_TOOL_TOKEN: toolToken,
     BOTFLOW_TURN_TOKEN: toolToken,
   };
+  // Step heartbeats feed the iOS app's Live Activity; only worth sending when
+  // the person who started the turn has the app.
+  if (await wantsProgressBeacon(userId)) bridgeEnv.BOTFLOW_PROGRESS_BEACON = "1";
   // On protected preview deployments the host-tool callback would otherwise
   // die on Vercel's Deployment Protection wall (401 before our route runs) —
   // every host tool (setup_auth, convex_deploy, ask_question, …) fails.

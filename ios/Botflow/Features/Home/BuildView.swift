@@ -1,0 +1,377 @@
+import SwiftUI
+
+/// The home screen: describe an app and an agent starts building it.
+struct BuildView: View {
+    @EnvironmentObject private var session: AppSession
+    @EnvironmentObject private var router: Router
+    @EnvironmentObject private var agents: AgentsHub
+
+    @State private var prompt = ""
+    @State private var platform: ProjectPlatform = .web
+    @State private var modelId = UserDefaults.standard.string(forKey: "build.model") ?? ModelCatalog.defaultId
+    @State private var backend = "none"
+    @State private var showModels = false
+    @State private var creating = false
+    @State private var recent: [Project] = []
+    @FocusState private var focused: Bool
+
+    private let ideas: [(String, String)] = [
+        ("cup.and.saucer", "A landing page for a neighbourhood coffee shop with a menu and opening hours"),
+        ("checklist", "A habit tracker with streaks, reminders and a weekly chart"),
+        ("chart.bar", "A dashboard that tracks my freelance invoices and what's overdue"),
+        ("figure.hiking", "A trail finder that shows nearby hikes on a map by difficulty"),
+    ]
+
+    private var model: AIModel { ModelCatalog.model(modelId) }
+    private var access: ModelAccess { session.access(for: model) }
+    private var canSend: Bool { !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !creating }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: Space.xxl) {
+                hero
+                composer
+                connections
+                if !agents.running.isEmpty || !agents.needsInput.isEmpty { activeStrip }
+                if !recent.isEmpty { jumpBackIn }
+                suggestions
+            }
+            .padding(.horizontal, Space.gutter)
+            .padding(.bottom, 40)
+            .frame(maxWidth: 720)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .sandCanvas()
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                HStack(spacing: 8) {
+                    BotflowGlyph().frame(width: 24)
+                    Text("Botflow").font(.headline).foregroundStyle(Sand.text)
+                }
+                .fixedSize()
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Botflow")
+            }
+            .sharedBackgroundVisibility(.hidden)
+            ToolbarItem(placement: .topBarTrailing) { AccountButton() }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showModels) {
+            ModelPickerSheet(selection: $modelId)
+        }
+        .onChange(of: modelId) { _, value in UserDefaults.standard.set(value, forKey: "build.model") }
+        .task { await loadRecent() }
+    }
+
+    private var hero: some View {
+        VStack(spacing: Space.s) {
+            Text(greeting)
+                .font(.serif(40, relativeTo: .largeTitle))
+                .foregroundStyle(Sand.text)
+                .multilineTextAlignment(.center)
+                .accessibilityAddTraits(.isHeader)
+            Text("Describe it. An agent builds it, and tells you when it's ready.")
+                .font(.callout)
+                .foregroundStyle(Sand.muted)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.top, Space.xl)
+    }
+
+    private var greeting: String {
+        if let name = session.user?.firstName ?? session.user?.fullName?.split(separator: " ").first.map(String.init), !name.isEmpty {
+            return "What will you build, \(name)?"
+        }
+        return "What will you build?"
+    }
+
+    private var composer: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SegmentedTabs(
+                selection: $platform,
+                items: [
+                    .init(value: .web, title: "Web app", symbol: "globe"),
+                    .init(value: .swift, title: "iOS app", symbol: "swift"),
+                ]
+            )
+            .padding(Space.s)
+
+            ZStack(alignment: .topLeading) {
+                if prompt.isEmpty {
+                    Text(platform == .swift ? "Ask Botflow to create an iOS app that…" : "Ask Botflow to create a web app that…")
+                        .foregroundStyle(Sand.subtle)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 8)
+                        .allowsHitTesting(false)
+                }
+                TextEditor(text: $prompt)
+                    .focused($focused)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 96, maxHeight: 220)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("build.prompt")
+            }
+            .font(.body)
+            .foregroundStyle(Sand.text)
+            .padding(.horizontal, Space.m)
+
+            HStack(spacing: Space.s) {
+                Button { showModels = true } label: {
+                    HStack(spacing: 6) {
+                        ProviderMark(provider: model.provider, size: 16)
+                        Text(model.name).lineLimit(1)
+                        Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(Sand.subtle)
+                    }
+                }
+                .buttonStyle(RaisedButtonStyle(size: .small))
+                .accessibilityLabel("Model: \(model.name)")
+
+                Menu {
+                    Picker("Backend", selection: $backend) {
+                        Label("No backend", systemImage: "nosign").tag("none")
+                        Label("Convex (your account)", systemImage: "cylinder.split.1x2").tag("user")
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: backend == "none" ? "nosign" : "cylinder.split.1x2")
+                        Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(Sand.subtle)
+                    }
+                }
+                .buttonStyle(RaisedButtonStyle(size: .small))
+                .accessibilityLabel(backend == "none" ? "Backend: none" : "Backend: Convex")
+
+                Spacer(minLength: 0)
+
+                Button(action: create) {
+                    if creating {
+                        ProgressView().tint(Sand.bg)
+                    } else {
+                        Image(systemName: "arrow.up")
+                    }
+                }
+                .buttonStyle(CircleIconButtonStyle(diameter: 42, filled: true))
+                .disabled(!canSend)
+                .accessibilityLabel("Start building")
+                .accessibilityIdentifier("build.send")
+            }
+            .padding(Space.m)
+        }
+        .background(Sand.elevated.opacity(0.6), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .sandCard(radius: 22)
+        .shadow(color: Sand.shadow.opacity(0.06), radius: 22, y: 10)
+    }
+
+    @ViewBuilder
+    private var connections: some View {
+        VStack(spacing: Space.m) {
+            if !access.runnable {
+                Button {
+                    router.sheet = model.provider == .anthropic && session.tier == .free ? .settings : .paywall(reason: access.title)
+                } label: {
+                    HStack(spacing: Space.s) {
+                        Image(systemName: "lock.fill")
+                        Text("\(model.name): \(access.title.lowercased()).")
+                        Text("Fix").fontWeight(.semibold).underline()
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(Sand.warning)
+                    .padding(.horizontal, Space.m)
+                    .padding(.vertical, Space.s)
+                    .background(Sand.warningSoft, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            HStack(spacing: Space.s) {
+                ConnectionChip(title: "Claude", connected: session.connections.hasClaudeOAuth == true, provider: .anthropic)
+                ConnectionChip(title: "ChatGPT", connected: session.connections.hasCodexOAuth == true, provider: .openai)
+            }
+        }
+    }
+
+    private var activeStrip: some View {
+        Button {
+            router.tab = .agents
+        } label: {
+            HStack(spacing: Space.m) {
+                StatusDot(status: agents.needsInput.isEmpty ? .running : .needsInput, size: 9)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(activeTitle)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Sand.text)
+                    if let first = (agents.needsInput + agents.running).first {
+                        Text("\(first.projectName) · \(first.thread.displayTitle)")
+                            .font(.footnote)
+                            .foregroundStyle(Sand.subtle)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Sand.subtle)
+            }
+            .padding(.horizontal, Space.l)
+            .padding(.vertical, Space.m)
+            .sandCard(radius: 16)
+        }
+        .buttonStyle(PressableStyle())
+    }
+
+    private var activeTitle: String {
+        let waiting = agents.needsInput.count
+        let running = agents.running.count
+        if waiting > 0 { return waiting == 1 ? "An agent needs your input" : "\(waiting) agents need your input" }
+        return running == 1 ? "1 agent is working" : "\(running) agents are working"
+    }
+
+    private var jumpBackIn: some View {
+        VStack(alignment: .leading, spacing: Space.m) {
+            HStack {
+                Text("Jump back in")
+                    .font(.headline)
+                    .foregroundStyle(Sand.text)
+                Spacer()
+                Button("All projects") { router.tab = .projects }
+                    .font(.subheadline)
+                    .foregroundStyle(Sand.muted)
+            }
+            ScrollView(.horizontal) {
+                HStack(spacing: Space.m) {
+                    ForEach(recent.prefix(6)) { project in
+                        Button {
+                            Haptics.tap()
+                            router.open(WorkspaceRoute(project: project))
+                        } label: {
+                            VStack(alignment: .leading, spacing: Space.s) {
+                                ProjectCover(project: project)
+                                    .frame(width: 168, height: 104)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Sand.border, lineWidth: 1))
+                                Text(project.name)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(Sand.text)
+                                    .lineLimit(1)
+                                Text("\(project.kind.label) · \(RelativeTime.short(project.lastOpened))")
+                                    .font(.caption)
+                                    .foregroundStyle(Sand.subtle)
+                            }
+                            .frame(width: 168, alignment: .leading)
+                        }
+                        .buttonStyle(PressableStyle())
+                    }
+                }
+                .padding(.horizontal, Space.gutter)
+            }
+            .scrollIndicators(.hidden)
+            .padding(.horizontal, -Space.gutter)
+        }
+    }
+
+    private var suggestions: some View {
+        VStack(alignment: .leading, spacing: Space.m) {
+            Text("Need an idea?")
+                .font(.headline)
+                .foregroundStyle(Sand.text)
+            VStack(spacing: 0) {
+                ForEach(Array(ideas.enumerated()), id: \.offset) { index, idea in
+                    Button {
+                        Haptics.tap()
+                        withAnimation(.snappy) { prompt = idea.1 }
+                        platform = idea.0 == "checklist" || idea.0 == "figure.hiking" ? .swift : .web
+                        focused = true
+                    } label: {
+                        HStack(spacing: Space.m) {
+                            Image(systemName: idea.0)
+                                .foregroundStyle(Sand.muted)
+                                .frame(width: 24)
+                            Text(idea.1)
+                                .font(.subheadline)
+                                .foregroundStyle(Sand.text)
+                                .multilineTextAlignment(.leading)
+                            Spacer(minLength: Space.s)
+                            Image(systemName: "arrow.up.left")
+                                .font(.footnote)
+                                .foregroundStyle(Sand.subtle)
+                        }
+                        .padding(.horizontal, Space.l)
+                        .padding(.vertical, 14)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    if index < ideas.count - 1 { Divider().overlay(Sand.border).padding(.leading, 52) }
+                }
+            }
+            .sandCard()
+        }
+    }
+
+    private func loadRecent() async {
+        if let projects = try? await session.service.projects() {
+            recent = projects.sorted { ($0.lastOpened ?? .distantPast) > ($1.lastOpened ?? .distantPast) }
+        }
+    }
+
+    private func create() {
+        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        guard access.runnable else {
+            Haptics.warning()
+            router.sheet = model.provider == .anthropic && session.tier == .free ? .settings : .paywall(reason: access.title)
+            return
+        }
+        if platform == .swift, session.tier == .free {
+            Haptics.warning()
+            router.sheet = .paywall(reason: "iOS apps need a Pro or Max plan")
+            return
+        }
+        creating = true
+        focused = false
+        Task {
+            defer { creating = false }
+            do {
+                let project = try await session.service.createProject(
+                    name: String(text.prefix(48)),
+                    platform: platform,
+                    model: modelId,
+                    backend: backend
+                )
+                Haptics.success()
+                await PushManager.shared.requestIfNeeded()
+                prompt = ""
+                router.open(WorkspaceRoute(project: project, initialPrompt: text))
+                await loadRecent()
+            } catch let error as APIError where error.isPlanLimit {
+                router.sheet = .paywall(reason: error.message)
+            } catch {
+                ToastCenter.shared.error(error)
+            }
+        }
+    }
+}
+
+struct ConnectionChip: View {
+    var title: String
+    var connected: Bool
+    var provider: ModelProvider
+    @EnvironmentObject private var router: Router
+
+    var body: some View {
+        Button {
+            router.sheet = .settings
+        } label: {
+            HStack(spacing: 6) {
+                ProviderMark(provider: provider, size: 15)
+                Text(connected ? "\(title) connected" : "Connect \(title)")
+                if connected {
+                    Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(Sand.success)
+                }
+            }
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(connected ? Sand.muted : Sand.text)
+            .padding(.horizontal, Space.m)
+            .frame(minHeight: 34)
+            .background(connected ? Color.clear : Sand.card, in: Capsule())
+            .overlay(Capsule().strokeBorder(connected ? Color.clear : Sand.border, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+}
