@@ -130,6 +130,14 @@ export async function POST(
     // 4. Snapshot the project source (same prep as the device-build flow).
     //    'release': App Store builds always carry the production appl_ key —
     //    never the Test Store key (dev builds are always test mode instead).
+    //    The App Store app is usually added to RevenueCat long after the
+    //    first connect, so look for its key again right before baking it.
+    if (project.revenuecatStatus === "connected") {
+      const { refreshRevenueCatConnection } = await import("@/lib/revenuecat-connection");
+      await refreshRevenueCatConnection(projectId).catch((err) =>
+        console.error("[swift-publish/submit] RevenueCat refresh failed:", err),
+      );
+    }
     await materializeSwiftBuildConfig(projectId, "release");
     const tarball = await tarSandboxProject(projectId, { excludeConvex: true });
 

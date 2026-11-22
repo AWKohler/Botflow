@@ -1,34 +1,27 @@
 /**
  * POST /api/projects/[id]/revenuecat/connect
  *
- * Called by the payments tab's setup wizard (NOT a modal). Receives the user's
- * pasted RevenueCat keys, validates the secret key against the RevenueCat API,
- * stores everything encrypted in user_revenuecat_identity (reused across the
- * user's projects), and flips this project to 'connected'.
+ * The Payments tab's "Connect" button. Takes the one value the user pastes, the
+ * V2 secret key of this app's RevenueCat project, and does the rest:
+ * verifies it, finds the RevenueCat project and its SDK keys, creates the
+ * webhook, stores the key encrypted and flips the project to 'connected'.
  *
- * Replaces Stripe's OAuth callback — here the user supplies credentials directly
- * because RevenueCat has no self-service OAuth for platforms.
+ * Body: { rcSecretKey, allowSharedProject? }
  *
- * Body: { rcSecretKey, rcPublicSdkKey, rcProjectId }
- * (The wizard no longer collects an App Store Connect .p8 — ASC automation
- * will reuse the Apple Developer credential from Settings instead.)
+ * Errors carry a `code` (see ConnectResult) and a message that says what to
+ * change, because RevenueCat keys cannot be edited after creation: almost every
+ * failure here is fixed by creating a new key the right way.
  */
-import { NextRequest, NextResponse } from 'next/server';
-import { after } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { auth } from '@/lib/auth/server';
-import { and, eq } from 'drizzle-orm';
-import { randomBytes, createHash } from 'node:crypto';
-import { getDb } from '@/db';
-import { projects, userRevenueCatIdentity } from '@/db/schema';
 import { requireProjectAccess } from '@/lib/project-access';
 import { canUseRevenueCat } from '@/lib/tier';
-import { encryptSecret } from '@/lib/secrets';
-import { validateConnection } from '@/lib/revenuecat';
+import { connectRevenueCat, takeAgentWaitingForConnect } from '@/lib/revenuecat-connection';
 import { scaffoldRevenueCatIntoProject } from '@/lib/revenuecat-scaffold';
 import { REVENUECAT_ENABLED } from '@/lib/feature-flags';
 
 export const runtime = 'nodejs';
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function POST(
   req: NextRequest,
@@ -47,176 +40,74 @@ export async function POST(
   }
 
   const { id: projectId } = await params;
-  const db = getDb();
-
-  const access = await requireProjectAccess(projectId, userId, "owner");
+  const access = await requireProjectAccess(projectId, userId, 'owner');
   if (!access) {
     return NextResponse.json({ ok: false, error: 'Project not found' }, { status: 404 });
   }
   const project = access.project;
 
-  const gate = await canUseRevenueCat(userId);
+  if (project.platform !== 'swift' || project.backendType === 'none') {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: 'backend-blocked',
+        error:
+          project.platform !== 'swift'
+            ? 'RevenueCat in-app purchases are for Swift (iOS) projects.'
+            : 'This project has no backend. In-app purchases need one to record what each user has bought.',
+      },
+      { status: 400 },
+    );
+  }
+
+  const gate = await canUseRevenueCat(project.userId);
   if (!gate.allowed) {
     return NextResponse.json(
-      { ok: false, status: 'tier-blocked', error: gate.reason, tier: gate.tier },
+      { ok: false, status: 'tier-blocked', code: 'tier-blocked', error: gate.reason, tier: gate.tier },
       { status: 402 },
     );
   }
 
-  let body: {
-    rcSecretKey?: string;
-    rcPublicSdkKey?: string;
-    rcProjectId?: string;
-  };
+  let body: { rcSecretKey?: unknown; allowSharedProject?: unknown };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ ok: false, error: 'Invalid JSON body' }, { status: 400 });
   }
-
-  const rcSecretKey = body.rcSecretKey?.trim();
-  const rcPublicSdkKey = body.rcPublicSdkKey?.trim();
-  const rcProjectId = body.rcProjectId?.trim();
-
-  if (!rcSecretKey || !rcPublicSdkKey || !rcProjectId) {
+  const rcSecretKey = typeof body.rcSecretKey === 'string' ? body.rcSecretKey.trim() : '';
+  if (!rcSecretKey) {
     return NextResponse.json(
-      {
-        ok: false,
-        error:
-          'rcSecretKey, rcPublicSdkKey, and rcProjectId are all required. Find them in your RevenueCat project settings.',
-      },
+      { ok: false, code: 'not-secret-key', error: 'Paste the RevenueCat secret key (it starts with "sk_").' },
       { status: 400 },
     );
   }
 
-  if (!rcProjectId.startsWith('proj')) {
+  const result = await connectRevenueCat({
+    projectId,
+    projectName: project.name,
+    userId: project.userId,
+    secretKey: rcSecretKey,
+    requestOrigin: new URL(req.url).origin,
+    allowSharedProject: body.allowSharedProject === true,
+  });
+  if (!result.ok) {
     return NextResponse.json(
-      {
-        ok: false,
-        error:
-          'RevenueCat API v2 needs the Project ID that starts with "proj". Copy it from RevenueCat → Project settings → General, not from the dashboard URL.',
-      },
-      { status: 400 },
+      { ok: false, code: result.code, error: result.error, ...(result.sharedWith ? { sharedWith: result.sharedWith } : {}) },
+      { status: result.status },
     );
   }
 
-  const isTestStoreKey = rcPublicSdkKey.startsWith('test_');
-  if (!rcPublicSdkKey.startsWith('appl_') && !isTestStoreKey) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          'The SDK key should start with "appl_" for an App Store app or "test_" for RevenueCat Test Store.',
-      },
-      { status: 400 },
-    );
-  }
+  // The agent that asked for payments (if any) is told the connection is done.
+  const agentThread = await takeAgentWaitingForConnect(projectId);
 
-  // Validate the secret key actually works against this project.
-  const validation = await validateConnection(rcSecretKey, rcProjectId);
-  if (!validation.ok) {
-    const setupHint =
-      validation.status === 404
-        ? ' Make sure the secret key was created with API version V2 and the Project ID is the "proj…" value from Project settings.'
-        : '';
-    return NextResponse.json(
-      {
-        ok: false,
-        error: `Could not verify your RevenueCat connection: ${validation.error}.${setupHint} Double-check the secret key and project ID.`,
-      },
-      { status: validation.status >= 400 && validation.status < 500 ? 400 : 502 },
-    );
-  }
-
-  // Preserve an existing inbound webhook secret so the user doesn't have to
-  // re-paste it into RevenueCat when reconnecting.
-  const [existing] = await db
-    .select()
-    .from(userRevenueCatIdentity)
-    .where(eq(userRevenueCatIdentity.userId, userId))
-    .limit(1);
-
-  // One RevenueCat identity per Botflow user: pasting a different RC project
-  // here silently repoints every other connected project's management calls
-  // and dashboard links. Allowed (the user may genuinely be switching), but
-  // must be surfaced — never silent.
-  let identitySwitchWarning: string | null = null;
-  if (existing?.rcProjectId && existing.rcProjectId !== rcProjectId) {
-    const others = await db
-      .select({ id: projects.id, name: projects.name })
-      .from(projects)
-      .where(and(eq(projects.userId, userId), eq(projects.revenuecatStatus, 'connected')));
-    const affected = others.filter((p) => p.id !== projectId);
-    if (affected.length > 0) {
-      const names = affected.map((p) => p.name).slice(0, 3).join(', ');
-      identitySwitchWarning =
-        `Botflow stores one RevenueCat connection per account. Connecting this RevenueCat project ` +
-        `also repoints your ${affected.length} other connected project${affected.length === 1 ? '' : 's'} ` +
-        `(${names}${affected.length > 3 ? ', …' : ''}) to it. If those apps sell products under the ` +
-        `previous RevenueCat project, reconnect them or move their products over.`;
-    }
-  }
-  const rcInboundWebhookSecret =
-    existing?.rcInboundWebhookSecret ?? `bfrcin_${randomBytes(24).toString('hex')}`;
-  // Indexed digest so the inbound webhook can resolve the owner by O(1) lookup.
-  const rcInboundWebhookSecretDigest = createHash('sha256')
-    .update(rcInboundWebhookSecret)
-    .digest('hex');
-
-  const now = new Date();
-  const values = {
-    userId,
-    rcSecretKey: encryptSecret(rcSecretKey),
-    // A Test Store key is valid for development but must never become the
-    // production build key. Keep any prior appl_ key and store the test key in
-    // its dedicated field; release builds then remain unconfigured until the
-    // user adds a real App Store app.
-    rcPublicSdkKey: isTestStoreKey ? existing?.rcPublicSdkKey ?? null : rcPublicSdkKey,
-    ...(isTestStoreKey ? { rcTestStoreSdkKey: rcPublicSdkKey } : {}),
-    rcProjectId,
-    rcInboundWebhookSecret,
-    rcInboundWebhookSecretDigest,
-    connectedAt: existing?.connectedAt ?? now,
-    updatedAt: now,
-  };
-
-  await db
-    .insert(userRevenueCatIdentity)
-    .values(values)
-    .onConflictDoUpdate({ target: userRevenueCatIdentity.userId, set: values });
-
-  // Flip this project to connected and stamp the RC project id.
-  const webhookSecret =
-    project.revenuecatWebhookSecret ?? `bfrc_${randomBytes(32).toString('hex')}`;
-  await db
-    .update(projects)
-    .set({
-      revenuecatStatus: 'connected',
-      revenuecatProjectId: rcProjectId,
-      revenuecatWebhookSecret: webhookSecret,
-      updatedAt: now,
-    })
-    .where(eq(projects.id, projectId));
-
-  // Scaffold the Convex receiver + set BOTFLOW_REVENUECAT_WEBHOOK_SECRET on the
-  // deployment in the background, so the app can actually verify the platform's
-  // signed webhook deliveries. Best-effort — failures are logged, not fatal.
+  // Add the receiver to the app's backend and write the SDK key into the
+  // Swift source, so the very next build can make test purchases.
   after(async () => {
     try {
-      const result = await scaffoldRevenueCatIntoProject(projectId);
-      console.log(
-        '[revenuecat/connect] background scaffold',
-        projectId,
-        'files=', result.filesWritten,
-        'envSet=', result.envSet,
-        result.envError ? `envError=${result.envError}` : '',
-        result.filesError ? `filesError=${result.filesError}` : '',
-      );
+      await scaffoldRevenueCatIntoProject(projectId);
     } catch (err) {
       console.error('[revenuecat/connect] background scaffold threw:', err);
     }
-    // Bake the freshly-stored public SDK key into RevenueCatConfig.swift now,
-    // so the sandbox reflects it immediately (builds re-materialize anyway).
     try {
       const { materializeSwiftRevenueCatConfig } = await import('@/lib/sandbox-env');
       await materializeSwiftRevenueCatConfig(projectId);
@@ -228,8 +119,12 @@ export async function POST(
   return NextResponse.json({
     ok: true,
     status: 'connected',
-    rcProjectId,
-    projectName: validation.data.name,
-    ...(identitySwitchWarning ? { warning: identitySwitchWarning } : {}),
+    rcProjectId: result.rcProjectId,
+    projectName: result.rcProjectName,
+    testStoreReady: result.testStoreReady,
+    appStoreReady: result.appStoreReady,
+    webhook: result.webhook,
+    // null = nobody is waiting; 'current' = the open chat; otherwise a thread id.
+    agentThread,
   });
 }

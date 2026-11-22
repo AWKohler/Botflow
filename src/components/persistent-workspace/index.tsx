@@ -897,7 +897,8 @@ export function PersistentWorkspace({
               <div className="h-full w-full overflow-hidden rounded-xl border border-border bg-bg">
                 <RevenueCatTab
                   projectId={projectId}
-                  status={revenuecatStatus === "connected" ? "connected" : "connecting"}
+                  status={revenuecatStatus}
+                  active={currentView === "revenuecat"}
                   onChanged={() => void refreshProject()}
                 />
               </div>

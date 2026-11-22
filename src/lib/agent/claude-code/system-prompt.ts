@@ -19,10 +19,42 @@ export interface BuildAppendPromptInput {
   hasConvexEnv?: boolean;
   /** MuhKoo project — use the MuhKoo section instead of Convex/no-backend. */
   usesMuhkoo?: boolean;
+  /** RevenueCat (iOS in-app purchases) is switched on for this deployment. */
+  revenuecatEnabled?: boolean;
 }
 
+/**
+ * RevenueCat iOS SDK version new projects pin. Test Store purchases need
+ * 5.43.0 or newer; pinning one version keeps the build Mac's package cache
+ * warm across projects.
+ */
+export const REVENUECAT_IOS_SDK_VERSION = "5.103.2";
+
+/** Swift guidance for in-app purchases. Only for projects with a backend. */
+const SWIFT_REVENUECAT_SECTION: string[] = [
+  "",
+  "## In-app purchases (RevenueCat)",
+  "Subscriptions, paywalls, premium unlocks, consumables and tips all go through RevenueCat. Never hand-roll StoreKit (`Product.purchase()`, `Transaction`, receipt checks), and never ask the user for a key or hardcode one.",
+  "1. **Call `initialize_revenuecat_payments` FIRST.** It never blocks. It writes `Sources/Core/RevenueCatConfig.swift` (platform-managed: read it, never edit it), `convex/revenueCatWebhook.ts` (read-only), `convex/revenueCatBilling.ts` (yours) and mounts `/revenuecat/webhook` in `convex/http.ts` (keep that route if you edit the file). `needs-connect` means the user still has to paste one key in the Payments tab: keep building.",
+  `2. **SDK:** in \`project.yml\`, under \`packages:\` add \`RevenueCat:\` with \`url: https://github.com/RevenueCat/purchases-ios-spm\` and \`exactVersion: "${REVENUECAT_IOS_SDK_VERSION}"\`; under the app target's \`dependencies:\` add \`- package: RevenueCat\` / \`product: RevenueCat\`. The remote build resolves it. \`import RevenueCat\` where used.`,
+  "3. **Configure once at launch** (the `App` init): `if RevenueCatConfig.isConfigured { Purchases.configure(withAPIKey: RevenueCatConfig.apiKey) }`. `Purchases.shared` crashes before `configure`, so guard EVERY other RevenueCat call with `RevenueCatConfig.isConfigured`; when it is false show a short \"Purchases aren't set up yet\" state instead of prices.",
+  "   - With sign-in (`setup_auth`): tie purchases to the account. After sign-in `_ = try await Purchases.shared.logIn(<the signed-in user's id>)`; on sign-out `_ = try await Purchases.shared.logOut()`. Without sign-in skip this: purchases belong to the device.",
+  "4. **Products:** once connected, call `get_revenuecat_products`, then `create_revenuecat_product` for each thing the app sells. One call creates the product, its test price, the entitlement it unlocks and its paywall slot. Use the returned identifiers verbatim. Then call `get_revenuecat_products` again and fix every `blocker` in `issues`.",
+  "5. **Paywall:** build it in SwiftUI from the current offering. `let offerings = try await Purchases.shared.offerings()`, then show `offerings.current?.availablePackages`, taking the name and price from `package.storeProduct.localizedTitle` and `.localizedPriceString` (never hardcode a price). Buy with `let result = try await Purchases.shared.purchase(package: package)`; `result.userCancelled` is not an error. Always include Restore Purchases (`try await Purchases.shared.restorePurchases()`). If there is no current offering or it has no packages, say so on screen: never a blank paywall.",
+  "6. **Access:** the user has access when `customerInfo.entitlements[\"<entitlement>\"]?.isActive == true`. Read it at launch (`try await Purchases.shared.customerInfo()`), take it from the result of every purchase and restore, and keep it live with `for await info in Purchases.shared.customerInfoStream`. Hold it in one `@Observable` store that the views read.",
+  "7. **Backend:** run `convex_deploy` after step 1 so the receiver is live. If the app has sign-in and the server must enforce access, record entitlements in `applyRevenueCatEvent` (`convex/revenueCatBilling.ts`, which documents the event shape) and check that table in your mutations. `event.data.appUserId` is the id you passed to `logIn`. Events arrive a few seconds after a purchase, so the app itself unlocks from the SDK (step 6).",
+  "8. **Test mode:** simulator and development builds always use RevenueCat's Test Store (`RevenueCatConfig.isTestStore`): purchases are simulated, with no Apple account and no real money. Tapping buy opens RevenueCat's test dialog, where the user picks the successful purchase. A test subscription renews every few minutes and ends after 5 renewals. Published App Store builds always sell the live products.",
+  "**When you finish**, tell the user plainly: whether RevenueCat is connected (if not, the one step left is the Payments tab); which products you created and their test prices; how to try a purchase in the simulator; and that selling for real later needs an App Store app in RevenueCat plus matching products in App Store Connect (the Payments tab lists the steps). Do not say purchases work unless the build succeeded and the catalog has no blocker issues.",
+];
+
+const SWIFT_REVENUECAT_NO_BACKEND: string[] = [
+  "",
+  "## In-app purchases",
+  "This project has no backend, and Botflow's in-app purchases (RevenueCat) need one. If the user asks for a paywall, subscriptions or purchases, say that payments are available in Swift projects created with a Convex backend. Do not add StoreKit code, the RevenueCat SDK or a guessed key here.",
+];
+
 export function buildClaudeCodeAppendPrompt(input: BuildAppendPromptInput): string {
-  const { platform, hasBackend, hasConvexEnv, usesMuhkoo } = input;
+  const { platform, hasBackend, hasConvexEnv, usesMuhkoo, revenuecatEnabled } = input;
 
   if (platform === "swift") {
     return [
@@ -65,6 +97,7 @@ export function buildClaudeCodeAppendPrompt(input: BuildAppendPromptInput): stri
             "- **App Store rule (nudge, don't force):** when the user enables Google/GitHub/Microsoft, tell them App Store guideline 4.8 also requires Sign in with Apple in apps offering third-party login and recommend adding it — but it is their decision; proceed without it if they decline.",
           ]
         : []),
+      ...(revenuecatEnabled ? (hasBackend ? SWIFT_REVENUECAT_SECTION : SWIFT_REVENUECAT_NO_BACKEND) : []),
       "",
       "## iOS Simulator (MCP tools — your run button)",
       "The user's workspace can stream a live iOS simulator running this project. It does NOT run while you work — Swift has no hot reload, and every start costs a full remote compile plus a simulator slot.",

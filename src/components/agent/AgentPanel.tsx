@@ -3085,7 +3085,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{
         projectId: string;
-        kind: 'oauth-provider' | 'env-var' | 'stripe-connect';
+        kind: 'oauth-provider' | 'env-var' | 'stripe-connect' | 'revenuecat';
         subject: string;
         threadId?: string | null;
       }>).detail;
@@ -3109,6 +3109,20 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           note =
             '[system-note] The user just connected their Stripe account — the earlier connect request completed. ' +
             'Call initialize_stripe_payments again to finish setup (it will return already-connected with next steps).';
+          break;
+        case 'revenuecat':
+          // subject: 'connected' (the user finished the Payments tab after the
+          // agent asked for payments) or 'finish-setup' (the user pressed
+          // "Ask the agent to finish" in the Payments tab).
+          note =
+            (detail.subject === 'connected'
+              ? '[system-note] The user just connected RevenueCat in the Payments tab. '
+              : '[system-note] The user asked, from the Payments tab, for in-app purchase setup to be finished. ') +
+            'Finish it now: call initialize_revenuecat_payments (it confirms the connection and refreshes the project files), ' +
+            'then get_revenuecat_products, and create anything this app sells that is missing with create_revenuecat_product ' +
+            '(if nothing in the app or the conversation says what to sell, ask the user before creating products). ' +
+            'Make sure the app has the RevenueCat SDK, a paywall and entitlement checks as your instructions describe, ' +
+            'run convex_deploy so the purchase receiver is live, start the simulator, and tell the user how to try a test purchase.';
           break;
       }
       fetch(`/api/projects/${encodeURIComponent(projectId)}/threads/${encodeURIComponent(target)}/queue`, {

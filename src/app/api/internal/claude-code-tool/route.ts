@@ -13,7 +13,7 @@
  * the MCP tool's result.
  */
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { chatQuestions, projects } from "@/db/schema";
 import { requireProjectAccess } from "@/lib/project-access";
@@ -1031,69 +1031,139 @@ export async function POST(req: Request) {
       });
     }
 
-    case "initialize_revenuecat_payments": {
+    case "initialize_revenuecat_payments":
+    case "get_revenuecat_products":
+    case "create_revenuecat_product": {
       const { REVENUECAT_ENABLED } = await import("@/lib/feature-flags");
       if (!REVENUECAT_ENABLED) {
         return NextResponse.json({ ok: false, content: "RevenueCat is not enabled on this deployment." });
       }
-      if (project.backendType === "none") {
+      if (project.platform !== "swift" || project.backendType === "none") {
         return NextResponse.json({
           ok: false,
           status: "backend-blocked",
-          content: "This project has no Convex backend. RevenueCat requires one to receive entitlement webhooks.",
+          content:
+            "This project has no Convex backend. In-app purchases need one to record what each user has bought. Tell the user payments are available in Swift projects created with a backend.",
         });
       }
-
       const { canUseRevenueCat } = await import("@/lib/tier");
-      const gate = await canUseRevenueCat(binding.userId);
+      const gate = await canUseRevenueCat(project.userId);
       if (!gate.allowed) {
         return NextResponse.json({ ok: false, status: "tier-blocked", content: gate.reason, tier: gate.tier });
       }
 
-      const { userRevenueCatIdentity } = await import("@/db/schema");
-      const { decryptSecret } = await import("@/lib/secrets");
-      const [identity] = await db
-        .select()
-        .from(userRevenueCatIdentity)
-        .where(eq(userRevenueCatIdentity.userId, binding.userId))
-        .limit(1);
-      const linked = Boolean(identity && decryptSecret(identity.rcSecretKey) && identity.rcProjectId);
-      const webhookSecret = project.revenuecatWebhookSecret ?? `bfrc_${randomBytes(32).toString("hex")}`;
+      const {
+        catalogContext,
+        getRevenueCatConnection,
+        markAgentWaitingForConnect,
+        refreshRevenueCatConnection,
+      } = await import("@/lib/revenuecat-connection");
+      let connection = await getRevenueCatConnection(binding.projectId);
+      const needsConnect =
+        "RevenueCat is not connected yet. The Payments tab is open for the user with a one-step setup (they paste one RevenueCat secret key). " +
+        "Do NOT wait for them and do not ask them for keys in chat.";
 
-      await db
-        .update(projects)
-        .set({
-          revenuecatStatus: linked ? "connected" : "connecting",
-          revenuecatWebhookSecret: webhookSecret,
-          ...(linked && identity?.rcProjectId ? { revenuecatProjectId: identity.rcProjectId } : {}),
-          updatedAt: new Date(),
-        })
-        .where(eq(projects.id, binding.projectId));
+      if (tool === "initialize_revenuecat_payments") {
+        const webhookSecret = `bfrc_${randomBytes(32).toString("hex")}`;
+        await db
+          .update(projects)
+          .set({
+            // Never downgrade a connected project, and never rotate a secret
+            // the app's Convex deployment already holds.
+            revenuecatStatus: connection ? "connected" : "connecting",
+            revenuecatWebhookSecret: sql`COALESCE(${projects.revenuecatWebhookSecret}, ${webhookSecret})`,
+            updatedAt: new Date(),
+          })
+          .where(eq(projects.id, binding.projectId));
 
-      if (!linked) {
+        // Put the backend receiver and the Swift SDK-key file in place NOW
+        // (not in the background): the agent's next steps read and deploy them.
+        const { scaffoldRevenueCatIntoProject } = await import("@/lib/revenuecat-scaffold");
+        const { materializeSwiftRevenueCatConfig } = await import("@/lib/sandbox-env");
+        const scaffold = await scaffoldRevenueCatIntoProject(binding.projectId).catch((error) => {
+          console.error("[claude-code-tool/revenuecat] scaffold failed:", error);
+          return null;
+        });
+        await materializeSwiftRevenueCatConfig(binding.projectId).catch((error) => {
+          console.error("[claude-code-tool/revenuecat] RevenueCatConfig.swift write failed:", error);
+        });
+        const files =
+          "Files now in the project: Sources/Core/RevenueCatConfig.swift (platform-managed, read it, never edit it), " +
+          "convex/revenueCatWebhook.ts (read-only receiver), convex/revenueCatBilling.ts (yours: record entitlements here), " +
+          "and the /revenuecat/webhook route in convex/http.ts." +
+          (scaffold && (scaffold.filesError || scaffold.envError)
+            ? ` WARNING: backend setup was incomplete (${scaffold.filesError ?? scaffold.envError}); call this tool again after your edits.`
+            : "");
+
+        if (!connection) {
+          await markAgentWaitingForConnect(binding.projectId, binding.threadId);
+          return NextResponse.json({
+            ok: true,
+            status: "needs-connect",
+            content:
+              `${needsConnect} ${files} ` +
+              "Continue now: add the RevenueCat SDK, the paywall and the entitlement checks as your instructions describe, run convex_deploy so the receiver goes live, and build. " +
+              "Products cannot be created until the user connects. A system note arrives when they do; then call create_revenuecat_product. " +
+              "End your turn by telling the user the one thing left for them: finish the Payments tab.",
+          });
+        }
+
+        const refreshed = await refreshRevenueCatConnection(binding.projectId);
         return NextResponse.json({
           ok: true,
-          status: "needs-connect",
-          content: "Opened the Payments tab with the RevenueCat setup wizard. Continue building the paywall, but do not hardcode keys; the user must finish the RevenueCat connection there.",
+          status: "already-connected",
+          content:
+            `RevenueCat is connected (project "${connection.rcProjectName ?? connection.rcProjectId}"). ${files} ` +
+            (refreshed && !refreshed.keyValid
+              ? `WARNING: the stored key no longer works (${refreshed.keyError}). Tell the user to reconnect in the Payments tab. `
+              : "") +
+            (refreshed && !refreshed.testStoreReady
+              ? "WARNING: this RevenueCat project has no Test Store, so simulator purchases stay disabled until the user adds one in RevenueCat (Apps) and chooses Check again in the Payments tab. "
+              : "Simulator builds use the Test Store: purchases are simulated, no Apple setup, no real money. ") +
+            "Next: get_revenuecat_products to see what exists, create_revenuecat_product for anything missing, then build the paywall, run convex_deploy and start the simulator.",
         });
       }
 
-      const { after } = await import("next/server");
-      after(async () => {
-        try {
-          const { scaffoldRevenueCatIntoProject } = await import("@/lib/revenuecat-scaffold");
-          await scaffoldRevenueCatIntoProject(binding.projectId);
-          const { materializeSwiftRevenueCatConfig } = await import("@/lib/sandbox-env");
-          await materializeSwiftRevenueCatConfig(binding.projectId);
-        } catch (error) {
-          console.error("[claude-code-tool/revenuecat] background setup failed:", error);
-        }
-      });
-      return NextResponse.json({
-        ok: true,
-        status: "already-connected",
-        content: "RevenueCat is already linked for this user. This project is enabled and its backend setup is running in the background. Use RevenueCatConfig.swift rather than hardcoding an SDK key.",
-      });
+      if (!connection) {
+        await markAgentWaitingForConnect(binding.projectId, binding.threadId);
+        return NextResponse.json({
+          ok: false,
+          status: "needs-connect",
+          content:
+            `${needsConnect} ` +
+            (project.revenuecatStatus === "none"
+              ? "Call initialize_revenuecat_payments first; it opens the Payments tab. "
+              : "") +
+            "Keep building the rest. A system note arrives when they connect; call this tool again then.",
+        });
+      }
+
+      const { explainRevenueCatError } = await import("@/lib/revenuecat");
+      const { parseProvisionInput, provisionProduct, readCatalog } = await import("@/lib/revenuecat-catalog");
+      const failed = (failure: { status: number; error: string }) =>
+        NextResponse.json({
+          ok: false,
+          content:
+            failure.status === 401 || failure.status === 403
+              ? `${explainRevenueCatError(failure).message} Tell the user to reconnect in the Payments tab with a new key.`
+              : failure.error,
+        });
+
+      if (tool === "get_revenuecat_products") {
+        const result = await readCatalog(catalogContext(connection));
+        if (!result.ok) return failed(result);
+        return NextResponse.json({ ok: true, content: JSON.stringify(result.catalog) });
+      }
+
+      // create_revenuecat_product
+      const parsed = parseProvisionInput((body.input ?? {}) as Record<string, unknown>);
+      if (!parsed.ok) return NextResponse.json({ ok: false, content: parsed.error });
+      // Pick up a Test Store or App Store app added since connecting.
+      await refreshRevenueCatConnection(binding.projectId);
+      connection = (await getRevenueCatConnection(binding.projectId)) ?? connection;
+      const result = await provisionProduct(catalogContext(connection), parsed.input);
+      if (!result.ok) return failed(result);
+      return NextResponse.json({ ok: true, content: JSON.stringify(result) });
     }
 
     case "get_stripe_products":

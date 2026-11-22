@@ -1,54 +1,52 @@
 "use client";
 
 /**
- * RevenueCat payments tab (Swift workspace).
+ * Payments tab (Swift workspace): RevenueCat in-app purchases.
  *
- * One component, two states driven by the project's revenuecat_status:
- *   • 'connecting' → the BYO setup wizard (create RC project → paste keys →
- *     optional Apple key → copy webhook → verify). This replaces Stripe's OAuth
- *     modal — the whole connection flow lives here, and is resumable.
- *   • 'connected'  → a link-out page (RevenueCat's dashboard can't be iframed:
- *     X-Frame-Options: DENY), plus the webhook reminder and Disconnect.
+ * Two states, driven by the project's revenuecat_status:
+ *   • not connected → a three-step setup that ends with pasting ONE value, the
+ *     RevenueCat secret key. Botflow works out everything else from it.
+ *   • connected → what is set up and what is not (key, test purchases, purchase
+ *     events, the app's backend), what the app sells and whether the paywall
+ *     will work, how to try a purchase, recent purchase events, and the steps
+ *     to sell for real on the App Store.
  *
- * No data dashboard in this preliminary build — RevenueCat's own dashboard does
- * the heavy lifting.
+ * RevenueCat's dashboard cannot be embedded (X-Frame-Options: DENY), so the
+ * tab links out to the exact page for each task instead.
  */
-import { Input } from "@/components/ui/input";
-import { useCallback, useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/ui/toast";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Loader2,
   ArrowUpRight,
-  Copy,
   Check,
+  CircleAlert,
   CircleCheck,
-  Circle,
-  ExternalLink,
+  CircleDashed,
+  Copy,
+  Loader2,
+  RefreshCw,
+  Sparkles,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
+import type { Catalog } from "@/lib/revenuecat-catalog";
 
 interface StatusResponse {
   ok: boolean;
   status: "none" | "connecting" | "connected";
+  role: "owner" | "editor";
   environment: "sandbox" | "production";
-  rcProjectId: string | null;
-  dashboardUrl: string;
-  checklist: {
-    keysProvided: boolean;
-    connectionValid: boolean;
-    testStoreReady: boolean;
-    backendReady: boolean;
+  connection: { rcProjectId: string; rcProjectName: string | null; connectedAt: string } | null;
+  links: Record<"overview" | "apiKeys" | "products" | "apps" | "integrations" | "customers", string>;
+  checks: {
+    key: { ok: boolean; error: string | null };
+    testStore: { ok: boolean };
+    appStore: { ok: boolean };
+    webhook: { mode: "automatic" | "manual"; ok: boolean; error: string | null; lastEventAt: string | null };
+    backend: { state: "live" | "not-deployed" | "not-configured" | "no-backend" | "unknown" };
   };
-  scaffold: {
-    ok: boolean;
-    envSet: boolean;
-    routeWired: boolean;
-    envError?: string;
-    filesError?: string;
-    at: string;
-  } | null;
-  connectionError: string | null;
-  webhook: { url: string; authorizationHeader: string | null };
+  manualWebhook: { url: string; authorizationHeader: string } | null;
 }
 
 interface ActivityItem {
@@ -70,51 +68,57 @@ const EVENT_LABELS: Record<string, string> = {
   "billing.issue": "Billing issue",
 };
 
-/**
- * Fixed payment model for Swift apps (unlike web's Stripe test-mode toggle):
- * development is ALWAYS test mode, published builds are ALWAYS live. Shown in
- * both tab states so the divergence is never a surprise.
- */
-function PaymentModeCard({ testStoreReady }: { testStoreReady?: boolean }) {
-  return (
-    <div className="rounded-xl border border-border bg-elevated/40 p-4 space-y-2">
-      <h3 className="text-sm font-semibold text-fg">How payments run</h3>
-      <div className="text-xs text-muted space-y-1.5">
-        <p>
-          <span className="font-medium text-fg">Development (simulator &amp; dev devices):</span>{" "}
-          {testStoreReady ? (
-            <>
-              always <span className="text-warning font-medium">test mode</span> — purchases are
-              simulated through RevenueCat&apos;s Test Store. No Apple setup, no real money, ever.
-            </>
-          ) : (
-            <>
-              requires RevenueCat&apos;s <span className="text-warning font-medium">Test Store</span>.
-              Until it&apos;s ready, Botflow disables purchases in development rather than using a live key.
-            </>
-          )}
-        </p>
-        <p>
-          <span className="font-medium text-fg">Published (App Store):</span> always{" "}
-          <span className="text-success font-medium">live</span> — your real App Store
-          products, real money, once they pass App Review.
-        </p>
-        <p className="text-muted/80">
-          There&apos;s no toggle: Botflow bakes the right RevenueCat key into each build kind
-          automatically. A test build without Test Store setup disables purchases, and a store
-          build can never ship in test mode.
-        </p>
-      </div>
-    </div>
-  );
-}
+const PRODUCT_TYPE_LABELS: Record<string, string> = {
+  subscription: "Subscription",
+  non_consumable: "One-time unlock",
+  consumable: "Consumable",
+  non_renewing_subscription: "Fixed-term pass",
+  one_time: "One-time purchase",
+};
+
+const DURATION_LABELS: Record<string, string> = {
+  P1W: "weekly",
+  P1M: "monthly",
+  P2M: "every 2 months",
+  P3M: "every 3 months",
+  P6M: "every 6 months",
+  P1Y: "yearly",
+};
+
+const REVENUECAT_HOME = "https://app.revenuecat.com";
 
 interface RevenueCatTabProps {
   projectId: string;
-  /** Top-level routing state from the project row. */
-  status: "connecting" | "connected";
-  /** Called after a successful connect/disconnect so the parent refreshes the project. */
+  /** The project's revenuecat_status. 'connecting' = the agent opened setup. */
+  status: "none" | "connecting" | "connected";
+  /** Whether the tab is the one on screen (pauses background refreshes). */
+  active?: boolean;
+  /** Called after connect/disconnect so the parent re-reads the project. */
   onChanged?: () => void;
+}
+
+function timeAgo(iso: string): string {
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+function ExternalLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
+    >
+      {children}
+      <ArrowUpRight size={13} aria-hidden />
+    </a>
+  );
 }
 
 function CopyField({ label, value }: { label: string; value: string }) {
@@ -127,92 +131,149 @@ function CopyField({ label, value }: { label: string; value: string }) {
   }, [value]);
   return (
     <div>
-      <label className="block text-xs text-muted mb-1">{label}</label>
+      <div className="mb-1 text-xs text-muted">{label}</div>
       <div className="flex items-stretch gap-2">
-        <code className="flex-1 truncate rounded-md border border-border bg-surface px-3 py-2 text-xs text-fg font-mono">
+        <code className="min-w-0 flex-1 truncate rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs text-fg">
           {value}
         </code>
         <button
+          type="button"
           onClick={copy}
+          aria-label={`Copy ${label}`}
           className="flex items-center gap-1 rounded-md border border-border px-2.5 text-xs text-muted hover:text-fg"
-          title="Copy"
         >
           {copied ? <Check size={13} /> : <Copy size={13} />}
+          {copied ? "Copied" : "Copy"}
         </button>
       </div>
     </div>
   );
 }
 
-function ChecklistRow({ done, children }: { done: boolean; children: React.ReactNode }) {
+type RowState = "ok" | "attention" | "pending";
+
+/** One line of the setup health list: state icon, what it is, what to do. */
+function HealthRow({
+  state,
+  title,
+  children,
+  action,
+}: {
+  state: RowState;
+  title: string;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
   return (
-    <div className="flex items-center gap-2 text-sm">
-      {done ? (
-        <CircleCheck size={16} className="text-success shrink-0" />
-      ) : (
-        <Circle size={16} className="text-muted shrink-0" />
-      )}
-      <span className={done ? "text-fg" : "text-muted"}>{children}</span>
+    <div className="flex gap-3 py-3">
+      <div className="pt-0.5">
+        {state === "ok" ? (
+          <CircleCheck size={16} className="text-success" aria-label="Ready" />
+        ) : state === "attention" ? (
+          <CircleAlert size={16} className="text-warning" aria-label="Needs attention" />
+        ) : (
+          <CircleDashed size={16} className="text-muted" aria-label="Not yet" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-fg">{title}</div>
+        <div className="mt-0.5 text-xs leading-relaxed text-muted">{children}</div>
+        {action ? <div className="mt-2">{action}</div> : null}
+      </div>
     </div>
   );
 }
 
-export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabProps) {
+function Section({
+  title,
+  aside,
+  children,
+}: {
+  title: string;
+  aside?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-border bg-elevated/40">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+        <h3 className="text-sm font-semibold text-fg">{title}</h3>
+        {aside}
+      </div>
+      <div className="px-4">{children}</div>
+    </section>
+  );
+}
+
+export function RevenueCatTab({ projectId, status, active = true, onChanged }: RevenueCatTabProps) {
   const { toast } = useToast();
   const [data, setData] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [verifying, setVerifying] = useState(false);
+  const [checking, setChecking] = useState(false);
 
-  // Wizard form fields.
-  const [rcSecretKey, setRcSecretKey] = useState("");
-  const [rcPublicSdkKey, setRcPublicSdkKey] = useState("");
-  const [rcProjectId, setRcProjectId] = useState("");
+  const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [activity, setActivity] = useState<ActivityItem[] | null>(null);
+
+  // Setup form.
+  const [secretKey, setSecretKey] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [sharedWith, setSharedWith] = useState<string[] | null>(null);
+  const [replacingKey, setReplacingKey] = useState(false);
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
+  const [askedAgent, setAskedAgent] = useState(false);
 
-  // Activity feed (connected state): recent entitlement events routed to this
-  // project, from the platform's delivery log — no RevenueCat API calls.
-  const [activity, setActivity] = useState<ActivityItem[] | null>(null);
+  const connected = status === "connected";
+
+  const loadStatus = useCallback(
+    async (recheck = false) => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/revenuecat/status`, {
+          method: recheck ? "POST" : "GET",
+          cache: "no-store",
+        });
+        const body = (await res.json().catch(() => null)) as StatusResponse | { error?: string } | null;
+        if (res.ok && body && "status" in body) {
+          setData(body);
+          setLoadError(null);
+        } else {
+          setLoadError(
+            (body && "error" in body && body.error) || `Payments could not be loaded (HTTP ${res.status}).`,
+          );
+        }
+      } catch {
+        setLoadError("Payments could not be loaded. Check your connection and try again.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [projectId],
+  );
+
+  const loadCatalog = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/revenuecat/products`, { cache: "no-store" });
+      const body = (await res.json().catch(() => null)) as { ok?: boolean; catalog?: Catalog; error?: string } | null;
+      if (res.ok && body?.catalog) {
+        setCatalog(body.catalog);
+        setCatalogError(null);
+      } else {
+        setCatalogError(body?.error || `Products could not be loaded (HTTP ${res.status}).`);
+      }
+    } catch {
+      setCatalogError("Products could not be loaded. Check your connection and try again.");
+    }
+  }, [projectId]);
+
   const loadActivity = useCallback(async () => {
     try {
       const res = await fetch(`/api/projects/${projectId}/revenuecat/activity`, { cache: "no-store" });
-      if (res.ok) {
-        const body = (await res.json()) as { ok: boolean; items?: ActivityItem[] };
-        if (body.ok && body.items) setActivity(body.items);
-      }
+      if (!res.ok) return;
+      const body = (await res.json()) as { ok: boolean; items?: ActivityItem[] };
+      if (body.ok && body.items) setActivity(body.items);
     } catch {
-      /* network blip */
-    }
-  }, [projectId]);
-  useEffect(() => {
-    if (status !== "connected") return;
-    void loadActivity();
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") void loadActivity();
-    }, 12_000);
-    return () => clearInterval(interval);
-  }, [status, loadActivity]);
-
-  const loadStatus = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/projects/${projectId}/revenuecat/status`, {
-        cache: "no-store",
-      });
-      const body = (await res.json().catch(() => null)) as StatusResponse | { error?: string } | null;
-      if (res.ok && body) {
-        setData(body as StatusResponse);
-        setLoadError(null);
-      } else {
-        setLoadError(
-          (body && "error" in body && body.error) ||
-            `Payments status could not be loaded (HTTP ${res.status}).`,
-        );
-      }
-    } catch {
-      setLoadError("Payments status could not be loaded. Check your connection and try again.");
-    } finally {
-      setLoading(false);
+      /* transient; the next refresh retries */
     }
   }, [projectId]);
 
@@ -220,420 +281,683 @@ export function RevenueCatTab({ projectId, status, onChanged }: RevenueCatTabPro
     void loadStatus();
   }, [loadStatus, status]);
 
-  const handleConnect = useCallback(async () => {
-    if (!rcSecretKey.trim() || !rcPublicSdkKey.trim() || !rcProjectId.trim()) {
-      toast({ title: "Missing keys", description: "Secret key, public SDK key, and project id are all required." });
-      return;
-    }
-    setConnectError(null);
-    setSubmitting(true);
-    try {
-      const res = await fetch(`/api/projects/${projectId}/revenuecat/connect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rcSecretKey: rcSecretKey.trim(),
-          rcPublicSdkKey: rcPublicSdkKey.trim(),
-          rcProjectId: rcProjectId.trim(),
+  // The catalog and the event log only exist once connected. Refresh them
+  // while the tab is on screen: the agent creates products and the user makes
+  // test purchases in the simulator while this tab is open.
+  useEffect(() => {
+    if (!connected || !active) return;
+    void loadCatalog();
+    void loadActivity();
+    const interval = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void loadActivity();
+      void loadCatalog();
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, [connected, active, loadCatalog, loadActivity]);
+
+  // Hand the rest of the work to the agent through the chat's system-note
+  // queue (same channel the OAuth / env-var / Stripe modals use).
+  const notifyAgent = useCallback(
+    (subject: "connected" | "finish-setup", threadId: string | null) => {
+      window.dispatchEvent(
+        new CustomEvent("agent-modal-completed", {
+          detail: { projectId, kind: "revenuecat", subject, threadId },
         }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || body.ok === false) {
-        throw new Error(body.error || `HTTP ${res.status}`);
+      );
+    },
+    [projectId],
+  );
+
+  const handleConnect = useCallback(
+    async (allowSharedProject = false) => {
+      const key = secretKey.trim();
+      if (!key) {
+        setConnectError("Paste the secret key from RevenueCat first. It starts with sk_.");
+        return;
       }
-      toast({ title: "RevenueCat connected", description: `Linked project "${body.projectName ?? rcProjectId.trim()}".` });
-      if (body.warning) {
-        toast({ title: "Heads up", description: body.warning });
-      }
-      // Drop all pasted credentials from client state once stored server-side.
-      setRcSecretKey("");
-      setRcPublicSdkKey("");
       setConnectError(null);
+      setSubmitting(true);
+      try {
+        const res = await fetch(`/api/projects/${projectId}/revenuecat/connect`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rcSecretKey: key, allowSharedProject }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok || body.ok === false) {
+          if (body.code === "shared-project") {
+            setSharedWith(Array.isArray(body.sharedWith) ? body.sharedWith : []);
+          } else {
+            setSharedWith(null);
+          }
+          setConnectError(body.error || `Connecting failed (HTTP ${res.status}). Try again.`);
+          return;
+        }
+        // The key is stored server-side now; drop it from the page.
+        setSecretKey("");
+        setSharedWith(null);
+        setReplacingKey(false);
+        toast({
+          title: "RevenueCat connected",
+          description: body.testStoreReady
+            ? `Linked to "${body.projectName}". Test purchases are ready.`
+            : `Linked to "${body.projectName}".`,
+        });
+        if (body.agentThread) {
+          notifyAgent("connected", body.agentThread === "current" ? null : body.agentThread);
+          setAskedAgent(true);
+        }
+        onChanged?.();
+        await loadStatus();
+      } catch {
+        setConnectError("Could not reach Botflow. Check your connection and try again.");
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [projectId, secretKey, toast, notifyAgent, onChanged, loadStatus],
+  );
+
+  const handleCheckAgain = useCallback(async () => {
+    setChecking(true);
+    await Promise.all([loadStatus(true), loadCatalog(), loadActivity()]);
+    setChecking(false);
+  }, [loadStatus, loadCatalog, loadActivity]);
+
+  const handleDisconnect = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/revenuecat/disconnect`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setConfirmingDisconnect(false);
+      setCatalog(null);
+      setActivity(null);
+      setAskedAgent(false);
+      toast({
+        title: connected ? "RevenueCat disconnected" : "Setup cancelled",
+        description: connected ? "The stored key and the webhook were removed." : undefined,
+      });
       onChanged?.();
       await loadStatus();
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Unknown error";
-      setConnectError(message);
-      toast({ title: "Couldn't connect", description: message });
-    } finally {
-      setSubmitting(false);
+      toast({
+        title: "Could not disconnect",
+        description: e instanceof Error ? e.message : "Try again.",
+      });
     }
-  }, [projectId, rcSecretKey, rcPublicSdkKey, rcProjectId, toast, onChanged, loadStatus]);
+  }, [projectId, connected, toast, onChanged, loadStatus]);
 
-  const handleVerify = useCallback(async () => {
-    setVerifying(true);
-    await loadStatus();
-    setVerifying(false);
-  }, [loadStatus]);
-
-  // Re-run the Convex-side scaffold (receiver files + env + http route) when a
-  // previous background attempt failed. initialize re-scaffolds for connected
-  // projects; the scaffold write happens after the response, so re-check late.
-  const [repairing, setRepairing] = useState(false);
-  const handleRepairBackend = useCallback(async () => {
-    setRepairing(true);
-    try {
-      const res = await fetch(`/api/projects/${projectId}/revenuecat/initialize`, { method: "POST" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      toast({ title: "Backend setup re-run", description: "Re-checking in a few seconds…" });
-      setTimeout(() => void loadStatus(), 4000);
-    } catch (e) {
-      toast({ title: "Couldn't re-run setup", description: e instanceof Error ? e.message : "Unknown error" });
-    } finally {
-      setRepairing(false);
-    }
-  }, [projectId, toast, loadStatus]);
-
-  const handleDisconnect = useCallback(async () => {
-    if (!window.confirm("Turn off in-app purchases for this project? Your RevenueCat account stays linked for your other apps.")) {
-      return;
-    }
-    try {
-      const res = await fetch(`/api/projects/${projectId}/revenuecat/disconnect`, { method: "POST" });
-      if (!res.ok) throw new Error(await res.text());
-      toast({ title: "Disconnected", description: "In-app purchases turned off for this project." });
-      onChanged?.();
-    } catch (e) {
-      toast({ title: "Disconnect failed", description: e instanceof Error ? e.message : "Unknown error" });
-    }
-  }, [projectId, toast, onChanged]);
-
-  const openDashboard = useCallback(() => {
-    window.open(data?.dashboardUrl ?? "https://app.revenuecat.com", "_blank", "noopener,noreferrer");
-  }, [data]);
+  const keyInputRef = useRef<HTMLInputElement>(null);
 
   if (loading && !data) {
     return (
-      <div className="flex items-center justify-center h-full text-muted text-sm gap-2">
+      <div className="flex h-full items-center justify-center gap-2 text-sm text-muted">
         <Loader2 size={16} className="animate-spin" />
         Loading payments…
       </div>
     );
   }
 
-  const webhookUrl = data?.webhook.url ?? "";
-  const webhookSecret = data?.webhook.authorizationHeader ?? "";
+  const isOwner = data?.role !== "editor";
 
-  // ── Connected state ──────────────────────────────────────────────────────
-  if (status === "connected") {
+  const keyForm = (
+    <div className="space-y-2">
+      <label htmlFor="rc-secret-key" className="block text-xs font-medium text-fg">
+        RevenueCat secret key
+      </label>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Input
+          id="rc-secret-key"
+          ref={keyInputRef}
+          type="password"
+          value={secretKey}
+          onChange={(e) => {
+            setSecretKey(e.target.value);
+            if (connectError) setConnectError(null);
+            if (sharedWith) setSharedWith(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !submitting) void handleConnect();
+          }}
+          placeholder="sk_…"
+          aria-invalid={Boolean(connectError)}
+          aria-describedby={connectError ? "rc-secret-key-error" : undefined}
+          className="min-w-0 flex-1 rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm text-fg"
+        />
+        <Button onClick={() => void handleConnect()} disabled={submitting || !isOwner}>
+          {submitting ? <Loader2 size={16} className="mr-1.5 animate-spin" /> : null}
+          {submitting ? "Checking key…" : "Connect"}
+        </Button>
+      </div>
+      {connectError ? (
+        <div
+          id="rc-secret-key-error"
+          role="alert"
+          className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-xs leading-relaxed text-warning"
+        >
+          {connectError}
+          {sharedWith ? (
+            <div className="mt-2">
+              <Button variant="outline" size="sm" onClick={() => void handleConnect(true)} disabled={submitting}>
+                Connect anyway
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+
+  // ── Not connected: setup ─────────────────────────────────────────────────
+  if (!connected) {
     return (
-      <div className="h-full overflow-auto modern-scrollbar p-8">
-        <div className="max-w-xl mx-auto space-y-6">
+      <div className="modern-scrollbar h-full overflow-auto p-4 sm:p-8">
+        <div className="mx-auto max-w-xl space-y-6">
           <div>
-            <h2 className="text-lg font-semibold text-fg">In-app purchases</h2>
-            <p className="text-sm text-muted mt-1">
-              Your app is wired to RevenueCat. Revenue, customers, and subscription
-              analytics live in the RevenueCat dashboard.
+            <h2 className="text-lg font-semibold text-fg">Set up in-app purchases</h2>
+            <p className="mt-1 text-sm leading-relaxed text-muted">
+              Botflow uses RevenueCat for subscriptions and purchases in iOS apps. Setup takes about two
+              minutes, and you can try purchases in the simulator right away: no Apple account and no
+              real money.
             </p>
           </div>
 
-          <div className="rounded-xl border border-border bg-elevated/60 p-4 space-y-3">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted">RevenueCat project</span>
-              <code className="text-fg font-mono text-xs">{data?.rcProjectId ?? "—"}</code>
+          {loadError ? (
+            <div role="alert" className="rounded-xl border border-warning-border bg-warning-soft p-4 text-xs text-warning">
+              {loadError}
             </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted">Environment</span>
-              <span className="text-fg capitalize">{data?.environment ?? "sandbox"}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted">Connection</span>
-              {data?.checklist.connectionValid ? (
-                <span className="flex items-center gap-1 text-success"><CircleCheck size={14} /> Verified</span>
-              ) : (
-                <span className="text-warning">{data?.connectionError ?? "Unverified"}</span>
-              )}
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted">Backend receiver</span>
-              {data?.checklist.backendReady ? (
-                <span className="flex items-center gap-1 text-success"><CircleCheck size={14} /> Ready</span>
-              ) : (
-                <span className="text-warning">Not set up</span>
-              )}
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted">Test Store (simulator purchases)</span>
-              {data?.checklist.testStoreReady ? (
-                <span className="flex items-center gap-1 text-success"><CircleCheck size={14} /> Ready</span>
-              ) : (
-                <span className="text-warning">Enable in RevenueCat</span>
-              )}
-            </div>
-          </div>
+          ) : null}
 
-          <PaymentModeCard testStoreReady={data?.checklist.testStoreReady} />
-
-          {data && !data.checklist.testStoreReady && (
-            <div className="rounded-xl border border-warning-border bg-warning-soft p-4 space-y-1">
-              <p className="text-xs text-warning">
-                Your RevenueCat project has no Test Store, so the simulator can&apos;t make
-                test purchases yet. Botflow keeps purchases disabled in development until
-                it&apos;s ready. Enable it in RevenueCat (Project settings → Apps → Test Store),
-                then re-run setup below.
-              </p>
-              <Button variant="outline" size="sm" onClick={handleRepairBackend} disabled={repairing}>
-                {repairing ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
-                Re-run setup
-              </Button>
+          {!isOwner ? (
+            <div className="rounded-xl border border-border bg-elevated/40 p-4 text-sm text-muted">
+              Only the project owner can connect RevenueCat.
             </div>
-          )}
-
-          {data && !data.checklist.backendReady && (
-            <div className="rounded-xl border border-warning-border bg-warning-soft p-4 space-y-2">
-              <p className="text-xs text-warning">
-                The webhook receiver isn&apos;t fully set up on your app&apos;s backend, so
-                purchase events can&apos;t update entitlements yet
-                {data.scaffold?.envError ? ` (${data.scaffold.envError})` : ""}
-                {data.scaffold?.filesError ? ` (${data.scaffold.filesError})` : ""}.
-              </p>
-              <Button variant="outline" size="sm" onClick={handleRepairBackend} disabled={repairing}>
-                {repairing ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
-                Re-run backend setup
-              </Button>
-            </div>
-          )}
-
-          <Button onClick={openDashboard} className="w-full">
-            <ExternalLink size={16} className="mr-1.5" />
-            Open RevenueCat Dashboard
-          </Button>
-
-          {/* Activity feed — the platform's own delivery log, not the RC API. */}
-          <div className="rounded-xl border border-border bg-elevated/40 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-fg">Activity</h3>
-              <button onClick={() => void loadActivity()} className="text-xs text-muted hover:text-fg">
-                Refresh
-              </button>
-            </div>
-            <p className="text-xs text-muted">
-              Purchase and entitlement events routed to this app&apos;s backend.{" "}
-              <span className="text-warning">
-                Test-mode events are simulated — no real money changes hands.
-              </span>
-            </p>
-            {activity === null ? (
-              <div className="flex items-center gap-2 text-xs text-muted py-2">
-                <Loader2 size={13} className="animate-spin" /> Loading…
-              </div>
-            ) : activity.length === 0 ? (
-              <p className="text-xs text-muted py-2">
-                No events yet. Make a test purchase in the simulator preview — it shows
-                up here within seconds, along with whether it reached your backend.
-              </p>
-            ) : (
-              <div className="space-y-1.5">
-                {activity.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center gap-2 rounded-md border border-border/60 bg-surface px-2.5 py-1.5 text-xs"
-                  >
-                    <span
-                      className={
-                        item.environment === "PRODUCTION"
-                          ? "shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold bg-success-soft text-success"
-                          : "shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold bg-warning-soft text-warning"
-                      }
-                    >
-                      {item.environment === "PRODUCTION" ? "LIVE" : "TEST"}
-                    </span>
-                    <span className="text-fg font-medium shrink-0">
-                      {EVENT_LABELS[item.type] ?? item.type}
-                    </span>
-                    <span className="text-muted truncate">{item.productId ?? ""}</span>
-                    {typeof item.price === "number" && item.price > 0 && (
-                      <span className="text-muted shrink-0">
-                        {item.price.toFixed(2)} {item.currency ?? ""}
-                      </span>
-                    )}
-                    <span className="ml-auto shrink-0 text-muted/80" title={`Delivery: ${item.delivery.status}${item.delivery.lastError ? ` — ${item.delivery.lastError}` : ""}`}>
-                      {item.delivery.status === "delivered" ? (
-                        <CircleCheck size={13} className="text-success" />
-                      ) : item.delivery.status === "exhausted" ? (
-                        <span className="text-danger">failed</span>
-                      ) : (
-                        <span className="text-warning">retrying…</span>
-                      )}
-                    </span>
-                    <span className="shrink-0 text-muted/70">
-                      {new Date(item.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </span>
+          ) : (
+            <ol className="space-y-5">
+              <li className="flex gap-3">
+                <StepNumber n={1} />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <h3 className="text-sm font-semibold text-fg">Create a RevenueCat project for this app</h3>
+                  <p className="text-xs leading-relaxed text-muted">
+                    Sign in to RevenueCat (free to start) and create a new project. Use one RevenueCat
+                    project per app, so each app has its own products.
+                  </p>
+                  <div className="text-xs">
+                    <ExternalLink href={REVENUECAT_HOME}>Open RevenueCat</ExternalLink>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {webhookUrl && webhookSecret && (
-            <div className="rounded-xl border border-border bg-elevated/40 p-4 space-y-3">
-              <p className="text-xs text-muted">
-                Webhook (set under RevenueCat → Integrations → Webhooks so entitlement
-                changes reach your backend):
-              </p>
-              <CopyField label="Webhook URL" value={webhookUrl} />
-              <CopyField label="Authorization header" value={webhookSecret} />
-            </div>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <StepNumber n={2} />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <h3 className="text-sm font-semibold text-fg">Create a secret key</h3>
+                  <p className="text-xs leading-relaxed text-muted">
+                    In that project, open <Strong>API keys</Strong> in the left sidebar and choose{" "}
+                    <Strong>New secret API key</Strong>. Then set:
+                  </p>
+                  <ul className="space-y-1 text-xs leading-relaxed text-muted">
+                    <li>
+                      <Strong>API version</Strong> to <Strong>V2</Strong>
+                    </li>
+                    <li>
+                      <Strong>Project configuration permissions</Strong> to <Strong>Read &amp; write</Strong>
+                    </li>
+                  </ul>
+                  <p className="text-xs leading-relaxed text-muted">
+                    Leave the other permissions at <Strong>No access</Strong>, choose <Strong>Generate</Strong>{" "}
+                    and copy the key. RevenueCat shows it only once.
+                  </p>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <StepNumber n={3} />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <h3 className="text-sm font-semibold text-fg">Paste the key here</h3>
+                  {keyForm}
+                  <p className="text-xs leading-relaxed text-muted">
+                    That is the only value Botflow needs. It finds your project, switches on test
+                    purchases and adds the purchase-event webhook for you. The key is stored encrypted
+                    and never reaches your app or the agent.
+                  </p>
+                </div>
+              </li>
+            </ol>
           )}
 
-          <button
-            onClick={handleDisconnect}
-            className="text-xs text-muted hover:text-danger"
-          >
-            Disconnect RevenueCat from this project
-          </button>
+          <div className="rounded-xl border border-border bg-elevated/40 p-4 text-xs leading-relaxed text-muted">
+            <span className="font-medium text-fg">While you build,</span> purchases are simulated through
+            RevenueCat&apos;s Test Store. <span className="font-medium text-fg">Once published,</span> the App
+            Store build sells your real products. Botflow puts the right key in each build, so a test
+            build can never charge anyone.
+          </div>
+
+          {status === "connecting" && isOwner ? (
+            <button type="button" onClick={handleDisconnect} className="text-xs text-muted hover:text-danger">
+              Cancel setup
+            </button>
+          ) : null}
         </div>
       </div>
     );
   }
 
-  // ── Connecting state (setup wizard) ──────────────────────────────────────
-  const cl = data?.checklist;
+  // ── Connected ────────────────────────────────────────────────────────────
+  const checks = data?.checks;
+  const links = data?.links;
+  const blockers = catalog?.issues.filter((i) => i.severity === "blocker") ?? [];
+  const warnings = catalog?.issues.filter((i) => i.severity === "warning") ?? [];
+  const currentOffering = catalog?.offerings.find((o) => o.isCurrent) ?? null;
+  const backendState = checks?.backend.state ?? "unknown";
+  const backendNeedsAgent = backendState === "not-deployed" || backendState === "not-configured";
+  const readyToTest = Boolean(
+    checks?.key.ok && checks.testStore.ok && catalog?.readyForTestPurchases,
+  );
+
+  const askAgentButton = isOwner ? (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={askedAgent}
+      onClick={() => {
+        notifyAgent("finish-setup", null);
+        setAskedAgent(true);
+      }}
+    >
+      <Sparkles size={13} className="mr-1.5" aria-hidden />
+      {askedAgent ? "Asked the agent" : "Ask the agent to finish"}
+    </Button>
+  ) : null;
+
   return (
-    <div className="h-full overflow-auto modern-scrollbar p-8">
-      <div className="max-w-xl mx-auto space-y-6">
-        <div>
-          <h2 className="text-lg font-semibold text-fg">Set up in-app purchases</h2>
-          <p className="text-sm text-muted mt-1">
-            Botflow uses RevenueCat for iOS payments. Connect your own RevenueCat
-            account below — you can leave and come back; this picks up where you left off.
-          </p>
+    <div className="modern-scrollbar h-full overflow-auto p-4 sm:p-8">
+      <div className="mx-auto max-w-2xl space-y-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold text-fg">In-app purchases</h2>
+              <span
+                className={cn(
+                  "rounded px-1.5 py-0.5 text-[11px] font-semibold",
+                  data?.environment === "production" ? "bg-success-soft text-success" : "bg-warning-soft text-warning",
+                )}
+              >
+                {data?.environment === "production" ? "Live purchases seen" : "Test mode"}
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-muted">
+              Connected to the RevenueCat project{" "}
+              <span className="font-medium text-fg">
+                {data?.connection?.rcProjectName ?? data?.connection?.rcProjectId ?? "—"}
+              </span>
+              .
+            </p>
+          </div>
+          <a
+            href={links?.overview ?? REVENUECAT_HOME}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-3 text-xs font-medium text-fg hover:bg-soft/60"
+          >
+            Open RevenueCat
+            <ArrowUpRight size={13} aria-hidden />
+          </a>
         </div>
 
-        {loadError && (
-          <div className="rounded-xl border border-warning-border bg-warning-soft p-4 text-xs text-warning">
+        {loadError ? (
+          <div role="alert" className="rounded-xl border border-warning-border bg-warning-soft p-4 text-xs text-warning">
             {loadError}
           </div>
-        )}
+        ) : null}
 
-        {/* Step checklist */}
-        <div className="rounded-xl border border-border bg-elevated/60 p-4 space-y-2">
-          <ChecklistRow done={Boolean(cl?.keysProvided)}>RevenueCat keys provided</ChecklistRow>
-          <ChecklistRow done={Boolean(cl?.connectionValid)}>Connection verified</ChecklistRow>
-          <ChecklistRow done={Boolean(cl?.testStoreReady)}>Test Store found (simulator test purchases)</ChecklistRow>
-        </div>
-
-        <PaymentModeCard testStoreReady={cl?.testStoreReady} />
-
-        <div className="rounded-xl border border-accent/30 bg-accent/5 p-4 space-y-2.5">
-          <div className="flex items-center gap-2">
-            <ExternalLink size={15} className="text-accent shrink-0" />
-            <h3 className="text-sm font-semibold text-fg">Start with RevenueCat Test Store</h3>
-          </div>
-          <p className="text-xs text-muted leading-relaxed">
-            For a simulator or development build, you do not need App Store Connect first.
-            RevenueCat creates a Test Store for every project. In <span className="text-fg">Project settings → API keys</span>,
-            create a <span className="text-fg">V2</span> secret key, then copy the Test Store SDK key that starts with <code className="text-fg">test_</code>.
-            Copy the separate <code className="text-fg">proj…</code> Project ID from <span className="text-fg">Project settings → General</span> — not the ID in the dashboard URL.
-          </p>
-          <a
-            href="https://production-docs.revenuecat.com/docs/getting-started/configuring-sdk"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
-          >
-            <ArrowUpRight size={14} /> Follow RevenueCat&apos;s Test Store setup guide
-          </a>
-          <a
-            href="https://production-docs.revenuecat.com/docs/api-v2"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
-          >
-            <ArrowUpRight size={14} /> Create a RevenueCat V2 secret key
-          </a>
-        </div>
-
-        {/* Step 1 */}
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold text-fg">1. Create a RevenueCat project</h3>
-          <p className="text-xs text-muted">
-            Sign in to RevenueCat and create a project. For test purchases, use its built-in
-            Test Store — an App Store app and <code className="text-fg">appl_</code> key are only needed when you prepare a release.
-          </p>
-          <button
-            onClick={() => window.open("https://app.revenuecat.com", "_blank", "noopener,noreferrer")}
-            className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline"
-          >
-            <ArrowUpRight size={14} /> Open RevenueCat
-          </button>
-        </div>
-
-        {/* Step 2 */}
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-fg">2. Paste your keys</h3>
-          <p className="text-xs text-muted">
-            Use a <code className="text-fg">sk_</code> <span className="text-fg">V2</span> secret key and the <code className="text-fg">test_</code> Test Store key for simulator testing.
-            V1 secret keys cannot access RevenueCat&apos;s v2 API. Botflow keeps the test key out of App Store builds.
-          </p>
-          <Field label="Secret key (sk_…)" value={rcSecretKey} onChange={setRcSecretKey} placeholder="sk_xxxxxxxx" mono type="password" />
-          <Field label="SDK key (appl_… or test_…)" value={rcPublicSdkKey} onChange={setRcPublicSdkKey} placeholder="appl_xxxxxxxx or test_xxxxxxxx" mono />
-          <Field label="API v2 Project ID (Project settings → General, starts proj…)" value={rcProjectId} onChange={setRcProjectId} placeholder="proj1a2b3c4d" mono />
-
-          <div className="flex items-center gap-2 pt-1">
-            <Button onClick={handleConnect} disabled={submitting} >
-              {submitting ? <Loader2 size={16} className="mr-1.5 animate-spin" /> : null}
-              {submitting ? "Connecting…" : "Connect RevenueCat"}
-            </Button>
-            <Button variant="outline" onClick={handleVerify} disabled={verifying}>
-              {verifying ? <Loader2 size={16} className="mr-1.5 animate-spin" /> : null}
-              Verify
-            </Button>
-          </div>
-          {(connectError || data?.connectionError) && (
-            <p className="text-xs text-warning">{connectError || data?.connectionError}</p>
-          )}
-        </div>
-
-        {/* Step 3 */}
-        {webhookUrl && webhookSecret && (
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-fg">3. Add the webhook in RevenueCat</h3>
-            <p className="text-xs text-muted">
-              RevenueCat → Integrations → Webhooks. Paste these so entitlement changes
-              reach your Convex backend.
+        {readyToTest ? (
+          <div className="rounded-xl border border-success-border bg-success-soft p-4">
+            <div className="text-sm font-semibold text-fg">Ready for a test purchase</div>
+            <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-xs leading-relaxed text-muted">
+              <li>
+                Open <Strong>Preview</Strong> and start the simulator.
+              </li>
+              <li>Open the paywall in your app and tap a purchase button.</li>
+              <li>
+                In RevenueCat&apos;s test dialog, choose the successful purchase. Nothing is charged.
+              </li>
+            </ol>
+            <p className="mt-1.5 text-xs leading-relaxed text-muted">
+              The purchase shows up under Activity below within a few seconds. A test subscription renews
+              every few minutes and ends by itself after five renewals.
             </p>
-            <CopyField label="Webhook URL" value={webhookUrl} />
-            <CopyField label="Authorization header" value={webhookSecret} />
           </div>
-        )}
+        ) : null}
 
-        <button
-          onClick={handleDisconnect}
-          className="text-xs text-muted hover:text-danger"
+        <Section
+          title="Setup"
+          aside={
+            <button
+              type="button"
+              onClick={handleCheckAgain}
+              disabled={checking}
+              className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg disabled:opacity-60"
+            >
+              <RefreshCw size={12} className={checking ? "animate-spin" : undefined} aria-hidden />
+              {checking ? "Checking…" : "Check again"}
+            </button>
+          }
         >
-          Cancel setup
-        </button>
+          <div className="divide-y divide-border">
+            <HealthRow
+              state={checks?.key.ok ? "ok" : "attention"}
+              title="RevenueCat key"
+              action={
+                !checks?.key.ok || replacingKey ? (
+                  isOwner ? keyForm : null
+                ) : null
+              }
+            >
+              {checks?.key.ok ? (
+                <>
+                  Working.{" "}
+                  {isOwner && !replacingKey ? (
+                    <button
+                      type="button"
+                      className="text-muted underline hover:text-fg"
+                      onClick={() => {
+                        setReplacingKey(true);
+                        setTimeout(() => keyInputRef.current?.focus(), 0);
+                      }}
+                    >
+                      Replace key
+                    </button>
+                  ) : null}
+                </>
+              ) : (
+                (checks?.key.error ?? "The stored key could not be checked.")
+              )}
+            </HealthRow>
+
+            <HealthRow state={checks?.testStore.ok ? "ok" : "attention"} title="Test purchases">
+              {checks?.testStore.ok ? (
+                "Simulator and development builds use RevenueCat's Test Store: simulated purchases, no Apple account, no real money."
+              ) : (
+                <>
+                  This RevenueCat project has no Test Store, so purchases are switched off in the simulator.
+                  In RevenueCat, open Apps and add a Test Store, then choose Check again.{" "}
+                  {links ? <ExternalLink href={links.apps}>Open Apps</ExternalLink> : null}
+                </>
+              )}
+            </HealthRow>
+
+            <HealthRow
+              state={checks?.webhook.ok ? "ok" : "attention"}
+              title="Purchase events"
+              action={
+                data?.manualWebhook ? (
+                  <div className="space-y-2">
+                    <CopyField label="Webhook URL" value={data.manualWebhook.url} />
+                    <CopyField label="Authorization header value" value={data.manualWebhook.authorizationHeader} />
+                  </div>
+                ) : null
+              }
+            >
+              {checks?.webhook.mode === "automatic" ? (
+                <>
+                  Botflow added a webhook to your RevenueCat project, so purchases reach your app&apos;s
+                  backend.
+                  {checks.webhook.lastEventAt ? ` Last event ${timeAgo(checks.webhook.lastEventAt)}.` : ""}
+                </>
+              ) : checks?.webhook.ok ? (
+                <>
+                  Your webhook is delivering events.
+                  {checks.webhook.lastEventAt ? ` Last event ${timeAgo(checks.webhook.lastEventAt)}.` : ""}
+                </>
+              ) : (
+                <>
+                  Botflow could not add the webhook itself
+                  {checks?.webhook.error ? ` (${checks.webhook.error})` : ""}. Add it in RevenueCat under
+                  Integrations, Webhooks, with the two values below, then choose Check again.{" "}
+                  {links ? <ExternalLink href={links.integrations}>Open Integrations</ExternalLink> : null}
+                </>
+              )}
+            </HealthRow>
+
+            <HealthRow
+              state={backendState === "live" ? "ok" : backendState === "unknown" ? "pending" : "attention"}
+              title="Your app's backend"
+              action={backendNeedsAgent ? askAgentButton : null}
+            >
+              {backendState === "live"
+                ? "Listening for purchase events."
+                : backendState === "not-deployed"
+                  ? "The code that receives purchase events is in your project but not deployed yet. Purchases still unlock in the app; the backend just does not hear about them."
+                  : backendState === "not-configured"
+                    ? "The receiver is deployed but its secret is missing. Choose Check again to set it."
+                    : backendState === "no-backend"
+                      ? "This project's backend has not been created yet. It is set up the first time the agent deploys it."
+                      : "Could not reach the backend just now. Choose Check again in a moment."}
+            </HealthRow>
+          </div>
+        </Section>
+
+        <Section
+          title="What your app sells"
+          aside={links ? <span className="text-xs"><ExternalLink href={links.products}>Edit in RevenueCat</ExternalLink></span> : null}
+        >
+          {catalogError ? (
+            <p role="alert" className="py-3 text-xs text-warning">{catalogError}</p>
+          ) : !catalog ? (
+            <div className="flex items-center gap-2 py-3 text-xs text-muted">
+              <Loader2 size={13} className="animate-spin" /> Loading products…
+            </div>
+          ) : catalog.products.length === 0 ? (
+            <div className="space-y-2 py-3">
+              <p className="text-xs leading-relaxed text-muted">
+                Nothing yet. Tell the agent what to sell, for example &quot;add a Pro subscription for
+                $4.99 a month&quot;, and it creates the product, its price and the paywall.
+              </p>
+              {askAgentButton}
+            </div>
+          ) : (
+            <div className="space-y-3 py-3">
+              <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+                {catalog.products.map((product) => (
+                  <li key={product.identifier} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-fg">
+                        {product.displayName || product.identifier}
+                      </div>
+                      <div className="truncate font-mono text-[11px] text-muted">{product.identifier}</div>
+                    </div>
+                    <div className="text-xs text-muted">
+                      {PRODUCT_TYPE_LABELS[product.type] ?? product.type}
+                      {product.duration && DURATION_LABELS[product.duration] ? `, ${DURATION_LABELS[product.duration]}` : ""}
+                    </div>
+                    <div className="text-xs tabular-nums text-fg">
+                      {product.testPrice
+                        ? `${product.testPrice.currency === "USD" ? "$" : ""}${product.testPrice.amount.toFixed(2)}${product.testPrice.currency === "USD" ? "" : ` ${product.testPrice.currency}`} test`
+                        : "No test price"}
+                    </div>
+                    <div className="text-xs text-muted">
+                      {product.entitlements.length > 0 ? `Unlocks ${product.entitlements.join(", ")}` : "Unlocks nothing"}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {currentOffering ? (
+                <p className="text-xs leading-relaxed text-muted">
+                  The paywall shows the offering <Strong>{currentOffering.identifier}</Strong>
+                  {currentOffering.packages.length > 0
+                    ? `: ${currentOffering.packages.map((p) => p.products[0] ?? p.identifier).join(", ")}.`
+                    : ", which is empty."}
+                </p>
+              ) : null}
+              {blockers.length > 0 ? (
+                <div role="alert" className="space-y-1.5 rounded-lg border border-warning-border bg-warning-soft p-3">
+                  <div className="text-xs font-semibold text-warning">
+                    {blockers.length === 1 ? "One thing stops purchases from working" : `${blockers.length} things stop purchases from working`}
+                  </div>
+                  <ul className="list-disc space-y-1 pl-4 text-xs leading-relaxed text-warning">
+                    {blockers.map((issue, i) => (
+                      <li key={`${issue.code}-${i}`}>{issue.message}</li>
+                    ))}
+                  </ul>
+                  {askAgentButton}
+                </div>
+              ) : null}
+              {warnings.length > 0 ? (
+                <ul className="list-disc space-y-1 pl-4 text-xs leading-relaxed text-muted">
+                  {warnings.map((issue, i) => (
+                    <li key={`${issue.code}-${i}`}>{issue.message}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          )}
+        </Section>
+
+        <Section
+          title="Activity"
+          aside={
+            links ? <span className="text-xs"><ExternalLink href={links.customers}>Customers in RevenueCat</ExternalLink></span> : null
+          }
+        >
+          {activity === null ? (
+            <div className="flex items-center gap-2 py-3 text-xs text-muted">
+              <Loader2 size={13} className="animate-spin" /> Loading…
+            </div>
+          ) : activity.length === 0 ? (
+            <p className="py-3 text-xs leading-relaxed text-muted">
+              No purchases yet. A test purchase in the simulator appears here within a few seconds.
+            </p>
+          ) : (
+            <ul className="space-y-1.5 py-3">
+              {activity.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs"
+                >
+                  <span
+                    className={cn(
+                      "shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold",
+                      item.environment === "PRODUCTION" ? "bg-success-soft text-success" : "bg-warning-soft text-warning",
+                    )}
+                  >
+                    {item.environment === "PRODUCTION" ? "LIVE" : "TEST"}
+                  </span>
+                  <span className="shrink-0 font-medium text-fg">{EVENT_LABELS[item.type] ?? item.type}</span>
+                  <span className="min-w-0 truncate text-muted">{item.productId ?? ""}</span>
+                  {typeof item.price === "number" && item.price > 0 ? (
+                    <span className="shrink-0 tabular-nums text-muted">
+                      {item.price.toFixed(2)} {item.currency ?? ""}
+                    </span>
+                  ) : null}
+                  <span className="ml-auto shrink-0">
+                    {item.delivery.status === "delivered" ? (
+                      <span className="inline-flex items-center gap-1 text-success">
+                        <CircleCheck size={13} aria-hidden /> Reached your backend
+                      </span>
+                    ) : item.delivery.status === "exhausted" ? (
+                      <span className="text-danger" title={item.delivery.lastError ?? undefined}>
+                        Backend never accepted it
+                      </span>
+                    ) : (
+                      <span className="text-warning" title={item.delivery.lastError ?? undefined}>
+                        Retrying delivery to your backend
+                      </span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-muted">{timeAgo(item.at)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+
+        <details className="group rounded-xl border border-border bg-elevated/40">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5">
+            <span className="text-sm font-semibold text-fg">Selling for real on the App Store</span>
+            <span className="text-xs text-muted">
+              {checks?.appStore.ok ? "App Store key found" : "Not needed until you publish"}
+            </span>
+          </summary>
+          <div className="space-y-2 border-t border-border px-4 py-3 text-xs leading-relaxed text-muted">
+            <p>
+              Test mode needs none of this. Before your first App Store release, with a paid Apple
+              Developer account:
+            </p>
+            <ol className="list-decimal space-y-1.5 pl-4">
+              <li>
+                In RevenueCat, open Apps and add an App Store app with your app&apos;s bundle ID, then add
+                the in-app purchase key it asks for.{" "}
+                {links ? <ExternalLink href={links.apps}>Open Apps</ExternalLink> : null}
+              </li>
+              <li>
+                In App Store Connect, create each product with the same ID
+                {catalog && catalog.products.length > 0 ? (
+                  <>
+                    {" "}
+                    (
+                    {catalog.products.map((p, i) => (
+                      <span key={p.identifier}>
+                        {i > 0 ? ", " : ""}
+                        <code className="font-mono text-fg">{p.identifier}</code>
+                      </span>
+                    ))}
+                    )
+                  </>
+                ) : null}{" "}
+                and set its real price.
+              </li>
+              <li>
+                Come back and choose <Strong>Check again</Strong>, then ask the agent to register the
+                products for the App Store.
+              </li>
+            </ol>
+            <p>
+              {checks?.appStore.ok
+                ? "Botflow found your App Store app. Published builds use its key and sell the live products."
+                : "Until Botflow finds an App Store app in this RevenueCat project, published builds ship with purchases switched off rather than in test mode."}
+            </p>
+          </div>
+        </details>
+
+        {isOwner ? (
+          confirmingDisconnect ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+              <span>
+                Disconnect? Botflow deletes the stored key and its webhook. Your RevenueCat products and
+                customers stay as they are.
+              </span>
+              <Button variant="outline" size="sm" onClick={handleDisconnect}>
+                Disconnect
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirmingDisconnect(false)}>
+                Keep connected
+              </Button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmingDisconnect(true)}
+              className="text-xs text-muted hover:text-danger"
+            >
+              Disconnect RevenueCat from this project
+            </button>
+          )
+        ) : null}
       </div>
     </div>
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  mono,
-  type,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  mono?: boolean;
-  type?: string;
-}) {
+function StepNumber({ n }: { n: number }) {
   return (
-    <div>
-      <label className="block text-xs text-muted mb-1">{label}</label>
-      <Input
-        type={type ?? "text"}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className={`w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-fg ${mono ? "font-mono text-xs" : ""}`}
-      />
-    </div>
+    <span
+      aria-hidden
+      className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-xs font-semibold text-fg"
+    >
+      {n}
+    </span>
   );
+}
+
+function Strong({ children }: { children: React.ReactNode }) {
+  return <span className="font-medium text-fg">{children}</span>;
 }

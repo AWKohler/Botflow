@@ -1,21 +1,19 @@
 /**
  * POST /api/projects/[id]/revenuecat/disconnect
  *
- * Turns RevenueCat off for THIS project (status → 'none', clears project-level
- * RC fields). Deliberately leaves user_revenuecat_identity intact — the user's
- * RevenueCat account is reused across their other projects, so disconnecting one
- * app must not wipe the shared credentials.
+ * Turns RevenueCat off for this project and removes what Botflow holds for it:
+ * the stored secret key and the webhook Botflow created in RevenueCat. The
+ * user's RevenueCat project, products and customers are untouched. Also used as
+ * "Cancel setup" before a key was ever pasted.
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { auth } from '@/lib/auth/server';
-import { eq } from 'drizzle-orm';
-import { getDb } from '@/db';
-import { projects } from '@/db/schema';
 import { requireProjectAccess } from '@/lib/project-access';
+import { disconnectRevenueCat } from '@/lib/revenuecat-connection';
 import { REVENUECAT_ENABLED } from '@/lib/feature-flags';
 
 export const runtime = 'nodejs';
-export const maxDuration = 20;
+export const maxDuration = 30;
 
 export async function POST(
   _req: NextRequest,
@@ -34,22 +32,22 @@ export async function POST(
   }
 
   const { id: projectId } = await params;
-  const db = getDb();
-
-  const access = await requireProjectAccess(projectId, userId, "owner");
+  const access = await requireProjectAccess(projectId, userId, 'owner');
   if (!access) {
     return NextResponse.json({ ok: false, error: 'Project not found' }, { status: 404 });
   }
 
-  await db
-    .update(projects)
-    .set({
-      revenuecatStatus: 'none',
-      revenuecatProjectId: null,
-      revenuecatWebhookSecret: null,
-      updatedAt: new Date(),
-    })
-    .where(eq(projects.id, projectId));
+  const { webhookRemoved } = await disconnectRevenueCat(projectId);
 
-  return NextResponse.json({ ok: true, status: 'none' });
+  // The next build must not carry the old SDK key.
+  after(async () => {
+    try {
+      const { materializeSwiftRevenueCatConfig } = await import('@/lib/sandbox-env');
+      await materializeSwiftRevenueCatConfig(projectId);
+    } catch (err) {
+      console.error('[revenuecat/disconnect] RevenueCatConfig.swift rewrite failed:', err);
+    }
+  });
+
+  return NextResponse.json({ ok: true, status: 'none', webhookRemoved });
 }

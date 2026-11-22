@@ -2,30 +2,33 @@
  * POST /api/webhooks/revenuecat
  *
  * Platform-level RevenueCat webhook receiver. RevenueCat sends subscription /
- * entitlement lifecycle events here. Auth is a shared Authorization header the
- * user pastes into their RevenueCat dashboard (we generate it per-user as
- * user_revenuecat_identity.rc_inbound_webhook_secret). We then:
+ * entitlement lifecycle events here. Each connected project has its own
+ * webhook in RevenueCat (created by Botflow at connect time) carrying that
+ * connection's Authorization value, so one request maps to one project:
  *
- *   1. Authenticate by matching the Authorization header to a Botflow user.
+ *   1. Authenticate: the Authorization header identifies the connection.
  *   2. Normalize to a small canonical entitlement vocabulary.
- *   3. Route by the namespaced app_user_id (or broadcast) and claim one
- *      revenuecat_webhook_deliveries row per (event, project) — the unique
- *      index makes RevenueCat's retries (up to 5×, same id) idempotent.
- *   4. Deliver to each target project's Convex HTTP endpoint, HMAC-signed with
- *      the project's revenuecat_webhook_secret; the cron retries failures.
+ *   3. Claim one revenuecat_webhook_deliveries row for (event, project) — the
+ *      unique index makes RevenueCat's retries (up to 5×, same id) idempotent.
+ *   4. Deliver to the project's Convex HTTP endpoint, HMAC-signed with the
+ *      project's revenuecat_webhook_secret; the cron retries failures.
  *
- * Mirrors src/app/api/webhooks/stripe/route.ts. Returns 401 only when the
- * Authorization header doesn't match (so a misconfigured webhook is visible);
- * after that, always 200 — we own the retry budget from here.
+ * When the owner deliberately shares one RevenueCat project between two apps,
+ * both webhooks receive every event; the project-namespaced app_user_id
+ * (bfp_<projectId>__…) then keeps each app's customers to itself.
+ *
+ * Returns 401 only when the Authorization header matches no connection (so a
+ * misconfigured webhook is visible in RevenueCat); after that, always 200 — we
+ * own the retry budget from here.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { and, eq, inArray, ne } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { getDb } from '@/db';
 import {
+  projectRevenueCatConnections,
   projects,
   revenueCatWebhookDeliveries,
-  userRevenueCatIdentity,
 } from '@/db/schema';
 import {
   backoffMs,
@@ -227,18 +230,18 @@ export async function POST(req: NextRequest) {
 
   const db = getDb();
 
-  // Authenticate by INDEXED digest lookup (O(1)), then constant-time compare the
-  // full secret as defense — no more O(N) scan over every user's secret.
+  // Authenticate by INDEXED digest lookup (O(1)), then constant-time compare
+  // the full secret as defense.
   const digest = createHash('sha256').update(authHeader).digest('hex');
-  const [identity] = await db
+  const [connection] = await db
     .select({
-      userId: userRevenueCatIdentity.userId,
-      secret: userRevenueCatIdentity.rcInboundWebhookSecret,
+      projectId: projectRevenueCatConnections.projectId,
+      secret: projectRevenueCatConnections.inboundWebhookSecret,
     })
-    .from(userRevenueCatIdentity)
-    .where(eq(userRevenueCatIdentity.rcInboundWebhookSecretDigest, digest))
+    .from(projectRevenueCatConnections)
+    .where(eq(projectRevenueCatConnections.inboundWebhookSecretDigest, digest))
     .limit(1);
-  if (!identity || !identity.secret || !constantTimeEqual(authHeader, identity.secret)) {
+  if (!connection || !constantTimeEqual(authHeader, connection.secret)) {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -250,6 +253,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Invalid JSON' }, { status: 400 });
   }
   const rcEvent = parsed.event;
+
+  // Any authenticated request proves RevenueCat can reach us with the right
+  // Authorization value — including the dashboard's "send test event", which
+  // is how a hand-configured webhook gets verified. Best-effort.
+  await db
+    .update(projectRevenueCatConnections)
+    .set({ lastEventAt: new Date() })
+    .where(eq(projectRevenueCatConnections.projectId, connection.projectId))
+    .catch((err) => console.error('[revenuecat/webhook] lastEventAt update failed:', err));
+
   if (!rcEvent?.id) {
     return NextResponse.json({ ok: true, ignored: 'no_event_id' });
   }
@@ -259,93 +272,50 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, ignored: rcEvent.type ?? 'unknown' });
   }
 
-  // Route by the project-namespaced app_user_id (bfp_<projectId>__…) → deliver to
-  // the SINGLE owning project, so one app's customer/payment data never reaches
-  // the user's other apps. If the id isn't namespaced (anonymous / legacy app),
-  // fall back to broadcasting to the user's connected projects so a paid event is
-  // never lost — but log it so the missing namespace is visible.
+  // The app tags its customers bfp_<projectId>__<its own user id>. An event
+  // tagged for a DIFFERENT project (a RevenueCat project shared by two apps)
+  // belongs to that app's webhook, not this one.
   const appUserId = (canonical.data.appUserId as string | null) ?? null;
-  const routedProjectId = parseProjectIdFromAppUserId(appUserId);
+  const taggedProjectId = parseProjectIdFromAppUserId(appUserId);
+  if (taggedProjectId && taggedProjectId !== connection.projectId) {
+    return NextResponse.json({ ok: true, ignored: 'other_project' });
+  }
 
   // Deliver the STRIPPED app user id (the value the app passed to RevenueCat),
-  // so the generated billing.ts can match its own users. Keep the raw id too for
-  // debugging. Without this, a namespaced event delivers but never grants/revokes.
+  // so the app's billing code can match its own users. Keep the raw id too.
   canonical.data.rawAppUserId = appUserId;
   canonical.data.appUserId = stripNamespacedAppUserId(appUserId);
 
-  let targets: Array<typeof projects.$inferSelect>;
-  if (routedProjectId) {
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(
-        and(
-          eq(projects.id, routedProjectId),
-          eq(projects.userId, identity.userId),
-          eq(projects.revenuecatStatus, 'connected'),
-        ),
-      )
-      .limit(1);
-    if (!project) {
-      // Namespaced to a project that isn't this owner's connected project — drop
-      // rather than deliver elsewhere.
-      console.warn(
-        '[revenuecat/webhook] event for unrecognized/foreign project dropped',
-        'event=', canonical.id, 'project=', routedProjectId,
-      );
-      return NextResponse.json({ ok: true, ignored: 'project_not_owned_or_disconnected' });
-    }
-    targets = [project];
-  } else {
-    targets = await db
-      .select()
-      .from(projects)
-      .where(
-        and(
-          eq(projects.userId, identity.userId),
-          eq(projects.revenuecatStatus, 'connected'),
-        ),
-      );
-    if (targets.length > 1) {
-      console.warn(
-        '[revenuecat/webhook] un-namespaced app_user_id — broadcasting to',
-        targets.length,
-        'projects. Set a project-scoped RevenueCat App User ID (bfp_<projectId>__…) to route to one.',
-      );
-    }
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.id, connection.projectId), eq(projects.revenuecatStatus, 'connected')))
+    .limit(1);
+  if (!project) {
+    return NextResponse.json({ ok: true, ignored: 'project_disconnected' });
   }
 
-  // First production event ratchets the project(s) out of 'sandbox' — the tab
+  // First production event ratchets the project out of 'sandbox' — the tab
   // otherwise shows "sandbox" forever, since nothing else ever wrote this.
-  if (canonical.data.environment === 'PRODUCTION' && targets.length > 0) {
+  if (canonical.data.environment === 'PRODUCTION') {
     await db
       .update(projects)
       .set({ revenuecatEnvironment: 'production', updatedAt: new Date() })
-      .where(
-        and(
-          inArray(projects.id, targets.map((p) => p.id)),
-          ne(projects.revenuecatEnvironment, 'production'),
-        ),
-      )
+      .where(and(eq(projects.id, project.id), ne(projects.revenuecatEnvironment, 'production')))
       .catch((err) => console.error('[revenuecat/webhook] environment ratchet failed:', err));
   }
 
-  const payload = JSON.stringify(canonical);
-  const deliveries = await Promise.all(
-    targets.map((project) =>
-      recordAndDeliver({
-        project,
-        eventId: canonical.id,
-        canonicalType: canonical.type,
-        payload,
-      }),
-    ),
-  );
+  const delivery = await recordAndDeliver({
+    project,
+    eventId: canonical.id,
+    canonicalType: canonical.type,
+    payload: JSON.stringify(canonical),
+  });
 
   return NextResponse.json({
     ok: true,
     type: canonical.type,
-    deliveries: deliveries.length,
-    failed: deliveries.filter((d) => !d.ok).length,
+    deliveries: 1,
+    failed: delivery.ok ? 0 : 1,
   });
 }
