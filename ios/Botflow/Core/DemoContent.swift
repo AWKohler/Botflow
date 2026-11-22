@@ -182,7 +182,7 @@ enum DemoContent {
                     .notice(id: "n1", text: "The build failed with 1 error in TrailMap.swift. Ask me to fix it and I'll pick up from here.", isError: true),
                 ]),
             ]
-        default:
+        case "t-hero", "t-seo", "t-shift", "t-fs", "t-sn":
             return [
                 ChatMessage(id: "u1", role: .user, parts: [.text(id: "u1", text: "Build the single-page Tidewater Coffee landing site now: a hero with a pour-over photo, a short menu, opening hours and a footer.")], userId: "u-demo", createdAt: Date().addingTimeInterval(-7400)),
                 ChatMessage(id: "a1", role: .assistant, parts: [
@@ -211,6 +211,9 @@ enum DemoContent {
                     """),
                 ], createdAt: Date().addingTimeInterval(-7200)),
             ]
+        default:
+            // A chat created during the demo starts empty.
+            return []
         }
     }
 

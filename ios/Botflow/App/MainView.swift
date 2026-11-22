@@ -27,12 +27,15 @@ struct MainView: View {
         .tabBarMinimizeBehavior(.onScrollDown)
         .environmentObject(agents)
         .sheet(item: $router.sheet) { sheet in
-            switch sheet {
-            case .settings:
-                SettingsView()
-            case .paywall(let reason):
-                PaywallView(reason: reason)
+            Group {
+                switch sheet {
+                case .settings:
+                    SettingsView()
+                case .paywall(let reason):
+                    PaywallView(reason: reason)
+                }
             }
+            .tint(Sand.text)
         }
         .task { agents.start() }
         .onDisappear { agents.stop() }
@@ -99,8 +102,12 @@ enum DemoRouting {
             if let p = project("p-tidewater") { router.open(WorkspaceRoute(project: p, threadId: "t-menu"), in: .projects) }
         case "workspace-app":
             if let p = project("p-tidewater") { router.open(WorkspaceRoute(project: p, threadId: "t-hero", startOnApp: true), in: .projects) }
-        case "workspace-swift":
+        case "workspace-swift", "workspace-sim", "workspace-immersive":
             if let p = project("p-ledger") { router.open(WorkspaceRoute(project: p, threadId: "t-onboard", startOnApp: true), in: .projects) }
+        case "workspace-threads", "workspace-models":
+            if let p = project("p-tidewater") { router.open(WorkspaceRoute(project: p, threadId: "t-hero"), in: .projects) }
+        case "workspace-code", "workspace-publish":
+            if let p = project("p-tidewater") { router.open(WorkspaceRoute(project: p, threadId: "t-hero", startOnApp: true), in: .projects) }
         default: break
         }
     }

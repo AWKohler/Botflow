@@ -321,7 +321,7 @@ struct EnvSheet: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .listRowBackground(Sand.card)
-                        Toggle("Keep secret", isOn: $secret).listRowBackground(Sand.card)
+                        Toggle("Keep secret", isOn: $secret).tint(Sand.accent).listRowBackground(Sand.card)
                         Button {
                             Task { await save() }
                         } label: {

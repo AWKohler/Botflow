@@ -5,7 +5,7 @@ import SwiftUI
 struct CodeBrowser: View {
     @ObservedObject var store: WorkspaceStore
     @State private var expanded: Set<String> = ["src", "convex", "app"]
-    @State private var selected: String?
+    @State private var selected: String? = AppConfig.demoRoute == "workspace-code" && UIDevice.current.userInterfaceIdiom == .pad ? "src/components/Cart.tsx" : nil
     @State private var query = ""
     @State private var hits: [SearchHit] = []
     @State private var searching = false

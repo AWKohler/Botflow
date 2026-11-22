@@ -98,17 +98,28 @@ struct WorkspaceView: View {
         .toolbar(immersive ? .hidden : .visible, for: .navigationBar)
         .statusBarHidden(immersive)
         .background(Sand.canvas.ignoresSafeArea())
-        .sheet(isPresented: $showThreads) { ThreadsSheet(store: store) }
+        .sheet(isPresented: $showThreads) { ThreadsSheet(store: store).tint(Sand.text) }
         .sheet(item: $sheet) { sheet in
-            switch sheet {
-            case .publish: PublishSheet(store: store)
-            case .share: ShareProjectSheet(store: store)
-            case .env: EnvSheet(store: store)
-            case .terminal: TerminalSheet(store: store)
-            case .web(let title, let url): WebSheet(title: title, url: url)
+            Group {
+                switch sheet {
+                case .publish: PublishSheet(store: store)
+                case .share: ShareProjectSheet(store: store)
+                case .env: EnvSheet(store: store)
+                case .terminal: TerminalSheet(store: store)
+                case .web(let title, let url): WebSheet(title: title, url: url)
+                }
+            }
+            .tint(Sand.text)
+        }
+        .task {
+            await store.open(threadId: route.threadId)
+            // Demo entry points that open one more layer, for screenshots.
+            switch AppConfig.demoRoute {
+            case "workspace-threads": showThreads = true
+            case "workspace-publish": sheet = .publish
+            default: break
             }
         }
-        .task { await store.open(threadId: route.threadId) }
         .onDisappear { store.close() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {

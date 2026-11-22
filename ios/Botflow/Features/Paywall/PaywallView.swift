@@ -55,8 +55,11 @@ struct PaywallView: View {
                 .frame(maxWidth: 360)
 
                 let layout = sizeClass == .regular ? AnyLayout(HStackLayout(alignment: .top, spacing: Space.l)) : AnyLayout(VStackLayout(spacing: Space.l))
+                // Side by side they read Free → Pro → Max; stacked on a phone the
+                // paid plans come first, since that is what this screen is for.
+                let offers = sizeClass == .regular ? PlanOffer.all : PlanOffer.all.filter { $0.tier != .free } + PlanOffer.all.filter { $0.tier == .free }
                 layout {
-                    ForEach(PlanOffer.all) { offer in
+                    ForEach(offers) { offer in
                         PlanCard(offer: offer, billing: billing, current: session.tier == offer.tier) {
                             Task { await buy(offer) }
                         }

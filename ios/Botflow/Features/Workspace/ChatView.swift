@@ -10,7 +10,7 @@ struct ChatView: View {
     @EnvironmentObject private var router: Router
 
     @State private var inspected: ToolCall?
-    @State private var showModels = false
+    @State private var showModels = AppConfig.demoRoute == "workspace-models"
     @State private var atBottom = true
     @State private var position = ScrollPosition(edge: .bottom)
     /// How many of the latest messages are rendered.

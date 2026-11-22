@@ -6,7 +6,7 @@ struct AppPane: View {
     @Binding var sheet: WorkspaceSheet?
     @Binding var immersive: Bool
     @StateObject private var simulator: SimulatorController
-    @State private var tab: Tab = .preview
+    @State private var tab: Tab = AppConfig.demoRoute == "workspace-code" ? .code : .preview
 
     enum Tab: Hashable { case preview, code }
 
@@ -57,6 +57,12 @@ struct AppPane: View {
         .background(Sand.canvas)
         .onAppear {
             if store.project.isSwift { simulator.watchAgentRequests() }
+        }
+        .task {
+            // Demo entry points: the simulator already running, or full screen.
+            guard let route = AppConfig.demoRoute, route == "workspace-sim" || route == "workspace-immersive" else { return }
+            await simulator.start()
+            if route == "workspace-immersive" { immersive = true }
         }
         .onDisappear {
             simulator.stopWatching()

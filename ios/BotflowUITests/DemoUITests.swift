@@ -54,7 +54,9 @@ final class DemoUITests: XCTestCase {
         // The agent starts; the send button becomes Stop while it works.
         let stop = app.buttons["composer.stop"]
         XCTAssertTrue(stop.waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["Add a tip selector to checkout"].waitForExistence(timeout: 5))
+        // The prompt shows as the person's own bubble ("You: …" to VoiceOver).
+        let bubble = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Add a tip selector to checkout'")).firstMatch
+        XCTAssertTrue(bubble.waitForExistence(timeout: 5))
         stop.tap()
         XCTAssertTrue(app.buttons["composer.send"].waitForExistence(timeout: 10))
     }
@@ -71,7 +73,8 @@ final class DemoUITests: XCTestCase {
         let threads = app.buttons["workspace.threads"]
         XCTAssertTrue(threads.waitForExistence(timeout: 20))
         threads.tap()
-        XCTAssertTrue(app.staticTexts["Working now"].waitForExistence(timeout: 10))
+        let heading = app.descendants(matching: .any).matching(NSPredicate(format: "label ==[c] 'Working now'")).firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: 15))
         app.buttons["threads.new"].tap()
         XCTAssertTrue(app.staticTexts["What should we build?"].waitForExistence(timeout: 10))
     }
@@ -88,9 +91,11 @@ final class DemoUITests: XCTestCase {
         launch(route: "paywall")
         XCTAssertTrue(app.staticTexts["Build more with Botflow"].waitForExistence(timeout: 20))
         // Web price plus 30%: $20 → $26, $60 → $78.
-        XCTAssertTrue(app.staticTexts["$26"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["$78"].exists || app.scrollViews.firstMatch.exists)
-        XCTAssertTrue(app.buttons["paywall.buy.pro"].exists)
+        // "$26" from the built-in price, "$26.00" when the App Store supplies it.
+        let pro = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '$26'")).firstMatch
+        XCTAssertTrue(pro.waitForExistence(timeout: 10))
+        // The demo account is already on Pro, so the offer is the step up.
+        XCTAssertTrue(app.buttons["paywall.buy.max"].exists)
     }
 
     func testSettingsOffersSignOut() {
