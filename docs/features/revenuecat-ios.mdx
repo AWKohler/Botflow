@@ -24,7 +24,7 @@ The agent builds the paywall and the purchase flow, and opens the **Payments** t
 
 <Steps>
   <Step title="Create a RevenueCat project for this app">
-    Sign in to the [RevenueCat dashboard](https://app.revenuecat.com) (free to start) and create a project. Use one RevenueCat project per app, so each app has its own products.
+    Sign in to the [RevenueCat dashboard](https://app.revenuecat.com) (free to start), open the project menu at the top left and choose **Create new project** (platform: **Native Apple**). Use one RevenueCat project per app, so each app has its own products.
   </Step>
   <Step title="Create a secret key">
     In that project, open **API keys** in the left sidebar and choose **New secret API key**. Set:
@@ -32,7 +32,7 @@ The agent builds the paywall and the purchase flow, and opens the **Payments** t
     - **API version** to **V2**
     - **Project configuration permissions** to **Read & write**
 
-    Leave the other permissions at **No access**, choose **Generate**, and copy the key. It starts with `sk_`, and RevenueCat shows it only once.
+    Leave the other permissions at **No access**, choose **Generate**, and copy the key with the copy button beside it. It starts with `sk_`.
 
     <Warning>
     RevenueCat does nothing when you choose **Generate** with every permission left at **No access**. Set **Project configuration permissions** first.
@@ -116,7 +116,7 @@ Apple reviews in-app purchases together with the app, so real purchases start wo
 | --- | --- |
 | Nothing happens when you choose **Generate** in RevenueCat | Every permission is still **No access**. Set **Project configuration permissions** to **Read & write**, then generate. |
 | "That is a V1 (legacy) secret key" | Create a new key with **API version** set to **V2**. |
-| "That key is missing a permission" | RevenueCat keys cannot be edited. Create a new key with **Project configuration permissions** set to **Read & write**. |
+| "That key is missing a permission" | In RevenueCat, open **API keys**, choose **Edit** in the key's **···** menu, set **Project configuration permissions** to **Read & write**, then connect again. |
 | "That is an SDK key (public)" | You pasted a `test_` or `appl_` key. Botflow needs the secret key, which starts with `sk_`. |
 | "RevenueCat does not recognise that secret key" | The key was deleted, or part of it was cut off when copying. Create a new one. |
 | "Already connected to another app" | Two apps on one RevenueCat project share products and test purchases. Create a separate RevenueCat project for the second app. |

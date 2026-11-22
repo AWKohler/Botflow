@@ -130,6 +130,11 @@ export const REVENUECAT_KEY_HELP =
   'Create a new secret key in RevenueCat (API keys → New secret API key), choose API version V2, ' +
   'and set "Project configuration permissions" to "Read & write".';
 
+/** A V2 key with the wrong permissions can be fixed in place (verified in the dashboard: ··· → Edit). */
+export const REVENUECAT_KEY_EDIT_HELP =
+  'In RevenueCat, open API keys, choose Edit in the key\'s "···" menu and set ' +
+  '"Project configuration permissions" to "Read & write", then connect again.';
+
 /**
  * Turn a failed RevenueCat API call into a message that says what to change.
  * RevenueCat's own messages are precise ("The API key needs at least the
@@ -160,13 +165,10 @@ export function explainRevenueCatError(
       const readOnly = permission.endsWith(':read_write');
       return {
         problem: readOnly ? 'read-only' : 'missing-permission',
-        message:
-          `That key is missing a permission Botflow needs (${permission}). ` +
-          'In RevenueCat, keys cannot be edited after they are created. ' +
-          REVENUECAT_KEY_HELP,
+        message: `That key is missing a permission Botflow needs (${permission}). ${REVENUECAT_KEY_EDIT_HELP}`,
       };
     }
-    return { problem: 'missing-permission', message: `RevenueCat refused that key: ${raw}. ${REVENUECAT_KEY_HELP}` };
+    return { problem: 'missing-permission', message: `RevenueCat refused that key: ${raw}. ${REVENUECAT_KEY_EDIT_HELP}` };
   }
   if (result.status === 429) {
     return { problem: 'unreachable', message: 'RevenueCat is rate-limiting requests right now. Wait a minute and try again.' };

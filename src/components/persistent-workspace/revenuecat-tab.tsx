@@ -524,8 +524,9 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <h3 className="text-sm font-semibold text-fg">Create a RevenueCat project for this app</h3>
                   <p className="text-xs leading-relaxed text-muted">
-                    Sign in to RevenueCat (free to start) and create a new project. Use one RevenueCat
-                    project per app, so each app has its own products.
+                    Sign in to RevenueCat (free to start), open the project menu at the top left and
+                    choose <Strong>Create new project</Strong> (platform: <Strong>Native Apple</Strong>).
+                    Use one RevenueCat project per app, so each app has its own products.
                   </p>
                   <div className="text-xs">
                     <ExternalLink href={REVENUECAT_HOME}>Open RevenueCat</ExternalLink>
@@ -550,7 +551,7 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
                   </ul>
                   <p className="text-xs leading-relaxed text-muted">
                     Leave the other permissions at <Strong>No access</Strong>, choose <Strong>Generate</Strong>{" "}
-                    and copy the key. RevenueCat shows it only once.
+                    and copy the key with the copy button beside it.
                   </p>
                 </div>
               </li>

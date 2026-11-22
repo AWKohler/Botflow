@@ -150,12 +150,17 @@ describe('keys that cannot be used are refused with advice, and nothing is store
     expect(p.revenuecatStatus).toBe('none');
   });
 
-  test('every refusal for a fixable key says how to create the right one', async () => {
-    for (const key of ['sk_legacy', 'sk_readonly']) {
-      fakeRevenueCat();
-      const result = await connect(await swiftProject(), key);
-      expect(result.ok ? '' : result.error).toContain('"Project configuration permissions" to "Read & write"');
-    }
+  test('a V1 key cannot be fixed, so the advice is a new key; wrong permissions can be edited in place', async () => {
+    fakeRevenueCat();
+    const legacy = await connect(await swiftProject(), 'sk_legacy');
+    expect(legacy.ok ? '' : legacy.error).toContain('Create a new secret key');
+    expect(legacy.ok ? '' : legacy.error).toContain('"Project configuration permissions" to "Read & write"');
+
+    fakeRevenueCat();
+    const readOnly = await connect(await swiftProject(), 'sk_readonly');
+    expect(readOnly.ok ? '' : readOnly.error).toContain('choose Edit');
+    expect(readOnly.ok ? '' : readOnly.error).toContain('"Project configuration permissions" to "Read & write"');
+    expect(readOnly.ok ? '' : readOnly.error).not.toContain('Create a new secret key');
   });
 });
 
