@@ -1033,7 +1033,8 @@ export async function POST(req: Request) {
 
     case "initialize_revenuecat_payments":
     case "get_revenuecat_products":
-    case "create_revenuecat_product": {
+    case "create_revenuecat_product":
+    case "remove_revenuecat_package": {
       const { REVENUECAT_ENABLED } = await import("@/lib/feature-flags");
       if (!REVENUECAT_ENABLED) {
         return NextResponse.json({ ok: false, content: "RevenueCat is not enabled on this deployment." });
@@ -1139,7 +1140,7 @@ export async function POST(req: Request) {
       }
 
       const { explainRevenueCatError } = await import("@/lib/revenuecat");
-      const { parseProvisionInput, provisionProduct, readCatalog } = await import("@/lib/revenuecat-catalog");
+      const { parseProvisionInput, provisionProduct, readCatalog, removePackage } = await import("@/lib/revenuecat-catalog");
       const failed = (failure: { status: number; error: string }) =>
         NextResponse.json({
           ok: false,
@@ -1153,6 +1154,18 @@ export async function POST(req: Request) {
         const result = await readCatalog(catalogContext(connection));
         if (!result.ok) return failed(result);
         return NextResponse.json({ ok: true, content: JSON.stringify(result.catalog) });
+      }
+
+      if (tool === "remove_revenuecat_package") {
+        const input = (body.input ?? {}) as Record<string, unknown>;
+        const packageKey = typeof input.package === "string" ? input.package.trim() : "";
+        if (!packageKey) return NextResponse.json({ ok: false, content: "package is required (for example $rc_annual)." });
+        const result = await removePackage(catalogContext(connection), {
+          package: packageKey,
+          ...(typeof input.offering === "string" && input.offering.trim() ? { offering: input.offering.trim() } : {}),
+        });
+        if (!result.ok) return failed(result);
+        return NextResponse.json({ ok: true, content: JSON.stringify(result) });
       }
 
       // create_revenuecat_product

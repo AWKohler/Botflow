@@ -281,6 +281,14 @@ export function fakeRevenueCat(
       return HttpResponse.json(packageJson(pkg, false));
     })),
 
+    http.delete(`${P}/packages/:packageId`, guard('project_configuration:packages:read_write', ({ params }) => {
+      const before = rc.packages.length;
+      rc.packages = rc.packages.filter((p) => p.id !== params.packageId);
+      return before === rc.packages.length
+        ? error(404, 'Resource not found', 'resource_missing')
+        : HttpResponse.json({ object: 'package', id: params.packageId, deleted_at: 1 });
+    })),
+
     http.get(`${P}/integrations/webhooks`, guard('project_configuration:integrations:read', () =>
       HttpResponse.json(list(rc.webhooks.map((w) => ({ object: "webhook_integration", id: w.id, name: w.name, url: w.url, status: w.status })))),
     )),

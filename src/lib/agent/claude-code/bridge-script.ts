@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "38";
+export const BRIDGE_SCRIPT_VERSION = "39";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -692,6 +692,20 @@ function buildCustomTools(customTools, oauthProviderIds) {
           package: z.string().optional().describe("Package slot: $rc_monthly, $rc_annual, $rc_lifetime, or a custom key"),
         },
         makeHostToolHandler("create_revenuecat_product"),
+      ),
+    );
+  }
+
+  if (customTools.includes("remove_revenuecat_package")) {
+    tools.push(
+      tool(
+        "remove_revenuecat_package",
+        "Remove a package (a paywall slot such as $rc_annual) from the offering the paywall shows, so the app stops offering it. Use it for products the user did not ask for, typically the starter Monthly / Yearly / Lifetime products RevenueCat adds to every new project, or for a plan that is no longer sold. The products stay in RevenueCat; only the paywall slot goes. Removing a slot that does not exist is a no-op. Returns the packages that remain.",
+        {
+          package: z.string().describe("Package identifier to remove, e.g. $rc_annual"),
+          offering: z.string().optional().describe("Offering it is in; omit for the one the paywall shows"),
+        },
+        makeHostToolHandler("remove_revenuecat_package"),
       ),
     );
   }

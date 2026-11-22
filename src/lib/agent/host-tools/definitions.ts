@@ -208,6 +208,19 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
       required: ["storeIdentifier", "type"],
     },
   },
+  remove_revenuecat_package: {
+    name: "remove_revenuecat_package",
+    description:
+      "Remove a package (a paywall slot such as $rc_annual) from the offering the paywall shows, so the app stops offering it. Use it for products the user did not ask for, typically the starter Monthly / Yearly / Lifetime products RevenueCat adds to every new project, or for a plan that is no longer sold. The products stay in RevenueCat; only the paywall slot goes. Removing a slot that does not exist is a no-op. Returns the packages that remain.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        package: { type: "string", description: "Package identifier to remove, e.g. $rc_annual" },
+        offering: { type: "string", description: "Offering it is in; omit for the one the paywall shows" },
+      },
+      required: ["package"],
+    },
+  },
   get_stripe_products: {
     name: "get_stripe_products",
     description:
@@ -727,6 +740,7 @@ export function selectHostTools(input: SelectHostToolsInput): string[] {
           "initialize_revenuecat_payments",
           "get_revenuecat_products",
           "create_revenuecat_product",
+          "remove_revenuecat_package",
         );
       }
     }

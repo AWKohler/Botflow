@@ -430,6 +430,19 @@ export async function detachProductsFromPackage(
   );
 }
 
+/** Remove a package (a paywall slot) from its offering. The products stay in the catalog. */
+export async function deletePackage(
+  secretKey: string,
+  projectId: string,
+  packageId: string,
+): Promise<RevenueCatResult<unknown>> {
+  return rcFetch(
+    secretKey,
+    `/projects/${encodeURIComponent(projectId)}/packages/${encodeURIComponent(packageId)}`,
+    { method: 'DELETE' },
+  );
+}
+
 // ─── Webhook integrations ───────────────────────────────────────────────────────
 
 export interface RevenueCatWebhookIntegration {

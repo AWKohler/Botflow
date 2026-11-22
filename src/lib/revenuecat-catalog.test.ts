@@ -9,6 +9,7 @@ import {
   parseProvisionInput,
   provisionProduct,
   readCatalog,
+  removePackage,
   type CatalogContext,
   type ProvisionInput,
 } from './revenuecat-catalog';
@@ -62,6 +63,7 @@ describe('create_revenuecat_product', () => {
         stores: ['test_store'],
         testPrice: { currency: 'USD', amount: 4.99 },
         entitlements: ['pro'],
+        onPaywall: true,
       },
     ]);
     expect(catalog.offerings).toEqual([
@@ -216,12 +218,28 @@ describe('get_revenuecat_products diagnosis', () => {
     expect(catalog.issues.map((i) => i.code)).toEqual(['no-test-store', 'no-products']);
   });
 
-  test('a product on no paywall and unlocking nothing is called out', async () => {
+  test('products exist but none is on a paywall: the missing offering is the blocker', async () => {
     const rc = fakeRevenueCat();
     await provisionProduct(ctxFor(rc), { storeIdentifier: 'pro_monthly', type: 'subscription' });
     const catalog = await catalogOf(rc);
-    expect(catalog.issues.map((i) => i.code)).toEqual(['no-current-offering', 'no-entitlement', 'missing-test-price']);
+    expect(catalog.issues.map((i) => i.code)).toEqual(['no-current-offering']);
+    expect(catalog.products[0].onPaywall).toBe(false);
     expect(catalog.readyForTestPurchases).toBe(false);
+  });
+
+  test('a subscription on the paywall that unlocks nothing is a blocker; a consumable is not', async () => {
+    const rc = fakeRevenueCat();
+    await provisionProduct(ctxFor(rc), { ...MONTHLY, entitlement: undefined });
+    await provisionProduct(ctxFor(rc), {
+      storeIdentifier: 'coins_100',
+      type: 'consumable',
+      priceUsd: 0.99,
+      package: 'coins_100',
+    });
+    const catalog = await catalogOf(rc);
+    expect(catalog.issues).toEqual([
+      expect.objectContaining({ severity: 'blocker', code: 'no-entitlement', message: expect.stringContaining('pro_monthly') }),
+    ]);
   });
 
   test('a package that only has an App Store product will not show in the simulator', async () => {
@@ -238,6 +256,89 @@ describe('get_revenuecat_products diagnosis', () => {
     const catalog = await catalogOf(rc);
     expect(catalog.issues).toEqual([expect.objectContaining({ severity: 'warning', code: 'missing-test-price' })]);
     expect(catalog.readyForTestPurchases).toBe(true);
+  });
+});
+
+/**
+ * What RevenueCat's "create project" onboarding leaves behind when the user
+ * accepts its suggestions (observed 2026-11-22): three Test Store products at
+ * RevenueCat's own prices, one entitlement, and a current "default" offering
+ * holding all three.
+ */
+async function withStarterCatalog() {
+  const rc = fakeRevenueCat();
+  const ctx = ctxFor(rc);
+  const starter = { entitlement: 'calm_minutes_pro', offering: 'default' } as const;
+  await provisionProduct(ctx, { ...starter, storeIdentifier: 'monthly', type: 'subscription', priceUsd: 9.99, package: '$rc_monthly' });
+  await provisionProduct(ctx, { ...starter, storeIdentifier: 'yearly', type: 'subscription', subscriptionDuration: 'P1Y', priceUsd: 79.99, package: '$rc_annual' });
+  await provisionProduct(ctx, { ...starter, storeIdentifier: 'lifetime', type: 'non_consumable', priceUsd: 99.99, package: '$rc_lifetime' });
+  return { rc, ctx };
+}
+
+describe("a RevenueCat project that already has RevenueCat's starter products", () => {
+  test('is reported as ready, with everything on the paywall, so the agent can see what to change', async () => {
+    const { rc } = await withStarterCatalog();
+    const catalog = await catalogOf(rc);
+    expect(catalog.readyForTestPurchases).toBe(true);
+    expect(catalog.products.map((p) => [p.identifier, p.onPaywall, p.testPrice?.amount])).toEqual([
+      ['monthly', true, 9.99],
+      ['yearly', true, 79.99],
+      ['lifetime', true, 99.99],
+    ]);
+  });
+
+  test('selling one $4.99 monthly plan: replace the monthly slot, remove the other two', async () => {
+    const { rc, ctx } = await withStarterCatalog();
+    // Reuse the entitlement that is already there; replace the $9.99 starter.
+    const created = await provisionProduct(ctx, {
+      storeIdentifier: 'pro_monthly',
+      type: 'subscription',
+      displayName: 'Calm Minutes Plus',
+      priceUsd: 4.99,
+      entitlement: 'calm_minutes_pro',
+      package: '$rc_monthly',
+    });
+    expect(created).toMatchObject({ ok: true, identifiers: { offering: 'default', entitlement: 'calm_minutes_pro' } });
+    expect(created.ok ? created.notes.join(' ') : '').toMatch(/Replaced "monthly" in package "\$rc_monthly"/);
+
+    expect(await removePackage(ctx, { package: '$rc_annual' })).toEqual({
+      ok: true,
+      removed: true,
+      offering: 'default',
+      remainingPackages: ['$rc_monthly', '$rc_lifetime'],
+    });
+    expect(await removePackage(ctx, { package: '$rc_lifetime' })).toMatchObject({ removed: true, remainingPackages: ['$rc_monthly'] });
+
+    const catalog = await catalogOf(rc);
+    expect(catalog.issues).toEqual([]);
+    expect(catalog.products.filter((p) => p.onPaywall).map((p) => p.identifier)).toEqual(['pro_monthly']);
+    // The starter products are still in RevenueCat, just not for sale.
+    expect(catalog.products.filter((p) => !p.onPaywall).map((p) => p.identifier).sort()).toEqual(['lifetime', 'monthly', 'yearly']);
+    expect(catalog.offerings[0].packages).toEqual([
+      { identifier: '$rc_monthly', displayName: 'monthly', products: ['pro_monthly'] },
+    ]);
+  });
+
+  test('a second entitlement alongside the starter one is flagged: one purchase would not unlock the app', async () => {
+    const { rc, ctx } = await withStarterCatalog();
+    await provisionProduct(ctx, { ...MONTHLY, entitlement: 'pro' }); // replaces "monthly", but yearly + lifetime remain
+    const catalog = await catalogOf(rc);
+    const mixed = catalog.issues.find((i) => i.code === 'mixed-entitlements');
+    expect(mixed).toMatchObject({ severity: 'warning' });
+    expect(mixed?.message).toContain('pro_monthly: pro');
+    expect(mixed?.message).toContain('yearly: calm_minutes_pro');
+  });
+
+  test('removing a slot twice, or one that never existed, is a no-op', async () => {
+    const { ctx } = await withStarterCatalog();
+    await removePackage(ctx, { package: '$rc_annual' });
+    expect(await removePackage(ctx, { package: '$rc_annual' })).toMatchObject({ ok: true, removed: false });
+    expect(await removePackage(ctx, { package: 'nope', offering: 'missing' })).toEqual({
+      ok: true,
+      removed: false,
+      offering: 'missing',
+      remainingPackages: [],
+    });
   });
 });
 

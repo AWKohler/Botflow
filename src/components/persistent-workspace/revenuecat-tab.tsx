@@ -577,6 +577,8 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
   const blockers = catalog?.issues.filter((i) => i.severity === "blocker") ?? [];
   const warnings = catalog?.issues.filter((i) => i.severity === "warning") ?? [];
   const currentOffering = catalog?.offerings.find((o) => o.isCurrent) ?? null;
+  const onPaywall = catalog?.products.filter((p) => p.onPaywall) ?? [];
+  const offPaywall = catalog?.products.filter((p) => !p.onPaywall) ?? [];
   const backendState = checks?.backend.state ?? "unknown";
   const backendNeedsAgent = backendState === "not-deployed" || backendState === "not-configured";
   const readyToTest = Boolean(
@@ -678,7 +680,8 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
               </li>
               <li>Open the paywall in your app and tap a purchase button.</li>
               <li>
-                In RevenueCat&apos;s test dialog, choose the successful purchase. Nothing is charged.
+                In RevenueCat&apos;s test dialog, choose <Strong>Test valid purchase</Strong>. Nothing is
+                charged.
               </li>
             </ol>
             <p className="mt-1.5 text-xs leading-relaxed text-muted">
@@ -812,8 +815,11 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
             </p>
           ) : (
             <div className="space-y-3 py-3">
-              <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
-                {catalog.products.map((product) => (
+              {onPaywall.length === 0 ? (
+                <p className="text-xs leading-relaxed text-muted">None of the products is on the paywall yet.</p>
+              ) : null}
+              <ul className={cn("divide-y divide-border rounded-lg border border-border bg-surface", onPaywall.length === 0 && "hidden")}>
+                {onPaywall.map((product) => (
                   <li key={product.identifier} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium text-fg">
@@ -838,10 +844,20 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
               </ul>
               {currentOffering ? (
                 <p className="text-xs leading-relaxed text-muted">
-                  The paywall shows the offering <Strong>{currentOffering.identifier}</Strong>
-                  {currentOffering.packages.length > 0
-                    ? `: ${currentOffering.packages.map((p) => p.products[0] ?? p.identifier).join(", ")}.`
-                    : ", which is empty."}
+                  These are the products in <Strong>{currentOffering.identifier}</Strong>, the offering your
+                  paywall shows.
+                </p>
+              ) : null}
+              {offPaywall.length > 0 ? (
+                <p className="text-xs leading-relaxed text-muted">
+                  Also in RevenueCat but not for sale in the app:{" "}
+                  {offPaywall.map((p, i) => (
+                    <span key={p.identifier}>
+                      {i > 0 ? ", " : ""}
+                      <code className="font-mono text-[11px]">{p.identifier}</code>
+                    </span>
+                  ))}
+                  .
                 </p>
               ) : null}
               {blockers.length > 0 ? (
@@ -947,11 +963,11 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
               </li>
               <li>
                 In App Store Connect, create each product with the same ID
-                {catalog && catalog.products.length > 0 ? (
+                {onPaywall.length > 0 ? (
                   <>
                     {" "}
                     (
-                    {catalog.products.map((p, i) => (
+                    {onPaywall.map((p, i) => (
                       <span key={p.identifier}>
                         {i > 0 ? ", " : ""}
                         <code className="font-mono text-fg">{p.identifier}</code>

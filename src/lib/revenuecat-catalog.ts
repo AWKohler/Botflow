@@ -20,6 +20,7 @@ import {
   createOffering,
   createPackage,
   createProduct,
+  deletePackage,
   detachProductsFromPackage,
   getProductStoreState,
   listApps,
@@ -74,6 +75,8 @@ export interface CatalogProduct {
   /** Test Store price, when one is set. */
   testPrice: { currency: string; amount: number } | null;
   entitlements: string[];
+  /** In a package of the current offering, i.e. what the paywall shows. */
+  onPaywall: boolean;
 }
 
 export interface CatalogOffering {
@@ -94,6 +97,7 @@ export interface CatalogIssue {
     | 'empty-offering'
     | 'package-missing-test-product'
     | 'missing-test-price'
+    | 'mixed-entitlements'
     | 'product-not-in-app-store';
   message: string;
 }
@@ -153,6 +157,13 @@ export async function readCatalog(ctx: CatalogContext): Promise<{ ok: true; cata
     }
   }
 
+  const currentOffering = offerings.data.items.find((o) => o.is_current) ?? null;
+  const paywallIdentifiers = new Set(
+    (currentOffering?.packages?.items ?? []).flatMap((pkg) =>
+      (pkg.products?.items ?? []).map((x) => x.product.store_identifier),
+    ),
+  );
+
   // One row per store identifier: the same id exists once per store.
   const byIdentifier = new Map<string, CatalogProduct>();
   for (const p of active) {
@@ -165,12 +176,14 @@ export async function readCatalog(ctx: CatalogContext): Promise<{ ok: true; cata
       stores: [],
       testPrice: null,
       entitlements: [...(entitlementsByProduct.get(p.store_identifier) ?? [])],
+      onPaywall: paywallIdentifiers.has(p.store_identifier),
     };
     if (!row.stores.includes(store)) row.stores.push(store);
     if (store === 'test_store') row.testPrice = prices.get(p.store_identifier) ?? null;
     byIdentifier.set(p.store_identifier, row);
   }
-  const catalogProducts = [...byIdentifier.values()];
+  // What the paywall sells first, then anything else in the RevenueCat project.
+  const catalogProducts = [...byIdentifier.values()].sort((a, b) => Number(b.onPaywall) - Number(a.onPaywall));
 
   const catalogOfferings: CatalogOffering[] = offerings.data.items.map((o) => ({
     identifier: o.lookup_key,
@@ -199,20 +212,19 @@ export async function readCatalog(ctx: CatalogContext): Promise<{ ok: true; cata
       message: 'There is nothing to sell yet. Create a product (the agent can do it with create_revenuecat_product).',
     });
   } else {
-    const current = offerings.data.items.find((o) => o.is_current);
-    if (!current) {
+    if (!currentOffering) {
       issues.push({
         severity: 'blocker',
         code: 'no-current-offering',
         message: 'No offering is marked current, so the paywall has nothing to show. Put the products in an offering and make it current.',
       });
     } else {
-      const packages = current.packages?.items ?? [];
+      const packages = currentOffering.packages?.items ?? [];
       if (packages.length === 0) {
         issues.push({
           severity: 'blocker',
           code: 'empty-offering',
-          message: `The current offering "${current.lookup_key}" has no packages, so the paywall is empty. Add each product to it as a package.`,
+          message: `The current offering "${currentOffering.lookup_key}" has no packages, so the paywall is empty. Add each product to it as a package.`,
         });
       }
       if (hasTestStore) {
@@ -230,8 +242,13 @@ export async function readCatalog(ctx: CatalogContext): Promise<{ ok: true; cata
         }
       }
     }
-    for (const product of catalogProducts) {
-      if (product.entitlements.length === 0) {
+
+    // Only what the paywall sells can break a purchase; other products in the
+    // RevenueCat project (old prices, RevenueCat's starter products) are inert.
+    const selling = catalogProducts.filter((p) => p.onPaywall);
+    for (const product of selling) {
+      // Consumables (coins, tips) are spent, not held: no entitlement is normal.
+      if (product.entitlements.length === 0 && product.type !== 'consumable') {
         issues.push({
           severity: 'blocker',
           code: 'no-entitlement',
@@ -252,6 +269,19 @@ export async function readCatalog(ctx: CatalogContext): Promise<{ ok: true; cata
           message: `"${product.identifier}" exists only in the Test Store. Before publishing it also needs an App Store product with the same id.`,
         });
       }
+    }
+    const unlocked = new Set(selling.flatMap((p) => p.entitlements));
+    if (unlocked.size > 1) {
+      issues.push({
+        severity: 'warning',
+        code: 'mixed-entitlements',
+        message:
+          `The paywall's products unlock different entitlements (${selling
+            .filter((p) => p.entitlements.length > 0)
+            .map((p) => `${p.identifier}: ${p.entitlements.join(', ')}`)
+            .join('; ')}). ` +
+          'An app that checks only one of them stays locked after the other purchases. Use one entitlement, or check each.',
+      });
     }
   }
 
@@ -549,6 +579,39 @@ export async function provisionProduct(
     testStore: { ready: Boolean(ctx.testStoreAppId), price: testPrice },
     appStore: { ready: Boolean(ctx.appStoreAppId) },
     notes,
+  };
+}
+
+/**
+ * Take a package (a paywall slot) out of an offering: for RevenueCat's starter
+ * products the user never asked for, or a plan that is no longer sold. The
+ * products themselves stay in RevenueCat. Removing a slot that is not there is
+ * a no-op.
+ */
+export async function removePackage(
+  ctx: CatalogContext,
+  input: { package: string; offering?: string },
+): Promise<{ ok: true; removed: boolean; offering: string | null; remainingPackages: string[] } | Failure> {
+  const { secretKey, rcProjectId } = ctx;
+  const offerings = await listOfferings(secretKey, rcProjectId, { withPackages: true });
+  if (!offerings.ok) return step('read the offerings', offerings);
+  const offering = input.offering
+    ? offerings.data.items.find((o) => o.lookup_key === input.offering)
+    : offerings.data.items.find((o) => o.is_current);
+  if (!offering) return { ok: true, removed: false, offering: input.offering ?? null, remainingPackages: [] };
+
+  const packages = offering.packages?.items ?? [];
+  const target = packages.find((p) => p.lookup_key === input.package);
+  if (!target) {
+    return { ok: true, removed: false, offering: offering.lookup_key, remainingPackages: packages.map((p) => p.lookup_key) };
+  }
+  const deleted = await deletePackage(secretKey, rcProjectId, target.id);
+  if (!deleted.ok && deleted.status !== 404) return step('remove the package', deleted);
+  return {
+    ok: true,
+    removed: true,
+    offering: offering.lookup_key,
+    remainingPackages: packages.filter((p) => p.id !== target.id).map((p) => p.lookup_key),
   };
 }
 

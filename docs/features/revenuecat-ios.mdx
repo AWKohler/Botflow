@@ -63,6 +63,10 @@ Once RevenueCat is connected, the agent creates what your app sells in RevenueCa
 
 The **Payments** tab lists the products with their test prices and what each unlocks. It also names anything that would stop a purchase from working, such as a product that is on no paywall or unlocks nothing.
 
+<Note>
+When you create a RevenueCat project, RevenueCat offers to add starter products (Monthly, Yearly and Lifetime) at prices it suggests. If you accepted them, the agent replaces or removes them so the paywall sells exactly what you asked for. The unused starter products stay in RevenueCat, listed in the Payments tab as "not for sale in the app".
+</Note>
+
 <Tip>
 A Test Store price cannot be changed after the product is created. To try another price, ask the agent for it: it creates a new product and swaps it into the paywall.
 </Tip>
@@ -71,7 +75,7 @@ A Test Store price cannot be changed after the product is created. To try anothe
 
 1. Open **Preview** and start the simulator.
 2. Open the paywall in your app and tap a purchase button.
-3. In RevenueCat's test dialog, choose the successful purchase. Nothing is charged.
+3. In RevenueCat's **Test Store Purchase** dialog, choose **Test valid purchase**. Nothing is charged.
 
 The app unlocks at once, and the purchase appears under **Activity** in the Payments tab within a few seconds, with a note that it reached your backend.
 
