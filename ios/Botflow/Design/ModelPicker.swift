@@ -117,7 +117,8 @@ struct ModelPickerSheet: View {
                         Text(model.hostLabel)
                             .font(.footnote)
                             .foregroundStyle(Sand.subtle)
-                        if model.requiredTier != .free, access.source == .planCredits || !access.runnable {
+                        // Only where it says something: on models this account's plan does not include.
+                        if model.requiredTier != .free, !access.runnable {
                             Badge(text: model.requiredTier.label, tone: .accent)
                         }
                     }

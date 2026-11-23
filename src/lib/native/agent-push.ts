@@ -23,24 +23,28 @@ export type TurnOutcome = "done" | "failed" | "stopped";
 const APPLE_EPOCH_OFFSET = 978_307_200;
 const appleDate = (ms: number) => ms / 1000 - APPLE_EPOCH_OFFSET;
 
-/** Mirrors `ToolPresentation` in the iOS app (ios/Shared/AgentActivityAttributes.swift). */
-export function describeTool(name: string): { verb: string; symbol: string } {
+/**
+ * Mirrors `ToolPresentation` in the iOS app (ios/Shared/AgentActivityAttributes.swift):
+ * `verb` while the step is running, `past` once it is done.
+ */
+export function describeTool(name: string): { verb: string; past: string; symbol: string } {
   const key = (name.split("__").pop() ?? name).toLowerCase();
+  const of = (verb: string, past: string, symbol: string) => ({ verb, past, symbol });
   switch (key) {
-    case "read": case "readfile": case "read_file": return { verb: "Reading", symbol: "doc.text" };
-    case "write": case "writefile": case "write_file": return { verb: "Writing", symbol: "square.and.pencil" };
-    case "edit": case "multiedit": case "applydiff": case "apply_patch": case "patch": return { verb: "Editing", symbol: "pencil.line" };
-    case "bash": case "shell": case "bashoutput": case "exec": return { verb: "Running", symbol: "terminal" };
-    case "grep": case "search": case "glob": case "list": case "ls": return { verb: "Searching", symbol: "magnifyingglass" };
-    case "task": return { verb: "Delegating", symbol: "person.2" };
-    case "webfetch": case "websearch": return { verb: "Browsing", symbol: "globe" };
-    case "todowrite": case "todoread": return { verb: "Planning", symbol: "checklist" };
-    case "ask_question": case "askuserquestion": return { verb: "Asking you", symbol: "questionmark.bubble" };
-    case "startsimulator": case "getsimulatorstatus": case "stopsimulator": return { verb: "Building for iPhone", symbol: "iphone" };
-    case "startdevserver": case "refreshpreview": case "getdevserverlog": return { verb: "Starting the preview", symbol: "play.rectangle" };
-    case "getbrowserlog": return { verb: "Checking the preview", symbol: "ladybug" };
-    case "convexdeploy": return { verb: "Deploying the backend", symbol: "cylinder.split.1x2" };
-    default: return { verb: "Working", symbol: "wrench.and.screwdriver" };
+    case "read": case "readfile": case "read_file": return of("Reading", "Read", "doc.text");
+    case "write": case "writefile": case "write_file": return of("Writing", "Wrote", "square.and.pencil");
+    case "edit": case "multiedit": case "applydiff": case "apply_patch": case "patch": return of("Editing", "Edited", "pencil.line");
+    case "bash": case "shell": case "bashoutput": case "exec": return of("Running", "Ran", "terminal");
+    case "grep": case "search": case "glob": case "list": case "ls": return of("Searching", "Searched", "magnifyingglass");
+    case "task": return of("Delegating", "Delegated", "person.2");
+    case "webfetch": case "websearch": return of("Browsing", "Browsed", "globe");
+    case "todowrite": case "todoread": return of("Planning", "Planned", "checklist");
+    case "ask_question": case "askuserquestion": return of("Asking you", "Asked you", "questionmark.bubble");
+    case "startsimulator": case "getsimulatorstatus": case "stopsimulator": return of("Building for iPhone", "Built for iPhone", "iphone");
+    case "startdevserver": case "refreshpreview": case "getdevserverlog": return of("Starting the preview", "Started the preview", "play.rectangle");
+    case "getbrowserlog": return of("Checking the preview", "Checked the preview", "ladybug");
+    case "convexdeploy": return of("Deploying the backend", "Deployed the backend", "cylinder.split.1x2");
+    default: return of("Working", "Worked", "wrench.and.screwdriver");
   }
 }
 
@@ -158,7 +162,10 @@ async function sendAlert(input: {
 interface ActivityState {
   startedAt: number;
   steps: number;
+  /** Steps already finished, newest last, in the past tense. */
   recent: string[];
+  /** The step in progress, so it can be recorded as done when the next begins. */
+  current?: { tool: string; detail: string };
 }
 
 const activityStateKey = (threadId: string, userId: string) => `native:activity-state:${threadId}:${userId}`;
@@ -186,6 +193,8 @@ async function pushActivity(input: {
   event: "update" | "end";
   contentState: Record<string, unknown>;
   dismissAt?: number;
+  /** Brings the island forward and lights the Lock Screen, for a state that needs the person. */
+  alert?: { title: string; body: string };
 }): Promise<boolean> {
   const target = await getLiveActivity(input.userId, input.threadId);
   if (!target) return false;
@@ -201,6 +210,7 @@ async function pushActivity(input: {
         event: input.event,
         "content-state": input.contentState,
         ...(input.dismissAt ? { "dismissal-date": Math.floor(input.dismissAt / 1000) } : {}),
+        ...(input.alert ? { alert: input.alert, sound: "default" } : {}),
       },
     },
   });
@@ -223,9 +233,20 @@ export async function pushTurnProgress(input: {
     const { verb, symbol } = describeTool(input.tool);
     const detail = clip(input.detail, 60);
     const state = await readActivityState(input.threadId, input.userId);
-    const line = detail ? `${verb} ${detail}` : verb;
-    const recent = state.recent[state.recent.length - 1] === line ? state.recent : [...state.recent, line].slice(-3);
-    const next: ActivityState = { startedAt: state.startedAt, steps: Math.max(state.steps, input.steps), recent };
+    // The step that was running is done: it joins the finished ones in the past tense.
+    let recent = state.recent;
+    const previous = state.current;
+    if (previous && (previous.tool !== input.tool || previous.detail !== detail)) {
+      const done = describeTool(previous.tool).past;
+      const line = previous.detail ? `${done} ${previous.detail}` : done;
+      if (recent[recent.length - 1] !== line) recent = [...recent, line].slice(-3);
+    }
+    const next: ActivityState = {
+      startedAt: state.startedAt,
+      steps: Math.max(state.steps, input.steps),
+      recent,
+      current: { tool: input.tool, detail },
+    };
     await redis.setex(activityStateKey(input.threadId, input.userId), 8 * 60 * 60, JSON.stringify(next));
     const asking = input.tool.toLowerCase().includes("ask");
     return await pushActivity({
@@ -311,6 +332,8 @@ export async function notifyNeedsInput(input: {
   try {
     if (!isApnsConfigured()) return;
     const state = await readActivityState(input.threadId, input.userId);
+    const { projectName, threadTitle } = await threadContext(input.projectId, input.threadId);
+    const question = clip(input.question, 120);
     await pushActivity({
       userId: input.userId,
       threadId: input.threadId,
@@ -318,15 +341,16 @@ export async function notifyNeedsInput(input: {
       contentState: {
         phase: "needsInput",
         action: "Asking you",
-        detail: clip(input.question, 60),
+        detail: question,
         symbol: "questionmark.bubble",
         steps: state.steps,
         recent: state.recent,
         startedAt: appleDate(state.startedAt),
       },
+      // The agent is stuck until answered, so the island comes forward by itself.
+      alert: { title: `${projectName} needs your answer`, body: question || "The agent has a question for you." },
     });
     if (await isWatching(input.projectId, input.threadId, input.userId)) return;
-    const { projectName, threadTitle } = await threadContext(input.projectId, input.threadId);
     await sendAlert({
       userId: input.userId,
       projectId: input.projectId,

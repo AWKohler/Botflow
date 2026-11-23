@@ -220,11 +220,11 @@ struct ThinkingView: View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
                 Haptics.select()
-                withAnimation(.snappy(duration: 0.25)) { expanded.toggle() }
+                withMotion(.snappy(duration: 0.25)) { expanded.toggle() }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "sparkle")
-                        .symbolEffect(.pulse, isActive: streaming)
+                        .pulsing(streaming)
                     Text(streaming ? "Thinking" : "Thought it through")
                         .shimmer(streaming)
                     Image(systemName: "chevron.right")
@@ -274,13 +274,13 @@ struct ToolGroupView: View {
             if calls.count > 3 {
                 Button {
                     Haptics.select()
-                    withAnimation(.snappy(duration: 0.28)) { expanded.toggle() }
+                    withMotion(.snappy(duration: 0.28)) { expanded.toggle() }
                 } label: {
                     HStack(spacing: Space.s) {
                         Image(systemName: live ? "bolt.fill" : "checklist")
                             .font(.footnote)
                             .foregroundStyle(live ? Sand.accent : Sand.subtle)
-                            .symbolEffect(.pulse, isActive: live)
+                            .pulsing(live)
                         Text(summary)
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(Sand.muted)
@@ -333,7 +333,7 @@ struct ToolGroupView: View {
         // Arriving rows stay inside the card.
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Sand.border, lineWidth: 1))
-        .animation(.snappy(duration: 0.3), value: calls.count)
+        .motion(.snappy(duration: 0.3), value: calls.count)
     }
 
     private var summary: String {
@@ -392,7 +392,7 @@ struct ToolRow: View {
                         .layoutPriority(1)
                     if !detail.isEmpty {
                         Text(detail)
-                            .font(.code(12.5))
+                            .codeFont(12.5)
                             .foregroundStyle(Sand.subtle)
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -469,7 +469,7 @@ struct ToolDetailSheet: View {
                             .background(Sand.elevated, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         VStack(alignment: .leading, spacing: 2) {
                             Text(ToolRow.label(for: call, info: info)).font(.headline).foregroundStyle(Sand.text)
-                            Text(call.name).font(.code(12)).foregroundStyle(Sand.subtle)
+                            Text(call.name).codeFont(12).foregroundStyle(Sand.subtle)
                         }
                         Spacer()
                         Badge(text: call.state == .running ? "Running" : call.state == .error ? "Failed" : "Done", tone: call.state == .running ? .accent : call.state == .error ? .danger : .success)
@@ -520,7 +520,7 @@ struct ToolDetailSheet: View {
                     .textCase(.uppercase)
                     .kerning(0.4)
                 if let path = call.input["file_path"]?.stringValue, title == "Input" {
-                    Text(ToolSummary.shortPath(path)).font(.code(12.5)).foregroundStyle(Sand.muted)
+                    Text(ToolSummary.shortPath(path)).codeFont(12.5).foregroundStyle(Sand.muted)
                 }
                 CodeBlock(language: language, text: text)
             }
@@ -616,7 +616,7 @@ struct QuestionCard: View {
         let isOn = selected[question.id]?.contains(option.id) ?? false
         return Button {
             Haptics.select()
-            withAnimation(.snappy(duration: 0.2)) {
+            withMotion(.snappy(duration: 0.2)) {
                 var set = selected[question.id] ?? []
                 if question.multiSelect {
                     if isOn { set.remove(option.id) } else { set.insert(option.id) }

@@ -107,3 +107,22 @@ extension Font {
         .system(size: UIFontMetrics(forTextStyle: .footnote).scaledValue(for: size), design: .monospaced)
     }
 }
+
+
+private struct CodeFontModifier: ViewModifier {
+    var size: CGFloat
+    // Read so the view is drawn again, at the new size, when the person changes their text size.
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    func body(content: Content) -> some View {
+        let _ = typeSize
+        content.font(.code(size))
+    }
+}
+
+extension View {
+    /// Monospaced text at `size` points that follows the person's text size, live.
+    func codeFont(_ size: CGFloat = 13) -> some View {
+        modifier(CodeFontModifier(size: size))
+    }
+}

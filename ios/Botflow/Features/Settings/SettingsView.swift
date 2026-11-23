@@ -2,6 +2,7 @@ import SwiftUI
 import UserNotifications
 
 struct SettingsView: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     @EnvironmentObject private var session: AppSession
     @EnvironmentObject private var router: Router
     @Environment(\.dismiss) private var dismiss
@@ -134,21 +135,28 @@ struct SettingsView: View {
     }
 
     private var profile: some View {
-        HStack(spacing: Space.l) {
+        // At the largest text sizes the avatar goes above the name, and the
+        // name and address wrap in full instead of being cut.
+        let stacked = typeSize.isAccessibilitySize
+        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: Space.m)) : AnyLayout(HStackLayout(spacing: Space.l))
+        return layout {
             AvatarView(initials: session.user?.initials ?? "··", imageURL: session.user?.imageUrl, size: 56)
             VStack(alignment: .leading, spacing: 3) {
                 Text(session.user?.displayName ?? "Your account")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(Sand.text)
-                    .lineLimit(2)
+                    .lineLimit(stacked ? nil : 2)
                 if let email = session.user?.email {
-                    Text(email).font(.subheadline).foregroundStyle(Sand.muted).lineLimit(1).truncationMode(.middle)
+                    Text(email).font(.subheadline).foregroundStyle(Sand.muted)
+                        .lineLimit(stacked ? nil : 1)
+                        .truncationMode(.middle)
                 }
             }
-            Spacer(minLength: 0)
+            if !stacked { Spacer(minLength: 0) }
             Badge(text: session.tier.label, tone: session.tier == .free ? .neutral : .accent)
                 .fixedSize()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 6)
     }
 
@@ -171,12 +179,14 @@ struct SettingsRow: View {
     var title: String
     var value: String?
     @Environment(\.dynamicTypeSize) private var typeSize
+    /// The icon column is as wide as the icons are at this text size.
+    @ScaledMetric(relativeTo: .body) private var iconColumn: CGFloat = 24
 
     var body: some View {
-        HStack(spacing: Space.m) {
+        HStack(alignment: typeSize.isAccessibilitySize ? .firstTextBaseline : .center, spacing: Space.m) {
             Image(systemName: symbol)
                 .foregroundStyle(Sand.muted)
-                .frame(width: 24)
+                .frame(width: iconColumn)
             if typeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).foregroundStyle(Sand.text)
@@ -428,7 +438,7 @@ struct APIKeySheet: View {
                     SecureField("Paste your \(title) API key", text: $value)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                        .font(.code(14))
+                        .codeFont(14)
                         .listRowBackground(Sand.card)
                 } footer: {
                     Text("Saving replaces any key already stored for \(title).")
@@ -497,7 +507,7 @@ struct ClaudeConnectSheet: View {
                 step(2, "Paste the code here", detail: nil)
                 TextField("Authorisation code", text: $code, axis: .vertical)
                     .lineLimit(1...3)
-                    .font(.code(14))
+                    .codeFont(14)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .padding(Space.m)

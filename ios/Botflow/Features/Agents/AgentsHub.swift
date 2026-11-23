@@ -46,7 +46,7 @@ final class AgentsHub: ObservableObject {
             let sorted = list.sorted { a, b in
                 (a.thread.updatedAt ?? .distantPast) > (b.thread.updatedAt ?? .distantPast)
             }
-            withAnimation(.snappy(duration: 0.3)) { agents = sorted }
+            withMotion(.snappy(duration: 0.3)) { agents = sorted }
             error = nil
         } catch let failure {
             if !loaded { error = failure.localizedDescription }

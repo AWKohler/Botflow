@@ -132,7 +132,7 @@ struct OnboardingView: View {
                 .padding(.top, Space.xs)
         }
         .disabled(session.isAuthenticating)
-        .animation(.snappy, value: session.authError)
+        .motion(.snappy, value: session.authError)
     }
 }
 
@@ -213,7 +213,7 @@ struct AgentShowcase: View {
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(last ? Sand.text : Sand.muted)
                         Text(line.detail)
-                            .font(.code(12.5))
+                            .codeFont(12.5)
                             .foregroundStyle(Sand.subtle)
                             .lineLimit(1)
                         Spacer(minLength: 0)
@@ -235,9 +235,9 @@ struct AgentShowcase: View {
                 try? await Task.sleep(nanoseconds: 1_150_000_000)
                 if visible >= script.count {
                     try? await Task.sleep(nanoseconds: 2_400_000_000)
-                    withAnimation(.easeInOut(duration: 0.3)) { visible = 1 }
+                    withMotion(.easeInOut(duration: 0.3)) { visible = 1 }
                 } else {
-                    withAnimation(.spring(duration: 0.45)) { visible += 1 }
+                    withMotion(.spring(duration: 0.45)) { visible += 1 }
                 }
             }
         }

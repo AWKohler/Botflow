@@ -167,7 +167,9 @@ final class SimulatorSurfaceView: UIView, UIKeyInput {
         showTrail()
         // The picture gives a little under the finger, easing off the further it goes.
         if !reduceMotion {
-            setGive(CGPoint(x: Self.eased(dx), y: Self.eased(dy)), animated: false)
+            // Along the drag's own axis only, so the picture never slides sideways under a scroll.
+            let vertical = abs(dy) >= abs(dx)
+            setGive(CGPoint(x: vertical ? 0 : Self.eased(dx), y: vertical ? Self.eased(dy) : 0), animated: false)
         }
     }
 
@@ -215,8 +217,8 @@ final class SimulatorSurfaceView: UIView, UIKeyInput {
 
     /// A drag distance eased into a small displacement: direct at first, then flattening out.
     static func eased(_ distance: CGFloat) -> CGFloat {
-        let limit: CGFloat = 28
-        return limit * tanh(distance / 160)
+        let limit: CGFloat = 12
+        return limit * tanh(distance / 120)
     }
 
     private func setGive(_ offset: CGPoint, animated: Bool) {

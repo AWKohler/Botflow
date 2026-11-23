@@ -70,14 +70,14 @@ final class AppSession: ObservableObject {
         defer { isAuthenticating = false }
         if AppConfig.isDemo {
             await loadAccount()
-            withAnimation(.smooth(duration: 0.45)) { phase = .signedIn }
+            withMotion(.smooth(duration: 0.45)) { phase = .signedIn }
             return
         }
         do {
             guard try await auth.authenticate(mode: mode) else { return }
             user = try await service.me()
             Haptics.success()
-            withAnimation(.smooth(duration: 0.45)) { phase = .signedIn }
+            withMotion(.smooth(duration: 0.45)) { phase = .signedIn }
             await loadAccount()
             PushManager.shared.registerIfAuthorized()
         } catch {
@@ -93,7 +93,7 @@ final class AppSession: ObservableObject {
         credits = nil
         subscription = nil
         connections = Connections()
-        withAnimation(.smooth(duration: 0.35)) { phase = .signedOut }
+        withMotion(.smooth(duration: 0.35)) { phase = .signedOut }
     }
 
     private func sessionExpired() {
@@ -101,7 +101,7 @@ final class AppSession: ObservableObject {
         APIClient.shared.clearSession()
         user = nil
         authError = "Your session ended. Sign in again to continue."
-        withAnimation { phase = .signedOut }
+        withMotion { phase = .signedOut }
     }
 
     func loadAccount() async {

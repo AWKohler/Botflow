@@ -161,6 +161,7 @@ struct AgentsView: View {
 /// happening with it now.
 struct AgentCard: View {
     var agent: AgentActivity
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
@@ -170,7 +171,7 @@ struct AgentCard: View {
                 Text(agent.thread.displayTitle)
                     .font(.body.weight(.medium))
                     .foregroundStyle(Sand.text)
-                    .lineLimit(2)
+                    .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
                     .multilineTextAlignment(.leading)
                 Spacer(minLength: Space.s)
                 Text(RelativeTime.short(agent.thread.updatedAt))
@@ -210,7 +211,7 @@ struct AgentCard: View {
                     Image(systemName: info.symbol).font(.footnote)
                     Text(info.verb).fontWeight(.medium)
                     if !step.detail.isEmpty {
-                        Text(ToolSummary.shortPath(step.detail)).font(.code(12.5)).foregroundStyle(Sand.subtle).lineLimit(1).truncationMode(.middle)
+                        Text(ToolSummary.shortPath(step.detail)).codeFont(12.5).foregroundStyle(Sand.subtle).lineLimit(1).truncationMode(.middle)
                     }
                     Text("· \(step.steps) steps").foregroundStyle(Sand.subtle).layoutPriority(-1)
                 } else {

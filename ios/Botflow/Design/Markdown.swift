@@ -295,18 +295,19 @@ struct CodeBlock: View {
                 Button {
                     UIPasteboard.general.string = text
                     Haptics.tap()
-                    withAnimation { copied = true }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { withAnimation { copied = false } }
+                    withMotion { copied = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { withMotion { copied = false } }
                 } label: {
                     Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(copied ? Sand.success : Sand.muted)
                         .contentTransition(.symbolEffect(.replace))
+                        .frame(minWidth: 44, minHeight: 44, alignment: .trailing)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, Space.m)
-            .padding(.vertical, 7)
             Divider().overlay(Sand.border)
             ScrollView(.horizontal) {
                 Text(CodeHighlighter.highlight(text, language: language, size: 12.5))

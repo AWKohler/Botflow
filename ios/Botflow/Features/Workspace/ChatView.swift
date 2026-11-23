@@ -21,6 +21,9 @@ struct ChatView: View {
     /// Whether the transcript keeps up with a reply as it grows. Only the
     /// person's own scrolling turns it off.
     @State private var following = true
+    /// A waiting question is held with its heading at the top, through every
+    /// change in layout, until the person scrolls it themselves.
+    @State private var holdingQuestion = true
     /// How many of the latest messages are rendered.
     @State private var shownCount = 60
     /// The full composer, opened by choice while a question is waiting.
@@ -100,11 +103,23 @@ struct ChatView: View {
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentSize.height
             } action: { _, _ in
-                if following, question == nil { proxy.scrollTo("bottom", anchor: .bottom) }
+                if let question {
+                    if holdingQuestion { proxy.scrollTo("question-\(question.id)", anchor: .top) }
+                } else if following {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
+            }
+            // The bars around the transcript settle after the first layout
+            // (and change with the keyboard and rotation): hold the question through that too.
+            .onScrollGeometryChange(for: CGSize.self) { geometry in
+                geometry.containerSize
+            } action: { _, _ in
+                if let question, holdingQuestion { proxy.scrollTo("question-\(question.id)", anchor: .top) }
             }
             .onScrollPhaseChange { old, new, context in
                 if new == .interacting {
                     following = false
+                    holdingQuestion = false
                 } else if new == .idle, old == .interacting || old == .decelerating {
                     following = Self.isNearEnd(context.geometry)
                 }
@@ -127,12 +142,15 @@ struct ChatView: View {
                     .accessibilityLabel("Jump to latest")
                 }
             }
-            .animation(.snappy(duration: 0.2), value: atBottom)
+            .motion(.snappy(duration: 0.2), value: atBottom)
             // The chats strip is a bar of the scroll view, so the transcript
             // passes under it with the system's edge blur instead of being cut off.
-            .safeAreaBar(edge: .top, spacing: 0) {
+            .safeAreaInset(edge: .top, spacing: 0) {
                 if compact || store.openThreads.count > 1 {
                     ThreadStrip(store: store, showsProject: compact, onShowAll: onShowThreads)
+                } else {
+                    // No strip to show: still give the navigation bar an even surface to sit on.
+                    Color.clear.frame(height: 0).background(Sand.canvas.ignoresSafeArea(edges: .top))
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -159,6 +177,7 @@ struct ChatView: View {
             }
             .onChange(of: question?.id) { _, id in
                 composerOpen = false
+                holdingQuestion = true
                 if let question, id != nil {
                     reveal(question, with: proxy, animated: true)
                 } else {
@@ -196,7 +215,7 @@ extension ChatView {
         // After layout, so the new rows have their height.
         DispatchQueue.main.async {
             if animated, !reduceMotion {
-                withAnimation(.snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
+                withMotion(.snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
             } else {
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
@@ -207,13 +226,17 @@ extension ChatView {
     /// read before its options.
     fileprivate func reveal(_ question: ToolCall, with proxy: ScrollViewProxy, animated: Bool) {
         let target = "question-\(question.id)"
-        // After layout, so the card exists to scroll to.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+        // After layout, so the card exists to scroll to; and once more when
+        // the bars have settled, in case the first pass was measured without them.
+        DispatchQueue.main.async {
             if animated, !reduceMotion {
-                withAnimation(.snappy) { proxy.scrollTo(target, anchor: .top) }
+                withMotion(.snappy) { proxy.scrollTo(target, anchor: .top) }
             } else {
                 proxy.scrollTo(target, anchor: .top)
             }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            if holdingQuestion, session.pendingQuestion?.id == question.id { proxy.scrollTo(target, anchor: .top) }
         }
     }
 }
@@ -291,7 +314,7 @@ struct StartingIndicator: View {
                     .contentTransition(.opacity)
                     .shimmer()
             }
-            .animation(.easeInOut(duration: 0.3), value: label(at: context.date))
+            .motion(.easeInOut(duration: 0.3), value: label(at: context.date))
         }
         .accessibilityElement(children: .combine)
     }
@@ -432,8 +455,8 @@ struct Composer: View {
             LinearGradient(colors: [Sand.canvas.opacity(0), Sand.canvas], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.35))
                 .ignoresSafeArea()
         }
-        .animation(.snappy(duration: 0.22), value: busy)
-        .animation(.snappy(duration: 0.22), value: attachments)
+        .motion(.snappy(duration: 0.22), value: busy)
+        .motion(.snappy(duration: 0.22), value: attachments)
         .onChange(of: pickerItems) { _, items in
             guard !items.isEmpty else { return }
             let picked = items
@@ -452,7 +475,8 @@ struct Composer: View {
     private var footer: some View {
         let limit = model.contextLimit(personal: access.usesOwnAccount)
         let used = session.usage?.tokens ?? 0
-        return HStack(spacing: Space.m) {
+        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(spacing: Space.m))
+        return layout {
             if !access.runnable {
                 Button {
                     router.sheet = model.provider == .anthropic && account.tier == .free ? .settings : .paywall(reason: access.title)
@@ -472,7 +496,7 @@ struct Composer: View {
             } else {
                 Text("\(AIModel.compact(limit)) context")
             }
-            Spacer(minLength: 0)
+            if !typeSize.isAccessibilitySize { Spacer(minLength: 0) }
             if access.source == .claudeSubscription, let pct = account.claudePlan?.fiveHour {
                 Text("Claude \(pct)% used")
             } else if access.source == .planCredits, let credits = account.credits {
@@ -483,7 +507,8 @@ struct Composer: View {
         }
         .font(.caption)
         .foregroundStyle(Sand.subtle)
-        .lineLimit(1)
+        .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Space.l)
         .padding(.vertical, 8)
         .overlay(alignment: .top) { Divider().overlay(Sand.border) }

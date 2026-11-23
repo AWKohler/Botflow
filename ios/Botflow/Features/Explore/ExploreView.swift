@@ -79,7 +79,7 @@ struct ExploreView: View {
     private func load() async {
         do {
             let list = try await session.service.publicProjects(sort: sort, platform: platform == "all" ? nil : platform)
-            withAnimation(.snappy(duration: 0.3)) { projects = list }
+            withMotion(.snappy(duration: 0.3)) { projects = list }
             error = nil
         } catch let failure {
             error = failure.localizedDescription
@@ -91,7 +91,7 @@ struct ExploreView: View {
         guard let slug = project.publicSlug, let index = projects.firstIndex(where: { $0.id == project.id }) else { return }
         Haptics.tap()
         let was = projects[index].hasStarred ?? false
-        withAnimation(.snappy) {
+        withMotion(.snappy) {
             projects[index].hasStarred = !was
             projects[index].starCount = max(0, (projects[index].starCount ?? 0) + (was ? -1 : 1))
         }

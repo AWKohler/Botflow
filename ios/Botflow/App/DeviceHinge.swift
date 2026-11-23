@@ -43,7 +43,7 @@ private struct HingeObserver: ViewModifier {
                 }
                 let posture: HingePosture = hinge.status == .closed ? .closed : hinge.status == .partiallyOpen ? .partiallyOpen : .fullyOpen
                 if model.posture != posture {
-                    withAnimation(.smooth(duration: 0.35)) { model.posture = posture }
+                    withMotion(.smooth(duration: 0.35)) { model.posture = posture }
                 }
             }
         } else {

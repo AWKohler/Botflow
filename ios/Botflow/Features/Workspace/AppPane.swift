@@ -115,7 +115,7 @@ struct WebPreviewView: View {
                     Circle().fill(store.previewURL == nil ? Sand.borderStrong : Sand.successSolid).frame(width: 7, height: 7)
                 }
                 Text(addressLabel)
-                    .font(.code(12.5))
+                    .codeFont(12.5)
                     .foregroundStyle(Sand.muted)
                     .lineLimit(1)
                     .truncationMode(.middle)

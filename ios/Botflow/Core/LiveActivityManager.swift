@@ -12,6 +12,9 @@ final class LiveActivityManager {
         var state: AgentActivityAttributes.ContentState
         var lastPush = Date.distantPast
         var pending: Task<Void, Never>?
+        /// The step in progress, so it can be recorded as done when the next begins.
+        var currentStep: (tool: String, detail: String)?
+        var alertOnNextPush = false
     }
 
     private var tracked: [String: Tracked] = [:]
@@ -69,23 +72,37 @@ final class LiveActivityManager {
         guard var entry = tracked[threadId] else { return }
         let info = ToolPresentation.info(for: toolName)
         var state = entry.state
-        state.phase = toolName == "ask_question" ? .needsInput : .working
+        let asking = toolName == "ask_question"
+        let becameQuestion = asking && state.phase != .needsInput
+        if entry.currentStep?.tool != toolName || entry.currentStep?.detail != detail {
+            Self.completeCurrentStep(of: entry, into: &state)
+        }
+        entry.currentStep = (toolName, detail)
+        state.phase = asking ? .needsInput : .working
         state.action = info.verb
         state.detail = detail
         state.symbol = info.symbol
         state.steps = steps
-        let line = detail.isEmpty ? info.verb : "\(info.verb) \(detail)"
-        if state.recent.last != line {
-            state.recent = Array((state.recent + [line]).suffix(3))
-        }
         entry.state = state
+        // A question brings the island forward and lights the Lock Screen: the agent is stuck until answered.
+        if becameQuestion { entry.alertOnNextPush = true }
         tracked[threadId] = entry
         schedule(threadId)
+    }
+
+    /// The step that was running is done: it joins the finished ones in the past tense.
+    private static func completeCurrentStep(of entry: Tracked, into state: inout AgentActivityAttributes.ContentState) {
+        guard let previous = entry.currentStep else { return }
+        let done = ToolPresentation.info(for: previous.tool).past
+        let line = previous.detail.isEmpty ? done : "\(done) \(previous.detail)"
+        if state.recent.last != line { state.recent = Array((state.recent + [line]).suffix(3)) }
     }
 
     func writing(threadId: String) {
         guard var entry = tracked[threadId], entry.state.phase != .needsInput else { return }
         guard entry.state.action != "Writing a reply" else { return }
+        Self.completeCurrentStep(of: entry, into: &entry.state)
+        entry.currentStep = nil
         entry.state.phase = .working
         entry.state.action = "Writing a reply"
         entry.state.detail = ""
@@ -111,7 +128,16 @@ final class LiveActivityManager {
         entry.lastPush = Date()
         entry.pending = nil
         tracked[threadId] = entry
-        let alert: AlertConfiguration? = nil
+        var alert: AlertConfiguration?
+        if entry.alertOnNextPush {
+            alert = AlertConfiguration(
+                title: "\(entry.activity.attributes.projectName) needs your answer",
+                body: LocalizedStringResource(stringLiteral: entry.state.detail.isEmpty ? "The agent has a question for you." : entry.state.detail),
+                sound: .default
+            )
+            entry.alertOnNextPush = false
+            tracked[threadId] = entry
+        }
         await entry.activity.update(
             ActivityContent(state: entry.state, staleDate: Date().addingTimeInterval(60 * 30), relevanceScore: entry.state.phase == .needsInput ? 100 : 80),
             alertConfiguration: alert

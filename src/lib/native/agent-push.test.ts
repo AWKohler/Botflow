@@ -139,6 +139,20 @@ describe("with an APNs key", () => {
     });
   });
 
+  test("a question brings the Live Activity forward with its wording", async () => {
+    const { projectId, threadId } = await seed();
+    await registerLiveActivity("u1", threadId, { token: ACTIVITY, environment: "production", projectId });
+    await notifyNeedsInput({ userId: "u1", projectId, threadId, question: "Which menu layout should the homepage use?" });
+    const activity = sent.find((r) => r.pushType === "liveactivity")!;
+    expect(activity.payload).toMatchObject({
+      aps: {
+        event: "update",
+        alert: { title: "Tidewater Coffee needs your answer", body: "Which menu layout should the homepage use?" },
+        "content-state": { phase: "needsInput", action: "Asking you", detail: "Which menu layout should the homepage use?" },
+      },
+    });
+  });
+
   test("a token Apple has retired is dropped", async () => {
     const { projectId, threadId } = await seed();
     await registerDevice("u1", { token: DEVICE, environment: "production", bundleId: "io.botflow.app" });
@@ -165,7 +179,8 @@ describe("with an APNs key", () => {
       detail: "pnpm build",
       symbol: "terminal",
       steps: 4,
-      recent: ["Editing src/components/Cart.tsx", "Running pnpm build"],
+      // Only what is finished, in the past tense; the step in progress is `action`.
+      recent: ["Edited src/components/Cart.tsx"],
     });
     // Swift decodes dates as seconds since 2001-01-01.
     expect(state.startedAt).toBe(startedAt / 1000 - 978_307_200);

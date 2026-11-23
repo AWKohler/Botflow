@@ -244,7 +244,7 @@ final class SimulatorController: ObservableObject {
             renderer.enqueue(sample)
             let dimensions = self.decoder.dimensions
             Task { @MainActor in
-                if !self.hasFrame { withAnimation(.easeOut(duration: 0.5)) { self.hasFrame = true } }
+                if !self.hasFrame { withMotion(.easeOut(duration: 0.5)) { self.hasFrame = true } }
                 if let dimensions, dimensions.width > 0, CGFloat(dimensions.width) != self.videoSize.width || CGFloat(dimensions.height) != self.videoSize.height {
                     self.videoSize = CGSize(width: CGFloat(dimensions.width), height: CGFloat(dimensions.height))
                 }

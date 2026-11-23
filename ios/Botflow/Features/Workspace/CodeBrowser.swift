@@ -65,7 +65,7 @@ struct CodeBrowser: View {
             } else if let selected {
                 // One column: the file replaces the list, with a way back.
                 FileViewer(store: store, path: selected, onBack: {
-                    withAnimation(.snappy(duration: 0.25)) { self.selected = nil }
+                    withMotion(.snappy(duration: 0.25)) { self.selected = nil }
                 })
                 .id(selected)
                 .transition(.move(edge: .trailing))
@@ -116,10 +116,10 @@ struct CodeBrowser: View {
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("\(ToolSummary.shortPath(hit.path)):\(hit.line)")
-                                        .font(.code(11.5))
+                                        .codeFont(11.5)
                                         .foregroundStyle(Sand.subtle)
                                     Text(hit.text.trimmingCharacters(in: .whitespaces))
-                                        .font(.code(12.5))
+                                        .codeFont(12.5)
                                         .foregroundStyle(Sand.text)
                                         .lineLimit(2)
                                 }
@@ -160,11 +160,11 @@ struct CodeBrowser: View {
         return Button {
             Haptics.select()
             if row.file.isDirectory {
-                withAnimation(.snappy(duration: 0.2)) {
+                withMotion(.snappy(duration: 0.2)) {
                     if expanded.contains(row.file.path) { expanded.remove(row.file.path) } else { expanded.insert(row.file.path) }
                 }
             } else {
-                withAnimation(.snappy(duration: 0.25)) { selected = row.file.path }
+                withMotion(.snappy(duration: 0.25)) { selected = row.file.path }
             }
         } label: {
             HStack(spacing: 7) {
@@ -261,7 +261,7 @@ struct FileViewer: View {
                     Image(systemName: CodeBrowser.symbol(for: (path as NSString).lastPathComponent)).foregroundStyle(Sand.subtle)
                 }
                 Text(onBack == nil ? path : (path as NSString).lastPathComponent)
-                    .font(.code(12.5))
+                    .codeFont(12.5)
                     .foregroundStyle(Sand.muted)
                     .lineLimit(1)
                     .truncationMode(.head)
@@ -280,7 +280,7 @@ struct FileViewer: View {
                     EmptyState(symbol: "doc.zipper", title: "Binary file", message: "This file isn't text, so there's nothing to show.")
                 } else if editing {
                     TextEditor(text: $content)
-                        .font(.code(13))
+                        .codeFont(13)
                         .foregroundStyle(Sand.text)
                         .scrollContentBackground(.hidden)
                         .textInputAutocapitalization(.never)
@@ -290,7 +290,7 @@ struct FileViewer: View {
                     ScrollView([.vertical, .horizontal]) {
                         HStack(alignment: .top, spacing: Space.m) {
                             Text(lineNumbers)
-                                .font(.code(13))
+                                .codeFont(13)
                                 .foregroundStyle(Sand.borderStrong)
                                 .multilineTextAlignment(.trailing)
                                 .accessibilityHidden(true)

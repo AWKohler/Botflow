@@ -106,7 +106,7 @@ struct ProjectsView: View {
                     let selected = filter == item
                     Button {
                         Haptics.select()
-                        withAnimation(.snappy) { filter = item }
+                        withMotion(.snappy) { filter = item }
                     } label: {
                         Text(item.rawValue)
                             .font(.subheadline.weight(.medium))
@@ -164,7 +164,7 @@ struct ProjectsView: View {
     private func load() async {
         do {
             let list = try await session.service.projects()
-            withAnimation(.snappy(duration: 0.3)) {
+            withMotion(.snappy(duration: 0.3)) {
                 projects = list.sorted { ($0.lastOpened ?? .distantPast) > ($1.lastOpened ?? .distantPast) }
             }
             error = nil
@@ -175,7 +175,7 @@ struct ProjectsView: View {
     }
 
     private func delete(_ project: Project) async {
-        withAnimation(.snappy) { projects.removeAll { $0.id == project.id } }
+        withMotion(.snappy) { projects.removeAll { $0.id == project.id } }
         do {
             try await session.service.deleteProject(project.id)
             ToastCenter.shared.show("Deleted “\(project.name)”", symbol: "trash.fill", tone: .neutral)
@@ -218,15 +218,10 @@ struct ProjectCard: View {
                             Badge(text: "Shared", symbol: "person.2").fixedSize()
                         }
                     }
-                    HStack(spacing: 5) {
-                        Image(systemName: project.kind.symbol).imageScale(.small)
-                        Text(project.kind.label)
-                        if let opened = project.lastOpened {
-                            Text("·")
-                            Text(opened.formatted(.dateTime.month(.abbreviated).day()))
-                        }
-                        Text("·")
-                        Text(ModelCatalog.model(project.model).shortName)
+                    // The model is the first thing to go when the card is narrow: a cut-off name says nothing.
+                    ViewThatFits(in: .horizontal) {
+                        meta(model: true)
+                        meta(model: false)
                     }
                     .font(.footnote)
                     .foregroundStyle(Sand.subtle)
@@ -254,6 +249,25 @@ struct ProjectCard: View {
         .contentShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
+    }
+}
+
+extension ProjectCard {
+    fileprivate func meta(model: Bool) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: project.kind.symbol).imageScale(.small)
+            Text(project.kind.label)
+            if let opened = project.lastOpened {
+                Text("·")
+                Text(opened.formatted(.dateTime.month(.abbreviated).day()))
+            }
+            if model {
+                Text("·")
+                Text(ModelCatalog.model(project.model).shortName)
+            }
+        }
+        .lineLimit(1)
+        .fixedSize()
     }
 }
 

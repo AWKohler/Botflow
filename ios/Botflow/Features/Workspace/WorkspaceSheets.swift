@@ -63,7 +63,7 @@ struct PublishSheet: View {
             .navigationTitle("Publish")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
-            .animation(.snappy, value: phase)
+            .motion(.snappy, value: phase)
         }
         .presentationDetents([.medium, .large])
         .onDisappear { task?.cancel() }
@@ -94,7 +94,7 @@ struct PublishSheet: View {
                     .foregroundStyle(Sand.text)
             }
             Text(url.host ?? url.absoluteString)
-                .font(.code(14))
+                .codeFont(14)
                 .foregroundStyle(Sand.accent)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -120,7 +120,7 @@ struct PublishSheet: View {
     private var logView: some View {
         ScrollView(.horizontal) {
             Text(log.suffix(14).joined(separator: "\n"))
-                .font(.code(11))
+                .codeFont(11)
                 .foregroundStyle(Sand.subtle)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(Space.m)
@@ -138,7 +138,7 @@ struct PublishSheet: View {
             do {
                 for try await event in store.service.publish(projectId: store.projectId) {
                     switch event {
-                    case .status(let text): withAnimation { status = text }
+                    case .status(let text): withMotion { status = text }
                     case .output(let line): log.append(line)
                     case .failed(let message):
                         phase = .failed(message)
@@ -289,12 +289,12 @@ struct EnvSheet: View {
                     ForEach(vars) { item in
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 6) {
-                                Text(item.key).font(.code(13.5)).foregroundStyle(Sand.text)
+                                Text(item.key).codeFont(13.5).foregroundStyle(Sand.text)
                                 if item.isSystem == true { Badge(text: "Managed", tone: .neutral) }
                                 if item.isSecret == true { Image(systemName: "lock.fill").font(.caption).foregroundStyle(Sand.subtle) }
                             }
                             Text(item.isSecret == true ? "••••••••" : (item.value ?? ""))
-                                .font(.code(12))
+                                .codeFont(12)
                                 .foregroundStyle(Sand.subtle)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -312,12 +312,12 @@ struct EnvSheet: View {
                 Section {
                     if adding {
                         TextField("KEY_NAME", text: $key)
-                            .font(.code(14))
+                            .codeFont(14)
                             .textInputAutocapitalization(.characters)
                             .autocorrectionDisabled()
                             .listRowBackground(Sand.card)
                         TextField("Value", text: $value)
-                            .font(.code(14))
+                            .codeFont(14)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .listRowBackground(Sand.card)
@@ -330,7 +330,7 @@ struct EnvSheet: View {
                         .disabled(key.isEmpty || value.isEmpty || saving)
                         .listRowBackground(Sand.card)
                     } else {
-                        Button { withAnimation { adding = true } } label: { Label("Add a variable", systemImage: "plus") }
+                        Button { withMotion { adding = true } } label: { Label("Add a variable", systemImage: "plus") }
                             .listRowBackground(Sand.card)
                     }
                 }
@@ -358,14 +358,14 @@ struct EnvSheet: View {
             key = ""
             value = ""
             secret = false
-            withAnimation { adding = false }
+            withMotion { adding = false }
             Haptics.success()
             await load()
         } catch { ToastCenter.shared.error(error) }
     }
 
     private func remove(_ item: EnvVar) async {
-        withAnimation { vars.removeAll { $0.key == item.key } }
+        withMotion { vars.removeAll { $0.key == item.key } }
         do { try await store.service.deleteEnvVar(projectId: store.projectId, key: item.key) }
         catch {
             ToastCenter.shared.error(error)
@@ -394,7 +394,7 @@ struct TerminalSheet: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         Text(output)
-                            .font(.code(12.5))
+                            .codeFont(12.5)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
                             .padding(Space.m)
@@ -412,7 +412,7 @@ struct TerminalSheet: View {
                                     command = item
                                     run()
                                 }
-                                .font(.code(12))
+                                .codeFont(12)
                                 .foregroundStyle(Sand.muted)
                                 .padding(.horizontal, 10)
                                 .frame(minHeight: 30)
@@ -424,9 +424,9 @@ struct TerminalSheet: View {
                     }
                     .scrollIndicators(.hidden)
                     HStack(spacing: Space.s) {
-                        Text("$").font(.code(15)).foregroundStyle(Sand.subtle)
+                        Text("$").codeFont(15).foregroundStyle(Sand.subtle)
                         TextField("Command", text: $command)
-                            .font(.code(15))
+                            .codeFont(15)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .focused($focused)

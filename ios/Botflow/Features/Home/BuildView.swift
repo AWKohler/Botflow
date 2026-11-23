@@ -2,6 +2,7 @@ import SwiftUI
 
 /// The home screen: describe an app and an agent starts building it.
 struct BuildView: View {
+    @Environment(\.verticalSizeClass) private var verticalClass
     @State private var composerWidth: CGFloat = 360
     /// How much larger than standard the text is, so the width thresholds keep up.
     @ScaledMetric(relativeTo: .subheadline) private var textScale: CGFloat = 1
@@ -31,10 +32,12 @@ struct BuildView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: Space.xxl) {
+            VStack(spacing: verticalClass == .compact ? Space.l : Space.xxl) {
                 // An agent waiting on an answer is the most pressing thing here.
                 if !agents.needsInput.isEmpty { activeStrip.padding(.top, Space.s).padding(.bottom, -Space.m) }
-                hero
+                // A phone on its side has room for the greeting or the prompt
+                // field above the tab bar, not both: the field wins.
+                if verticalClass != .compact { hero }
                 composer
                 connections
                 if agents.needsInput.isEmpty, !agents.running.isEmpty { activeStrip }
@@ -137,7 +140,11 @@ struct BuildView: View {
                     } else if room >= 262 {
                         choices(modelName: model.shortName, chevrons: false, backendWords: true)
                     } else {
-                        choices(modelName: model.shortName, chevrons: false, backendWords: false)
+                        // Too narrow for both on a line (the Duo's cover): one above the other, still in words.
+                        VStack(alignment: .leading, spacing: Space.s) {
+                            modelChoice(name: model.shortName, chevron: true)
+                            backendChoice(words: true, chevron: true)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -164,31 +171,38 @@ struct BuildView: View {
 
     private func choices(modelName: String, chevrons: Bool, backendWords: Bool) -> some View {
         HStack(spacing: Space.s) {
-            Button { showModels = true } label: {
-                HStack(spacing: 6) {
-                    ProviderMark(provider: model.provider, modelId: model.id, size: 16)
-                    Text(modelName).lineLimit(1)
-                    if chevrons { Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(Sand.subtle) }
-                }
-            }
-            .buttonStyle(RaisedButtonStyle(size: .small))
-            .accessibilityLabel("Model: \(model.name)")
-
-            Menu {
-                Picker("Backend", selection: $backend) {
-                    Label("No backend", systemImage: "nosign").tag("none")
-                    Label("Convex (your account)", systemImage: "cylinder.split.1x2").tag("user")
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: backend == "none" ? "cylinder.split.1x2" : "cylinder.split.1x2.fill")
-                    if backendWords { Text(backend == "none" ? "No backend" : "Convex").lineLimit(1) }
-                    if chevrons || !backendWords { Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(Sand.subtle) }
-                }
-            }
-            .buttonStyle(RaisedButtonStyle(size: .small))
-            .accessibilityLabel(backend == "none" ? "Backend: none" : "Backend: Convex")
+            modelChoice(name: modelName, chevron: chevrons)
+            backendChoice(words: backendWords, chevron: chevrons || !backendWords)
         }
+    }
+
+    private func modelChoice(name: String, chevron: Bool) -> some View {
+        Button { showModels = true } label: {
+            HStack(spacing: 6) {
+                ProviderMark(provider: model.provider, modelId: model.id, size: 16)
+                Text(name).lineLimit(1)
+                if chevron { Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(Sand.subtle) }
+            }
+        }
+        .buttonStyle(RaisedButtonStyle(size: .small))
+        .accessibilityLabel("Model: \(model.name)")
+    }
+
+    private func backendChoice(words: Bool, chevron: Bool) -> some View {
+        Menu {
+            Picker("Backend", selection: $backend) {
+                Label("No backend", systemImage: "nosign").tag("none")
+                Label("Convex (your account)", systemImage: "cylinder.split.1x2").tag("user")
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: backend == "none" ? "cylinder.split.1x2" : "cylinder.split.1x2.fill")
+                if words { Text(backend == "none" ? "No backend" : "Convex").lineLimit(1) }
+                if chevron { Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(Sand.subtle) }
+            }
+        }
+        .buttonStyle(RaisedButtonStyle(size: .small))
+        .accessibilityLabel(backend == "none" ? "Backend: none" : "Backend: Convex")
     }
 
     @ViewBuilder
@@ -312,7 +326,7 @@ struct BuildView: View {
                 ForEach(Array(ideas.enumerated()), id: \.offset) { index, idea in
                     Button {
                         Haptics.tap()
-                        withAnimation(.snappy) { prompt = idea.1 }
+                        withMotion(.snappy) { prompt = idea.1 }
                         platform = idea.0 == "checklist" || idea.0 == "figure.hiking" ? .swift : .web
                         focused = true
                     } label: {
@@ -410,7 +424,11 @@ struct ConnectionChip: View {
             .frame(minHeight: 34)
             .background(connected ? Color.clear : Sand.card, in: Capsule())
             .overlay(Capsule().strokeBorder(connected ? Color.clear : Sand.border, lineWidth: 1))
+            // The pill is 34 points tall; its touch target is 44.
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityHint("Opens connections in Settings")
     }
 }

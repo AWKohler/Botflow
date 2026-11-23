@@ -8,24 +8,34 @@ struct SimulatorView: View {
     @Binding var immersive: Bool
     @State private var keyboard = false
     @State private var showIssues = false
+    @State private var paneSize = CGSize(width: 400, height: 700)
+
+    /// A pane much wider than it is tall (the top half of a Duo held like a
+    /// laptop, an iPhone on its side): a row of controls above the device
+    /// would leave it a thumbnail, so they go beside it.
+    private var sideBySide: Bool { paneSize.height < 380 && paneSize.width > paneSize.height * 1.5 }
 
     var body: some View {
-        VStack(spacing: Space.m) {
-            controlBar
-            if immersive {
-                // The video is on the full-screen surface; say so here.
-                VStack(spacing: Space.m) {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right").font(.title2).foregroundStyle(Sand.subtle)
-                    Text("Playing full screen").font(.subheadline).foregroundStyle(Sand.muted)
+        Group {
+            if sideBySide {
+                HStack(alignment: .center, spacing: Space.l) {
+                    sideControls
+                    stage(bezel: 5)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, Space.l)
+                .padding(.vertical, Space.s)
             } else {
-                device.frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: Space.m) {
+                    controlBar
+                    stage(bezel: 9)
+                    if !controller.diagnostics.isEmpty { issuesButton }
+                }
+                .padding(.horizontal, Space.m)
+                .padding(.bottom, Space.m)
             }
-            if !controller.diagnostics.isEmpty { issuesButton }
         }
-        .padding(.horizontal, Space.m)
-        .padding(.bottom, Space.m)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { paneSize = $0 }
         .sheet(isPresented: $showIssues) { BuildIssuesSheet(controller: controller).tint(Sand.text) }
         .onChange(of: controller.phase) { _, phase in
             if phase != .live { keyboard = false }
@@ -34,7 +44,51 @@ struct SimulatorView: View {
         .onDisappear { keyboard = false }
     }
 
+    @ViewBuilder
+    private func stage(bezel: CGFloat) -> some View {
+        if immersive {
+            // The video is on the full-screen surface; say so here.
+            VStack(spacing: Space.m) {
+                Image(systemName: "arrow.up.left.and.arrow.down.right").font(.title2).foregroundStyle(Sand.subtle)
+                Text("Playing full screen").font(.subheadline).foregroundStyle(Sand.muted)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            device(bezel: bezel).frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
     // MARK: Controls
+
+    /// The same controls as a column, for a short, wide pane. Full screen
+    /// leads, because that is where an app can really be tried from here.
+    private var sideControls: some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            SimulatorStatusPill(controller: controller)
+            if controller.phase == .live {
+                Button {
+                    Haptics.tap()
+                    immersive = true
+                } label: {
+                    Label("Full screen", systemImage: "arrow.up.left.and.arrow.down.right")
+                }
+                .buttonStyle(InkButtonStyle(size: .small))
+                .accessibilityIdentifier("simulator.fullscreen")
+            }
+            HStack(spacing: Space.s) {
+                deviceMenu(label: false)
+                rotateButton
+                optionsMenu(includesRotate: false)
+            }
+            if !controller.diagnostics.isEmpty {
+                Button { showIssues = true } label: {
+                    Label(issueSummary, systemImage: controller.errors.isEmpty ? "exclamationmark.triangle" : "xmark.octagon.fill")
+                }
+                .buttonStyle(RaisedButtonStyle(size: .small))
+            }
+        }
+        .fixedSize()
+    }
 
     /// One row that sheds labels and then controls as the pane narrows (an
     /// open Duo's app pane, a large text size) instead of wrapping.
@@ -50,32 +104,8 @@ struct SimulatorView: View {
         HStack(spacing: Space.s) {
             SimulatorStatusPill(controller: controller)
             Spacer(minLength: Space.s)
-            Menu {
-                Picker("Device", selection: Binding(get: { controller.device }, set: { device in Task { await controller.setDevice(device) } })) {
-                    ForEach(SimDevice.allCases, id: \.self) { device in
-                        Label(device.label, systemImage: device.symbol).tag(device)
-                    }
-                }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: controller.device.symbol)
-                    if deviceLabel { Text(controller.device.label).lineLimit(1).fixedSize() }
-                    Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(Sand.subtle)
-                }
-            }
-            .buttonStyle(RaisedButtonStyle(size: .small))
-            .accessibilityLabel("Device: \(controller.device.label)")
-
-            if rotateInline {
-                Button {
-                    controller.toggleOrientation()
-                } label: {
-                    Image(systemName: controller.landscape ? "rectangle.landscape.rotate" : "rectangle.portrait.rotate")
-                }
-                .buttonStyle(RaisedButtonStyle(size: .small))
-                .accessibilityLabel(controller.landscape ? "Rotate to portrait" : "Rotate to landscape")
-            }
-
+            deviceMenu(label: deviceLabel)
+            if rotateInline { rotateButton }
             if controller.phase == .live {
                 Button {
                     Haptics.tap()
@@ -87,28 +117,59 @@ struct SimulatorView: View {
                 .accessibilityLabel("Full screen")
                 .accessibilityIdentifier("simulator.fullscreen")
             }
-
-            Menu {
-                if controller.phase.isActive {
-                    Button { Task { await controller.rebuild() } } label: { Label("Rebuild", systemImage: "hammer") }
-                    Button { keyboard.toggle() } label: { Label(keyboard ? "Hide keyboard" : "Type with the keyboard", systemImage: "keyboard") }
-                        .disabled(controller.phase != .live)
-                }
-                if !rotateInline {
-                    Button { controller.toggleOrientation() } label: { Label(controller.landscape ? "Rotate to portrait" : "Rotate to landscape", systemImage: "rectangle.portrait.rotate") }
-                }
-                Toggle(isOn: $controller.liveScroll) { Label("Stop scrolls where I stop", systemImage: "hand.draw") }
-                Button { controller.touchHintSeen = false } label: { Label("How touch works", systemImage: "hand.tap") }
-                if controller.phase.isActive {
-                    Divider()
-                    Button(role: .destructive) { Task { await controller.stop() } } label: { Label("Stop simulator", systemImage: "stop.fill") }
-                }
-            } label: {
-                Image(systemName: "ellipsis").frame(width: 20, height: 20)
-            }
-            .buttonStyle(RaisedButtonStyle(size: .small))
-            .accessibilityLabel("Simulator options")
+            optionsMenu(includesRotate: !rotateInline)
         }
+    }
+
+    private func deviceMenu(label: Bool) -> some View {
+        Menu {
+            Picker("Device", selection: Binding(get: { controller.device }, set: { device in Task { await controller.setDevice(device) } })) {
+                ForEach(SimDevice.allCases, id: \.self) { device in
+                    Label(device.label, systemImage: device.symbol).tag(device)
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: controller.device.symbol)
+                if label { Text(controller.device.label).lineLimit(1).fixedSize() }
+                Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(Sand.subtle)
+            }
+        }
+        .buttonStyle(RaisedButtonStyle(size: .small))
+        .accessibilityLabel("Device: \(controller.device.label)")
+    }
+
+    private var rotateButton: some View {
+        Button {
+            controller.toggleOrientation()
+        } label: {
+            Image(systemName: controller.landscape ? "rectangle.landscape.rotate" : "rectangle.portrait.rotate")
+        }
+        .buttonStyle(RaisedButtonStyle(size: .small))
+        .accessibilityLabel(controller.landscape ? "Rotate to portrait" : "Rotate to landscape")
+    }
+
+    private func optionsMenu(includesRotate: Bool) -> some View {
+        Menu {
+            if controller.phase.isActive {
+                Button { Task { await controller.rebuild() } } label: { Label("Rebuild", systemImage: "hammer") }
+                Button { keyboard.toggle() } label: { Label(keyboard ? "Hide keyboard" : "Type with the keyboard", systemImage: "keyboard") }
+                    .disabled(controller.phase != .live)
+            }
+            if includesRotate {
+                Button { controller.toggleOrientation() } label: { Label(controller.landscape ? "Rotate to portrait" : "Rotate to landscape", systemImage: "rectangle.portrait.rotate") }
+            }
+            Toggle(isOn: $controller.liveScroll) { Label("Stop scrolls where I stop", systemImage: "hand.draw") }
+            Button { controller.touchHintSeen = false } label: { Label("How touch works", systemImage: "hand.tap") }
+            if controller.phase.isActive {
+                Divider()
+                Button(role: .destructive) { Task { await controller.stop() } } label: { Label("Stop simulator", systemImage: "stop.fill") }
+            }
+        } label: {
+            Image(systemName: "ellipsis").frame(width: 20, height: 20)
+        }
+        .buttonStyle(RaisedButtonStyle(size: .small))
+        .accessibilityLabel("Simulator options")
     }
 
     private var issuesButton: some View {
@@ -139,10 +200,9 @@ struct SimulatorView: View {
 
     // MARK: Device
 
-    private var device: some View {
+    private func device(bezel: CGFloat) -> some View {
         GeometryReader { proxy in
             let aspect = controller.displaySize.width / max(1, controller.displaySize.height)
-            let bezel: CGFloat = 9
             let available = CGSize(width: proxy.size.width - bezel * 2, height: proxy.size.height - bezel * 2)
             let width = max(1, min(available.width, available.height * aspect))
             let height = width / aspect
@@ -217,7 +277,7 @@ struct SimulatorStatusPill: View {
         .frame(minHeight: 38)
         .background(Sand.card, in: Capsule())
         .overlay(Capsule().strokeBorder(Sand.border, lineWidth: 1))
-        .animation(.snappy(duration: 0.25), value: key)
+        .motion(.snappy(duration: 0.25), value: key)
         .accessibilityElement(children: .combine)
     }
 }
@@ -239,7 +299,7 @@ struct SimulatorScreen: View {
             } else {
                 SimulatorSurface(controller: controller, keyboardShown: keyboard)
                     .opacity(controller.hasFrame ? 1 : 0)
-                    .animation(.easeOut(duration: 0.4), value: controller.hasFrame)
+                    .motion(.easeOut(duration: 0.4), value: controller.hasFrame)
             }
             // The last frame stays behind a session that has ended, dimmed so
             // the message over it reads whatever the app was showing.
@@ -254,7 +314,7 @@ struct SimulatorScreen: View {
         }
         .aspectRatio(controller.displaySize.width / max(1, controller.displaySize.height), contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .animation(.snappy(duration: 0.3), value: controller.touchHintSeen)
+        .motion(.snappy(duration: 0.3), value: controller.touchHintSeen)
     }
 
     private var touchHint: some View {
@@ -272,7 +332,7 @@ struct SimulatorScreen: View {
         VStack {
             Spacer()
             VStack(alignment: .leading, spacing: Space.s) {
-                Text("Touch it like the real thing")
+                Text("Control the cloud simulator")
                     .font(.subheadline.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
                 if roomy {
@@ -360,7 +420,7 @@ struct SimulatorScreen: View {
             ProgressView().controlSize(.large).tint(.white)
             Text(title).font(.headline).foregroundStyle(.white)
             Text(detail)
-                .font(.code(11.5))
+                .codeFont(11.5)
                 .foregroundStyle(.white.opacity(0.6))
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
@@ -378,8 +438,10 @@ struct ImmersiveSimulatorView: View {
     @Binding var immersive: Bool
     @State private var keyboard = false
     @State private var expanded = true
-    @State private var offset: CGSize = .zero
-    @State private var dragStart: CGSize?
+    /// Which side the controls are docked on, and how far down, as the person left them.
+    @AppStorage("sim.controls.trailing") private var dockTrailing = true
+    @AppStorage("sim.controls.height") private var dockHeight = 0.42
+    @State private var drag: CGSize?
     @State private var collapseTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -389,12 +451,13 @@ struct ImmersiveSimulatorView: View {
             // (an iPhone app on an iPad), it keeps a phone's rounded corners.
             let aspect = controller.displaySize.width / max(1, controller.displaySize.height)
             let fills = abs(aspect - proxy.size.width / max(1, proxy.size.height)) < 0.03
+            let videoWidth = fills ? proxy.size.width : min(proxy.size.width - 20, (proxy.size.height - 20) * aspect)
             ZStack {
                 Color.black
                 SimulatorScreen(controller: controller, keyboard: keyboard, cornerRadius: fills ? 0 : 36) { immersive = false }
                     .padding(fills ? 0 : 10)
                     .frame(width: proxy.size.width, height: proxy.size.height)
-                controls(in: proxy.size)
+                controls(in: proxy.size, margin: (proxy.size.width - videoWidth) / 2)
             }
         }
         .ignoresSafeArea()
@@ -409,19 +472,29 @@ struct ImmersiveSimulatorView: View {
         .accessibilityAction(.escape) { immersive = false }
     }
 
-    private func controls(in size: CGSize) -> some View {
-        Group {
+    /// The controls live against a side edge, part-way down: the one place an
+    /// app under test almost never keeps a control of its own (its tab bar is
+    /// along the bottom, its navigation along the top). Beside a narrower
+    /// simulated screen they sit in the empty margin instead. Drag them to
+    /// either side, at any height; they stay there next time.
+    private func controls(in size: CGSize, margin: CGFloat) -> some View {
+        let count: CGFloat = 5
+        let extent = expanded ? count * 44 + 8 : 44          // the pill's length
+        let inset = margin >= 64 ? margin / 2 : 34            // centre of the pill from the edge
+        let x = dockTrailing ? size.width - inset : inset
+        let y = min(size.height - extent / 2 - 24, max(extent / 2 + 24, size.height * dockHeight))
+        return Group {
             if expanded {
-                HStack(spacing: 2) {
+                VStack(spacing: 2) {
                     control("arrow.down.right.and.arrow.up.left", "Exit full screen") { immersive = false }
                         .accessibilityIdentifier("simulator.exitFullscreen")
                     control(keyboard ? "keyboard.chevron.compact.down" : "keyboard", keyboard ? "Hide keyboard" : "Keyboard") { keyboard.toggle() }
                     control("rectangle.portrait.rotate", "Rotate") { controller.toggleOrientation() }
                     control("hammer", "Rebuild") { Task { await controller.rebuild() } }
-                    control("chevron.down", "Hide controls") { setExpanded(false) }
+                    control(dockTrailing ? "chevron.right" : "chevron.left", "Hide controls") { setExpanded(false) }
                 }
-                .padding(.horizontal, 6)
                 .padding(.vertical, 4)
+                .padding(.horizontal, 2)
                 .background(.black.opacity(0.62), in: Capsule())
                 .background(.ultraThinMaterial, in: Capsule())
                 .overlay(Capsule().strokeBorder(.white.opacity(0.22), lineWidth: 1))
@@ -442,24 +515,29 @@ struct ImmersiveSimulatorView: View {
         .environment(\.colorScheme, .dark)
         .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
         .opacity(expanded ? 1 : 0.7)
-        // Starts at the bottom centre, above the home indicator; stays where it is dragged.
-        .position(x: size.width / 2 + offset.width, y: size.height - 62 + offset.height)
+        .position(x: x + (drag?.width ?? 0), y: y + (drag?.height ?? 0))
         .highPriorityGesture(
             DragGesture(minimumDistance: 6)
                 .onChanged { value in
-                    let start = dragStart ?? offset
-                    dragStart = start
-                    offset = CGSize(
-                        width: min(size.width / 2 - 40, max(-size.width / 2 + 40, start.width + value.translation.width)),
-                        height: min(20, max(-size.height + 140, start.height + value.translation.height))
-                    )
+                    drag = value.translation
                     collapseTask?.cancel()
                 }
-                .onEnded { _ in
-                    dragStart = nil
+                .onEnded { value in
+                    // Let go anywhere: it settles against the nearer side, at that height.
+                    let landedX = x + value.translation.width
+                    let landedY = y + value.translation.height
+                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.3)) {
+                        dockTrailing = landedX > size.width / 2
+                        dockHeight = Double(min(0.9, max(0.1, landedY / max(1, size.height))))
+                        drag = nil
+                    }
                     scheduleCollapse()
                 }
         )
+        // Without dragging: VoiceOver and Switch Control move it with an action.
+        .accessibilityAction(named: dockTrailing ? "Move controls to the left side" : "Move controls to the right side") {
+            dockTrailing.toggle()
+        }
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: expanded)
     }
 
@@ -511,7 +589,7 @@ struct BuildIssuesSheet: View {
                 if !controller.logTail.isEmpty {
                     Section("Build log") {
                         Text(controller.logTail.suffix(60).joined(separator: "\n"))
-                            .font(.code(11))
+                            .codeFont(11)
                             .foregroundStyle(Sand.muted)
                             .textSelection(.enabled)
                     }
@@ -533,7 +611,7 @@ struct BuildIssuesSheet: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(issue.message).font(.subheadline).foregroundStyle(Sand.text).textSelection(.enabled)
                 if let location = issue.location {
-                    Text(location).font(.code(11.5)).foregroundStyle(Sand.subtle)
+                    Text(location).codeFont(11.5).foregroundStyle(Sand.subtle)
                 }
             }
         }

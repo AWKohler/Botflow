@@ -20,15 +20,14 @@ struct AgentLiveActivity: Widget {
                 .widgetURL(context.attributes.deepLink)
         } dynamicIsland: { context in
             DynamicIsland {
+                // The top corners sit either side of the camera and are narrow:
+                // they carry the mark and the clock. Names go underneath, where
+                // there is room to read them in full.
                 DynamicIslandExpandedRegion(.leading) {
-                    HStack(spacing: 7) {
-                        BotflowGlyph(color: Island.text, seam: .black).frame(width: 20)
-                        Text(context.attributes.projectName)
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(Island.text)
-                            .lineLimit(1)
-                    }
-                    .padding(.leading, 4)
+                    BotflowGlyph(color: Island.text, seam: .black)
+                        .frame(width: 22)
+                        .padding(.leading, 6)
+                        .accessibilityHidden(true)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     Elapsed(state: context.state)
@@ -36,25 +35,41 @@ struct AgentLiveActivity: Widget {
                         .foregroundStyle(Island.muted)
                         .padding(.trailing, 4)
                 }
-                DynamicIslandExpandedRegion(.center) {
-                    EmptyView()
-                }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(context.attributes.threadTitle)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Island.text)
-                            .lineLimit(1)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(context.attributes.projectName)
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(Island.text)
+                                    .lineLimit(1)
+                                    .layoutPriority(1)
+                                Text(context.attributes.modelName)
+                                    .font(.caption)
+                                    .foregroundStyle(Island.subtle)
+                                    .lineLimit(1)
+                            }
+                            Text(context.attributes.threadTitle)
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(Island.text)
+                                .lineLimit(1)
+                        }
                         CurrentStep(state: context.state)
-                        if !context.state.isFinished, context.state.recent.count > 1 {
+                        // What it has already done, newest last, in the past tense.
+                        if context.state.phase == .working || context.state.phase == .starting, !context.state.recent.isEmpty {
                             VStack(alignment: .leading, spacing: 3) {
-                                ForEach(context.state.recent.dropLast().suffix(2), id: \.self) { line in
-                                    Text(line)
-                                        .font(.caption2)
-                                        .foregroundStyle(Island.subtle)
-                                        .lineLimit(1)
+                                ForEach(context.state.recent.suffix(2), id: \.self) { line in
+                                    Label {
+                                        Text(line).lineLimit(1).truncationMode(.middle)
+                                    } icon: {
+                                        Image(systemName: "checkmark")
+                                    }
+                                    .labelStyle(DoneStepStyle())
+                                    .font(.caption2)
+                                    .foregroundStyle(Island.subtle)
                                 }
                             }
+                            .padding(.leading, 10)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -112,14 +127,26 @@ enum Island {
     }
 }
 
+/// A small check before a finished step.
+struct DoneStepStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 5) {
+            configuration.icon.imageScale(.small)
+            configuration.title
+        }
+    }
+}
+
 struct StepSymbol: View {
     var state: AgentActivityAttributes.ContentState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Image(systemName: state.symbol)
             .foregroundStyle(Island.tint(for: state.phase))
-            .contentTransition(.symbolEffect(.replace))
-            .symbolEffect(.pulse, isActive: state.phase == .working || state.phase == .starting)
+            // With Reduce Motion the symbol changes in place and does not pulse.
+            .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+            .symbolEffect(.pulse, isActive: !reduceMotion && (state.phase == .working || state.phase == .starting))
     }
 }
 
@@ -144,8 +171,8 @@ struct CurrentStep: View {
 
     var body: some View {
         Group {
-            if state.isFinished {
-                // The outcome reads as a sentence, so it gets the full width under its label.
+            if state.isFinished || state.phase == .needsInput {
+                // An outcome or a question reads as a sentence, so it gets the full width under its label.
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 7) {
                         StepSymbol(state: state)

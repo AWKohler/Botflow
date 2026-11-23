@@ -125,7 +125,7 @@ final class ThreadSession: ObservableObject {
 
         let wasBusy = phase.isBusy
         if !wasBusy {
-            withAnimation(.snappy) {
+            withMotion(.snappy) {
                 messages.append(ChatMessage(id: messageId, role: .user, parts: parts, createdAt: Date()))
                 phase = .starting
                 startingText = trimmed

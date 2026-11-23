@@ -217,8 +217,8 @@ final class SimulatorGestureTests: XCTestCase {
 
     func testTheGiveUnderAFingerIsSmallAndBounded() {
         XCTAssertEqual(SimulatorSurfaceView.eased(0), 0)
-        XCTAssertLessThan(SimulatorSurfaceView.eased(2000), 28.01)
-        XCTAssertGreaterThan(SimulatorSurfaceView.eased(60), 8)
+        XCTAssertLessThan(SimulatorSurfaceView.eased(2000), 12.01)
+        XCTAssertGreaterThan(SimulatorSurfaceView.eased(60), 4)
         XCTAssertEqual(SimulatorSurfaceView.eased(-60), -SimulatorSurfaceView.eased(60), accuracy: 0.001)
     }
 }

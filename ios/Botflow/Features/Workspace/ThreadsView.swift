@@ -17,17 +17,15 @@ struct ThreadStrip: View {
                         Image(systemName: store.project.kind.symbol)
                             .font(.footnote)
                             .foregroundStyle(Sand.subtle)
+                        // No chevron: the name alone leaves room to read it in full.
                         Text(store.project.name)
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(Sand.text)
                             .lineLimit(1)
-                        Image(systemName: "chevron.down")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(Sand.subtle)
                     }
                     .padding(.leading, Space.l)
-                    .padding(.trailing, Space.s)
-                    .frame(maxWidth: 170, minHeight: 44, alignment: .leading)
+                    .padding(.trailing, Space.xs)
+                    .frame(maxWidth: 176, minHeight: 44, alignment: .leading)
                     .fixedSize(horizontal: true, vertical: false)
                     .contentShape(Rectangle())
                 }
@@ -67,15 +65,22 @@ struct ThreadStrip: View {
                         LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 14)
                     }
                 }
+                // The chat being read starts the row, so its title is the one shown in full.
                 .onChange(of: store.currentThreadId) { _, id in
-                    if let id { withAnimation(reduceMotion ? nil : .snappy) { proxy.scrollTo(id, anchor: .center) } }
+                    if let id { withAnimation(reduceMotion ? nil : .snappy) { proxy.scrollTo(id, anchor: .leading) } }
                 }
                 .onAppear {
-                    if let id = store.currentThreadId { proxy.scrollTo(id, anchor: .center) }
+                    if let id = store.currentThreadId { proxy.scrollTo(id, anchor: .leading) }
                 }
             }
         }
         .frame(height: 44)
+        // A solid bar with a hairline under it: text scrolling behind tabs
+        // that have gaps between them reads as clutter, not as glass.
+        // (The fill runs up under the navigation bar too, so that bar sits on
+        // one even surface instead of on whatever is scrolling past.)
+        .background(Sand.canvas.ignoresSafeArea(edges: .top))
+        .overlay(alignment: .bottom) { Rectangle().fill(Sand.border.opacity(0.7)).frame(height: 0.5) }
         // A bar, like the navigation bar above it: its labels stop growing
         // at the largest standard size so the tabs stay readable as tabs.
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
@@ -94,7 +99,8 @@ struct ThreadStrip: View {
                     .font(.footnote.weight(selected ? .semibold : .regular))
                     .foregroundStyle(selected ? Sand.text : Sand.muted)
                     .lineLimit(1)
-                    .frame(maxWidth: 150, alignment: .leading)
+                    // The open chat gets room for its whole title; the others are for telling apart.
+                    .frame(maxWidth: selected ? 260 : 140, alignment: .leading)
                     .fixedSize(horizontal: true, vertical: false)
             }
             .padding(.leading, marked ? 6 : 12)

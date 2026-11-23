@@ -36,7 +36,7 @@ final class PushUITests: XCTestCase {
 
         // The app comes back on that agent's chat.
         XCTAssertTrue(app.textFields["composer.input"].waitForExistence(timeout: 30), "The chat did not open")
-        let title = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Add online ordering'")).firstMatch
+        let title = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Build the single-page'")).firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 10), "A different chat opened")
         let opened = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         opened.name = "opened-from-notification"

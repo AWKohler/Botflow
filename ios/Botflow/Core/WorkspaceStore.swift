@@ -115,7 +115,7 @@ final class WorkspaceStore: ObservableObject {
         do {
             let response = try await service.threads(projectId: projectId, viewing: currentThreadId)
             let previous = Dictionary(uniqueKeysWithValues: threads.map { ($0.id, $0.status) })
-            withAnimation(.snappy(duration: 0.25)) {
+            withMotion(.snappy(duration: 0.25)) {
                 threads = response.threads
                 people = response.people ?? [:]
                 queue = response.queue ?? []
@@ -172,7 +172,7 @@ final class WorkspaceStore: ObservableObject {
     func newThread(model: String? = nil) async -> ThreadSummary? {
         do {
             let thread = try await service.createThread(projectId: projectId, model: model ?? currentThread?.model ?? project.model)
-            withAnimation(.snappy) { threads.insert(thread, at: 0) }
+            withMotion(.snappy) { threads.insert(thread, at: 0) }
             await select(threadId: thread.id)
             return thread
         } catch {
@@ -191,7 +191,7 @@ final class WorkspaceStore: ObservableObject {
 
     func setArchived(_ thread: ThreadSummary, _ archived: Bool) async {
         if let index = threads.firstIndex(where: { $0.id == thread.id }) {
-            withAnimation(.snappy) { threads[index].archived = archived }
+            withMotion(.snappy) { threads[index].archived = archived }
         }
         do {
             try await service.updateThread(projectId: projectId, threadId: thread.id, title: nil, model: nil, archived: archived)
@@ -204,7 +204,7 @@ final class WorkspaceStore: ObservableObject {
     func delete(_ thread: ThreadSummary) async {
         do {
             try await service.deleteThread(projectId: projectId, threadId: thread.id)
-            withAnimation(.snappy) { threads.removeAll { $0.id == thread.id } }
+            withMotion(.snappy) { threads.removeAll { $0.id == thread.id } }
             if thread.id == currentThreadId {
                 session = nil
                 currentThreadId = nil
@@ -224,7 +224,7 @@ final class WorkspaceStore: ObservableObject {
 
     func cancelQueued(_ item: QueueItem) async {
         guard let threadId = currentThreadId else { return }
-        withAnimation(.snappy) { queue.removeAll { $0.id == item.id } }
+        withMotion(.snappy) { queue.removeAll { $0.id == item.id } }
         try? await service.cancelQueued(projectId: projectId, threadId: threadId, queueId: item.id)
     }
 

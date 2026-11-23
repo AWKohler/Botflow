@@ -163,7 +163,7 @@ struct PlanCard: View {
                         .foregroundStyle(Sand.subtle)
                 }
             }
-            .animation(.snappy, value: billing)
+            .motion(.snappy, value: billing)
             Text(offer.tagline)
                 .font(.subheadline)
                 .foregroundStyle(Sand.muted)

@@ -65,7 +65,7 @@ struct InkButtonStyle: ButtonStyle {
             .shadow(color: Sand.shadow.opacity(enabled ? 0.14 : 0), radius: 2, y: 1)
             .opacity(enabled ? (configuration.isPressed ? 0.82 : 1) : 0.45)
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
-            .animation(.snappy(duration: 0.16), value: configuration.isPressed)
+            .motion(.snappy(duration: 0.16), value: configuration.isPressed)
             .contentShape(shape.inset(by: -size.hitSlop))
             .hoverEffect(.highlight)
     }
@@ -92,7 +92,7 @@ struct RaisedButtonStyle: ButtonStyle {
             }
             .shadow(color: Sand.shadow.opacity(enabled ? 0.06 : 0), radius: 1.5, y: 1)
             .opacity(enabled ? 1 : 0.5)
-            .animation(.snappy(duration: 0.16), value: configuration.isPressed)
+            .motion(.snappy(duration: 0.16), value: configuration.isPressed)
             .contentShape(shape.inset(by: -size.hitSlop))
             .hoverEffect(.highlight)
     }
@@ -133,7 +133,7 @@ struct CircleIconButtonStyle: ButtonStyle {
             }
             .opacity(enabled ? (configuration.isPressed ? 0.75 : 1) : 0.4)
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.94 : 1)
-            .animation(.snappy(duration: 0.16), value: configuration.isPressed)
+            .motion(.snappy(duration: 0.16), value: configuration.isPressed)
             .contentShape(Circle().inset(by: -max(4, (44 - diameter) / 2)))
             .hoverEffect(.highlight)
     }
@@ -148,7 +148,7 @@ struct PressableStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed && !reduceMotion ? scale : 1)
             .opacity(configuration.isPressed ? 0.88 : 1)
-            .animation(.snappy(duration: 0.18), value: configuration.isPressed)
+            .motion(.snappy(duration: 0.18), value: configuration.isPressed)
     }
 }
 
@@ -252,7 +252,7 @@ struct StatusDot: View {
                         .scaleEffect(pulse ? 2.4 : 1)
                         .opacity(pulse ? 0 : 0.9)
                         .onAppear {
-                            withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) { pulse = true }
+                            withMotion(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) { pulse = true }
                         }
                 }
                 Circle().fill(color).frame(width: size, height: size)
@@ -422,7 +422,7 @@ struct Shimmer: ViewModifier {
                 }
                 .compositingGroup()
                 .onAppear {
-                    withAnimation(.linear(duration: 1.6).repeatForever(autoreverses: false)) { phase = 1 }
+                    withMotion(.linear(duration: 1.6).repeatForever(autoreverses: false)) { phase = 1 }
                 }
         } else {
             content
@@ -530,11 +530,11 @@ final class ToastCenter: ObservableObject {
 
     func show(_ title: String, symbol: String = "checkmark.circle.fill", tone: Tone = .success) {
         dismissTask?.cancel()
-        withAnimation(.spring(duration: 0.4)) { current = Toast(title: title, symbol: symbol, tone: tone) }
+        withMotion(.spring(duration: 0.4)) { current = Toast(title: title, symbol: symbol, tone: tone) }
         dismissTask = Task {
             try? await Task.sleep(nanoseconds: 2_800_000_000)
             guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: 0.25)) { current = nil }
+            withMotion(.easeInOut(duration: 0.25)) { current = nil }
         }
     }
 
@@ -563,7 +563,7 @@ struct ToastOverlay: View {
                 .shadow(color: Sand.shadow.opacity(0.12), radius: 16, y: 6)
                 .padding(.horizontal, Space.gutter)
                 .transition(.move(edge: .top).combined(with: .opacity))
-                .onTapGesture { withAnimation { center.current = nil } }
+                .onTapGesture { withMotion { center.current = nil } }
                 .accessibilityAddTraits(.isStaticText)
             }
             Spacer()
@@ -584,5 +584,47 @@ enum RelativeTime {
         if seconds < 86_400 { return "\(seconds / 3600)h" }
         if seconds < 86_400 * 7 { return "\(seconds / 86_400)d" }
         return date.formatted(.dateTime.month(.abbreviated).day())
+    }
+}
+
+
+// MARK: - Motion
+
+/// Change state with an animation, or at once when Reduce Motion is on.
+/// Every animated state change in the app goes through this, so the setting
+/// is honoured in one place rather than remembered at each call.
+@MainActor
+func withMotion<Result>(_ animation: Animation? = .default, _ body: () throws -> Result) rethrows -> Result {
+    try withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : animation, body)
+}
+
+private struct MotionModifier<Value: Equatable>: ViewModifier {
+    var animation: Animation?
+    var value: Value
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content.animation(reduceMotion ? nil : animation, value: value)
+    }
+}
+
+private struct PulsingSymbol: ViewModifier {
+    var isActive: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content.symbolEffect(.pulse, isActive: isActive && !reduceMotion)
+    }
+}
+
+extension View {
+    /// `.animation(_:value:)` that does nothing when Reduce Motion is on.
+    func motion<Value: Equatable>(_ animation: Animation?, value: Value) -> some View {
+        modifier(MotionModifier(animation: animation, value: value))
+    }
+
+    /// A repeating pulse on a symbol, still when Reduce Motion is on.
+    func pulsing(_ isActive: Bool) -> some View {
+        modifier(PulsingSymbol(isActive: isActive))
     }
 }
