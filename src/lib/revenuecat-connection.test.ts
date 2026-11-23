@@ -439,6 +439,39 @@ describe('changes that overlap or fail half-way', () => {
     expect((await connect(project, 'sk_full')).ok).toBe(true);
   });
 
+  test('a refresh that repairs nothing does not put back the webhook id it read before a repair', async () => {
+    const rc = fakeRevenueCat();
+    const project = await swiftProject();
+    await connect(project, 'sk_full');
+
+    // The agent's refresh (no repair) is waiting on RevenueCat while "Check
+    // again" recreates the webhook and stores its new id.
+    rc.during.push({
+      match: /public_api_keys/,
+      run: async () => {
+        await currentTestDb()
+          .update(projectRevenueCatConnections)
+          .set({ rcWebhookIntegrationId: 'wh_recreated', webhookError: null })
+          .where(eq(projectRevenueCatConnections.projectId, project.id));
+      },
+    });
+    await refreshRevenueCatConnection(project.id);
+    expect((await connectionRow(project.id)).rcWebhookIntegrationId).toBe('wh_recreated');
+  });
+
+  test('a dead claim whose app is busy right now asks to try again, not for a new RevenueCat project', async () => {
+    const rc = fakeRevenueCat();
+    rc.keys.set('sk_old', 'full');
+    const first = await swiftProject('owner_a', 'First');
+    await connect(first, 'sk_old');
+    rc.keys.delete('sk_old');
+    await fakeRedis.set(`revenuecat:connecting:${first.id}`, 'someone-else', { nx: true, ex: 90 });
+
+    const second = await swiftProject('owner_b', 'Second');
+    expect(await connect(second, 'sk_full')).toMatchObject({ ok: false, status: 409, code: 'busy' });
+    expect(await connectionRow(first.id)).toBeDefined();
+  });
+
   test('a disconnect waits its turn behind a change in flight; deleting the project does not', async () => {
     const rc = fakeRevenueCat();
     const project = await swiftProject();

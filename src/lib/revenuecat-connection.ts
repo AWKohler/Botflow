@@ -301,7 +301,8 @@ async function projectInUse(
     .limit(1);
   if (!other) return { failure: null, releasedDeadClaim: false };
 
-  // Dead means RevenueCat itself refused the key (401/403). A key THIS
+  // Dead means RevenueCat itself refused the key (401/403: revoked, deleted, or
+  // stripped of the read permission, so Botflow could not use it either). A key THIS
   // deployment cannot decrypt (a dev server with a different encryption secret
   // on the shared database) or a RevenueCat outage says nothing about the claim.
   const otherKey = decryptSecret(other.encryptedKey);
@@ -315,13 +316,26 @@ async function projectInUse(
         rcProjectId,
         encryptedKey: other.encryptedKey,
       });
-      if (released) {
+      if (released === 'released') {
         // Its webhook would fail every event from now on. The dead key could
         // not remove it; the new key belongs to the same RevenueCat project.
         if (other.integrationId) await deleteWebhookIntegration(newSecretKey, rcProjectId, other.integrationId);
         return { failure: null, releasedDeadClaim: true };
       }
-      // The other app changed its connection while we were asking: still claimed.
+      if (released === 'busy') {
+        return {
+          failure: {
+            ok: false,
+            status: 409,
+            code: 'busy',
+            error:
+              'Another app that used this RevenueCat project is being changed right now. Wait a few seconds and try again.',
+          },
+          releasedDeadClaim: false,
+        };
+      }
+      // 'changed': the other app replaced its connection while we were asking,
+      // so the RevenueCat project is still claimed.
     }
   }
 
@@ -351,9 +365,9 @@ async function releaseDeadClaim(claim: {
   projectId: string;
   rcProjectId: string;
   encryptedKey: string;
-}): Promise<boolean> {
+}): Promise<'released' | 'changed' | 'busy'> {
   const release = await acquireLifecycleLock(claim.projectId);
-  if (release === 'busy') return false;
+  if (release === 'busy') return 'busy';
   try {
     const db = getDb();
     const deleted = await db
@@ -366,7 +380,7 @@ async function releaseDeadClaim(claim: {
         ),
       )
       .returning({ projectId: projectRevenueCatConnections.projectId });
-    if (deleted.length === 0) return false;
+    if (deleted.length === 0) return 'changed';
     await db
       .update(projects)
       .set({
@@ -377,7 +391,7 @@ async function releaseDeadClaim(claim: {
         updatedAt: new Date(),
       })
       .where(eq(projects.id, claim.projectId));
-    return true;
+    return 'released';
   } finally {
     await release();
   }
@@ -639,8 +653,15 @@ export async function refreshRevenueCatConnection(
   }
   const { apps } = discovered;
 
+  // Matching on the stored (encrypted) key identifies the exact connection that
+  // was read at the top: a reconnect, even with the same key, stores a new value.
+  const sameConnection = and(
+    eq(projectRevenueCatConnections.projectId, projectId),
+    eq(projectRevenueCatConnections.rcProjectId, connection.rcProjectId),
+    eq(projectRevenueCatConnections.rcSecretKey, connection.rcSecretKey),
+  );
+
   let integrationId = connection.rcWebhookIntegrationId;
-  let webhookError = connection.webhookError;
   // Repairing the webhook writes to RevenueCat, so it takes the same lock as
   // connect. If a connect is in flight, leave the webhook to it.
   const release = requestOrigin ? await acquireLifecycleLock(projectId) : null;
@@ -657,6 +678,9 @@ export async function refreshRevenueCatConnection(
       ) {
         return null;
       }
+      // The webhook id as it is NOW: another "Check again" may have repaired it
+      // since the read at the top.
+      integrationId = current.rcWebhookIntegrationId;
       const [project] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, projectId));
       const webhook = await ensureWebhook({
         secretKey,
@@ -664,18 +688,23 @@ export async function refreshRevenueCatConnection(
         projectId,
         projectName: project?.name ?? 'app',
         url: revenueCatWebhookUrl(requestOrigin),
-        authorizationHeader: connection.inboundWebhookSecret,
+        authorizationHeader: current.inboundWebhookSecret,
         existingIntegrationId: integrationId,
       });
-      if (webhook.ok) {
-        integrationId = webhook.integrationId;
-        webhookError = null;
-      } else {
+      let webhookError: string | null = null;
+      if (!webhook.ok) {
         // Forget the id only when RevenueCat said the integration is gone. After
         // a timeout or a 5xx it is still there, and still ours to remove later.
         if (webhook.previousGone) integrationId = null;
         webhookError = webhook.error;
+      } else {
+        integrationId = webhook.integrationId;
       }
+      // Stored before the lock is released, so the next repair starts from it.
+      await db
+        .update(projectRevenueCatConnections)
+        .set({ rcWebhookIntegrationId: integrationId, webhookError, updatedAt: new Date() })
+        .where(sameConnection);
     } finally {
       await release();
     }
@@ -683,8 +712,10 @@ export async function refreshRevenueCatConnection(
 
   // Everything above was learned about the connection read at the top. If the
   // project was reconnected or disconnected while RevenueCat was answering,
-  // that knowledge is about a different connection: write nothing. Matching on
-  // the stored (encrypted) key identifies the exact connection that was read.
+  // that knowledge is about a different connection: write nothing. The webhook
+  // fields are not written here: only a repair (above, under the lock) knows
+  // them, and a refresh without one would put back what it read before a
+  // repair that ran meanwhile.
   await db
     .update(projectRevenueCatConnections)
     .set({
@@ -692,17 +723,9 @@ export async function refreshRevenueCatConnection(
       rcTestStoreSdkKey: apps.testStore?.sdkKey ?? null,
       rcAppStoreAppId: apps.appStore?.appId ?? null,
       rcAppStoreSdkKey: apps.appStore?.sdkKey ?? null,
-      rcWebhookIntegrationId: integrationId,
-      webhookError,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(projectRevenueCatConnections.projectId, projectId),
-        eq(projectRevenueCatConnections.rcProjectId, connection.rcProjectId),
-        eq(projectRevenueCatConnections.rcSecretKey, connection.rcSecretKey),
-      ),
-    );
+    .where(sameConnection);
 
   return {
     keyValid: true,
