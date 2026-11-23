@@ -317,7 +317,7 @@ struct ToolGroupView: View {
                             Haptics.select()
                             withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) { expanded = true }
                         } label: {
-                            Text("\(calls.count - shown.count) earlier steps")
+                            Text(calls.count - shown.count == 1 ? "1 earlier step" : "\(calls.count - shown.count) earlier steps")
                                 .font(.footnote.weight(.medium))
                                 .foregroundStyle(Sand.subtle)
                                 .padding(.horizontal, Space.m)

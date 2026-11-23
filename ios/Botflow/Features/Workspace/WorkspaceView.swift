@@ -62,7 +62,8 @@ struct WorkspaceView: View {
                     }
                 case .halves:
                     HStack(spacing: 0) {
-                        chatColumn(compact: false).frame(width: proxy.size.width / 2)
+                        // The crease is the middle of the screen, not of the area left beside the system's rail.
+                        chatColumn(compact: false).frame(width: max(280, window.width / 2 - proxy.safeAreaInsets.leading))
                         Divider().overlay(Sand.border)
                         AppPane(store: store, tab: $appTab, showsHeader: true, sheet: $sheet, immersive: $immersive)
                     }
@@ -332,11 +333,16 @@ enum WorkspaceLayout: Equatable {
     case stacked
 
     static func choose(size: CGSize, hinge: HingePosture?) -> WorkspaceLayout {
-        if hinge == .partiallyOpen {
-            // A book-style fold: the crease runs down the middle in portrait
-            // and across the middle in landscape.
-            if size.width > size.height, size.height >= 560 { return .stacked }
-            if size.width >= 560, size.height >= 500 { return .halves }
+        if let hinge, hinge != .closed {
+            // An unfolded Duo held upright is wider than it is tall (about
+            // 951 × 669 points) and its crease runs down the middle: a pane
+            // either side of it, whether it is flat or propped like a book.
+            let upright = size.width > size.height
+            if upright, size.width >= 560, size.height >= 500 { return .halves }
+            // Turned on its side (669 × 951) the crease runs across the middle.
+            // Half open like that it sits like a small laptop: the app on the
+            // upright half, the conversation and keyboard on the flat one.
+            if hinge == .partiallyOpen, !upright, size.height >= 700 { return .stacked }
         }
         // Two panes need room both ways: a phone on its side is wide enough
         // but far too short once the keyboard is up.

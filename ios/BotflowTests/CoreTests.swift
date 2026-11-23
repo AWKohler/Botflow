@@ -173,13 +173,18 @@ final class WorkspaceLayoutTests: XCTestCase {
     }
 
     func testAnOpenDuoAndAnIPadShowTwoPanes() {
+        // Upright, an unfolded Duo is wider than tall, with the crease down the middle.
+        XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 951, height: 669), hinge: .fullyOpen), .halves)
+        // On its side it is taller than wide; flat, the two panes stay side by side.
         XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 669, height: 951), hinge: .fullyOpen), .sideBySide)
         XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 834, height: 1210), hinge: nil), .sideBySide)
     }
 
     func testAHalfOpenDuoPutsAPaneEachSideOfTheFold() {
-        XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 669, height: 951), hinge: .partiallyOpen), .halves)
-        XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 951, height: 669), hinge: .partiallyOpen), .stacked)
+        // Propped like a book: the crease is vertical.
+        XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 951, height: 669), hinge: .partiallyOpen), .halves)
+        // Turned and propped like a laptop: the crease is horizontal.
+        XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 669, height: 951), hinge: .partiallyOpen), .stacked)
     }
 }
 

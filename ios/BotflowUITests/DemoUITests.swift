@@ -61,6 +61,10 @@ final class DemoUITests: XCTestCase {
         wait(for: [ready], timeout: 20)
         send.tap()
 
+        // A first send on a fresh install asks for notification permission.
+        let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow"]
+        if allow.waitForExistence(timeout: 3) { allow.tap() }
+
         // The agent starts; the send button becomes Stop while it works.
         let stop = app.buttons["composer.stop"]
         XCTAssertTrue(stop.waitForExistence(timeout: 30))

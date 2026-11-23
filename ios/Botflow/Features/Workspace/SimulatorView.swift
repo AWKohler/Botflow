@@ -13,7 +13,7 @@ struct SimulatorView: View {
     /// A pane much wider than it is tall (the top half of a Duo held like a
     /// laptop, an iPhone on its side): a row of controls above the device
     /// would leave it a thumbnail, so they go beside it.
-    private var sideBySide: Bool { paneSize.height < 380 && paneSize.width > paneSize.height * 1.5 }
+    private var sideBySide: Bool { paneSize.height < 460 && paneSize.width > paneSize.height * 1.4 }
 
     var body: some View {
         Group {

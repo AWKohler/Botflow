@@ -302,6 +302,13 @@ struct AnswerPrompt: View {
         .shadow(color: Sand.shadow.opacity(0.08), radius: 14, y: 5)
         .padding(.horizontal, Space.m)
         .padding(.vertical, Space.s)
+        // The same fade the composer sits on, so a card scrolling underneath
+        // (on a short screen it is taller than the view) does not show through.
+        .frame(maxWidth: .infinity)
+        .background {
+            LinearGradient(colors: [Sand.canvas.opacity(0), Sand.canvas], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.4))
+                .ignoresSafeArea()
+        }
     }
 }
 
