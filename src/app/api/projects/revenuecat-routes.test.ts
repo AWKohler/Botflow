@@ -10,6 +10,7 @@ import { createUser, signInAs, signOut } from '@/test/auth';
 import { currentTestDb, setupTestDb } from '@/test/db';
 import { addMember, createProject } from '@/test/factories';
 import { server } from '@/test/network';
+import { fakeRedis } from '@/test/redis-fake';
 import { fakeRevenueCat } from '@/test/revenuecat-fake';
 import { callRoute, readJson } from '@/test/route';
 import { clearAgentWaitingForConnect, markAgentWaitingForConnect } from '@/lib/revenuecat-connection';
@@ -333,5 +334,19 @@ describe('POST revenuecat/disconnect', () => {
     expect(rc.webhooks).toEqual([]);
     expect(await currentTestDb().select().from(projectRevenueCatConnections)).toEqual([]);
     expect(await readJson(await status(p.id))).toMatchObject({ status: 'none', connection: null });
+  });
+
+  test('while another change to the connection is in flight, it says so and removes nothing', async () => {
+    await proOwner();
+    const rc = fakeRevenueCat();
+    const p = await swiftProject();
+    await connect(p.id, { rcSecretKey: 'sk_full' });
+    await fakeRedis.set(`revenuecat:connecting:${p.id}`, 'a-connect-in-flight', { nx: true, ex: 90 });
+
+    const res = await callRoute(disconnectRoute.POST, { method: 'POST', params: { id: p.id } });
+    expect(res.status).toBe(409);
+    expect((await readJson(res)).error).toMatch(/in progress/);
+    expect(rc.webhooks).toHaveLength(1);
+    expect(await currentTestDb().select().from(projectRevenueCatConnections)).toHaveLength(1);
   });
 });

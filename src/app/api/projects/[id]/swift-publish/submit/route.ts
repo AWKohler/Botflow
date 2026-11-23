@@ -153,11 +153,13 @@ export async function POST(
       if (!connection?.rcAppStoreSdkKey && body?.allowPurchasesOff !== true) {
         const why = !connection
           ? "RevenueCat is not connected yet (finish the setup in the Payments tab)"
-          : refreshed?.unreachable
-            ? "RevenueCat could not be reached to look up the App Store key (try again in a moment)"
-            : refreshed?.appStoreAmbiguous
-              ? "its RevenueCat project has more than one App Store app, so Botflow cannot tell which one this build is (keep one, then choose Check again in the Payments tab)"
-              : "its RevenueCat project has no App Store app yet (follow \"Selling for real on the App Store\" in the Payments tab, then choose Check again there)";
+          : refreshed && !refreshed.keyValid
+            ? "its RevenueCat key no longer works (connect again in the Payments tab)"
+            : refreshed?.unreachable
+              ? "RevenueCat could not be reached to look up the App Store key (try again in a moment)"
+              : refreshed?.appStoreAmbiguous
+                ? "its RevenueCat project has more than one App Store app, so Botflow cannot tell which one this build is (keep one, then choose Check again in the Payments tab)"
+                : "its RevenueCat project has no App Store app yet (follow \"Selling for real on the App Store\" in the Payments tab, then choose Check again there)";
         return NextResponse.json(
           {
             error:

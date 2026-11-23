@@ -278,12 +278,15 @@ async function projectInUse(
   rcProjectName: string,
   projectId: string,
   userId: string,
-): Promise<ConnectFailure | null> {
+  /** The key being connected: it can remove a dead claim's leftover webhook. */
+  newSecretKey: string,
+): Promise<{ failure: ConnectFailure | null; releasedDeadClaim: boolean }> {
   const db = getDb();
   const [other] = await db
     .select({
       projectId: projectRevenueCatConnections.projectId,
       encryptedKey: projectRevenueCatConnections.rcSecretKey,
+      integrationId: projectRevenueCatConnections.rcWebhookIntegrationId,
       name: projects.name,
       ownerId: projects.userId,
     })
@@ -296,19 +299,34 @@ async function projectInUse(
       ),
     )
     .limit(1);
-  if (!other) return null;
+  if (!other) return { failure: null, releasedDeadClaim: false };
 
+  // Dead means RevenueCat itself refused the key (401/403). A key THIS
+  // deployment cannot decrypt (a dev server with a different encryption secret
+  // on the shared database) or a RevenueCat outage says nothing about the claim.
   const otherKey = decryptSecret(other.encryptedKey);
-  const alive = otherKey ? await listProjects(otherKey) : null;
-  const rejected = !otherKey || (alive && !alive.ok && (alive.status === 401 || alive.status === 403));
-  if (rejected) {
-    // RevenueCat refuses the other connection's key outright: release the claim.
-    await disconnectRevenueCat(other.projectId);
-    return null;
+  if (!otherKey) {
+    console.error('[revenuecat] cannot decrypt the key of the connection claiming', rcProjectId, '- keeping its claim');
+  } else {
+    const alive = await listProjects(otherKey);
+    if (!alive.ok && (alive.status === 401 || alive.status === 403)) {
+      const released = await releaseDeadClaim({
+        projectId: other.projectId,
+        rcProjectId,
+        encryptedKey: other.encryptedKey,
+      });
+      if (released) {
+        // Its webhook would fail every event from now on. The dead key could
+        // not remove it; the new key belongs to the same RevenueCat project.
+        if (other.integrationId) await deleteWebhookIntegration(newSecretKey, rcProjectId, other.integrationId);
+        return { failure: null, releasedDeadClaim: true };
+      }
+      // The other app changed its connection while we were asking: still claimed.
+    }
   }
 
   const mine = other.ownerId === userId;
-  return {
+  const failure: ConnectFailure = {
     ok: false,
     status: 409,
     code: 'project-in-use',
@@ -320,6 +338,49 @@ async function projectInUse(
         ? 'or disconnect the other app first.'
         : 'or, if that connection should no longer exist, revoke the key it uses in RevenueCat (API keys) and connect again.'),
   };
+  return { failure, releasedDeadClaim: false };
+}
+
+/**
+ * Remove exactly the connection that was found dead: same project, same
+ * RevenueCat project, same stored key. If its app reconnected in the meantime
+ * (with a new key, or to another RevenueCat project) nothing matches and
+ * nothing is touched. Runs under that app's lifecycle lock.
+ */
+async function releaseDeadClaim(claim: {
+  projectId: string;
+  rcProjectId: string;
+  encryptedKey: string;
+}): Promise<boolean> {
+  const release = await acquireLifecycleLock(claim.projectId);
+  if (release === 'busy') return false;
+  try {
+    const db = getDb();
+    const deleted = await db
+      .delete(projectRevenueCatConnections)
+      .where(
+        and(
+          eq(projectRevenueCatConnections.projectId, claim.projectId),
+          eq(projectRevenueCatConnections.rcProjectId, claim.rcProjectId),
+          eq(projectRevenueCatConnections.rcSecretKey, claim.encryptedKey),
+        ),
+      )
+      .returning({ projectId: projectRevenueCatConnections.projectId });
+    if (deleted.length === 0) return false;
+    await db
+      .update(projects)
+      .set({
+        revenuecatStatus: 'none',
+        revenuecatProjectId: null,
+        revenuecatWebhookSecret: null,
+        revenuecatScaffoldState: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(projects.id, claim.projectId));
+    return true;
+  } finally {
+    await release();
+  }
 }
 
 const LIFECYCLE_LOCK_SECONDS = 90;
@@ -344,7 +405,9 @@ async function acquireLifecycleLock(projectId: string): Promise<'busy' | (() => 
   return async () => {
     try {
       // Release only our own lock: after a very slow call it may have expired
-      // and been taken by someone else.
+      // and been taken by someone else. (Read-then-delete is not atomic; the
+      // lock outlives the longest request that can hold it, so the gap between
+      // the two cannot straddle an expiry in practice.)
       if ((await redis.get<string>(key)) === token) await redis.del(key);
     } catch {
       /* it expires by itself */
@@ -377,7 +440,7 @@ export async function connectRevenueCat(opts: {
       ok: false,
       status: 409,
       code: 'busy',
-      error: 'This project is already being connected. Wait a few seconds for it to finish.',
+      error: 'Another change to this project\'s payments is in progress. Wait a few seconds and try again.',
     };
   }
   try {
@@ -408,8 +471,8 @@ async function connectLocked(opts: {
   }
 
   const db = getDb();
-  const inUse = await projectInUse(rcProject.id, rcProject.name, opts.projectId, opts.userId);
-  if (inUse) return inUse;
+  const inUse = await projectInUse(rcProject.id, rcProject.name, opts.projectId, opts.userId, secretKey);
+  if (inUse.failure) return inUse.failure;
 
   const existing = await getRevenueCatConnection(opts.projectId);
 
@@ -471,23 +534,35 @@ async function connectLocked(opts: {
     connectedAt: sameRcProject && existing ? existing.connectedAt : now,
     updatedAt: now,
   };
-  try {
-    await db
+  const store = () =>
+    db
       .insert(projectRevenueCatConnections)
       .values(values)
       .onConflictDoUpdate({ target: projectRevenueCatConnections.projectId, set: values });
+  try {
+    await store();
   } catch (err) {
-    // The write failed, so nothing points at a webhook this call CREATED:
-    // remove it. One it merely updated belongs to the connection that is still
-    // stored and must stay.
-    if (webhook.ok && webhook.created) {
-      await deleteWebhookIntegration(secretKey, rcProject.id, webhook.integrationId);
-    }
     // The usual cause is the unique index on rc_project_id: another project
     // claimed this RevenueCat project between our check and our write.
-    const raced = await projectInUse(rcProject.id, rcProject.name, opts.projectId, opts.userId);
-    if (raced) return raced;
-    throw err;
+    const raced = await projectInUse(rcProject.id, rcProject.name, opts.projectId, opts.userId, secretKey).catch(
+      () => null,
+    );
+    // If that claim was dead and has just been released, the way is clear now.
+    const stored = raced?.releasedDeadClaim
+      ? await store().then(
+          () => true,
+          () => false,
+        )
+      : false;
+    if (!stored) {
+      // Nothing points at a webhook this call CREATED: remove it. One it merely
+      // updated belongs to the connection that is still stored and must stay.
+      if (webhook.ok && webhook.created) {
+        await deleteWebhookIntegration(secretKey, rcProject.id, webhook.integrationId);
+      }
+      if (raced?.failure) return raced.failure;
+      throw err;
+    }
   }
 
   // Only now that the new connection is stored: take our webhook off the
@@ -571,6 +646,17 @@ export async function refreshRevenueCatConnection(
   const release = requestOrigin ? await acquireLifecycleLock(projectId) : null;
   if (requestOrigin && release && release !== 'busy') {
     try {
+      // Discovery took a while. If the project was disconnected or reconnected
+      // meanwhile, the webhook id and secret read at the top are obsolete, and
+      // "repairing" with them would replace the new connection's webhook.
+      const current = await getRevenueCatConnection(projectId);
+      if (
+        !current ||
+        current.rcProjectId !== connection.rcProjectId ||
+        current.rcSecretKey !== connection.rcSecretKey
+      ) {
+        return null;
+      }
       const [project] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, projectId));
       const webhook = await ensureWebhook({
         secretKey,
@@ -649,7 +735,23 @@ export interface DisconnectResult {
  * reason to disconnect is a revoked key, which cannot delete anything); the
  * caller is told, so the user can remove the leftover webhook in RevenueCat.
  */
-export async function disconnectRevenueCat(projectId: string): Promise<DisconnectResult> {
+export async function disconnectRevenueCat(
+  projectId: string,
+  opts: {
+    /** Deleting the whole project: do not wait for, or yield to, a change in flight. */
+    force?: boolean;
+  } = {},
+): Promise<DisconnectResult | 'busy'> {
+  const release = opts.force ? null : await acquireLifecycleLock(projectId);
+  if (release === 'busy') return 'busy';
+  try {
+    return await disconnectLocked(projectId);
+  } finally {
+    if (release) await release();
+  }
+}
+
+async function disconnectLocked(projectId: string): Promise<DisconnectResult> {
   const db = getDb();
   const connection = await getRevenueCatConnection(projectId);
   const hadWebhook = Boolean(connection?.rcWebhookIntegrationId);

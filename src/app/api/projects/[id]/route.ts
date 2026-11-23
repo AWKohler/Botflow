@@ -122,7 +122,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     if (proj.revenuecatStatus === 'connected') {
       try {
         const { disconnectRevenueCat } = await import('@/lib/revenuecat-connection');
-        await disconnectRevenueCat(resolvedParams.id);
+        await disconnectRevenueCat(resolvedParams.id, { force: true });
       } catch (error) {
         console.error('Failed to remove the RevenueCat webhook:', error);
       }

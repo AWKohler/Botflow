@@ -417,12 +417,13 @@ export function RevenueCatTab({ projectId, status, active = true, onChanged }: R
   const handleDisconnect = useCallback(async () => {
     try {
       const res = await fetch(`/api/projects/${projectId}/revenuecat/disconnect`, { method: "POST" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
         hadWebhook?: boolean;
         webhookRemoved?: boolean;
         integrationsUrl?: string | null;
       };
+      if (!res.ok) throw new Error(body.error || "Something went wrong. Try again.");
       setConfirmingDisconnect(false);
       setCatalog(null);
       setActivity(null);

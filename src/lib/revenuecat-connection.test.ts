@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, test, vi } from 'vitest';
 import { projectRevenueCatConnections, projects } from '@/db/schema';
-import { decryptSecret } from '@/lib/secrets';
+import { decryptSecret, encryptSecret } from '@/lib/secrets';
 import { currentTestDb, setupTestDb } from '@/test/db';
 import { fakeRedis } from '@/test/redis-fake';
 import { createProject } from '@/test/factories';
@@ -406,6 +406,55 @@ describe('changes that overlap or fail half-way', () => {
     });
   });
 
+  test('"Check again" that overlaps a reconnect does not repair the webhook with the old connection\'s details', async () => {
+    const rc = fakeRevenueCat();
+    const project = await swiftProject();
+    await connect(project, 'sk_full');
+    const webhookCalls = () => rc.calls.filter((c) => c.includes('/integrations/webhooks')).length;
+    const before = webhookCalls();
+
+    // While discovery waits on RevenueCat, the project is reconnected (modelled
+    // as the row a reconnect would write: another key, another webhook).
+    const reconnected = {
+      rcSecretKey: encryptSecret('sk_full_2'),
+      rcWebhookIntegrationId: 'wh_from_the_reconnect',
+      inboundWebhookSecret: 'bfrcin_new',
+      inboundWebhookSecretDigest: 'digest-new',
+    };
+    rc.during.push({
+      match: /public_api_keys/,
+      run: async () => {
+        await currentTestDb()
+          .update(projectRevenueCatConnections)
+          .set(reconnected)
+          .where(eq(projectRevenueCatConnections.projectId, project.id));
+      },
+    });
+    expect(await refreshRevenueCatConnection(project.id, ORIGIN)).toBeNull();
+
+    // No webhook was read, updated or created on behalf of the stale connection.
+    expect(webhookCalls()).toBe(before);
+    expect(await connectionRow(project.id)).toMatchObject(reconnected);
+    // The lock is free again.
+    expect((await connect(project, 'sk_full')).ok).toBe(true);
+  });
+
+  test('a disconnect waits its turn behind a change in flight; deleting the project does not', async () => {
+    const rc = fakeRevenueCat();
+    const project = await swiftProject();
+    await connect(project, 'sk_full');
+
+    await fakeRedis.set(`revenuecat:connecting:${project.id}`, 'someone-else', { nx: true, ex: 90 });
+    expect(await disconnectRevenueCat(project.id)).toBe('busy');
+    expect(await connectionRow(project.id)).toBeDefined();
+    expect(rc.webhooks).toHaveLength(1);
+
+    expect(await disconnectRevenueCat(project.id, { force: true })).toMatchObject({ webhookRemoved: true });
+    expect(await connectionRow(project.id)).toBeUndefined();
+    // The other holder's lock was not taken from it.
+    expect(await fakeRedis.get(`revenuecat:connecting:${project.id}`)).toBe('someone-else');
+  });
+
   test('a database error while reconnecting never deletes the webhook the stored connection uses', async () => {
     const rc = fakeRevenueCat();
     rc.keys.set('sk_full_2', 'full');
@@ -477,7 +526,81 @@ describe('a claim held by a dead connection', () => {
     expect(await connectionRow(abandoned.id)).toBeUndefined();
     const [p] = await currentTestDb().select().from(projects).where(eq(projects.id, abandoned.id));
     expect(p.revenuecatStatus).toBe('none');
-    expect((await connectionRow(client.id)).rcProjectId).toBe(rc.projectId);
+    const mine = await connectionRow(client.id);
+    expect(mine.rcProjectId).toBe(rc.projectId);
+    // The dead connection's webhook would have failed every event: the new key
+    // (same RevenueCat project) removed it.
+    expect(rc.webhooks.map((w) => w.id)).toEqual([mine.rcWebhookIntegrationId]);
+  });
+
+  test('a key this deployment cannot decrypt is not proof of a dead claim', async () => {
+    fakeRevenueCat();
+    const first = await swiftProject('owner_a', 'First');
+    await connect(first, 'sk_full');
+    // Another deployment on the same database (a dev server with its own
+    // encryption secret) stored this key: unreadable here, and perfectly alive.
+    await currentTestDb()
+      .update(projectRevenueCatConnections)
+      .set({ rcSecretKey: 'v1.AAAA.BBBB.CCCC' })
+      .where(eq(projectRevenueCatConnections.projectId, first.id));
+
+    const second = await swiftProject('owner_b', 'Second');
+    expect(await connect(second, 'sk_full')).toMatchObject({ ok: false, code: 'project-in-use' });
+    expect(await connectionRow(first.id)).toBeDefined();
+  });
+
+  test('a dead claim whose app reconnects during the check is left alone', async () => {
+    const rc = fakeRevenueCat();
+    rc.keys.set('sk_old', 'full');
+    rc.keys.set('sk_fresh', 'full');
+    const first = await swiftProject('owner_a', 'First');
+    await connect(first, 'sk_old');
+    rc.keys.delete('sk_old');
+
+    const second = await swiftProject('owner_b', 'Second');
+    // While the liveness check of First's old key is in flight (the second
+    // GET /projects of this connect), First's owner pastes a working key.
+    let seen = 0;
+    rc.during.push({
+      match: {
+        test: (signature: string) => signature === 'GET /projects' && ++seen === 2,
+      } as RegExp,
+      run: async () => {
+        await currentTestDb()
+          .update(projectRevenueCatConnections)
+          .set({ rcSecretKey: encryptSecret('sk_fresh') })
+          .where(eq(projectRevenueCatConnections.projectId, first.id));
+      },
+    });
+    expect(await connect(second, 'sk_full')).toMatchObject({ ok: false, code: 'project-in-use' });
+    expect(decryptSecret((await connectionRow(first.id)).rcSecretKey)).toBe('sk_fresh');
+    const [p] = await currentTestDb().select().from(projects).where(eq(projects.id, first.id));
+    expect(p.revenuecatStatus).toBe('connected');
+  });
+
+  test('a dead claim that appears between the check and the write is released, and the connect still succeeds', async () => {
+    const rc = fakeRevenueCat();
+    rc.keys.set('sk_old', 'full');
+    const abandoned = await swiftProject('owner_agency', 'Client app (old)');
+    await connect(abandoned, 'sk_old');
+    const stale = await connectionRow(abandoned.id);
+    await currentTestDb()
+      .delete(projectRevenueCatConnections)
+      .where(eq(projectRevenueCatConnections.projectId, abandoned.id));
+    rc.keys.delete('sk_old');
+
+    const client = await swiftProject('owner_client', 'Client app');
+    // The claim lands after the "in use?" check, while the webhook is created.
+    rc.during.push({
+      match: /^POST .*integrations\/webhooks/,
+      run: async () => {
+        await currentTestDb().insert(projectRevenueCatConnections).values(stale);
+      },
+    });
+    expect((await connect(client, 'sk_full')).ok).toBe(true);
+    expect(await connectionRow(abandoned.id)).toBeUndefined();
+    const mine = await connectionRow(client.id);
+    expect(rc.webhooks.map((w) => w.id)).toEqual([mine.rcWebhookIntegrationId]);
   });
 
   test('a claim whose key still works is not released just because RevenueCat is briefly down', async () => {

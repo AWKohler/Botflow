@@ -38,6 +38,12 @@ export async function POST(
   }
 
   const result = await disconnectRevenueCat(projectId);
+  if (result === 'busy') {
+    return NextResponse.json(
+      { ok: false, error: "Another change to this project's payments is in progress. Wait a few seconds and try again." },
+      { status: 409 },
+    );
+  }
 
   // The next build must not carry the old SDK key.
   after(async () => {
