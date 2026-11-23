@@ -48,15 +48,23 @@ struct ModelPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        let ready = ModelCatalog.all.filter { session.access(for: $0).runnable }
+        let locked = ModelCatalog.all.filter { !session.access(for: $0).runnable }
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 2) {
-                    ForEach(ModelCatalog.all) { model in
-                        row(model)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if !ready.isEmpty, !locked.isEmpty { heading("Ready to use") }
+                        ForEach(ready) { model in row(model).id(model.id) }
+                        if !locked.isEmpty {
+                            heading("Needs a plan or a connection").padding(.top, Space.m)
+                            ForEach(locked) { model in row(model).id(model.id) }
+                        }
                     }
+                    .padding(.horizontal, Space.m)
+                    .padding(.bottom, Space.xl)
                 }
-                .padding(.horizontal, Space.m)
-                .padding(.bottom, Space.xl)
+                .onAppear { proxy.scrollTo(selection, anchor: .center) }
             }
             .background(Sand.bg)
             .navigationTitle("Choose a model")
@@ -70,6 +78,16 @@ struct ModelPickerSheet: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(Sand.bg)
+    }
+
+    private func heading(_ title: String) -> some View {
+        Text(title)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Sand.subtle)
+            .padding(.horizontal, Space.m)
+            .padding(.top, Space.s)
+            .padding(.bottom, 4)
+            .accessibilityAddTraits(.isHeader)
     }
 
     private func row(_ model: AIModel) -> some View {
@@ -103,7 +121,7 @@ struct ModelPickerSheet: View {
                             Badge(text: model.requiredTier.label, tone: .accent)
                         }
                     }
-                    Text("\(model.contextLabel) context · \(access.runnable && access.source != .planCredits ? access.title : model.costLabel)")
+                    Text("\(AIModel.compact(model.contextLimit(personal: access.usesOwnAccount))) context · \(access.usesOwnAccount ? access.title : model.costLabel)")
                         .font(.footnote)
                         .foregroundStyle(Sand.muted)
                         .lineLimit(1)
@@ -121,6 +139,7 @@ struct ModelPickerSheet: View {
             }
             .padding(.horizontal, Space.m)
             .padding(.vertical, 11)
+            .frame(minHeight: 56)
             .background(selected ? Sand.elevated : .clear, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .opacity(access.runnable ? 1 : 0.72)
             .contentShape(Rectangle())

@@ -11,7 +11,7 @@ struct ExploreView: View {
     @State private var platform = "all"
     @State private var opened: PublicProject?
 
-    private let columns = [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: Space.l)]
+    private let columns = [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: Space.l, alignment: .top)]
 
     var body: some View {
         ScrollView {
@@ -115,9 +115,6 @@ struct PublicCard: View {
         VStack(alignment: .leading, spacing: 0) {
             ProjectCover(imageURL: project.thumbnailUrl.flatMap(URL.init(string:)), seed: project.id, platform: project.kind)
                 .aspectRatio(16 / 9.5, contentMode: .fit)
-                .overlay(alignment: .topLeading) {
-                    CoverBadge(text: project.kind.label, symbol: project.kind.symbol).padding(10)
-                }
                 .clipped()
             Divider().overlay(Sand.border)
             HStack(alignment: .top, spacing: Space.m) {
@@ -126,16 +123,22 @@ struct PublicCard: View {
                         .font(.headline)
                         .foregroundStyle(Sand.text)
                         .lineLimit(1)
-                    if let description = project.publicDescription, !description.isEmpty {
-                        Text(description)
-                            .font(.subheadline)
-                            .foregroundStyle(Sand.muted)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
+                    // Always two lines tall, so cards in a row are the same height.
+                    Text(project.publicDescription ?? " ")
+                        .font(.subheadline)
+                        .foregroundStyle(Sand.muted)
+                        .lineLimit(2, reservesSpace: true)
+                        .multilineTextAlignment(.leading)
+                    HStack(spacing: 5) {
+                        Image(systemName: project.kind.symbol).imageScale(.small)
+                        Text(project.kind.label)
+                        Text("·")
+                        Text("by \(project.author?.name ?? "Anonymous")")
                     }
-                    Text("by \(project.author?.name ?? "Anonymous")")
-                        .font(.footnote)
-                        .foregroundStyle(Sand.subtle)
+                    .font(.footnote)
+                    .foregroundStyle(Sand.subtle)
+                    .lineLimit(1)
+                    .accessibilityElement(children: .combine)
                 }
                 Spacer(minLength: 0)
                 Button(action: onStar) {
@@ -151,9 +154,11 @@ struct PublicCard: View {
                     .padding(.horizontal, 10)
                     .frame(minHeight: 34)
                     .background(Sand.elevated, in: Capsule())
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(project.hasStarred == true ? "Remove star" : "Star")
+                .accessibilityLabel(project.hasStarred == true ? "Remove star, \(project.starCount ?? 0) stars" : "Star, \(project.starCount ?? 0) stars")
             }
             .padding(.horizontal, Space.l)
             .padding(.vertical, 14)

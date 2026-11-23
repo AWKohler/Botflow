@@ -37,6 +37,16 @@ struct BotflowApp: App {
                     }
                 }
         }
+    
+        // iPad: a project in a window of its own, beside the main one.
+        WindowGroup("Project", id: "project", for: String.self) { $projectId in
+            ProjectWindow(projectId: projectId)
+                .environmentObject(session)
+                .environmentObject(store)
+                .environmentObject(hinge)
+                .observingHinge(hinge)
+                .tint(Sand.accent)
+        }
     }
 }
 
@@ -58,6 +68,50 @@ struct RootView: View {
                     .transition(.opacity.combined(with: .scale(scale: 1.02)))
             }
             ToastOverlay()
+        }
+    }
+}
+
+/// A single project in its own window, with its own navigation and sheets.
+struct ProjectWindow: View {
+    var projectId: String?
+    @EnvironmentObject private var session: AppSession
+    @StateObject private var router = Router()
+    @State private var project: Project?
+    @State private var failure: String?
+
+    var body: some View {
+        ZStack {
+            Sand.canvas.ignoresSafeArea()
+            if session.phase != .signedIn {
+                EmptyState(symbol: "person.crop.circle", title: "Sign in to open this project", message: "Sign in from the main Botflow window, then open the project again.")
+            } else if let project {
+                NavigationStack {
+                    WorkspaceView(route: WorkspaceRoute(project: project))
+                        .navigationBarBackButtonHidden()
+                }
+                .tint(Sand.text)
+            } else if let failure {
+                EmptyState(symbol: "exclamationmark.triangle", title: "This project couldn't be opened", message: failure)
+            } else {
+                ProgressView()
+            }
+            ToastOverlay()
+        }
+        .environmentObject(router)
+        .sheet(item: $router.sheet) { sheet in
+            Group {
+                switch sheet {
+                case .settings: SettingsView()
+                case .paywall(let reason): PaywallView(reason: reason)
+                }
+            }
+            .tint(Sand.text)
+        }
+        .task(id: session.phase) {
+            guard session.phase == .signedIn, project == nil, let projectId else { return }
+            do { project = try await session.service.project(projectId) }
+            catch { failure = error.localizedDescription }
         }
     }
 }

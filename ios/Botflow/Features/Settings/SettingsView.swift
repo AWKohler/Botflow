@@ -71,11 +71,7 @@ struct SettingsView: View {
                             .listRowBackground(Sand.card)
                     }
                     Toggle(isOn: $liveActivities) {
-                        Label {
-                            Text("Live Activities").foregroundStyle(Sand.text)
-                        } icon: {
-                            Image(systemName: "platter.filled.top.iphone").foregroundStyle(Sand.muted)
-                        }
+                        row("platter.filled.top.iphone", "Live Activities", value: nil)
                     }
                     .tint(Sand.accent)
                     .listRowBackground(Sand.card)

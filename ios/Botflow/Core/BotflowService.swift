@@ -63,7 +63,8 @@ protocol BotflowService: AnyObject, Sendable {
     func publishSimulator(projectId: String, body: JSONValue) async
 
     // Devices, notifications, purchases
-    func registerDevice(token: String, environment: String) async
+    /// Returns whether the server is able to push to this device.
+    func registerDevice(token: String, environment: String) async -> Bool
     func registerLiveActivity(token: String, projectId: String, threadId: String, startedAt: Date) async
     func syncPurchase(signedTransaction: String) async throws -> Tier
 

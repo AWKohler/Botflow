@@ -28,7 +28,17 @@ struct AIModel: Identifiable, Hashable, Sendable {
 
     var hostLabel: String { host ?? provider.label }
 
-    var contextLabel: String { Self.compact(contextTokens) }
+    /// The name without its vendor, for tight spots where the vendor's mark
+    /// already sits beside it ("Sonnet 5.5").
+    var shortName: String {
+        name.hasPrefix("Claude ") ? String(name.dropFirst("Claude ".count)) : name
+    }
+
+    /// The context window for this account: some providers give a larger one
+    /// on a person's own subscription or key than on Botflow's credits.
+    func contextLimit(personal: Bool) -> Int {
+        personal ? (personalContextTokens ?? contextTokens) : contextTokens
+    }
 
     var costLabel: String {
         let value = costMultiplier == costMultiplier.rounded() ? String(Int(costMultiplier)) : String(costMultiplier)
@@ -91,6 +101,9 @@ struct ModelAccess: Equatable, Sendable {
     var source: Source?
     var title: String
     var detail: String
+
+    /// Runs on the person's own subscription or key rather than plan credits.
+    var usesOwnAccount: Bool { source != nil && source != .planCredits }
 
     static func evaluate(_ model: AIModel, connections: Connections, tier: Tier) -> ModelAccess {
         let meetsTier = tier >= model.requiredTier

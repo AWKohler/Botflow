@@ -52,6 +52,10 @@ final class ThreadSession: ObservableObject {
         self.threadTitle = thread.displayTitle
         self.model = thread.model
         self.service = service
+        // The last figure the agent reported for this chat, so the meter is
+        // right as soon as the chat is opened again.
+        let saved = UserDefaults.standard.integer(forKey: "context:\(thread.id)")
+        if saved > 0 { usage = ContextUsage(tokens: saved) }
     }
 
     deinit {
@@ -274,7 +278,10 @@ final class ThreadSession: ObservableObject {
         startingText = nil
         if assembler.message.parts.isEmpty { return }
         live = assembler.message
-        if let usage = assembler.usage { self.usage = usage }
+        if let usage = assembler.usage {
+            self.usage = usage
+            if usage.tokens > 0 { UserDefaults.standard.set(usage.tokens, forKey: "context:\(threadId)") }
+        }
     }
 
     private func report(_ chunk: StreamChunk, assembler: MessageAssembler) {

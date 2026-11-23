@@ -1,7 +1,8 @@
 import SwiftUI
 
+/// What a one-pane workspace is showing.
 enum WorkspacePane: Hashable {
-    case chat, app
+    case chat, preview, code
 }
 
 /// A project: the agents on one side, the app they are building on the other.
@@ -15,16 +16,23 @@ struct WorkspaceView: View {
     @EnvironmentObject private var router: Router
     @EnvironmentObject private var hinge: DeviceHingeModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var pane: WorkspacePane
+    @State private var appTab: AppPane.Tab
     @State private var showThreads = false
     @State private var sheet: WorkspaceSheet?
     @State private var immersive = false
+    /// The chat column's width in two-pane layouts, when the person has dragged the divider.
+    @AppStorage("workspace.chatWidth") private var storedChatWidth: Double = 0
+    @State private var dragStartWidth: CGFloat?
 
     init(route: WorkspaceRoute) {
         self.route = route
         _store = StateObject(wrappedValue: WorkspaceStore(project: route.project, initialPrompt: route.initialPrompt))
-        _pane = State(initialValue: route.startOnApp ? .app : .chat)
+        let code = ["workspace-code", "workspace-file"].contains(AppConfig.demoRoute ?? "")
+        _pane = State(initialValue: code ? .code : route.startOnApp ? .preview : .chat)
+        _appTab = State(initialValue: code ? .code : .preview)
     }
 
     var body: some View {
@@ -34,70 +42,102 @@ struct WorkspaceView: View {
             let layout = WorkspaceLayout.choose(size: proxy.size, hinge: hinge.posture)
             let split = layout != .single
             Group {
-                if layout == .stacked {
+                switch layout {
+                case .stacked:
                     // Half open and held like a laptop: the app on the upright
                     // half, the conversation and keyboard on the flat half.
                     VStack(spacing: 0) {
-                        AppPane(store: store, sheet: $sheet, immersive: $immersive)
+                        AppPane(store: store, tab: $appTab, showsHeader: true, sheet: $sheet, immersive: $immersive)
                             .frame(height: proxy.size.height / 2)
                         Divider().overlay(Sand.border)
-                        chatColumn
+                        chatColumn(compact: false)
                     }
-                } else if split {
+                case .halves:
                     HStack(spacing: 0) {
-                        chatColumn
-                            .frame(width: layout == .halves ? proxy.size.width / 2 : min(460, max(300, proxy.size.width * 0.4)))
+                        chatColumn(compact: false).frame(width: proxy.size.width / 2)
                         Divider().overlay(Sand.border)
-                        AppPane(store: store, sheet: $sheet, immersive: $immersive)
+                        AppPane(store: store, tab: $appTab, showsHeader: true, sheet: $sheet, immersive: $immersive)
                     }
-                } else {
+                case .sideBySide:
+                    let width = chatWidth(in: proxy.size.width)
+                    HStack(spacing: 0) {
+                        chatColumn(compact: false).frame(width: width)
+                        divider(total: proxy.size.width, current: width)
+                        AppPane(store: store, tab: $appTab, showsHeader: true, sheet: $sheet, immersive: $immersive)
+                    }
+                case .single:
                     ZStack {
-                        chatColumn
+                        // The chat stays alive behind the app pane, so a turn
+                        // keeps streaming and the scroll position is kept.
+                        chatColumn(compact: true)
                             .opacity(pane == .chat ? 1 : 0)
                             .allowsHitTesting(pane == .chat)
                             .accessibilityHidden(pane != .chat)
-                        if pane == .app {
-                            AppPane(store: store, sheet: $sheet, immersive: $immersive)
-                                .transition(.opacity)
+                        if pane != .chat {
+                            AppPane(
+                                store: store,
+                                tab: Binding(get: { pane == .code ? .code : .preview }, set: { pane = $0 == .code ? .code : .preview }),
+                                showsHeader: false,
+                                sheet: $sheet,
+                                immersive: $immersive
+                            )
+                            .transition(.opacity)
                         }
                     }
                 }
             }
             .toolbar {
-                if !split {
-                    ToolbarItem(placement: .principal) {
-                        SegmentedTabs(
-                            selection: $pane,
-                            items: [.init(value: .chat, title: "Chat"), .init(value: .app, title: "App")],
-                            compact: true
-                        )
-                        .frame(width: 168)
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                } else {
+                if split {
                     ToolbarItem(placement: .principal) {
                         HStack(spacing: 6) {
                             Image(systemName: store.project.kind.symbol).foregroundStyle(Sand.subtle)
                             Text(store.project.name).font(.headline).foregroundStyle(Sand.text).lineLimit(1)
                         }
+                        .accessibilityElement(children: .combine)
                     }
-                }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        showThreads = true
-                    } label: {
-                        Label("Chats", systemImage: "bubble.left.and.bubble.right")
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        Button {
+                            showThreads = true
+                        } label: {
+                            Label("Chats", systemImage: "bubble.left.and.bubble.right")
+                        }
+                        .accessibilityIdentifier("workspace.threads")
+                        moreMenu
                     }
-                    .accessibilityIdentifier("workspace.threads")
-                    moreMenu
+                } else {
+                    // One switch for the whole workspace: no second row of tabs
+                    // under the navigation bar.
+                    ToolbarItem(placement: .principal) {
+                        SegmentedTabs(
+                            selection: $pane,
+                            items: [
+                                .init(value: .chat, title: "Chat"),
+                                .init(value: .preview, title: store.project.isSwift ? "App" : "Preview"),
+                                .init(value: .code, title: "Code"),
+                            ],
+                            compact: true
+                        )
+                        .fixedSize()
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                    ToolbarItem(placement: .topBarTrailing) { moreMenu }
                 }
             }
+            .overlay {
+                // Full screen belongs to the workspace, not to one pane: on an
+                // iPad it covers the chat column too.
+                if immersive {
+                    ImmersiveSimulatorView(controller: store.simulator, immersive: $immersive)
+                        .transition(.opacity)
+                }
+            }
+            .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: immersive)
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .toolbar(immersive ? .hidden : .visible, for: .navigationBar)
-        .statusBarHidden(immersive)
         .background(Sand.canvas.ignoresSafeArea())
+        .background { shortcuts }
         .sheet(isPresented: $showThreads) { ThreadsSheet(store: store).tint(Sand.text) }
         .sheet(item: $sheet) { sheet in
             Group {
@@ -129,18 +169,19 @@ struct WorkspaceView: View {
         }
     }
 
-    private var chatColumn: some View {
-        VStack(spacing: 0) {
-            if store.openThreads.count > 1 {
-                ThreadStrip(store: store) { showThreads = true }
-            }
+    // MARK: Chat column
+
+    private func chatColumn(compact: Bool) -> some View {
+        Group {
             if let thread = store.session {
-                ChatView(store: store, session: thread)
+                ChatView(store: store, session: thread, compact: compact) { showThreads = true }
                     .id(thread.threadId)
             } else if let error = store.loadError {
-                ErrorBanner(message: error) { Task { await store.open(threadId: route.threadId) } }
-                    .padding(Space.gutter)
-                Spacer()
+                VStack {
+                    ErrorBanner(message: error) { Task { await store.open(threadId: route.threadId) } }
+                        .padding(Space.gutter)
+                    Spacer()
+                }
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -148,10 +189,86 @@ struct WorkspaceView: View {
         .background(Sand.canvas)
     }
 
+    // MARK: Divider
+
+    private func chatWidth(in total: CGFloat) -> CGFloat {
+        let preferred = storedChatWidth > 0 ? CGFloat(storedChatWidth) : total * 0.4
+        return min(max(300, total - 340), max(300, min(preferred, 560)))
+    }
+
+    /// The line between the panes. Drag it to give the chat or the app more
+    /// room; double-tap to reset.
+    private func divider(total: CGFloat, current: CGFloat) -> some View {
+        Rectangle()
+            .fill(Sand.border)
+            .frame(width: 1)
+            .overlay {
+                Capsule()
+                    .fill(Sand.borderStrong)
+                    .frame(width: 4, height: 36)
+                    .opacity(dragStartWidth == nil ? 0.7 : 1)
+            }
+            .frame(width: 17)
+            .contentShape(Rectangle())
+            .hoverEffect(.highlight)
+            .gesture(
+                DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                    .onChanged { value in
+                        let start = dragStartWidth ?? current
+                        dragStartWidth = start
+                        storedChatWidth = Double(min(max(300, total - 340), max(300, min(560, start + value.translation.width))))
+                    }
+                    .onEnded { _ in dragStartWidth = nil }
+            )
+            .onTapGesture(count: 2) {
+                withAnimation(reduceMotion ? nil : .snappy) { storedChatWidth = 0 }
+            }
+            .accessibilityElement()
+            .accessibilityLabel("Pane divider")
+            .accessibilityValue("Chat is \(Int(current)) points wide")
+            .accessibilityAdjustableAction { direction in
+                let step: CGFloat = direction == .increment ? 40 : -40
+                storedChatWidth = Double(min(max(300, total - 340), max(300, min(560, current + step))))
+            }
+    }
+
+    // MARK: Keyboard
+
+    /// Hardware-keyboard shortcuts (iPad, or a keyboard paired with a phone).
+    /// They show in the system's shortcut overlay when ⌘ is held.
+    private var shortcuts: some View {
+        Group {
+            Button("New chat") { Task { await store.newThread() } }
+                .keyboardShortcut("n", modifiers: .command)
+            Button("Show chat") { pane = .chat }
+                .keyboardShortcut("1", modifiers: .command)
+            Button(store.project.isSwift ? "Show app" : "Show preview") {
+                pane = .preview
+                appTab = .preview
+            }
+            .keyboardShortcut("2", modifiers: .command)
+            Button("Show code") {
+                pane = .code
+                appTab = .code
+            }
+            .keyboardShortcut("3", modifiers: .command)
+            Button("All chats") { showThreads = true }
+                .keyboardShortcut("k", modifiers: .command)
+            if !store.project.isSwift {
+                Button("Publish") { sheet = .publish }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
+            }
+        }
+        .opacity(0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
     private var moreMenu: some View {
         Menu {
             Section(store.project.name) {
                 Button { Task { await store.newThread() } } label: { Label("New chat", systemImage: "plus.bubble") }
+                Button { showThreads = true } label: { Label("All chats", systemImage: "bubble.left.and.bubble.right") }
                 Button { sheet = .share } label: { Label("Share project", systemImage: "person.badge.plus") }
                 if !store.project.isSwift {
                     Button { sheet = .publish } label: { Label("Publish", systemImage: "globe") }
@@ -170,8 +287,11 @@ struct WorkspaceView: View {
                 Button {
                     sheet = .web(title: store.project.name, url: AppConfig.baseURL.appendingPathComponent("workspace/\(store.projectId)"))
                 } label: { Label("Open full web workspace", systemImage: "macwindow") }
+                if let url = store.previewURL, url.scheme?.hasPrefix("http") == true {
+                    Link(destination: url) { Label("Open preview in Safari", systemImage: "safari") }
+                }
                 if let url = store.project.liveURL {
-                    Link(destination: url) { Label("Visit live site", systemImage: "safari") }
+                    Link(destination: url) { Label("Visit live site", systemImage: "globe") }
                 }
                 Button { router.sheet = .settings } label: { Label("Settings", systemImage: "gearshape") }
             }
@@ -183,7 +303,7 @@ struct WorkspaceView: View {
 }
 
 enum WorkspaceLayout: Equatable {
-    /// One pane at a time, switched with Chat / App.
+    /// One pane at a time, switched with Chat / Preview / Code.
     case single
     /// Chat beside the app, chat the narrower.
     case sideBySide
@@ -197,9 +317,11 @@ enum WorkspaceLayout: Equatable {
             // A book-style fold: the crease runs down the middle in portrait
             // and across the middle in landscape.
             if size.width > size.height, size.height >= 560 { return .stacked }
-            if size.width >= 560 { return .halves }
+            if size.width >= 560, size.height >= 500 { return .halves }
         }
-        return size.width >= 640 ? .sideBySide : .single
+        // Two panes need room both ways: a phone on its side is wide enough
+        // but far too short once the keyboard is up.
+        return size.width >= 640 && size.height >= 500 ? .sideBySide : .single
     }
 }
 

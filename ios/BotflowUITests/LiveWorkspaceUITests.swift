@@ -33,8 +33,9 @@ final class LiveWorkspaceUITests: XCTestCase {
         // ...and Send returns when the turn is over.
         XCTAssertTrue(app.buttons["composer.send"].waitForExistence(timeout: 420), "The turn did not finish")
 
-        // The App pane shows the running preview.
-        app.buttons["App"].firstMatch.tap()
+        // The Preview pane shows the running app (already beside the chat on an iPad).
+        let preview = app.buttons["Preview"].firstMatch
+        if preview.exists { preview.tap() }
         XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 240), "The preview did not load")
         sleep(6)
     }
@@ -96,7 +97,7 @@ final class LiveWorkspaceUITests: XCTestCase {
         // Full screen and back.
         fullScreen.tap()
         sleep(5)
-        app.buttons["Exit full screen"].tap()
+        app.buttons["simulator.exitFullscreen"].tap()
         XCTAssertTrue(fullScreen.waitForExistence(timeout: 10))
         sleep(2)
     }

@@ -18,7 +18,10 @@ enum Haptics {
 enum ButtonSize {
     case small, regular, large
 
-    var height: CGFloat { self == .small ? 36 : self == .regular ? 44 : 52 }
+    /// Small controls are 38 points tall and accept touches 3 points beyond
+    /// each edge, so every control has at least a 44-point target.
+    var height: CGFloat { self == .small ? 38 : self == .regular ? 44 : 52 }
+    var hitSlop: CGFloat { self == .small ? 3 : 0 }
     var font: Font {
         switch self {
         case .small: return .subheadline.weight(.medium)
@@ -37,6 +40,7 @@ struct InkButtonStyle: ButtonStyle {
     var fullWidth = false
     @Environment(\.isEnabled) private var enabled
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         let shape = RoundedRectangle(cornerRadius: size.radius, style: .continuous)
@@ -60,9 +64,10 @@ struct InkButtonStyle: ButtonStyle {
             }
             .shadow(color: Sand.shadow.opacity(enabled ? 0.14 : 0), radius: 2, y: 1)
             .opacity(enabled ? (configuration.isPressed ? 0.82 : 1) : 0.45)
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
             .animation(.snappy(duration: 0.16), value: configuration.isPressed)
-            .contentShape(shape)
+            .contentShape(shape.inset(by: -size.hitSlop))
+            .hoverEffect(.highlight)
     }
 }
 
@@ -88,7 +93,8 @@ struct RaisedButtonStyle: ButtonStyle {
             .shadow(color: Sand.shadow.opacity(enabled ? 0.06 : 0), radius: 1.5, y: 1)
             .opacity(enabled ? 1 : 0.5)
             .animation(.snappy(duration: 0.16), value: configuration.isPressed)
-            .contentShape(shape)
+            .contentShape(shape.inset(by: -size.hitSlop))
+            .hoverEffect(.highlight)
     }
 }
 
@@ -104,7 +110,8 @@ struct GhostButtonStyle: ButtonStyle {
             .padding(.horizontal, size.padding - 6)
             .frame(minHeight: size.height)
             .background(configuration.isPressed ? Sand.elevated : .clear, in: RoundedRectangle(cornerRadius: size.radius, style: .continuous))
-            .contentShape(Rectangle())
+            .contentShape(Rectangle().inset(by: -size.hitSlop))
+            .hoverEffect(.highlight)
     }
 }
 
@@ -113,6 +120,7 @@ struct CircleIconButtonStyle: ButtonStyle {
     var diameter: CGFloat = 40
     var filled = false
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -124,19 +132,21 @@ struct CircleIconButtonStyle: ButtonStyle {
                 if !filled { Circle().strokeBorder(Sand.border, lineWidth: 1) }
             }
             .opacity(enabled ? (configuration.isPressed ? 0.75 : 1) : 0.4)
-            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.94 : 1)
             .animation(.snappy(duration: 0.16), value: configuration.isPressed)
-            .contentShape(Circle().inset(by: -4))
+            .contentShape(Circle().inset(by: -max(4, (44 - diameter) / 2)))
+            .hoverEffect(.highlight)
     }
 }
 
 /// A press that only dims and settles: for whole cards and rows.
 struct PressableStyle: ButtonStyle {
     var scale: CGFloat = 0.98
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? scale : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? scale : 1)
             .opacity(configuration.isPressed ? 0.88 : 1)
             .animation(.snappy(duration: 0.18), value: configuration.isPressed)
     }
@@ -214,8 +224,8 @@ struct Badge: View {
     }
 }
 
-/// The agent status dot: pulsing while running, amber when it needs you, red
-/// on an error, a quiet accent dot when it finished unread.
+/// The agent status dot: pulsing cobalt while running, amber when it needs
+/// you, red on an error, green when it finished and has not been read.
 struct StatusDot: View {
     var status: ThreadStatus
     var unread = false
@@ -228,7 +238,7 @@ struct StatusDot: View {
         case .running: return Sand.accent
         case .needsInput: return Sand.warningSolid
         case .error: return Sand.dangerSolid
-        case .idle: return unread ? Sand.accent : nil
+        case .idle: return unread ? Sand.successSolid : nil
         }
     }
 
@@ -300,6 +310,7 @@ struct SegmentedTabs<Value: Hashable>: View {
     var items: [Item]
     var compact = false
     @Namespace private var namespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 2) {
@@ -308,7 +319,8 @@ struct SegmentedTabs<Value: Hashable>: View {
                 Button {
                     guard !selected else { return }
                     Haptics.select()
-                    withAnimation(.snappy(duration: 0.28)) { selection = item.value }
+                    // With Reduce Motion the selection changes in place instead of sliding.
+                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) { selection = item.value }
                 } label: {
                     HStack(spacing: 5) {
                         if let symbol = item.symbol { Image(systemName: symbol).imageScale(.small) }
@@ -316,18 +328,20 @@ struct SegmentedTabs<Value: Hashable>: View {
                     }
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(selected ? Sand.text : Sand.muted)
+                    .lineLimit(1)
                     .padding(.horizontal, compact ? 12 : 16)
-                    .frame(maxWidth: compact ? nil : .infinity, minHeight: 34)
+                    // 38 + the track's 3-point padding either side: a 44-point target.
+                    .frame(maxWidth: compact ? nil : .infinity, minHeight: 38)
                     .background {
                         if selected {
                             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(Sand.card)
-                                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Sand.border, lineWidth: 1))
-                                .shadow(color: Sand.shadow.opacity(0.08), radius: 1.5, y: 1)
+                                .fill(Sand.raised)
+                                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Sand.borderStrong.opacity(0.6), lineWidth: 1))
+                                .shadow(color: Sand.shadow.opacity(0.1), radius: 1.5, y: 1)
                                 .matchedGeometryEffect(id: "segment", in: namespace)
                         }
                     }
-                    .contentShape(Rectangle())
+                    .contentShape(Rectangle().inset(by: -3))
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selected ? .isSelected : [])

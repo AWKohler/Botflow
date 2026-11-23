@@ -44,10 +44,48 @@ export function describeTool(name: string): { verb: string; symbol: string } {
   }
 }
 
-/** Should a turn started by this person send step heartbeats? Never throws. */
+/**
+ * Should a turn started by this person send step heartbeats? Yes when they use
+ * the iOS app: the heartbeat feeds its Agents tab (below) and, with an APNs
+ * key, its Live Activity. Never throws.
+ */
 export async function wantsProgressBeacon(userId: string): Promise<boolean> {
-  if (!isApnsConfigured()) return false;
   return hasDevices(userId).catch(() => false);
+}
+
+export interface TurnProgress {
+  tool: string;
+  detail: string;
+  steps: number;
+  at: number;
+}
+
+const progressKey = (threadId: string) => `agent:progress:${threadId}`;
+const PROGRESS_TTL_SECONDS = 15 * 60;
+
+/** The step a running agent is on, kept briefly for the app's Agents tab. */
+export async function recordTurnProgress(threadId: string, progress: Omit<TurnProgress, "at">): Promise<void> {
+  await redis.setex(progressKey(threadId), PROGRESS_TTL_SECONDS, JSON.stringify({ ...progress, at: Date.now() })).catch(() => {});
+}
+
+export async function getTurnProgress(threadIds: string[]): Promise<Map<string, TurnProgress>> {
+  const out = new Map<string, TurnProgress>();
+  await Promise.all(
+    threadIds.map(async (id) => {
+      try {
+        const raw = await redis.get<TurnProgress | string>(progressKey(id));
+        const parsed = typeof raw === "string" ? (JSON.parse(raw) as TurnProgress) : raw;
+        if (parsed && typeof parsed.tool === "string") out.set(id, parsed);
+      } catch {
+        /* no progress to show */
+      }
+    }),
+  );
+  return out;
+}
+
+export async function clearTurnProgress(threadId: string): Promise<void> {
+  await redis.del(progressKey(threadId)).catch(() => {});
 }
 
 function clip(text: string, max: number): string {
@@ -179,6 +217,7 @@ export async function pushTurnProgress(input: {
   steps: number;
 }): Promise<boolean> {
   try {
+    await recordTurnProgress(input.threadId, { tool: input.tool, detail: clip(input.detail, 80), steps: input.steps });
     if (!isApnsConfigured()) return false;
     if (!(await getLiveActivity(input.userId, input.threadId))) return false;
     const { verb, symbol } = describeTool(input.tool);
@@ -218,6 +257,7 @@ export async function notifyTurnEnded(input: {
   summary: string;
 }): Promise<void> {
   try {
+    await clearTurnProgress(input.threadId);
     if (!isApnsConfigured()) return;
     const state = await readActivityState(input.threadId, input.userId);
     const failed = input.outcome === "failed";

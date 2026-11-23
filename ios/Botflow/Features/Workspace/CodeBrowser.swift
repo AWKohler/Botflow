@@ -176,10 +176,12 @@ struct CodeBrowser: View {
                         .frame(width: 12)
                     Image(systemName: expanded.contains(row.file.path) ? "folder.fill" : "folder")
                         .foregroundStyle(Sand.muted)
+                        .frame(width: 22)
                 } else {
                     Spacer().frame(width: 12)
                     Image(systemName: Self.symbol(for: row.file.name))
                         .foregroundStyle(Sand.subtle)
+                        .frame(width: 22)
                 }
                 Text(row.file.name)
                     .font(.subheadline)
@@ -189,7 +191,7 @@ struct CodeBrowser: View {
             }
             .padding(.leading, Space.m + CGFloat(row.depth) * 16)
             .padding(.trailing, Space.m)
-            .frame(minHeight: 38)
+            .frame(minHeight: 44)
             .background(isSelected ? Sand.elevated : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .padding(.horizontal, 6)
             .contentShape(Rectangle())

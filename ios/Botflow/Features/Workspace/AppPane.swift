@@ -3,27 +3,22 @@ import SwiftUI
 /// The app being built: its running preview and its code.
 struct AppPane: View {
     @ObservedObject var store: WorkspaceStore
+    @Binding var tab: Tab
+    /// Two-pane layouts show their own Preview / Code switch and actions here;
+    /// on a phone the navigation bar's switch does that job.
+    var showsHeader: Bool
     @Binding var sheet: WorkspaceSheet?
     @Binding var immersive: Bool
-    @StateObject private var simulator: SimulatorController
-    @State private var tab: Tab = ["workspace-code", "workspace-file"].contains(AppConfig.demoRoute ?? "") ? .code : .preview
 
     enum Tab: Hashable { case preview, code }
 
-    init(store: WorkspaceStore, sheet: Binding<WorkspaceSheet?>, immersive: Binding<Bool>) {
-        self.store = store
-        _sheet = sheet
-        _immersive = immersive
-        _simulator = StateObject(wrappedValue: SimulatorController(projectId: store.projectId, service: store.service))
-    }
-
     var body: some View {
         VStack(spacing: 0) {
-            if !immersive {
+            if showsHeader {
                 HStack(spacing: Space.s) {
                     SegmentedTabs(
                         selection: $tab,
-                        items: [.init(value: .preview, title: "Preview"), .init(value: .code, title: "Code")],
+                        items: [.init(value: .preview, title: store.project.isSwift ? "App" : "Preview"), .init(value: .code, title: "Code")],
                         compact: true
                     )
                     Spacer(minLength: 0)
@@ -46,27 +41,26 @@ struct AppPane: View {
             switch tab {
             case .preview:
                 if store.project.isSwift {
-                    SimulatorView(controller: simulator, immersive: $immersive)
+                    SimulatorView(controller: store.simulator, immersive: $immersive)
+                        .padding(.top, showsHeader ? 0 : Space.s)
                 } else {
-                    WebPreviewView(store: store)
+                    WebPreviewView(store: store, showsPublish: !showsHeader) { sheet = .publish }
+                        .padding(.top, showsHeader ? 0 : Space.s)
                 }
             case .code:
                 CodeBrowser(store: store)
+                    .padding(.top, showsHeader ? 0 : Space.s)
             }
         }
         .background(Sand.canvas)
         .onAppear {
-            if store.project.isSwift { simulator.watchAgentRequests() }
+            if store.project.isSwift { store.simulator.watchAgentRequests() }
         }
         .task {
             // Demo entry points: the simulator already running, or full screen.
             guard let route = AppConfig.demoRoute, route == "workspace-sim" || route == "workspace-immersive" else { return }
-            await simulator.start()
+            await store.simulator.start()
             if route == "workspace-immersive" { immersive = true }
-        }
-        .onDisappear {
-            simulator.stopWatching()
-            immersive = false
         }
     }
 }
@@ -75,6 +69,9 @@ struct AppPane: View {
 /// each agent turn.
 struct WebPreviewView: View {
     @ObservedObject var store: WorkspaceStore
+    /// On a phone Publish lives in the address row.
+    var showsPublish = false
+    var onPublish: () -> Void = {}
     @StateObject private var web = WebViewModel()
     @State private var width: PreviewWidth = .fill
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -116,11 +113,13 @@ struct WebPreviewView: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, Space.m)
-            .frame(minHeight: 36)
+            .frame(minHeight: 38)
             .background(Sand.card, in: Capsule())
             .overlay(Capsule().strokeBorder(Sand.border, lineWidth: 1))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Preview address: \(addressLabel)")
 
-            if sizeClass == .regular {
+            if sizeClass == .regular, !showsPublish {
                 Menu {
                     Picker("Width", selection: $width) {
                         ForEach(PreviewWidth.allCases, id: \.self) { item in
@@ -140,13 +139,14 @@ struct WebPreviewView: View {
                 Image(systemName: "arrow.clockwise").frame(width: 20, height: 20)
             }
             .buttonStyle(RaisedButtonStyle(size: .small))
+            .keyboardShortcut("r", modifiers: .command)
             .accessibilityLabel("Reload preview")
-            if let url = store.previewURL, url.scheme?.hasPrefix("http") == true {
-                Link(destination: url) {
-                    Image(systemName: "safari").frame(width: 20, height: 20)
+            if showsPublish {
+                Button(action: onPublish) {
+                    Label("Publish", systemImage: "globe").lineLimit(1).fixedSize()
                 }
-                .buttonStyle(RaisedButtonStyle(size: .small))
-                .accessibilityLabel("Open in Safari")
+                .buttonStyle(InkButtonStyle(size: .small))
+                .accessibilityIdentifier("workspace.publish")
             }
         }
     }

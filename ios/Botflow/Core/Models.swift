@@ -127,10 +127,22 @@ struct ThreadsResponse: Codable, Sendable {
 /// A running or waiting agent anywhere in the account, for the Agents tab,
 /// notifications and the Live Activity.
 struct AgentActivity: Codable, Identifiable, Hashable, Sendable {
+    struct Step: Codable, Hashable, Sendable {
+        var tool: String
+        var detail: String
+        var steps: Int
+    }
+
     var projectId: String
     var projectName: String
     var platform: String?
     var thread: ThreadSummary
+    /// The step a running agent is on, when the server knows it.
+    var currentStep: Step?
+    /// Why a failed agent stopped.
+    var error: String?
+    /// What a waiting agent asked.
+    var question: String?
 
     var id: String { "\(projectId):\(thread.id)" }
 }

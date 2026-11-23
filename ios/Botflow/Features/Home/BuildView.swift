@@ -2,6 +2,9 @@ import SwiftUI
 
 /// The home screen: describe an app and an agent starts building it.
 struct BuildView: View {
+    @State private var composerWidth: CGFloat = 360
+    /// How much larger than standard the text is, so the width thresholds keep up.
+    @ScaledMetric(relativeTo: .subheadline) private var textScale: CGFloat = 1
     @EnvironmentObject private var session: AppSession
     @EnvironmentObject private var router: Router
     @EnvironmentObject private var agents: AgentsHub
@@ -29,10 +32,12 @@ struct BuildView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Space.xxl) {
+                // An agent waiting on an answer is the most pressing thing here.
+                if !agents.needsInput.isEmpty { activeStrip.padding(.top, Space.s).padding(.bottom, -Space.m) }
                 hero
                 composer
                 connections
-                if !agents.running.isEmpty || !agents.needsInput.isEmpty { activeStrip }
+                if agents.needsInput.isEmpty, !agents.running.isEmpty { activeStrip }
                 if !recent.isEmpty { jumpBackIn }
                 suggestions
             }
@@ -119,31 +124,23 @@ struct BuildView: View {
             .padding(.horizontal, Space.m)
 
             HStack(spacing: Space.s) {
-                Button { showModels = true } label: {
-                    HStack(spacing: 6) {
-                        ProviderMark(provider: model.provider, size: 16)
-                        Text(model.name).lineLimit(1)
-                        Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(Sand.subtle)
+                // Both choices stay in words; what gives way on a narrow screen
+                // is the vendor's name, then the chevrons, and only then the label.
+                // Chosen from the measured width: a layout that tries each in
+                // turn re-measures the buttons endlessly.
+                let room = (composerWidth - 2 * Space.m - 42 - Space.s) / textScale
+                Group {
+                    if room >= 350 {
+                        choices(modelName: model.name, chevrons: true, backendWords: true)
+                    } else if room >= 306 {
+                        choices(modelName: model.shortName, chevrons: true, backendWords: true)
+                    } else if room >= 270 {
+                        choices(modelName: model.shortName, chevrons: false, backendWords: true)
+                    } else {
+                        choices(modelName: model.shortName, chevrons: false, backendWords: false)
                     }
                 }
-                .buttonStyle(RaisedButtonStyle(size: .small))
-                .accessibilityLabel("Model: \(model.name)")
-
-                Menu {
-                    Picker("Backend", selection: $backend) {
-                        Label("No backend", systemImage: "nosign").tag("none")
-                        Label("Convex (your account)", systemImage: "cylinder.split.1x2").tag("user")
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: backend == "none" ? "nosign" : "cylinder.split.1x2")
-                        Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(Sand.subtle)
-                    }
-                }
-                .buttonStyle(RaisedButtonStyle(size: .small))
-                .accessibilityLabel(backend == "none" ? "Backend: none" : "Backend: Convex")
-
-                Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Button(action: create) {
                     if creating {
@@ -159,9 +156,39 @@ struct BuildView: View {
             }
             .padding(Space.m)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { composerWidth = $0 }
         .background(Sand.elevated.opacity(0.6), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .sandCard(radius: 22)
         .shadow(color: Sand.shadow.opacity(0.06), radius: 22, y: 10)
+    }
+
+    private func choices(modelName: String, chevrons: Bool, backendWords: Bool) -> some View {
+        HStack(spacing: Space.s) {
+            Button { showModels = true } label: {
+                HStack(spacing: 6) {
+                    ProviderMark(provider: model.provider, modelId: model.id, size: 16)
+                    Text(modelName).lineLimit(1)
+                    if chevrons { Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(Sand.subtle) }
+                }
+            }
+            .buttonStyle(RaisedButtonStyle(size: .small))
+            .accessibilityLabel("Model: \(model.name)")
+
+            Menu {
+                Picker("Backend", selection: $backend) {
+                    Label("No backend", systemImage: "nosign").tag("none")
+                    Label("Convex (your account)", systemImage: "cylinder.split.1x2").tag("user")
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: backend == "none" ? "cylinder.split.1x2" : "cylinder.split.1x2.fill")
+                    if backendWords { Text(backend == "none" ? "No backend" : "Convex").lineLimit(1) }
+                    if chevrons || !backendWords { Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(Sand.subtle) }
+                }
+            }
+            .buttonStyle(RaisedButtonStyle(size: .small))
+            .accessibilityLabel(backend == "none" ? "Backend: none" : "Backend: Convex")
+        }
     }
 
     @ViewBuilder
@@ -270,6 +297,8 @@ struct BuildView: View {
                 .padding(.horizontal, Space.gutter)
             }
             .scrollIndicators(.hidden)
+            // Cards run off the screen's edge, not off the column's.
+            .scrollClipDisabled()
             .padding(.horizontal, -Space.gutter)
         }
     }

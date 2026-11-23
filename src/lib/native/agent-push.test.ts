@@ -6,7 +6,7 @@ import { createProject } from "@/test/factories";
 import { chatSessions } from "@/db/schema";
 import { apnsConfig, providerToken, setApnsTransportForTests, type ApnsRequest, type ApnsResult } from "./apns";
 import { listDevices, registerDevice, registerLiveActivity, getLiveActivity } from "./devices";
-import { notifyNeedsInput, notifyTurnEnded, plainSummary, pushTurnProgress, seedActivityState, wantsProgressBeacon } from "./agent-push";
+import { getTurnProgress, notifyNeedsInput, notifyTurnEnded, plainSummary, pushTurnProgress, seedActivityState, wantsProgressBeacon } from "./agent-push";
 
 setupTestDb();
 
@@ -62,13 +62,17 @@ describe("provider token", () => {
 });
 
 describe("without an APNs key", () => {
-  test("nothing is sent and no heartbeat is requested", async () => {
+  test("nothing is sent", async () => {
     const { projectId, threadId } = await seed();
     await registerDevice("u1", { token: DEVICE, environment: "production", bundleId: "io.botflow.app" });
     await notifyTurnEnded({ userId: "u1", projectId, threadId, outcome: "done", summary: "Done." });
     expect(await pushTurnProgress({ userId: "u1", threadId, tool: "Read", detail: "a.ts", steps: 1 })).toBe(false);
-    expect(await wantsProgressBeacon("u1")).toBe(false);
     expect(sent).toHaveLength(0);
+    // The step is still recorded: the app's Agents tab reads it.
+    expect((await getTurnProgress([threadId])).get(threadId)).toMatchObject({ tool: "Read", detail: "a.ts", steps: 1 });
+    // ...and cleared when the turn is over.
+    await notifyTurnEnded({ userId: "u1", projectId, threadId, outcome: "done", summary: "Done." });
+    expect((await getTurnProgress([threadId])).size).toBe(0);
   });
 });
 

@@ -171,6 +171,7 @@ struct AssistantMessageView: View {
                     ToolGroupView(calls: calls, live: message.streaming && segment.id == segments.last?.id, onInspect: onInspect)
                 case .question(let call):
                     QuestionCard(call: call, onAnswer: onAnswer)
+                        .id("question-\(call.id)")
                 case .images(let images):
                     HStack { ForEach(images) { AttachmentThumb(url: $0.url, size: 96) } }
                 case .notice(_, let text, let isError):
@@ -232,6 +233,7 @@ struct ThinkingView: View {
                 }
                 .font(.subheadline)
                 .foregroundStyle(Sand.subtle)
+                .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -262,6 +264,7 @@ struct ToolGroupView: View {
     var live: Bool
     var onInspect: (ToolCall) -> Void
     @State private var expanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var open: Bool { live || expanded || calls.count <= 3 }
     private var failures: Int { calls.filter { $0.state == .error }.count }
@@ -291,7 +294,7 @@ struct ToolGroupView: View {
                         }
                     }
                     .padding(.horizontal, Space.m)
-                    .frame(minHeight: 40)
+                    .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -299,17 +302,36 @@ struct ToolGroupView: View {
                 if open { Divider().overlay(Sand.border) }
             }
             if open {
-                let shown = live && calls.count > 5 ? Array(calls.suffix(5)) : calls
+                // While the agent works only its latest steps show, with a way
+                // to see the rest.
+                let folded = live && !expanded && calls.count > 5
+                let shown = folded ? Array(calls.suffix(5)) : calls
                 VStack(alignment: .leading, spacing: 0) {
+                    if folded {
+                        Button {
+                            Haptics.select()
+                            withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) { expanded = true }
+                        } label: {
+                            Text("\(calls.count - shown.count) earlier steps")
+                                .font(.footnote.weight(.medium))
+                                .foregroundStyle(Sand.subtle)
+                                .padding(.horizontal, Space.m)
+                                .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                     ForEach(shown) { call in
                         ToolRow(call: call, onInspect: onInspect)
-                            .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+                            .transition(reduceMotion ? .opacity : .asymmetric(insertion: .offset(y: 8).combined(with: .opacity), removal: .opacity))
                     }
                 }
                 .padding(.vertical, 3)
             }
         }
         .background(Sand.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        // Arriving rows stay inside the card.
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Sand.border, lineWidth: 1))
         .animation(.snappy(duration: 0.3), value: calls.count)
     }
@@ -381,7 +403,7 @@ struct ToolRow: View {
                         .foregroundStyle(Sand.borderStrong)
                 }
                 .padding(.horizontal, Space.m)
-                .frame(minHeight: 36)
+                .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

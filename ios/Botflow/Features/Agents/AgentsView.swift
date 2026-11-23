@@ -1,37 +1,45 @@
 import SwiftUI
 
 /// Mission control: every agent that is working, waiting on you or just
-/// finished, across all projects.
+/// finished, across all projects, with enough on each card to decide whether
+/// it needs opening.
 struct AgentsView: View {
     @EnvironmentObject private var hub: AgentsHub
     @EnvironmentObject private var router: Router
     @EnvironmentObject private var session: AppSession
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let columns = [GridItem(.adaptive(minimum: 320, maximum: 560), spacing: Space.m, alignment: .top)]
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: Space.xxl) {
-                summary
-                if !hub.loaded {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
-                } else if hub.agents.isEmpty {
-                    EmptyState(
-                        symbol: "bolt",
-                        title: "No agents at work",
-                        message: "Agents you start show up here while they run, and stay until you've read what they did.",
-                        actionTitle: "Start building",
-                        action: { router.tab = .build }
-                    )
-                    .padding(.top, 40)
-                } else {
-                    section("Needs you", hub.needsInput + hub.failed)
-                    section("Working", hub.running)
-                    section("Finished", hub.finished)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: Space.xxl) {
+                    summary(proxy)
+                    if !hub.loaded {
+                        ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
+                    } else if let error = hub.error, hub.agents.isEmpty {
+                        ErrorBanner(message: error) { Task { await hub.refresh() } }
+                    } else if hub.agents.isEmpty {
+                        EmptyState(
+                            symbol: "bolt",
+                            title: "No agents at work",
+                            message: "Agents you start show up here while they run, and stay until you've read what they did.",
+                            actionTitle: "Start building",
+                            action: { router.tab = .build }
+                        )
+                        .padding(.top, 40)
+                    } else {
+                        section("Needs you", "needs", hub.needsInput + hub.failed)
+                        section("Working", "working", hub.running)
+                        section("Finished", "finished", hub.finished)
+                    }
                 }
+                // The same leading edge as the large title, at every width.
+                .padding(.horizontal, Space.gutter)
+                .padding(.bottom, Space.xxl)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, Space.gutter)
-            .padding(.bottom, Space.xxl)
-            .frame(maxWidth: 760)
-            .frame(maxWidth: .infinity)
         }
         .sandCanvas()
         .navigationTitle("Agents")
@@ -39,34 +47,46 @@ struct AgentsView: View {
         .refreshable { await hub.refresh() }
     }
 
-    private var summary: some View {
+    private func summary(_ proxy: ScrollViewProxy) -> some View {
         HStack(spacing: Space.m) {
-            stat(hub.running.count, "Working", .accent)
-            stat(hub.needsInput.count + hub.failed.count, "Need you", .warning)
-            stat(hub.finished.count, "Finished", .success)
+            stat(hub.needsInput.count + hub.failed.count, "Need you", .warning, target: "needs", proxy)
+            stat(hub.running.count, "Working", .accent, target: "working", proxy)
+            stat(hub.finished.count, "Finished", .success, target: "finished", proxy)
         }
+        .frame(maxWidth: 560)
         .padding(.top, Space.s)
     }
 
-    private func stat(_ count: Int, _ label: String, _ tone: Tone) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("\(count)")
-                .font(.serif(38, relativeTo: .largeTitle))
-                .foregroundStyle(count > 0 ? tone.foreground : Sand.subtle)
-                .contentTransition(.numericText())
-            Text(label)
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(Sand.muted)
+    /// A count that is also a way to its section.
+    private func stat(_ count: Int, _ label: String, _ tone: Tone, target: String, _ proxy: ScrollViewProxy) -> some View {
+        Button {
+            guard count > 0 else { return }
+            Haptics.select()
+            withAnimation(reduceMotion ? nil : .snappy) { proxy.scrollTo(target, anchor: .top) }
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(count)")
+                    .font(.serif(38, relativeTo: .largeTitle))
+                    .foregroundStyle(count > 0 ? tone.foreground : Sand.subtle)
+                    .contentTransition(.numericText())
+                Text(label)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Sand.muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Space.l)
+            .padding(.vertical, Space.m)
+            .sandCard(radius: 16)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Space.l)
-        .padding(.vertical, Space.m)
-        .sandCard(radius: 16)
-        .accessibilityElement(children: .combine)
+        .buttonStyle(PressableStyle())
+        .accessibilityLabel("\(count) \(label.lowercased())")
+        .accessibilityHint(count > 0 ? "Jumps to that section" : "")
     }
 
     @ViewBuilder
-    private func section(_ title: String, _ items: [AgentActivity]) -> some View {
+    private func section(_ title: String, _ id: String, _ items: [AgentActivity]) -> some View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: Space.m) {
                 Text(title)
@@ -74,71 +94,137 @@ struct AgentsView: View {
                     .foregroundStyle(Sand.subtle)
                     .textCase(.uppercase)
                     .kerning(0.4)
-                VStack(spacing: 0) {
-                    ForEach(Array(items.enumerated()), id: \.element.id) { index, agent in
-                        Button {
-                            Haptics.tap()
-                            router.openProject(id: agent.projectId, threadId: agent.thread.id, session: session)
-                        } label: {
-                            AgentRow(agent: agent)
-                        }
-                        .buttonStyle(PressableStyle(scale: 0.99))
-                        if index < items.count - 1 {
-                            Divider().overlay(Sand.border).padding(.leading, 52)
-                        }
+                    .accessibilityAddTraits(.isHeader)
+                LazyVGrid(columns: columns, alignment: .leading, spacing: Space.m) {
+                    ForEach(items) { agent in
+                        card(agent)
                     }
                 }
-                .sandCard()
+            }
+            .id(id)
+        }
+    }
+
+    private func card(_ agent: AgentActivity) -> some View {
+        Button {
+            Haptics.tap()
+            router.openProject(id: agent.projectId, threadId: agent.thread.id, session: session)
+        } label: {
+            AgentCard(agent: agent)
+        }
+        .buttonStyle(PressableStyle(scale: 0.99))
+        .contextMenu {
+            Button {
+                router.openProject(id: agent.projectId, threadId: agent.thread.id, session: session)
+            } label: { Label(agent.thread.status == .needsInput ? "Answer" : "Open", systemImage: "arrow.up.forward.app") }
+            if agent.thread.status == .running {
+                Button(role: .destructive) { stop(agent) } label: { Label("Stop agent", systemImage: "stop.fill") }
+            }
+        }
+        .accessibilityAction(named: agent.thread.status == .running ? "Stop agent" : "Open") {
+            if agent.thread.status == .running { stop(agent) } else {
+                router.openProject(id: agent.projectId, threadId: agent.thread.id, session: session)
+            }
+        }
+    }
+
+    private func stop(_ agent: AgentActivity) {
+        Haptics.firm()
+        Task {
+            do {
+                try await session.service.stop(projectId: agent.projectId, threadId: agent.thread.id)
+                ToastCenter.shared.show("Stopped “\(agent.thread.displayTitle)”", symbol: "stop.circle.fill", tone: .neutral)
+                await hub.refresh()
+            } catch {
+                ToastCenter.shared.error(error)
             }
         }
     }
 }
 
-struct AgentRow: View {
+/// One agent: what it was asked, where, and the one line that says what is
+/// happening with it now.
+struct AgentCard: View {
     var agent: AgentActivity
 
     var body: some View {
-        HStack(alignment: .top, spacing: Space.m) {
-            StatusDot(status: agent.thread.status, unread: agent.thread.unread, size: 10)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Space.s) {
+            HStack(alignment: .top, spacing: Space.s) {
+                StatusDot(status: agent.thread.status, unread: agent.thread.unread, size: 10)
+                    .padding(.top, 1)
                 Text(agent.thread.displayTitle)
                     .font(.body.weight(.medium))
                     .foregroundStyle(Sand.text)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
-                HStack(spacing: 6) {
-                    Image(systemName: ProjectPlatform(raw: agent.platform).symbol)
-                        .imageScale(.small)
-                    Text(agent.projectName)
-                    Text("·")
-                    Text(ModelCatalog.name(agent.thread.model))
-                }
-                .font(.footnote)
-                .foregroundStyle(Sand.subtle)
-                .lineLimit(1)
-                if agent.thread.status != .idle {
-                    Badge(text: detail, tone: agent.thread.status.tone)
-                        .padding(.top, 2)
-                }
+                Spacer(minLength: Space.s)
+                Text(RelativeTime.short(agent.thread.updatedAt))
+                    .font(.footnote)
+                    .foregroundStyle(Sand.subtle)
+                    .monospacedDigit()
             }
-            Spacer(minLength: Space.s)
-            Text(RelativeTime.short(agent.thread.updatedAt))
-                .font(.footnote)
-                .foregroundStyle(Sand.subtle)
-                .monospacedDigit()
+            now
+                .padding(.leading, 28)
+            HStack(spacing: 6) {
+                Image(systemName: ProjectPlatform(raw: agent.platform).symbol).imageScale(.small)
+                Text(agent.projectName).lineLimit(1)
+                Text("·")
+                Text(ModelCatalog.name(agent.thread.model)).lineLimit(1).layoutPriority(-1)
+            }
+            .font(.footnote)
+            .foregroundStyle(Sand.subtle)
+            .padding(.leading, 28)
         }
-        .padding(.horizontal, Space.l)
-        .padding(.vertical, 14)
-        .contentShape(Rectangle())
+        .padding(Space.l)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .sandCard()
+        .contentShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
     }
 
-    private var detail: String {
+    /// The line that answers "what is it doing?" or "what does it want?".
+    @ViewBuilder
+    private var now: some View {
         switch agent.thread.status {
-        case .running: return agent.thread.queued > 0 ? "Working · \(agent.thread.queued) queued" : "Working"
-        case .needsInput: return "Waiting for your answer"
-        case .error: return "Stopped with an error"
-        case .idle: return "Finished"
+        case .running:
+            HStack(spacing: 6) {
+                if let step = agent.currentStep {
+                    let info = ToolPresentation.info(for: step.tool)
+                    Image(systemName: info.symbol).font(.footnote)
+                    Text(info.verb).fontWeight(.medium)
+                    if !step.detail.isEmpty {
+                        Text(ToolSummary.shortPath(step.detail)).font(.code(12.5)).foregroundStyle(Sand.subtle).lineLimit(1).truncationMode(.middle)
+                    }
+                    Text("· \(step.steps) steps").foregroundStyle(Sand.subtle).layoutPriority(-1)
+                } else {
+                    Text("Working").fontWeight(.medium)
+                }
+                if agent.thread.queued > 0 { Text("· \(agent.thread.queued) queued").foregroundStyle(Sand.subtle) }
+            }
+            .font(.subheadline)
+            .foregroundStyle(Sand.accent)
+            .lineLimit(1)
+        case .needsInput:
+            VStack(alignment: .leading, spacing: 6) {
+                Text(agent.question ?? "Waiting for your answer")
+                    .font(.subheadline)
+                    .foregroundStyle(Sand.text)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+                Badge(text: "Answer to continue", symbol: "questionmark.bubble", tone: .warning)
+            }
+        case .error:
+            VStack(alignment: .leading, spacing: 6) {
+                Text(agent.error ?? "The agent stopped before it finished.")
+                    .font(.subheadline)
+                    .foregroundStyle(Sand.danger)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+                Badge(text: "Stopped with an error", symbol: "exclamationmark.triangle", tone: .danger)
+            }
+        case .idle:
+            Badge(text: "Finished · tap to read", symbol: "checkmark", tone: .success)
         }
     }
 }

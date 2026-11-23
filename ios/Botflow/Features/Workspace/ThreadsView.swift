@@ -1,67 +1,112 @@
 import SwiftUI
 
 /// The project's agents as a strip of tabs: switch between conversations the
-/// way you switch browser tabs, with each agent's state on its tab.
+/// way you switch browser tabs, with each agent's state on its tab. On a phone
+/// it starts with the project's name, which opens the full list of chats.
 struct ThreadStrip: View {
     @ObservedObject var store: WorkspaceStore
+    var showsProject = false
     var onShowAll: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal) {
-                HStack(spacing: 6) {
-                    ForEach(store.openThreads.prefix(12)) { thread in
-                        let selected = thread.id == store.currentThreadId
+        HStack(spacing: 0) {
+            if showsProject {
+                Button(action: onShowAll) {
+                    HStack(spacing: 5) {
+                        Image(systemName: store.project.kind.symbol)
+                            .font(.footnote)
+                            .foregroundStyle(Sand.subtle)
+                        Text(store.project.name)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Sand.text)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.down")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Sand.subtle)
+                    }
+                    .padding(.leading, Space.l)
+                    .padding(.trailing, Space.s)
+                    .frame(maxWidth: 170, minHeight: 44, alignment: .leading)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .hoverEffect(.highlight)
+                .accessibilityLabel("\(store.project.name), all chats")
+                .accessibilityIdentifier("workspace.threads")
+            }
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    HStack(spacing: 2) {
+                        ForEach(store.openThreads.prefix(12)) { thread in
+                            chip(thread)
+                                .id(thread.id)
+                        }
                         Button {
-                            Haptics.select()
-                            Task { await store.select(threadId: thread.id) }
+                            Haptics.tap()
+                            Task { await store.newThread() }
                         } label: {
-                            HStack(spacing: 4) {
-                                if thread.status != .idle || thread.unread {
-                                    StatusDot(status: thread.status, unread: thread.unread, size: 7)
-                                }
-                                Text(thread.displayTitle)
-                                    .font(.footnote.weight(selected ? .semibold : .regular))
-                                    .foregroundStyle(selected ? Sand.text : Sand.muted)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: 150, alignment: .leading)
-                                    .fixedSize(horizontal: true, vertical: false)
-                            }
-                            .padding(.leading, thread.status != .idle || thread.unread ? 6 : 12)
-                            .padding(.trailing, 12)
-                            .frame(height: 32)
-                            .background(selected ? Sand.card : .clear, in: Capsule())
-                            .overlay(Capsule().strokeBorder(selected ? Sand.border : .clear, lineWidth: 1))
-                            .contentShape(Capsule())
+                            Image(systemName: "plus")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Sand.muted)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .id(thread.id)
-                        .accessibilityLabel("\(thread.displayTitle), \(thread.status.label)")
-                        .accessibilityAddTraits(selected ? .isSelected : [])
+                        .hoverEffect(.highlight)
+                        .accessibilityLabel("New chat")
                     }
-                    Button {
-                        Haptics.tap()
-                        Task { await store.newThread() }
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(Sand.muted)
-                            .frame(width: 32, height: 32)
-                            .contentShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("New chat")
+                    .padding(.horizontal, 14)
                 }
-                .padding(.horizontal, Space.m)
-                .padding(.vertical, 6)
-            }
-            .scrollIndicators(.hidden)
-            .onChange(of: store.currentThreadId) { _, id in
-                if let id { withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) } }
+                .scrollIndicators(.hidden)
+                .mask {
+                    HStack(spacing: 0) {
+                        LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing).frame(width: 14)
+                        Color.black
+                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 14)
+                    }
+                }
+                .onChange(of: store.currentThreadId) { _, id in
+                    if let id { withAnimation(reduceMotion ? nil : .snappy) { proxy.scrollTo(id, anchor: .center) } }
+                }
+                .onAppear {
+                    if let id = store.currentThreadId { proxy.scrollTo(id, anchor: .center) }
+                }
             }
         }
-        .background(Sand.elevated.opacity(0.7))
-        .overlay(alignment: .bottom) { Divider().overlay(Sand.border) }
+        .frame(height: 44)
+    }
+
+    private func chip(_ thread: ThreadSummary) -> some View {
+        let selected = thread.id == store.currentThreadId
+        let marked = thread.status != .idle || thread.unread
+        return Button {
+            Haptics.select()
+            Task { await store.select(threadId: thread.id) }
+        } label: {
+            HStack(spacing: 4) {
+                if marked { StatusDot(status: thread.status, unread: thread.unread, size: 7) }
+                Text(thread.displayTitle)
+                    .font(.footnote.weight(selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? Sand.text : Sand.muted)
+                    .lineLimit(1)
+                    .frame(maxWidth: 150, alignment: .leading)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .padding(.leading, marked ? 6 : 12)
+            .padding(.trailing, 12)
+            .frame(height: 32)
+            .background(selected ? Sand.raised : .clear, in: Capsule())
+            .overlay(Capsule().strokeBorder(selected ? Sand.border : .clear, lineWidth: 1))
+            // The pill is 32 points; the touch target is the strip's full 44.
+            .frame(height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .accessibilityLabel("\(thread.displayTitle), \(thread.status.label)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

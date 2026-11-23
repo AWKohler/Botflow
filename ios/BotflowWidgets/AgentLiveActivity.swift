@@ -74,11 +74,13 @@ struct AgentLiveActivity: Widget {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(Island.warning)
                 } else {
-                    Text("\(context.state.steps)")
+                    // How long it has been working: a count on its own means nothing at a glance.
+                    Text(timerInterval: context.state.startedAt...Date.distantFuture, countsDown: false)
                         .font(.footnote.weight(.semibold))
                         .monospacedDigit()
                         .foregroundStyle(Island.text)
-                        .contentTransition(.numericText())
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: 44, alignment: .trailing)
                 }
             } minimal: {
                 StepSymbol(state: context.state)

@@ -23,8 +23,8 @@ final class PushManager: NSObject, ObservableObject, UNUserNotificationCenterDel
     @Published var authorization: UNAuthorizationStatus = .notDetermined
     /// The thread on screen right now; its own notifications are not shown over it.
     var visibleThreadId: String?
-    /// True once APNs has given this device a token, so the server can reach it.
-    private(set) var hasRemoteToken = false
+    /// True once this device is registered with a server that can push to it.
+    private(set) var serverCanPush = false
     var onOpen: ((_ projectId: String, _ threadId: String?) -> Void)?
 
     private let center = UNUserNotificationCenter.current()
@@ -68,15 +68,14 @@ final class PushManager: NSObject, ObservableObject, UNUserNotificationCenterDel
 
     func didRegister(deviceToken: Data) {
         let hex = deviceToken.map { String(format: "%02x", $0) }.joined()
-        hasRemoteToken = true
-        Task { await Services.shared.registerDevice(token: hex, environment: AppConfig.apnsEnvironment) }
+        Task { serverCanPush = await Services.shared.registerDevice(token: hex, environment: AppConfig.apnsEnvironment) }
     }
 
     /// Raise a notification from the app itself when it sees a turn end. Only
-    /// where the server cannot push to this device (no APNs token, as on a
-    /// simulator): where it can, its push is the one notification.
+    /// where the server cannot push to this device (no push key configured,
+    /// or no device token): where it can, its push is the one notification.
     func notifyTurnEnded(projectId: String, projectName: String, threadId: String, threadTitle: String, outcome: ThreadStatus, summary: String) {
-        guard !hasRemoteToken else { return }
+        guard !serverCanPush else { return }
         guard UIApplication.shared.applicationState != .active || visibleThreadId != threadId else { return }
         let content = UNMutableNotificationContent()
         switch outcome {

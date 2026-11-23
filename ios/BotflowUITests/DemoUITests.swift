@@ -49,11 +49,16 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(input.waitForExistence(timeout: 20))
         input.tap()
         input.typeText("Add a tip selector to checkout")
-        app.buttons["composer.send"].tap()
+        // Send lights up once the text has landed; on a busy machine that lags the typing.
+        let send = app.buttons["composer.send"]
+        XCTAssertTrue(send.waitForExistence(timeout: 10))
+        let ready = expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: send)
+        wait(for: [ready], timeout: 20)
+        send.tap()
 
         // The agent starts; the send button becomes Stop while it works.
         let stop = app.buttons["composer.stop"]
-        XCTAssertTrue(stop.waitForExistence(timeout: 15))
+        XCTAssertTrue(stop.waitForExistence(timeout: 30))
         // The prompt shows as the person's own bubble ("You: …" to VoiceOver).
         let bubble = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Add a tip selector to checkout'")).firstMatch
         XCTAssertTrue(bubble.waitForExistence(timeout: 5))
@@ -84,7 +89,37 @@ final class DemoUITests: XCTestCase {
         let play = app.buttons["simulator.play"]
         XCTAssertTrue(play.waitForExistence(timeout: 20))
         play.tap()
-        XCTAssertTrue(app.buttons["simulator.fullscreen"].waitForExistence(timeout: 20), "The simulator did not go live")
+        let fullScreen = app.buttons["simulator.fullscreen"]
+        XCTAssertTrue(fullScreen.waitForExistence(timeout: 20), "The simulator did not go live")
+
+        // Full screen takes over the whole window, and its control brings you back.
+        fullScreen.tap()
+        let exit = app.buttons["simulator.exitFullscreen"]
+        XCTAssertTrue(exit.waitForExistence(timeout: 10), "Full screen did not open")
+        exit.tap()
+        XCTAssertTrue(fullScreen.waitForExistence(timeout: 10), "Full screen did not close")
+    }
+
+    /// On one-pane layouts the workspace switches between chat, the app and the code.
+    func testAOnePaneWorkspaceSwitchesBetweenChatAppAndCode() throws {
+        launch(route: "workspace")
+        XCTAssertTrue(app.textFields["composer.input"].waitForExistence(timeout: 20))
+        let code = app.buttons["Code"].firstMatch
+        try XCTSkipUnless(app.buttons["Preview"].firstMatch.exists && code.exists, "This device shows chat and the app side by side.")
+        app.buttons["Preview"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["workspace.publish"].firstMatch.waitForExistence(timeout: 10))
+        code.tap()
+        XCTAssertTrue(app.staticTexts["src"].firstMatch.waitForExistence(timeout: 10))
+        app.buttons["Chat"].firstMatch.tap()
+        XCTAssertTrue(app.textFields["composer.input"].waitForExistence(timeout: 10))
+    }
+
+    /// A question from the agent takes over the composer until it is answered.
+    func testAQuestionReplacesTheComposer() {
+        launch(route: "workspace-question")
+        let question = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Which menu layout'")).firstMatch
+        XCTAssertTrue(question.waitForExistence(timeout: 30))
+        XCTAssertFalse(app.buttons["composer.send"].exists, "The composer competes with the question")
     }
 
     func testPaywallShowsThePlansAtAppPrices() {

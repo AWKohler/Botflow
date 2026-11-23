@@ -4,7 +4,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
-import { DEFAULT_BUNDLE_ID } from "@/lib/native/apns";
+import { DEFAULT_BUNDLE_ID, isApnsConfigured } from "@/lib/native/apns";
 import { APNS_TOKEN_PATTERN, registerDevice, removeAllDevices, removeDevice } from "@/lib/native/devices";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,9 @@ export async function POST(req: NextRequest) {
   const bundleId = typeof body?.bundleId === "string" && BUNDLE_IDS.has(body.bundleId) ? body.bundleId : DEFAULT_BUNDLE_ID;
   try {
     await registerDevice(userId, { token, environment, bundleId });
-    return NextResponse.json({ ok: true });
+    // `push` tells the app whether this server can reach it; when it cannot,
+    // the app raises its own notifications for turns it sees end.
+    return NextResponse.json({ ok: true, push: isApnsConfigured() });
   } catch (err) {
     console.error("POST /api/native/devices failed:", err);
     return NextResponse.json({ error: "Could not register the device" }, { status: 500 });

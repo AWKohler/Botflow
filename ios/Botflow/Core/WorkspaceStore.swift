@@ -34,6 +34,10 @@ final class WorkspaceStore: ObservableObject {
     @Published var previewError: String?
     @Published var previewReloadToken = 0
 
+    /// The project's cloud simulator (Swift projects). Owned here so the app
+    /// pane and the full-screen view show the same session.
+    let simulator: SimulatorController
+
     private var pollTask: Task<Void, Never>?
     private var pendingPrompt: String?
 
@@ -42,6 +46,7 @@ final class WorkspaceStore: ObservableObject {
         self.projectId = project.id
         self.service = service
         self.pendingPrompt = initialPrompt
+        self.simulator = SimulatorController(projectId: project.id, service: service)
     }
 
     deinit {
@@ -83,6 +88,9 @@ final class WorkspaceStore: ObservableObject {
     func close() {
         pollTask?.cancel()
         pollTask = nil
+        simulator.stopWatching()
+        // A cloud simulator is held for this workspace; hand it back.
+        if simulator.phase.isActive { Task { [simulator] in await simulator.stop() } }
         PushManager.shared.visibleThreadId = nil
     }
 

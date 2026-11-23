@@ -164,6 +164,14 @@ final class WorkspaceLayoutTests: XCTestCase {
         XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 466, height: 678), hinge: .closed), .single)
     }
 
+    func testAPhoneOnItsSideStillShowsOnePane() {
+        // Wide enough for two panes, far too short for them once the keyboard is up.
+        XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 874, height: 402), hinge: nil), .single)
+        XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 956, height: 440), hinge: nil), .single)
+        // An iPad on its side has the height.
+        XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 1210, height: 834), hinge: nil), .sideBySide)
+    }
+
     func testAnOpenDuoAndAnIPadShowTwoPanes() {
         XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 669, height: 951), hinge: .fullyOpen), .sideBySide)
         XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 834, height: 1210), hinge: nil), .sideBySide)

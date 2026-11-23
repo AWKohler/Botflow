@@ -6,41 +6,53 @@ struct OnboardingView: View {
     @EnvironmentObject private var session: AppSession
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.verticalSizeClass) private var verticalClass
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         GeometryReader { proxy in
             let wide = sizeClass == .regular && proxy.size.width > 700
             ZStack {
                 OnboardingBackdrop()
-                if wide {
-                    HStack(spacing: 56) {
-                        pitch(alignment: .leading)
-                            .frame(maxWidth: 420)
-                        AgentShowcase()
-                            .frame(maxWidth: 400)
-                    }
-                    .padding(48)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    VStack(spacing: 0) {
-                        header
-                        Spacer(minLength: Space.l)
-                        if verticalClass != .compact, proxy.size.height > 640 {
-                            AgentShowcase()
-                                .frame(maxWidth: 380)
+                // Everything scrolls, so the buttons are always reachable at the
+                // largest text sizes; at ordinary sizes it fills the screen exactly.
+                ScrollView {
+                    Group {
+                        if wide {
+                            HStack(spacing: 56) {
+                                pitch(alignment: .leading)
+                                    .frame(maxWidth: 420)
+                                if !typeSize.isAccessibilitySize {
+                                    AgentShowcase()
+                                        .frame(maxWidth: 400)
+                                }
+                            }
+                            .padding(48)
+                            .frame(maxWidth: .infinity)
+                        } else {
+                            VStack(spacing: 0) {
+                                header
+                                Spacer(minLength: Space.l)
+                                if verticalClass != .compact, proxy.size.height > 640, !typeSize.isAccessibilitySize {
+                                    AgentShowcase()
+                                        .frame(maxWidth: 380)
+                                        .padding(.horizontal, Space.gutter)
+                                    Spacer(minLength: Space.l)
+                                }
+                                VStack(spacing: Space.xl) {
+                                    headline(alignment: .center)
+                                    actions
+                                }
                                 .padding(.horizontal, Space.gutter)
-                            Spacer(minLength: Space.l)
+                                .padding(.bottom, Space.l)
+                            }
+                            .frame(maxWidth: 520)
+                            .frame(maxWidth: .infinity)
                         }
-                        VStack(spacing: Space.xl) {
-                            headline(alignment: .center)
-                            actions
-                        }
-                        .padding(.horizontal, Space.gutter)
-                        .padding(.bottom, Space.l)
                     }
-                    .frame(maxWidth: 520)
-                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: proxy.size.height)
                 }
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollIndicators(.hidden)
             }
         }
     }
@@ -76,7 +88,7 @@ struct OnboardingView: View {
             }
             .font(.serif(46, relativeTo: .largeTitle))
             .foregroundStyle(Sand.text)
-            .lineLimit(1)
+            .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
             .minimumScaleFactor(0.7)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isHeader)

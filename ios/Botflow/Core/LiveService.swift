@@ -377,10 +377,11 @@ final class LiveService: BotflowService, @unchecked Sendable {
 
     // MARK: Devices, notifications, purchases
 
-    func registerDevice(token: String, environment: String) async {
-        _ = try? await api.json("POST", "api/native/devices", body: .object([
+    func registerDevice(token: String, environment: String) async -> Bool {
+        let raw = try? await api.json("POST", "api/native/devices", body: .object([
             "token": .string(token), "environment": .string(environment), "bundleId": .string(AppConfig.bundleId),
         ]))
+        return raw?["push"]?.boolValue ?? false
     }
 
     func registerLiveActivity(token: String, projectId: String, threadId: String, startedAt: Date) async {

@@ -66,6 +66,9 @@ enum Sand {
     static let canvas = surface
     /// A raised card on the canvas.
     static let card = Color(light: 0xfefefe, dark: 0x262320)
+    /// A control raised above its track (the selected segment, a selected
+    /// chip). In dark it must be lighter than the track it sits on.
+    static let raised = Color(light: 0xfefefe, dark: 0x3d3730)
     /// The warm shadow colour, stronger in dark.
     static let shadow = Color(light: 0x262016, dark: 0x000000)
 }
@@ -98,7 +101,9 @@ extension Font {
         .custom("InstrumentSerif-Italic", size: size, relativeTo: style)
     }
 
+    /// Monospaced text that follows Dynamic Type: `size` is the size at the
+    /// default text size and scales with the person's setting.
     static func code(_ size: CGFloat = 13) -> Font {
-        .system(size: size, design: .monospaced)
+        .system(size: UIFontMetrics(forTextStyle: .footnote).scaledValue(for: size), design: .monospaced)
     }
 }

@@ -34,8 +34,14 @@ final class SimulatorController: ObservableObject {
     @Published private(set) var logTail: [String] = []
     @Published private(set) var buildStartedAt: Date?
     @Published private(set) var hasFrame = false
-    @Published var liveScroll = UserDefaults.standard.bool(forKey: "sim.liveScroll") {
+    /// Vertical drags scroll the page as the finger moves (the default). Off,
+    /// every drag is sent as a swipe when the finger lifts.
+    @Published var liveScroll = UserDefaults.standard.object(forKey: "sim.liveScroll") as? Bool ?? true {
         didSet { UserDefaults.standard.set(liveScroll, forKey: "sim.liveScroll") }
+    }
+    /// Whether the one-time note on how touch works has been read.
+    @Published var touchHintSeen = UserDefaults.standard.bool(forKey: "sim.touchHintSeen") {
+        didSet { UserDefaults.standard.set(touchHintSeen, forKey: "sim.touchHintSeen") }
     }
 
     /// The layer the video is drawn into; the view hosts it.
@@ -194,6 +200,13 @@ final class SimulatorController: ObservableObject {
         client?.send(.scroll(x: point.0, y: point.1, deltaX: delta.0, deltaY: delta.1))
     }
 
+    /// Press and hold in place. The host has no hold of its own, so this is a
+    /// swipe that goes nowhere: the finger stays down for the swipe's duration.
+    func longPress(x: Double, y: Double) {
+        let point = surface(x, y)
+        client?.send(.swipe(startX: point.0, startY: point.1, endX: point.0, endY: min(1, point.1 + 0.0008)))
+    }
+
     func type(_ text: String) {
         if text == "\n" { client?.send(.key("Enter")) }
         else { client?.send(.text(text)) }
@@ -328,7 +341,8 @@ final class SimulatorController: ObservableObject {
 
     private func setPhase(_ next: Phase) {
         guard next != phase else { return }
-        withAnimation(.snappy(duration: 0.3)) { phase = next }
+        // Not animated here: each view animates the part of itself that changes.
+        phase = next
         let state: String
         switch next {
         case .stopped, .ended: state = "stopped"

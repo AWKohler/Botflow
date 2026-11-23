@@ -28,7 +28,7 @@ final class DemoService: BotflowService, @unchecked Sendable {
         threadMap = [
             "p-tidewater": [
                 thread("t-order", "Add online ordering with a cart and checkout", "claude-sonnet-5-5", .running, hours: 0.02, queued: 1),
-                thread("t-menu", "Which menu layout should the homepage use?", "claude-sonnet-5-5", .needsInput, hours: 0.1),
+                thread("t-menu", "Redesign the menu section", "claude-sonnet-5-5", .needsInput, hours: 0.1),
                 thread("t-hero", "Build the single-page Tidewater Coffee landing site", "claude-sonnet-5-5", .idle, unread: true, hours: 2),
                 thread("t-seo", "Tighten the SEO tags and add an Open Graph image", "gpt-6-luna", .idle, hours: 30),
             ],
@@ -273,7 +273,17 @@ final class DemoService: BotflowService, @unchecked Sendable {
             projectList.flatMap { project in
                 (threadMap[project.id] ?? [])
                     .filter { $0.status != .idle || $0.unread }
-                    .map { AgentActivity(projectId: project.id, projectName: project.name, platform: project.platform, thread: $0) }
+                    .map { thread -> AgentActivity in
+                        var agent = AgentActivity(projectId: project.id, projectName: project.name, platform: project.platform, thread: thread)
+                        switch thread.id {
+                        case "t-order": agent.currentStep = .init(tool: "edit", detail: "src/components/Cart.tsx", steps: 7)
+                        case "t-charts": agent.currentStep = .init(tool: "startSimulator", detail: "", steps: 5)
+                        case "t-menu": agent.question = "Which menu layout should the homepage use?"
+                        case "t-map": agent.error = "TrailMap.swift:42: value of type 'Trail' has no member 'coordinate'"
+                        default: break
+                        }
+                        return agent
+                    }
             }
         }
     }
@@ -361,7 +371,7 @@ final class DemoService: BotflowService, @unchecked Sendable {
     func simulatorDesired(projectId: String) async -> String? { nil }
     func publishSimulator(projectId: String, body: JSONValue) async {}
 
-    func registerDevice(token: String, environment: String) async {}
+    func registerDevice(token: String, environment: String) async -> Bool { false }
     func registerLiveActivity(token: String, projectId: String, threadId: String, startedAt: Date) async {}
     func syncPurchase(signedTransaction: String) async throws -> Tier { .pro }
 

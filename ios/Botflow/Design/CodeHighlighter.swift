@@ -32,7 +32,7 @@ enum CodeHighlighter {
     static func highlight(_ source: String, language: String, size: CGFloat = 13) -> AttributedString {
         // Very large files render as plain text rather than stall the main thread.
         var result = AttributedString(source)
-        result.font = .system(size: size, design: .monospaced)
+        result.font = .code(size)
         result.foregroundColor = Sand.text
         guard source.utf16.count < 120_000 else { return result }
 

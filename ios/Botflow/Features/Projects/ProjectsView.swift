@@ -5,6 +5,8 @@ struct ProjectsView: View {
     @EnvironmentObject private var router: Router
     @EnvironmentObject private var agents: AgentsHub
     @Namespace private var zoom
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
 
     @State private var projects: [Project] = []
     @State private var loaded = false
@@ -30,7 +32,7 @@ struct ProjectsView: View {
         }
     }
 
-    private let columns = [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: Space.l)]
+    private let columns = [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: Space.l, alignment: .top)]
 
     var body: some View {
         ScrollView {
@@ -113,6 +115,8 @@ struct ProjectsView: View {
                             .frame(minHeight: 34)
                             .background(selected ? Sand.text : Sand.card, in: Capsule())
                             .overlay(Capsule().strokeBorder(selected ? .clear : Sand.border, lineWidth: 1))
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(selected ? .isSelected : [])
@@ -140,6 +144,9 @@ struct ProjectsView: View {
         .matchedTransitionSource(id: project.id, in: zoom)
         .contextMenu {
             Button { router.open(WorkspaceRoute(project: project)) } label: { Label("Open", systemImage: "arrow.up.forward.app") }
+            if supportsMultipleWindows {
+                Button { openWindow(id: "project", value: project.id) } label: { Label("Open in New Window", systemImage: "macwindow.badge.plus") }
+            }
             if let url = project.liveURL {
                 Link(destination: url) { Label("Visit live site", systemImage: "safari") }
                 ShareLink(item: url) { Label("Share live site", systemImage: "square.and.arrow.up") }
@@ -194,34 +201,37 @@ struct ProjectCard: View {
         VStack(alignment: .leading, spacing: 0) {
             ProjectCover(project: project)
                 .aspectRatio(16 / 9.5, contentMode: .fit)
-                .overlay(alignment: .topLeading) {
-                    HStack(spacing: 6) {
-                        CoverBadge(text: project.kind.label, symbol: project.kind.symbol)
-                        if project.isPublic == true {
-                            CoverBadge(text: (project.starCount ?? 0) > 0 ? "Public · \(project.starCount ?? 0)" : "Public", symbol: "globe", tint: Sand.accent)
-                        }
-                        if project.shared == true {
-                            CoverBadge(text: "Shared", symbol: "person.2")
-                        }
-                    }
-                    .padding(10)
-                }
                 .clipped()
             Divider().overlay(Sand.border)
             HStack(alignment: .center, spacing: Space.m) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(project.name)
-                        .font(.headline)
-                        .foregroundStyle(Sand.text)
-                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(project.name)
+                            .font(.headline)
+                            .foregroundStyle(Sand.text)
+                            .lineLimit(1)
+                        if project.isPublic == true {
+                            Badge(text: (project.starCount ?? 0) > 0 ? "Public · \(project.starCount ?? 0)" : "Public", symbol: "globe", tone: .accent)
+                                .fixedSize()
+                        }
+                        if project.shared == true {
+                            Badge(text: "Shared", symbol: "person.2").fixedSize()
+                        }
+                    }
                     HStack(spacing: 5) {
-                        Text(project.lastOpened.map { $0.formatted(.dateTime.month(.abbreviated).day().year()) } ?? "")
+                        Image(systemName: project.kind.symbol).imageScale(.small)
+                        Text(project.kind.label)
+                        if let opened = project.lastOpened {
+                            Text("·")
+                            Text(opened.formatted(.dateTime.month(.abbreviated).day()))
+                        }
                         Text("·")
-                        Text(ModelCatalog.name(project.model))
+                        Text(ModelCatalog.model(project.model).shortName)
                     }
                     .font(.footnote)
                     .foregroundStyle(Sand.subtle)
                     .lineLimit(1)
+                    .accessibilityElement(children: .combine)
                 }
                 Spacer(minLength: 0)
                 if let status {
@@ -244,27 +254,6 @@ struct ProjectCard: View {
         .contentShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
-    }
-}
-
-/// A pill that sits on a cover image and stays legible over any screenshot.
-struct CoverBadge: View {
-    var text: String
-    var symbol: String
-    var tint: Color = Sand.text
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: symbol).imageScale(.small)
-            Text(text)
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(tint)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
-        .background(Sand.card.opacity(0.94), in: Capsule())
-        .overlay(Capsule().strokeBorder(Sand.border, lineWidth: 1))
-        .shadow(color: Sand.shadow.opacity(0.08), radius: 2, y: 1)
     }
 }
 
