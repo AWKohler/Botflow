@@ -101,4 +101,70 @@ final class LiveWorkspaceUITests: XCTestCase {
         XCTAssertTrue(fullScreen.waitForExistence(timeout: 10))
         sleep(2)
     }
+
+    /// The touch model against a real cloud simulator, with a test app that
+    /// reports what it received (a long list whose header shows the row last
+    /// tapped and the row last held). Each step leaves a screenshot.
+    func testScrollingHoldingAndSwipingReachTheSimulator() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let baseURL = environment["BOTFLOW_BASE_URL"], let project = environment["BOTFLOW_LIVE_SWIFT_PROJECT"],
+              environment["BOTFLOW_LIVE_TOUCH"] != nil else {
+            throw XCTSkip("No live touch-test project was provided.")
+        }
+        let app = XCUIApplication()
+        app.launchArguments += ["-BotflowBaseURL", baseURL, "-BotflowOpenProject", project, "-BotflowOpenApp", "YES"]
+        app.launch()
+
+        let fullScreen = app.buttons["simulator.fullscreen"]
+        let play = app.buttons["simulator.play"]
+        // The agent may already have asked for the simulator; otherwise press play.
+        if !fullScreen.waitForExistence(timeout: 60), play.exists { play.tap() }
+        XCTAssertTrue(fullScreen.waitForExistence(timeout: 420), "The simulator did not go live")
+        let gotIt = app.buttons["Got it"]
+        if gotIt.waitForExistence(timeout: 5) { gotIt.tap() }
+        sleep(8)
+        keep("1-live")
+
+        let window = app.windows.firstMatch
+        func point(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate { window.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y)) }
+
+        // The simulated status bar: tapping it sends a list back to its top.
+        func toTop() { point(0.3, 0.243).tap(); sleep(3) }
+
+        // Tap a row.
+        point(0.4, 0.6).tap()
+        sleep(3)
+        keep("2-tapped")
+
+        // A drag that stops before lifting: about 240 simulated points of travel.
+        point(0.5, 0.75).press(forDuration: 0.03, thenDragTo: point(0.5, 0.55), withVelocity: 300, thenHoldForDuration: 0.5)
+        sleep(4)
+        keep("3-settled-drag")
+        toTop()
+
+        // A long drag that stops: about 600 simulated points.
+        point(0.5, 0.8).press(forDuration: 0.03, thenDragTo: point(0.5, 0.3), withVelocity: 400, thenHoldForDuration: 0.5)
+        sleep(4)
+        keep("4-long-settled-drag")
+        toTop()
+
+        // Swipe a row sideways to reveal its action.
+        point(0.8, 0.6).press(forDuration: 0.03, thenDragTo: point(0.35, 0.6), withVelocity: 500, thenHoldForDuration: 0.2)
+        sleep(3)
+        keep("5-row-swiped")
+        point(0.4, 0.85).tap()
+        sleep(2)
+
+        // A flick: replayed as drawn, with the simulator's own momentum.
+        point(0.5, 0.8).press(forDuration: 0.03, thenDragTo: point(0.5, 0.55), withVelocity: 1100, thenHoldForDuration: 0)
+        sleep(4)
+        keep("6-flicked")
+    }
+
+    private func keep(_ name: String) {
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
 }

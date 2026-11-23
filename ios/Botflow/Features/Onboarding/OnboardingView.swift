@@ -32,8 +32,9 @@ struct OnboardingView: View {
                             VStack(spacing: 0) {
                                 header
                                 Spacer(minLength: Space.l)
-                                if verticalClass != .compact, proxy.size.height > 640, !typeSize.isAccessibilitySize {
-                                    AgentShowcase()
+                                if verticalClass != .compact, proxy.size.height > 560, !typeSize.isAccessibilitySize {
+                                    // A short screen (the Duo's cover) gets a shorter card.
+                                    AgentShowcase(compact: proxy.size.height < 720)
                                         .frame(maxWidth: 380)
                                         .padding(.horizontal, Space.gutter)
                                     Spacer(minLength: Space.l)
@@ -177,6 +178,8 @@ struct AgentShowcase: View {
         Line(id: 5, symbol: "checkmark.circle.fill", verb: "Finished", detail: "Ordering works end to end"),
     ]
 
+    /// Fewer steps at a time, for short screens.
+    var compact = false
     @State private var visible = 1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -199,7 +202,7 @@ struct AgentShowcase: View {
             Divider().overlay(Sand.border)
 
             VStack(alignment: .leading, spacing: 11) {
-                ForEach(script.prefix(visible)) { line in
+                ForEach(script.prefix(visible).suffix(compact ? 3 : script.count)) { line in
                     let last = line.id == visible - 1
                     HStack(spacing: Space.m) {
                         Image(systemName: line.symbol)
@@ -219,7 +222,7 @@ struct AgentShowcase: View {
                 }
             }
             .padding(Space.l)
-            .frame(maxWidth: .infinity, minHeight: 196, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: compact ? 86 : 196, alignment: .topLeading)
         }
         .sandCard(radius: 22)
         .shadow(color: Sand.shadow.opacity(0.08), radius: 28, y: 14)

@@ -97,7 +97,7 @@ struct SimulatorView: View {
                 if !rotateInline {
                     Button { controller.toggleOrientation() } label: { Label(controller.landscape ? "Rotate to portrait" : "Rotate to landscape", systemImage: "rectangle.portrait.rotate") }
                 }
-                Toggle(isOn: $controller.liveScroll) { Label("Drags scroll the page", systemImage: "hand.draw") }
+                Toggle(isOn: $controller.liveScroll) { Label("Stop scrolls where I stop", systemImage: "hand.draw") }
                 Button { controller.touchHintSeen = false } label: { Label("How touch works", systemImage: "hand.tap") }
                 if controller.phase.isActive {
                     Divider()
@@ -241,6 +241,11 @@ struct SimulatorScreen: View {
                     .opacity(controller.hasFrame ? 1 : 0)
                     .animation(.easeOut(duration: 0.4), value: controller.hasFrame)
             }
+            // The last frame stays behind a session that has ended, dimmed so
+            // the message over it reads whatever the app was showing.
+            if controller.phase != .live, controller.hasFrame {
+                Color.black.opacity(0.62).transition(.opacity)
+            }
             overlay
             if controller.phase == .live, !controller.touchHintSeen {
                 touchHint
@@ -271,7 +276,7 @@ struct SimulatorScreen: View {
                     .font(.subheadline.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
                 if roomy {
-                    Text("Tap, scroll and type as you would on the phone. Touch and hold works too. Sideways swipes are sent when you lift your finger.")
+                    Text("Tap, flick, drag and type as you would on the phone. Each gesture is replayed in the simulator as you lift your finger.")
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.8))
                         .fixedSize(horizontal: false, vertical: true)

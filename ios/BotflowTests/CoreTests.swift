@@ -182,3 +182,43 @@ final class WorkspaceLayoutTests: XCTestCase {
         XCTAssertEqual(WorkspaceLayout.choose(size: CGSize(width: 951, height: 669), hinge: .partiallyOpen), .stacked)
     }
 }
+
+final class SimulatorGestureTests: XCTestCase {
+    func testAFlickIsReplayedAsDrawn() {
+        let end = SimulatorSurfaceView.replayTarget(from: CGPoint(x: 100, y: 500), to: CGPoint(x: 100, y: 300), settled: false, compensating: true, simulatedScale: 1.4)
+        XCTAssertEqual(end, CGPoint(x: 100, y: 300))
+    }
+
+    func testAScrollThatStopsIsShortenedByTheCoast() {
+        // Swipe plus coast should come to what the finger asked for.
+        for intended: CGFloat in [400, 600, 724, 900, 1400] {
+            let length = SimulatorSurfaceView.replayLength(forSettledScroll: intended)
+            XCTAssertEqual(length + SimulatorSurfaceView.coast(afterSwipeOf: length), intended, accuracy: 1, "\(intended)")
+        }
+        // On screen: 500 points at 1.4× is a 700-point scroll.
+        let end = SimulatorSurfaceView.replayTarget(from: CGPoint(x: 100, y: 600), to: CGPoint(x: 100, y: 100), settled: true, compensating: true, simulatedScale: 1.4)
+        XCTAssertEqual(end.x, 100)
+        XCTAssertEqual(600 - end.y, SimulatorSurfaceView.replayLength(forSettledScroll: 700) / 1.4, accuracy: 0.5)
+    }
+
+    func testAShortScrollStillMovesAsADrag() {
+        // Less than the simulator can scroll: the shortest swipe it reads as a drag.
+        let end = SimulatorSurfaceView.replayTarget(from: CGPoint(x: 100, y: 400), to: CGPoint(x: 100, y: 300), settled: true, compensating: true, simulatedScale: 1)
+        XCTAssertEqual(400 - end.y, SimulatorSurfaceView.shortestDrag, accuracy: 0.5)
+        XCTAssertEqual(SimulatorSurfaceView.coast(afterSwipeOf: 242), 500, accuracy: 1)
+    }
+
+    func testSidewaysDragsAndTheSettingLeaveTheGestureAlone() {
+        let sideways = SimulatorSurfaceView.replayTarget(from: CGPoint(x: 300, y: 400), to: CGPoint(x: 60, y: 410), settled: true, compensating: true, simulatedScale: 1.4)
+        XCTAssertEqual(sideways, CGPoint(x: 60, y: 410))
+        let exact = SimulatorSurfaceView.replayTarget(from: CGPoint(x: 100, y: 600), to: CGPoint(x: 100, y: 100), settled: true, compensating: false, simulatedScale: 1.4)
+        XCTAssertEqual(exact, CGPoint(x: 100, y: 100))
+    }
+
+    func testTheGiveUnderAFingerIsSmallAndBounded() {
+        XCTAssertEqual(SimulatorSurfaceView.eased(0), 0)
+        XCTAssertLessThan(SimulatorSurfaceView.eased(2000), 28.01)
+        XCTAssertGreaterThan(SimulatorSurfaceView.eased(60), 8)
+        XCTAssertEqual(SimulatorSurfaceView.eased(-60), -SimulatorSurfaceView.eased(60), accuracy: 0.001)
+    }
+}

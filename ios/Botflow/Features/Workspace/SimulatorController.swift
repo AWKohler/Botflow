@@ -73,6 +73,13 @@ final class SimulatorController: ObservableObject {
     var warnings: [SimDiagnostic] { diagnostics.filter { !$0.isError } }
 
     /// Size of the device screen as shown, after rotation.
+    /// The simulated screen in its own points (the stream is its pixels: 3×
+    /// on a phone, 2× on an iPad).
+    var logicalSize: CGSize {
+        let scale: CGFloat = min(videoSize.width, videoSize.height) > 1500 ? 2 : 3
+        return CGSize(width: displaySize.width / scale, height: displaySize.height / scale)
+    }
+
     var displaySize: CGSize {
         landscape ? CGSize(width: videoSize.height, height: videoSize.width) : videoSize
     }
@@ -198,13 +205,6 @@ final class SimulatorController: ObservableObject {
         let point = surface(x, y)
         let delta = landscape ? (-deltaY, deltaX) : (deltaX, deltaY)
         client?.send(.scroll(x: point.0, y: point.1, deltaX: delta.0, deltaY: delta.1))
-    }
-
-    /// Press and hold in place. The host has no hold of its own, so this is a
-    /// swipe that goes nowhere: the finger stays down for the swipe's duration.
-    func longPress(x: Double, y: Double) {
-        let point = surface(x, y)
-        client?.send(.swipe(startX: point.0, startY: point.1, endX: point.0, endY: min(1, point.1 + 0.0008)))
     }
 
     func type(_ text: String) {
