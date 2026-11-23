@@ -36,7 +36,9 @@ struct ProjectCover: View {
         GeometryReader { proxy in
             ZStack {
                 LinearGradient(colors: [palette.0, palette.1], startPoint: .topLeading, endPoint: .bottomTrailing)
-                if let imageURL {
+                if AppConfig.isDemo, DemoCovers.has(seed) {
+                    DemoCovers.view(for: seed, in: proxy.size)
+                } else if let imageURL {
                     AsyncImage(url: imageURL, transaction: Transaction(animation: .easeOut(duration: 0.25))) { phase in
                         if let image = phase.image {
                             image.resizable().scaledToFill()

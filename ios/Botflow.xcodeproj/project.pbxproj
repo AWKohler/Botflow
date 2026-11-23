@@ -20,6 +20,7 @@
 		2F738BCFA70644BA622369AA /* ThreadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B17A78ECB38C986FCFD0DC4D /* ThreadsView.swift */; };
 		332A3ABB82436E4E905D7AC6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33DB4BF28BDA84894E5EF214 /* SettingsView.swift */; };
 		3AE86CDCC73CC39C40217AF7 /* CodeHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 775EA19A7C158B4E851307F6 /* CodeHighlighter.swift */; };
+		3C10BF513E5987E2509E35AA /* DemoCovers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EFB5D60D8D535714C46B77C /* DemoCovers.swift */; };
 		3CBED9A4F5FCC720DB1E8B02 /* LiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8563F79EB5F56892899FAB69 /* LiveActivityManager.swift */; };
 		3EB34F388A2566CDBBFA382E /* AgentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBAF0381CFD6C8A75FEEF294 /* AgentsView.swift */; };
 		3FF9F1D7098C0B235F244BB6 /* MessageViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9FAC5380C02A1A799D3E35D /* MessageViews.swift */; };
@@ -115,6 +116,7 @@
 		03E67E29403C961E699A4827 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
 		06AAD4297071393C085EF72E /* CodeBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeBrowser.swift; sourceTree = "<group>"; };
 		06DE0F01F1C1EE593BC4C141 /* SimulatorSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulatorSurface.swift; sourceTree = "<group>"; };
+		0EFB5D60D8D535714C46B77C /* DemoCovers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoCovers.swift; sourceTree = "<group>"; };
 		12A392F89D937C0C92B6A3FA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		1E856A02A8B89F10A3B2A40C /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		2358181520393DDAC74AC6A0 /* LiveWorkspaceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveWorkspaceUITests.swift; sourceTree = "<group>"; };
@@ -218,6 +220,7 @@
 				7A4D86851D173C6DE2FDED2E /* AuthManager.swift */,
 				72563CCD95E39F6EB1156CCD /* BotflowService.swift */,
 				59FB4D8C5B4008350269BAD8 /* DemoContent.swift */,
+				0EFB5D60D8D535714C46B77C /* DemoCovers.swift */,
 				6FB9B456080B59895A878AA3 /* DemoService.swift */,
 				49B0A15D5CDCD9D88DA6F05A /* JSONValue.swift */,
 				8563F79EB5F56892899FAB69 /* LiveActivityManager.swift */,
@@ -604,6 +607,7 @@
 				3AE86CDCC73CC39C40217AF7 /* CodeHighlighter.swift in Sources */,
 				A9306A361C61C6DE0F293F55 /* Components.swift in Sources */,
 				82DC5079D8546D6C6E573F8E /* DemoContent.swift in Sources */,
+				3C10BF513E5987E2509E35AA /* DemoCovers.swift in Sources */,
 				7933699247AB54C5CFB447FE /* DemoService.swift in Sources */,
 				EAC85EE4E9C6CFD936189A3C /* DeviceHinge.swift in Sources */,
 				856A9DF3693CB129D6A012C1 /* ExploreView.swift in Sources */,
