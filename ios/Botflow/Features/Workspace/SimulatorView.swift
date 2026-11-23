@@ -253,15 +253,29 @@ struct SimulatorScreen: View {
     }
 
     private var touchHint: some View {
+        GeometryReader { proxy in
+            // A small simulated screen (a split pane, a phone on its side) has
+            // room for the headline only; a tiny one gets no hint at all.
+            let roomy = proxy.size.width >= 280 && proxy.size.height >= 460
+            if proxy.size.width >= 200, proxy.size.height >= 260 {
+                touchHintCard(roomy: roomy)
+            }
+        }
+    }
+
+    private func touchHintCard(roomy: Bool) -> some View {
         VStack {
             Spacer()
             VStack(alignment: .leading, spacing: Space.s) {
                 Text("Touch it like the real thing")
                     .font(.subheadline.weight(.semibold))
-                Text("Tap, scroll and type as you would on the phone. Touch and hold works too. Sideways swipes are sent when you lift your finger.")
-                    .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.8))
                     .fixedSize(horizontal: false, vertical: true)
+                if roomy {
+                    Text("Tap, scroll and type as you would on the phone. Touch and hold works too. Sideways swipes are sent when you lift your finger.")
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Button("Got it") { controller.touchHintSeen = true }
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.black)
@@ -272,14 +286,15 @@ struct SimulatorScreen: View {
                     .padding(.top, 2)
             }
             .foregroundStyle(.white)
-            .padding(Space.l)
+            .padding(roomy ? Space.l : Space.m)
             .frame(maxWidth: 340, alignment: .leading)
             .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.18), lineWidth: 1))
-            .padding(Space.l)
-            .padding(.bottom, 64)
+            .padding(roomy ? Space.l : Space.s)
+            .padding(.bottom, roomy ? 64 : 0)
         }
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder

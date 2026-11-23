@@ -15,13 +15,16 @@ enum HingePosture: String, Equatable {
 @MainActor
 final class DeviceHingeModel: ObservableObject {
     @Published var posture: HingePosture?
+    /// A posture forced for tests; the real hinge is ignored while it is set.
+    private(set) var isForced = false
 
     init() {
         #if DEBUG
         // The simulator's fold control is not scriptable, so tests can force a
         // posture: `-BotflowDebugHinge partiallyOpen`.
-        if let forced = UserDefaults.standard.string(forKey: "BotflowDebugHinge") {
-            posture = HingePosture(rawValue: forced)
+        if let forced = UserDefaults.standard.string(forKey: "BotflowDebugHinge"), let value = HingePosture(rawValue: forced) {
+            posture = value
+            isForced = true
         }
         #endif
     }
@@ -33,6 +36,7 @@ private struct HingeObserver: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 27.1, *) {
             content.onHingeChange { _, context in
+                guard !model.isForced else { return }
                 guard let hinge = context.hinge else {
                     model.posture = nil
                     return

@@ -39,16 +39,24 @@ struct WorkspaceView: View {
         GeometryReader { proxy in
             // Width decides, not the size class: an open Duo (about 670 points)
             // and an iPad both have room for two panes.
-            let layout = WorkspaceLayout.choose(size: proxy.size, hinge: hinge.posture)
+            // The whole window decides, bars included: the fold runs through
+            // the middle of the screen, not the middle of what's under the bar.
+            let window = CGSize(
+                width: proxy.size.width + proxy.safeAreaInsets.leading + proxy.safeAreaInsets.trailing,
+                height: proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom
+            )
+            let layout = WorkspaceLayout.choose(size: window, hinge: hinge.posture)
             let split = layout != .single
             Group {
                 switch layout {
                 case .stacked:
                     // Half open and held like a laptop: the app on the upright
                     // half, the conversation and keyboard on the flat half.
+                    // The half above the fold is short, so its Preview / Code
+                    // switch moves up into the navigation bar.
                     VStack(spacing: 0) {
-                        AppPane(store: store, tab: $appTab, showsHeader: true, sheet: $sheet, immersive: $immersive)
-                            .frame(height: proxy.size.height / 2)
+                        AppPane(store: store, tab: $appTab, showsHeader: false, sheet: $sheet, immersive: $immersive)
+                            .frame(height: max(160, window.height / 2 - proxy.safeAreaInsets.top))
                         Divider().overlay(Sand.border)
                         chatColumn(compact: false)
                     }
@@ -89,11 +97,21 @@ struct WorkspaceView: View {
             .toolbar {
                 if split {
                     ToolbarItem(placement: .principal) {
-                        HStack(spacing: 6) {
-                            Image(systemName: store.project.kind.symbol).foregroundStyle(Sand.subtle)
-                            Text(store.project.name).font(.headline).foregroundStyle(Sand.text).lineLimit(1)
+                        HStack(spacing: Space.l) {
+                            HStack(spacing: 6) {
+                                Image(systemName: store.project.kind.symbol).foregroundStyle(Sand.subtle)
+                                Text(store.project.name).font(.headline).foregroundStyle(Sand.text).lineLimit(1)
+                            }
+                            .accessibilityElement(children: .combine)
+                            if layout == .stacked {
+                                SegmentedTabs(
+                                    selection: $appTab,
+                                    items: [.init(value: .preview, title: store.project.isSwift ? "App" : "Preview"), .init(value: .code, title: "Code")],
+                                    compact: true
+                                )
+                                .fixedSize()
+                            }
                         }
-                        .accessibilityElement(children: .combine)
                     }
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         Button {
@@ -192,7 +210,8 @@ struct WorkspaceView: View {
     // MARK: Divider
 
     private func chatWidth(in total: CGFloat) -> CGFloat {
-        let preferred = storedChatWidth > 0 ? CGFloat(storedChatWidth) : min(480, total * 0.44)
+        // An open Duo is two phone-width halves; an iPad gives the app the larger share.
+        let preferred = storedChatWidth > 0 ? CGFloat(storedChatWidth) : total < 760 ? total / 2 : min(480, total * 0.44)
         return min(max(300, total - 340), max(300, min(preferred, 560)))
     }
 

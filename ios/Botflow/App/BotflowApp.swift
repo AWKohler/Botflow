@@ -24,6 +24,10 @@ struct BotflowApp: App {
                         router.openProject(id: projectId, threadId: threadId, session: session)
                     }
                     PushManager.shared.registerIfAuthorized()
+                    #if DEBUG
+                    // Tests ask for notification permission up front: `-BotflowRequestPush YES`.
+                    if UserDefaults.standard.bool(forKey: "BotflowRequestPush") { await PushManager.shared.requestIfNeeded() }
+                    #endif
                 }
                 .onOpenURL { url in
                     router.handle(url: url, session: session)

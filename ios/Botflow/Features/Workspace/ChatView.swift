@@ -225,7 +225,7 @@ struct AnswerPrompt: View {
     var body: some View {
         HStack(spacing: Space.m) {
             Image(systemName: "questionmark.bubble.fill").foregroundStyle(Sand.warningSolid)
-            Text("The agent is waiting for your answer above")
+            Text("Answer above to continue")
                 .font(.subheadline)
                 .foregroundStyle(Sand.muted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -310,6 +310,7 @@ struct Composer: View {
     @State private var attachments: [PendingAttachment] = []
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var dropTargeted = false
+    @State private var composerWidth: CGFloat = 360
     @FocusState private var focused: Bool
 
     struct PendingAttachment: Identifiable, Equatable {
@@ -356,7 +357,8 @@ struct Composer: View {
                     Button { showModels = true } label: {
                         HStack(spacing: 5) {
                             ProviderMark(provider: model.provider, modelId: model.id, size: 15)
-                            Text(model.name).lineLimit(1)
+                            // In a narrow column the vendor's mark stands in for its name.
+                            Text(composerWidth < 330 ? model.shortName : model.name).lineLimit(1)
                             Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(Sand.subtle)
                         }
                         .font(.subheadline.weight(.medium))
@@ -416,6 +418,7 @@ struct Composer: View {
         .padding(.horizontal, Space.m)
         .padding(.top, Space.s)
         .padding(.bottom, Space.s)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { composerWidth = $0 }
         .background {
             LinearGradient(colors: [Sand.canvas.opacity(0), Sand.canvas], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.35))
                 .ignoresSafeArea()

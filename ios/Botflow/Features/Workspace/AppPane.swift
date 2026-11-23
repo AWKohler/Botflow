@@ -11,6 +11,7 @@ struct AppPane: View {
     @Binding var immersive: Bool
 
     enum Tab: Hashable { case preview, code }
+    @State private var paneWidth: CGFloat = 500
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,6 +22,7 @@ struct AppPane: View {
                         items: [.init(value: .preview, title: store.project.isSwift ? "App" : "Preview"), .init(value: .code, title: "Code")],
                         compact: true
                     )
+                    .fixedSize()
                     Spacer(minLength: 0)
                     Button { sheet = .share } label: {
                         Image(systemName: "person.badge.plus").frame(width: 20, height: 20)
@@ -29,9 +31,15 @@ struct AppPane: View {
                     .accessibilityLabel("Share project")
                     if !store.project.isSwift {
                         Button { sheet = .publish } label: {
-                            Label("Publish", systemImage: "globe")
+                            // Half of an open Duo has room for the switch or the word, not both.
+                            if paneWidth < 380 {
+                                Image(systemName: "globe").frame(width: 20, height: 20)
+                            } else {
+                                Label("Publish", systemImage: "globe")
+                            }
                         }
                         .buttonStyle(InkButtonStyle(size: .small))
+                        .accessibilityLabel("Publish")
                         .accessibilityIdentifier("workspace.publish")
                     }
                 }
@@ -53,6 +61,7 @@ struct AppPane: View {
             }
         }
         .background(Sand.canvas)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { paneWidth = $0 }
         .onAppear {
             if store.project.isSwift { store.simulator.watchAgentRequests() }
         }

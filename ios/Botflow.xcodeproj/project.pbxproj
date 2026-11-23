@@ -35,6 +35,7 @@
 		559BC3F87F7FF64E35D54B1B /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A950171B25EBD74BCE0F56F /* MainView.swift */; };
 		598F0406D1575F0B2E425468 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5FFAA553370C6112490E1FB /* Theme.swift */; };
 		6DD1A3E54D71A05488C6D14B /* PaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB1EF93DE3BA7410DF7F651 /* PaywallView.swift */; };
+		73EEFB5841C8C9EDB8E16853 /* PushUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00210DF6C41D1029B1EECCEA /* PushUITests.swift */; };
 		74628237CCA385387E289F32 /* SimulatorStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3DEF78FA06A68F4DD384750 /* SimulatorStream.swift */; };
 		7768E510B6185CE006B8CD67 /* StoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE79C315ED78BCE3CB6272D7 /* StoreManager.swift */; };
 		7933699247AB54C5CFB447FE /* DemoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FB9B456080B59895A878AA3 /* DemoService.swift */; };
@@ -113,6 +114,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		00210DF6C41D1029B1EECCEA /* PushUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushUITests.swift; sourceTree = "<group>"; };
 		03E67E29403C961E699A4827 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
 		06AAD4297071393C085EF72E /* CodeBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeBrowser.swift; sourceTree = "<group>"; };
 		06DE0F01F1C1EE593BC4C141 /* SimulatorSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulatorSurface.swift; sourceTree = "<group>"; };
@@ -200,6 +202,7 @@
 				50E4B09073BB81561BDB62F8 /* DemoUITests.swift */,
 				9D36548B0F9105B6B9872161 /* LiveSignInUITests.swift */,
 				2358181520393DDAC74AC6A0 /* LiveWorkspaceUITests.swift */,
+				00210DF6C41D1029B1EECCEA /* PushUITests.swift */,
 			);
 			path = BotflowUITests;
 			sourceTree = "<group>";
@@ -583,6 +586,7 @@
 				2D1E1482B85D66728490E1EF /* DemoUITests.swift in Sources */,
 				8CF55451CAC4265315BF1232 /* LiveSignInUITests.swift in Sources */,
 				887535CFA4DDA2308337BC52 /* LiveWorkspaceUITests.swift in Sources */,
+				73EEFB5841C8C9EDB8E16853 /* PushUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

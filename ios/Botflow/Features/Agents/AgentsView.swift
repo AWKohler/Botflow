@@ -9,7 +9,7 @@ struct AgentsView: View {
     @EnvironmentObject private var session: AppSession
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private let columns = [GridItem(.adaptive(minimum: 320, maximum: 560), spacing: Space.m, alignment: .top)]
+    private let columns = [GridItem(.adaptive(minimum: 320), spacing: Space.m, alignment: .top)]
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -53,7 +53,7 @@ struct AgentsView: View {
             stat(hub.running.count, "Working", .accent, target: "working", proxy)
             stat(hub.finished.count, "Finished", .success, target: "finished", proxy)
         }
-        .frame(maxWidth: 560)
+        .frame(maxWidth: 640)
         .padding(.top, Space.s)
     }
 
