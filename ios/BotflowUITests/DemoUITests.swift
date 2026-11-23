@@ -105,7 +105,7 @@ final class DemoUITests: XCTestCase {
         launch(route: "workspace")
         XCTAssertTrue(app.textFields["composer.input"].waitForExistence(timeout: 20))
         let code = app.buttons["Code"].firstMatch
-        try XCTSkipUnless(app.buttons["Preview"].firstMatch.exists && code.exists, "This device shows chat and the app side by side.")
+        try XCTSkipUnless(app.buttons["Chat"].firstMatch.exists && code.exists, "This device shows chat and the app side by side.")
         app.buttons["Preview"].firstMatch.tap()
         XCTAssertTrue(app.buttons["workspace.publish"].firstMatch.waitForExistence(timeout: 10))
         code.tap()

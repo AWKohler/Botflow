@@ -365,9 +365,14 @@ struct ImmersiveSimulatorView: View {
 
     var body: some View {
         GeometryReader { proxy in
+            // Where the simulated screen doesn't reach the edges of this one
+            // (an iPhone app on an iPad), it keeps a phone's rounded corners.
+            let aspect = controller.displaySize.width / max(1, controller.displaySize.height)
+            let fills = abs(aspect - proxy.size.width / max(1, proxy.size.height)) < 0.03
             ZStack {
                 Color.black
-                SimulatorScreen(controller: controller, keyboard: keyboard, cornerRadius: 0) { immersive = false }
+                SimulatorScreen(controller: controller, keyboard: keyboard, cornerRadius: fills ? 0 : 36) { immersive = false }
+                    .padding(fills ? 0 : 10)
                     .frame(width: proxy.size.width, height: proxy.size.height)
                 controls(in: proxy.size)
             }

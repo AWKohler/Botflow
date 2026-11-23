@@ -192,7 +192,7 @@ struct WorkspaceView: View {
     // MARK: Divider
 
     private func chatWidth(in total: CGFloat) -> CGFloat {
-        let preferred = storedChatWidth > 0 ? CGFloat(storedChatWidth) : total * 0.4
+        let preferred = storedChatWidth > 0 ? CGFloat(storedChatWidth) : min(480, total * 0.44)
         return min(max(300, total - 340), max(300, min(preferred, 560)))
     }
 

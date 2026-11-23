@@ -176,7 +176,8 @@ struct AgentCard: View {
             .padding(.leading, 28)
         }
         .padding(Space.l)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // Cards in a row share the height of the tallest.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sandCard()
         .contentShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         .accessibilityElement(children: .combine)
