@@ -1,0 +1,128 @@
+name: Botflow
+options:
+  bundleIdPrefix: io.botflow
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: W74SSCDM5V
+    TARGETED_DEVICE_FAMILY: "1,2"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    GENERATE_INFOPLIST_FILE: NO
+targets:
+  Botflow:
+    type: application
+    platform: iOS
+    sources:
+      - path: Botflow
+      - path: Shared
+    info:
+      path: Botflow/Info.plist
+      properties:
+        CFBundleDisplayName: Botflow
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIAppFonts:
+          - InstrumentSerif-Regular.ttf
+          - InstrumentSerif-Italic.ttf
+        CFBundleURLTypes:
+          - CFBundleURLName: io.botflow.app
+            CFBundleURLSchemes: [botflow]
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
+        UIBackgroundModes: [remote-notification]
+        ITSAppUsesNonExemptEncryption: false
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSCameraUsageDescription: Botflow uses the camera to feed your simulated app's camera and to attach photos to a prompt.
+        NSPhotoLibraryAddUsageDescription: Botflow saves screenshots of your app to your photo library when you ask it to.
+    entitlements:
+      path: Botflow/Botflow.entitlements
+      properties:
+        aps-environment: development
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.botflow.app
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    dependencies:
+      - target: BotflowWidgets
+  BotflowWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: BotflowWidgets
+      - path: Shared
+    info:
+      path: BotflowWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Botflow
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.botflow.app.widgets
+        SKIP_INSTALL: YES
+  BotflowTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: BotflowTests
+      # The purchase tests buy from the same test store the app runs against.
+      - path: Botflow/Resources/Botflow.storekit
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.botflow.app.tests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: Botflow
+  BotflowUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: BotflowUITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.botflow.app.uitests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: Botflow
+schemes:
+  Botflow:
+    build:
+      targets:
+        Botflow: all
+        BotflowWidgets: all
+    run:
+      config: Debug
+      storeKitConfiguration: Botflow/Resources/Botflow.storekit
+    test:
+      config: Debug
+      # Unit tests run inside the app; fixtures keep them off the network.
+      commandLineArguments:
+        "-BotflowDemo": true
+      targets:
+        - BotflowTests
+        - BotflowUITests

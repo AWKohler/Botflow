@@ -1,0 +1,122 @@
+{
+  "appPolicies": {
+    "eula": "",
+    "policies": [
+      {
+        "locale": "en_US",
+        "policyText": "",
+        "policyURL": "https://botflow.io/privacy"
+      }
+    ]
+  },
+  "identifier": "B07F10E0",
+  "nonRenewingSubscriptions": [],
+  "products": [],
+  "settings": {
+    "_failTransactionsEnabled": false,
+    "_locale": "en_US",
+    "_storefront": "USA",
+    "_storeKitErrors": []
+  },
+  "subscriptionGroups": [
+    {
+      "id": "21700001",
+      "localizations": [],
+      "name": "Botflow Plans",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "78.00",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "6700000003",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "The highest limits and every model.",
+              "displayName": "Max",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "io.botflow.max.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Max Monthly",
+          "subscriptionGroupID": "21700001",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "780.00",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "6700000004",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "The highest limits and every model.",
+              "displayName": "Max (yearly)",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "io.botflow.max.yearly",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Max Yearly",
+          "subscriptionGroupID": "21700001",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "26.00",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "6700000001",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Higher limits, premium models and native iOS apps.",
+              "displayName": "Pro",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "io.botflow.pro.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Pro Monthly",
+          "subscriptionGroupID": "21700001",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "265.20",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "6700000002",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Higher limits, premium models and native iOS apps.",
+              "displayName": "Pro (yearly)",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "io.botflow.pro.yearly",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Pro Yearly",
+          "subscriptionGroupID": "21700001",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 4,
+    "minor": 0
+  }
+}

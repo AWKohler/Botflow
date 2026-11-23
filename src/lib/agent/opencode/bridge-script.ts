@@ -61,7 +61,7 @@
  *   }
  */
 
-export const OPENCODE_SCRIPTS_VERSION = "14";
+export const OPENCODE_SCRIPTS_VERSION = "15";
 
 export const OPENCODE_BRIDGE_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -86,6 +86,56 @@ function emit(event) {
   if (EVENT_FILE) {
     try { appendFileSync(EVENT_FILE, line); } catch { /* tee is best-effort */ }
   }
+}
+
+// Live Activity heartbeat for the Botflow iOS app (/api/internal/agent/
+// turn-progress): "the agent just started this step". Off unless the platform
+// asks for it (the person who started the turn uses the app), fire-and-forget,
+// and at most one request every four seconds however fast the agent works.
+const PROGRESS_BEACON = process.env.BOTFLOW_PROGRESS_BEACON === "1";
+const progressSeen = new Set();
+let progressSteps = 0;
+let progressLastSent = 0;
+let progressPending = null;
+let progressTimer = null;
+
+function progressDetail(input) {
+  if (!input || typeof input !== "object") return "";
+  const v = input.file_path || input.filePath || input.path || input.command || input.pattern || input.query || input.url || input.description || "";
+  return typeof v === "string" ? v.split("\\n")[0].slice(0, 160) : "";
+}
+
+function sendProgress() {
+  progressTimer = null;
+  const next = progressPending;
+  progressPending = null;
+  const base = process.env.BOTFLOW_API_BASE;
+  const token = process.env.BOTFLOW_TURN_TOKEN;
+  if (!next || !base || !token) return;
+  progressLastSent = Date.now();
+  const headers = { "authorization": "Bearer " + token, "content-type": "application/json" };
+  if (process.env.BOTFLOW_VERCEL_BYPASS) {
+    headers["x-vercel-protection-bypass"] = process.env.BOTFLOW_VERCEL_BYPASS;
+  }
+  try {
+    fetch(base + "/api/internal/agent/turn-progress", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(next),
+      signal: AbortSignal.timeout(8000),
+    }).catch(() => {});
+  } catch {}
+}
+
+function noteToolStarted(id, name, input) {
+  if (!PROGRESS_BEACON || !id || progressSeen.has(id)) return;
+  progressSeen.add(id);
+  progressSteps += 1;
+  progressPending = { tool: String(name || "tool"), detail: progressDetail(input), steps: progressSteps };
+  if (progressTimer) return;
+  progressTimer = setTimeout(sendProgress, Math.max(0, 4000 - (Date.now() - progressLastSent)));
+  // Never keep the bridge alive just to send a heartbeat.
+  if (progressTimer.unref) progressTimer.unref();
 }
 
 function fail(message) {
@@ -382,6 +432,10 @@ function handleEvent(event) {
 
   const t = event.type;
   const p = event.properties || {};
+
+  if (t === "message.part.updated" && p.part && p.part.type === "tool" && p.part.state && p.part.state.status !== "pending") {
+    noteToolStarted(p.part.callID, p.part.tool, p.part.state.input);
+  }
 
   if (t === "message.updated" && p.info && p.info.role === "assistant" && p.info.tokens) {
     const tk = p.info.tokens;

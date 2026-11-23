@@ -26,6 +26,8 @@ export default async function setup(project: TestProject) {
   project.provide('schemaDdl', ddl);
   project.provide(
     'identitySql',
-    fs.readFileSync(path.resolve(__dirname, '../../scripts/auth-migration/001-identity.sql'), 'utf8'),
+    ['001-identity.sql', '002-apple-subscription.sql']
+      .map((file) => fs.readFileSync(path.resolve(__dirname, '../../scripts/auth-migration', file), 'utf8'))
+      .join('\n'),
   );
 }
