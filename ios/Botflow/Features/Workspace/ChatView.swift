@@ -28,6 +28,12 @@ struct ChatView: View {
     /// much of the scroll view the bars above it cover.
     @State private var questionTop: CGFloat?
     @State private var topInset: CGFloat = 0
+    /// Where the transcript ends, and how much of it fits between the bars:
+    /// together they say how much empty room to leave under a short
+    /// conversation so its question can still be brought to the top.
+    @State private var transcriptEnd: CGFloat = 0
+    @State private var visibleHeight: CGFloat = 600
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var position = ScrollPosition()
     /// How many of the latest messages are rendered.
     @State private var shownCount = 60
@@ -73,7 +79,7 @@ struct ChatView: View {
                             author: message.userId.flatMap { store.people[$0] },
                             showAuthor: store.people.count > 1 && message.userId != store.me,
                             onAnswer: { call, ids, labels, text in
-                                Task { await session.answer(question: call, selectedIds: ids, selectedLabels: labels, text: text) }
+                                await session.answer(question: call, selectedIds: ids, selectedLabels: labels, text: text)
                             },
                             onInspect: { inspected = $0 }
                         )
@@ -89,7 +95,31 @@ struct ChatView: View {
                     if case .failed(let reason) = session.phase {
                         ErrorBanner(message: reason) { session.dismissFailure() }
                     }
+                    // Where the bar under the transcript would crowd the card (a short
+                    // screen, the largest text), the way out of it sits under the card.
+                    if question != nil, compactPrompt, !composerOpen {
+                        Button {
+                            withAnimation(reduceMotion ? nil : .snappy) { composerOpen = true }
+                        } label: {
+                            Label("Write a message instead", systemImage: "square.and.pencil")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(Sand.muted)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                     Color.clear.frame(height: 1).id("bottom")
+                        .background {
+                            GeometryReader { proxy in
+                                Color.clear.preference(key: TranscriptEndKey.self, value: proxy.frame(in: .named("transcript")).maxY)
+                            }
+                        }
+                    // Room under a short conversation, so the question's card can
+                    // reach the top instead of stopping with half a row above it.
+                    if question != nil, let questionTop {
+                        Color.clear.frame(height: max(0, visibleHeight - 10 - (transcriptEnd + Space.m - questionTop)))
+                    }
                 }
                 .padding(.horizontal, Space.gutter)
                 .padding(.top, Space.l)
@@ -99,6 +129,9 @@ struct ChatView: View {
                 .coordinateSpace(.named("transcript"))
                 .onPreferenceChange(QuestionTopKey.self) { top in
                     questionTop = top
+                }
+                .onPreferenceChange(TranscriptEndKey.self) { end in
+                    transcriptEnd = end
                 }
             }
             .scrollPosition($position)
@@ -114,6 +147,11 @@ struct ChatView: View {
                 Self.isNearEnd(geometry)
             } action: { _, value in
                 atBottom = value
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.visibleRect.height - geometry.contentInsets.top - geometry.contentInsets.bottom
+            } action: { _, height in
+                visibleHeight = height
             }
             // A reply grows without the message count changing; keep its end in view.
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
@@ -184,7 +222,11 @@ struct ChatView: View {
                     if question != nil, !composerOpen {
                         // The question card has its own answer field; a second
                         // text box under it only competes for the screen.
-                        AnswerPrompt { withAnimation(reduceMotion ? nil : .snappy) { composerOpen = true } }
+                        if compactPrompt {
+                            Color.clear.frame(height: 0)
+                        } else {
+                            AnswerPrompt { withAnimation(reduceMotion ? nil : .snappy) { composerOpen = true } }
+                        }
                     } else {
                         Composer(store: store, session: session, showModels: $showModels)
                     }
@@ -229,6 +271,10 @@ struct ChatView: View {
 }
 
 extension ChatView {
+    /// No bar under the transcript while a question waits: the screen is
+    /// short, or the text is at one of the largest sizes.
+    fileprivate var compactPrompt: Bool { typeSize.isAccessibilitySize || visibleHeight < 520 }
+
     /// Within a couple of lines of the end of the transcript, allowing for
     /// the composer that covers the bottom of the scroll view.
     fileprivate static func isNearEnd(_ geometry: ScrollGeometry) -> Bool {
@@ -273,37 +319,30 @@ extension ChatView {
 /// Shown in place of the composer while the agent waits on a question.
 struct AnswerPrompt: View {
     var onMessage: () -> Void
-    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        let stacked = typeSize.isAccessibilitySize
-        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: Space.s)) : AnyLayout(HStackLayout(spacing: Space.m))
-        let shape = RoundedRectangle(cornerRadius: stacked ? 22 : 30, style: .continuous)
-        layout {
-            HStack(spacing: Space.m) {
-                Image(systemName: "questionmark.bubble.fill").foregroundStyle(Sand.warningSolid)
-                Text("Answer above to continue")
-                    .font(.subheadline)
-                    .foregroundStyle(Sand.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if !stacked { Spacer(minLength: Space.s) }
+        HStack(spacing: Space.m) {
+            Image(systemName: "questionmark.bubble.fill").foregroundStyle(Sand.warningSolid)
+            Text("Answer above to continue")
+                .font(.subheadline)
+                .foregroundStyle(Sand.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: Space.s)
             Button("Message", action: onMessage)
                 .buttonStyle(RaisedButtonStyle(size: .small))
                 .fixedSize()
                 .accessibilityLabel("Write a message instead")
         }
-        .frame(maxWidth: stacked ? .infinity : nil, alignment: .leading)
         .padding(.leading, Space.l)
-        .padding(.trailing, stacked ? Space.l : Space.s)
-        .padding(.vertical, stacked ? Space.m : Space.s)
-        .background(Sand.card, in: shape)
-        .overlay(shape.strokeBorder(Sand.border, lineWidth: 1))
+        .padding(.trailing, Space.s)
+        .padding(.vertical, Space.s)
+        .background(Sand.card, in: Capsule())
+        .overlay(Capsule().strokeBorder(Sand.border, lineWidth: 1))
         .shadow(color: Sand.shadow.opacity(0.08), radius: 14, y: 5)
         .padding(.horizontal, Space.m)
         .padding(.vertical, Space.s)
-        // The same fade the composer sits on, so a card scrolling underneath
-        // (on a short screen it is taller than the view) does not show through.
+        // The same fade the composer sits on, so a card scrolling
+        // underneath does not show through.
         .frame(maxWidth: .infinity)
         .background {
             LinearGradient(colors: [Sand.canvas.opacity(0), Sand.canvas], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.4))

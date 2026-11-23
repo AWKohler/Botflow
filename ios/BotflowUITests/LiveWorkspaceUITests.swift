@@ -97,6 +97,8 @@ final class LiveWorkspaceUITests: XCTestCase {
         // Full screen and back.
         fullScreen.tap()
         sleep(5)
+        let unfold = app.buttons["Show simulator controls"]
+        if !app.buttons["simulator.exitFullscreen"].exists, unfold.exists { unfold.tap() }
         app.buttons["simulator.exitFullscreen"].tap()
         XCTAssertTrue(fullScreen.waitForExistence(timeout: 10))
         sleep(2)

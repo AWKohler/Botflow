@@ -24,19 +24,17 @@ struct AppPane: View {
                     )
                     .fixedSize()
                     Spacer(minLength: 0)
-                    Button { sheet = .share } label: {
-                        Image(systemName: "person.badge.plus").frame(width: 20, height: 20)
+                    // Half of a Duo has room for the switch and Publish; sharing is in the workspace's menu there.
+                    if paneWidth >= 380 {
+                        Button { sheet = .share } label: {
+                            Image(systemName: "person.badge.plus").frame(width: 20, height: 20)
+                        }
+                        .buttonStyle(RaisedButtonStyle(size: .small))
+                        .accessibilityLabel("Share project")
                     }
-                    .buttonStyle(RaisedButtonStyle(size: .small))
-                    .accessibilityLabel("Share project")
                     if !store.project.isSwift {
                         Button { sheet = .publish } label: {
-                            // Half of an open Duo has room for the switch or the word, not both.
-                            if paneWidth < 380 {
-                                Image(systemName: "globe").frame(width: 20, height: 20)
-                            } else {
-                                Label("Publish", systemImage: "globe")
-                            }
+                            Label("Publish", systemImage: "globe")
                         }
                         .buttonStyle(InkButtonStyle(size: .small))
                         .accessibilityLabel("Publish")

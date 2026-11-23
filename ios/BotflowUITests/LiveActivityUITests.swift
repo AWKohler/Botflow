@@ -4,6 +4,10 @@ import XCTest
 /// another app is in front, expanded, and on the Lock Screen. Each step leaves
 /// a screenshot. Skipped unless TEST_RUNNER_BOTFLOW_ISLAND is set.
 final class LiveActivityUITests: XCTestCase {
+    /// The app that stands in for "whatever else you were doing". Settings,
+    /// not Safari: a browser reopens whatever page was last on screen.
+    private static let otherApp = "com.apple.Preferences"
+
     override func setUp() {
         continueAfterFailure = false
     }
@@ -19,8 +23,8 @@ final class LiveActivityUITests: XCTestCase {
         sleep(3)
 
         // Leave for another app: the agent's steps keep arriving in the island.
-        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
-        safari.launch()
+        let other = XCUIApplication(bundleIdentifier: Self.otherApp)
+        other.launch()
         sleep(4)
         keep("1-island-compact")
         sleep(3)
@@ -66,12 +70,13 @@ final class LiveActivityUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["Chat"].firstMatch.waitForExistence(timeout: 30), "The workspace did not open")
 
-        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
-        safari.launch()
+        let other = XCUIApplication(bundleIdentifier: Self.otherApp)
+        other.launch()
         // The question arrives a few seconds in; the island expands on its own.
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let question = springboard.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] 'pay at the counter'")).firstMatch
         XCTAssertTrue(question.waitForExistence(timeout: 40), "The island did not come forward with the question")
+        sleep(2)   // let it finish opening
         keep("7-question-island-opens-itself")
         sleep(6)
         keep("8-question-island-compact")

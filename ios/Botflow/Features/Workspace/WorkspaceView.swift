@@ -229,7 +229,9 @@ struct WorkspaceView: View {
                     .opacity(dragStartWidth == nil ? 0.7 : 1)
             }
             .frame(width: 17)
-            .contentShape(Rectangle())
+            // The line is thin; the area that grabs it is 44 points wide.
+            .contentShape(Rectangle().inset(by: -13.5))
+            .zIndex(1)
             .hoverEffect(.highlight)
             .gesture(
                 DragGesture(minimumDistance: 2, coordinateSpace: .global)

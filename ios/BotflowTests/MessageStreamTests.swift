@@ -61,6 +61,21 @@ final class MessageStreamTests: XCTestCase {
         if case .reasoning(_, _, let streaming)? = assembler.message.parts.last { XCTAssertFalse(streaming) } else { XCTFail("expected reasoning") }
     }
 
+    func testAnUnansweredQuestionIsStillWaitingAfterTheTurnEnds() {
+        var assembler = MessageAssembler(messageId: "m")
+        assembler.apply(chunk("tool-input-available", ["toolCallId": .string("c1"), "toolName": .string("read"), "input": .object([:])]))
+        assembler.apply(chunk("tool-input-available", ["toolCallId": .string("q1"), "toolName": .string("ask_question"), "input": .object([
+            "questions": .array([.object(["id": .string("q-0"), "question": .string("Pay now or at the counter?"), "options": .array([])])]),
+        ])]))
+        assembler.finish()
+        let calls = assembler.message.toolCalls
+        XCTAssertEqual(calls.first { $0.id == "c1" }?.state, .done)
+        // The question stays open: it is what the chat, the notification and the Live Activity all key off.
+        let question = calls.first { $0.id == "q1" }
+        XCTAssertEqual(question?.state, .running)
+        XCTAssertEqual(question.flatMap { AgentQuestion.parse($0.input).first?.question }, "Pay now or at the counter?")
+    }
+
     func testSubagentStepsAttachToTheirTask() {
         var assembler = MessageAssembler(messageId: "m")
         assembler.apply(chunk("tool-input-available", ["toolCallId": .string("task1"), "toolName": .string("task"), "input": .object(["description": .string("Audit the routes")])]))

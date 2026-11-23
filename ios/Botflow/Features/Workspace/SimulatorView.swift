@@ -8,6 +8,7 @@ struct SimulatorView: View {
     @Binding var immersive: Bool
     @State private var keyboard = false
     @State private var showIssues = false
+    @State private var showTouchHelp = false
     @State private var paneSize = CGSize(width: 400, height: 700)
 
     /// A pane much wider than it is tall (the top half of a Duo held like a
@@ -18,12 +19,17 @@ struct SimulatorView: View {
     var body: some View {
         Group {
             if sideBySide {
-                HStack(alignment: .center, spacing: Space.l) {
+                // Controls and device sit together in the middle, a fixed gap
+                // apart, instead of at opposite ends of a wide pane.
+                let aspect = controller.displaySize.width / max(1, controller.displaySize.height)
+                let deviceWidth = min(max(120, paneSize.width - 2 * Space.l - 32 - 180), (paneSize.height - 2 * Space.s) * aspect)
+                HStack(alignment: .center, spacing: 32) {
                     sideControls
-                    stage(bezel: 5)
+                    stage(bezel: 5).frame(width: immersive ? 200 : deviceWidth)
                 }
                 .padding(.horizontal, Space.l)
                 .padding(.vertical, Space.s)
+                .frame(maxWidth: .infinity)
             } else {
                 VStack(spacing: Space.m) {
                     controlBar
@@ -37,6 +43,7 @@ struct SimulatorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onGeometryChange(for: CGSize.self) { $0.size } action: { paneSize = $0 }
         .sheet(isPresented: $showIssues) { BuildIssuesSheet(controller: controller).tint(Sand.text) }
+        .sheet(isPresented: $showTouchHelp) { TouchHelpSheet(holds: controller.hostTakesDurations).tint(Sand.text) }
         .onChange(of: controller.phase) { _, phase in
             if phase != .live { keyboard = false }
             if case .failed = phase, !controller.diagnostics.isEmpty { showIssues = true }
@@ -159,8 +166,8 @@ struct SimulatorView: View {
             if includesRotate {
                 Button { controller.toggleOrientation() } label: { Label(controller.landscape ? "Rotate to portrait" : "Rotate to landscape", systemImage: "rectangle.portrait.rotate") }
             }
-            Toggle(isOn: $controller.liveScroll) { Label("Stop scrolls where I stop", systemImage: "hand.draw") }
-            Button { controller.touchHintSeen = false } label: { Label("How touch works", systemImage: "hand.tap") }
+            Toggle(isOn: $controller.liveScroll) { Label("Allow for coasting when I stop", systemImage: "hand.draw") }
+            Button { showTouchHelp = true } label: { Label("How touch works", systemImage: "hand.tap") }
             if controller.phase.isActive {
                 Divider()
                 Button(role: .destructive) { Task { await controller.stop() } } label: { Label("Stop simulator", systemImage: "stop.fill") }
@@ -342,6 +349,12 @@ struct SimulatorScreen: View {
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.8))
                         .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    // Even the smallest card keeps the one fact that matters.
+                    Text(controller.hostTakesDurations ? "Gestures play back as you make them." : "Gestures play back as you lift your finger.")
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Button("Got it") { controller.touchHintSeen = true }
                     .font(.footnote.weight(.semibold))
@@ -443,6 +456,9 @@ struct ImmersiveSimulatorView: View {
     @Binding var immersive: Bool
     @State private var keyboard = false
     @State private var expanded = true
+    /// The controls open in full the first time, to be found; after that
+    /// they start folded, so nothing sits on the app being tried.
+    @AppStorage("sim.controls.introduced") private var introduced = false
     /// Which side the controls are docked on, and how far down, as the person left them.
     @AppStorage("sim.controls.trailing") private var dockTrailing = true
     @AppStorage("sim.controls.height") private var dockHeight = 0.42
@@ -468,7 +484,14 @@ struct ImmersiveSimulatorView: View {
         .ignoresSafeArea()
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
-        .onAppear { scheduleCollapse() }
+        .onAppear {
+            if introduced, !UIAccessibility.isVoiceOverRunning {
+                expanded = false
+            } else {
+                introduced = true
+                scheduleCollapse()
+            }
+        }
         .onDisappear { collapseTask?.cancel() }
         .onChange(of: controller.phase) { _, phase in
             // A build that fails, or a session that ends, is dealt with back in the pane.
@@ -519,7 +542,7 @@ struct ImmersiveSimulatorView: View {
         }
         .environment(\.colorScheme, .dark)
         .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
-        .opacity(expanded ? 1 : 0.7)
+        .opacity(expanded ? 1 : 0.55)
         .position(x: x + (drag?.width ?? 0), y: y + (drag?.height ?? 0))
         .highPriorityGesture(
             DragGesture(minimumDistance: 6)
@@ -682,5 +705,59 @@ struct DemoAppScreen: View {
             .background(.white)
             .environment(\.colorScheme, .light)
         }
+    }
+}
+
+
+/// How touching the simulator works, in full, wherever it is asked for.
+struct TouchHelpSheet: View {
+    /// The host can hold a press and pace a swipe.
+    var holds: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    private var rows: [(String, String, String)] {
+        var list: [(String, String, String)] = [
+            ("hand.tap", "Tap", "Sent as you lift your finger."),
+            ("hand.draw", "Flick", "Replayed exactly as you drew it; the simulator adds the momentum a real flick has."),
+            ("arrow.up.and.down", "Drag and stop", holds
+                ? "Replayed at your own pace, so the page stops about where you stopped."
+                : "Shortened to allow for the simulator coasting on after it. Short scrolls can only be approximate here."),
+            ("arrow.left.and.right", "Sideways", "Paging, row actions and going back are replayed exactly."),
+            ("keyboard", "Type", "With the on-screen keyboard or a hardware one."),
+        ]
+        if holds {
+            list.insert(("hand.tap.fill", "Touch and hold", "Hold still for half a second."), at: 1)
+        }
+        return list
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(rows, id: \.1) { row in
+                        HStack(alignment: .firstTextBaseline, spacing: Space.m) {
+                            Image(systemName: row.0).foregroundStyle(Sand.muted).frame(width: 26)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(row.1).font(.body.weight(.medium)).foregroundStyle(Sand.text)
+                                Text(row.2).font(.subheadline).foregroundStyle(Sand.muted).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .listRowBackground(Sand.card)
+                        .accessibilityElement(children: .combine)
+                    }
+                } footer: {
+                    Text(holds
+                        ? "The simulator runs on a Mac in the cloud. What you see is its screen; each gesture is replayed there."
+                        : "The simulator runs on a Mac in the cloud. What you see is its screen; each gesture is replayed there once you finish it, so the picture moves a moment after your finger. Touch and hold and pinch are not available yet.")
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Sand.canvas)
+            .navigationTitle("How touch works")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

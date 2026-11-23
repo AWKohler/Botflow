@@ -129,6 +129,8 @@ struct MessageAssembler: Sendable {
         // A turn that ended leaves no tool spinning.
         for index in message.parts.indices {
             if case .tool(var call) = message.parts[index], call.state == .running {
+                // A question nobody has answered is still waiting, turn over or not.
+                if call.name == "ask_question", call.output == nil, call.errorText == nil, !sawEndTurn { continue }
                 call.state = .done
                 message.parts[index] = .tool(call)
             }

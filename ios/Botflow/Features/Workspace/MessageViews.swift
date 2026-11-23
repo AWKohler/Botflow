@@ -68,7 +68,7 @@ struct MessageView: View, Equatable {
     var message: ChatMessage
     var author: ThreadPerson?
     var showAuthor = false
-    var onAnswer: (ToolCall, [String], [String], String?) -> Void = { _, _, _, _ in }
+    var onAnswer: (ToolCall, [String], [String], String?) async -> Bool = { _, _, _, _ in true }
     var onInspect: (ToolCall) -> Void = { _ in }
 
     /// The callbacks never change what is drawn, so they are left out.
@@ -155,7 +155,7 @@ struct AttachmentThumb: View {
 
 struct AssistantMessageView: View {
     var message: ChatMessage
-    var onAnswer: (ToolCall, [String], [String], String?) -> Void
+    var onAnswer: (ToolCall, [String], [String], String?) async -> Bool
     var onInspect: (ToolCall) -> Void
 
     var body: some View {
@@ -538,11 +538,13 @@ struct ToolDetailSheet: View {
 /// The agent asked something and is waiting. Answering here unblocks it.
 struct QuestionCard: View {
     var call: ToolCall
-    var onAnswer: (ToolCall, [String], [String], String?) -> Void
+    var onAnswer: (ToolCall, [String], [String], String?) async -> Bool
 
     @State private var selected: [String: Set<String>] = [:]
     @State private var note = ""
     @State private var sending = false
+    @State private var failed = false
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var questions: [AgentQuestion] { AgentQuestion.parse(call.input) }
     private var answered: Bool { call.state != .running }
@@ -552,7 +554,8 @@ struct QuestionCard: View {
             HStack(spacing: Space.s) {
                 Image(systemName: answered ? "checkmark.bubble.fill" : "questionmark.bubble.fill")
                     .foregroundStyle(answered ? Sand.success : Sand.warningSolid)
-                Text(answered ? "You answered" : "The agent needs your input")
+                // Short at the largest text sizes, where every line counts and the question itself matters more.
+                Text(answered ? "You answered" : typeSize.isAccessibilitySize ? "Agent question" : "The agent needs your input")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Sand.text)
             }
@@ -593,12 +596,19 @@ struct QuestionCard: View {
                     .padding(.vertical, 10)
                     .background(Sand.bg, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: Radius.control, style: .continuous).strokeBorder(Sand.borderStrong, lineWidth: 1))
+                if failed {
+                    Label("That didn't send. Your answer is still here: check your connection and try again.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(Sand.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.updatesFrequently)
+                }
                 Button {
                     submit()
                 } label: {
                     HStack(spacing: Space.s) {
                         if sending { ProgressView().tint(Sand.bg) }
-                        Text("Send answer")
+                        Text(failed ? "Try again" : "Send answer")
                     }
                 }
                 .buttonStyle(InkButtonStyle(fullWidth: true))
@@ -672,7 +682,17 @@ struct QuestionCard: View {
                 labels.append(option.label)
             }
         }
-        onAnswer(call, ids, labels, note.isEmpty ? nil : note)
+        failed = false
+        let answer = note.isEmpty ? nil : note
+        Task {
+            // On success the card turns into "You answered" by itself. On
+            // failure it must not stay locked: the agent is waiting on this.
+            let sent = await onAnswer(call, ids, labels, answer)
+            if !sent {
+                sending = false
+                withMotion(.snappy) { failed = true }
+            }
+        }
     }
 }
 
@@ -684,4 +704,10 @@ struct QuestionTopKey: PreferenceKey {
         // The last card in the transcript is the one waiting.
         if let next = nextValue() { value = next }
     }
+}
+
+/// Where the transcript's last element ends, in the transcript's own coordinates.
+struct TranscriptEndKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }

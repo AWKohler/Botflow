@@ -68,8 +68,19 @@ struct SettingsView: View {
                         }
                         .listRowBackground(Sand.card)
                     default:
-                        row("bell.badge", "Notifications", value: "On")
-                            .listRowBackground(Sand.card)
+                        Button {
+                            if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
+                        } label: {
+                            HStack(spacing: Space.s) {
+                                row("bell.badge", "Notifications", value: "On")
+                                Image(systemName: "arrow.up.forward")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(Sand.subtle)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                        .accessibilityHint("Opens notification settings")
+                        .listRowBackground(Sand.card)
                     }
                     Toggle(isOn: $liveActivities) {
                         row("platter.filled.top.iphone", "Live Activities", value: nil)
