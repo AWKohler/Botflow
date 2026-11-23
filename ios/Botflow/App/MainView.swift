@@ -106,7 +106,7 @@ enum DemoRouting {
             if let p = project("p-ledger") { router.open(WorkspaceRoute(project: p, threadId: "t-onboard", startOnApp: true), in: .projects) }
         case "workspace-threads", "workspace-models":
             if let p = project("p-tidewater") { router.open(WorkspaceRoute(project: p, threadId: "t-hero"), in: .projects) }
-        case "workspace-code", "workspace-publish":
+        case "workspace-code", "workspace-file", "workspace-publish":
             if let p = project("p-tidewater") { router.open(WorkspaceRoute(project: p, threadId: "t-hero", startOnApp: true), in: .projects) }
         default: break
         }

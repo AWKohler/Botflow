@@ -12,9 +12,14 @@ struct SimulatorView: View {
     var body: some View {
         ZStack {
             if immersive {
+                // Edge to edge: on a phone the simulated screen lines up with the
+                // real one, status bar and all.
                 Color.black.ignoresSafeArea()
-                screen(cornerRadius: 0)
-                    .ignoresSafeArea(.container, edges: .bottom)
+                GeometryReader { proxy in
+                    screen(cornerRadius: 0)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                }
+                .ignoresSafeArea()
                 immersiveControls
             } else {
                 VStack(spacing: Space.m) {
@@ -271,17 +276,23 @@ struct SimulatorView: View {
 
     // MARK: Full screen
 
+    /// One dark pill, so the controls read over any app, light or dark.
     private var immersiveControls: some View {
         VStack {
             Spacer()
-            GlassEffectContainer(spacing: 10) {
-                HStack(spacing: 10) {
-                    immersiveButton("arrow.down.right.and.arrow.up.left", "Exit full screen") { immersive = false }
-                    immersiveButton(keyboard ? "keyboard.chevron.compact.down" : "keyboard", "Keyboard") { keyboard.toggle() }
-                    immersiveButton("rectangle.portrait.rotate", "Rotate") { controller.toggleOrientation() }
-                    immersiveButton("hammer", "Rebuild") { Task { await controller.rebuild() } }
-                }
+            HStack(spacing: 2) {
+                immersiveButton("arrow.down.right.and.arrow.up.left", "Exit full screen") { immersive = false }
+                immersiveButton(keyboard ? "keyboard.chevron.compact.down" : "keyboard", "Keyboard") { keyboard.toggle() }
+                immersiveButton("rectangle.portrait.rotate", "Rotate") { controller.toggleOrientation() }
+                immersiveButton("hammer", "Rebuild") { Task { await controller.rebuild() } }
             }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(.black.opacity(0.62), in: Capsule())
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(.white.opacity(0.22), lineWidth: 1))
+            .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
+            .environment(\.colorScheme, .dark)
             .padding(.bottom, Space.s)
         }
     }
@@ -291,9 +302,10 @@ struct SimulatorView: View {
             Image(systemName: symbol)
                 .font(.body.weight(.medium))
                 .foregroundStyle(.white)
-                .frame(width: 46, height: 46)
+                .frame(width: 46, height: 44)
+                .contentShape(Rectangle())
         }
-        .glassEffect(.regular.interactive(), in: .circle)
+        .buttonStyle(PressableStyle(scale: 0.9))
         .accessibilityLabel(label)
     }
 }

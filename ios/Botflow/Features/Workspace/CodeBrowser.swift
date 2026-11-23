@@ -5,7 +5,7 @@ import SwiftUI
 struct CodeBrowser: View {
     @ObservedObject var store: WorkspaceStore
     @State private var expanded: Set<String> = ["src", "convex", "app"]
-    @State private var selected: String? = AppConfig.demoRoute == "workspace-code" && UIDevice.current.userInterfaceIdiom == .pad ? "src/components/Cart.tsx" : nil
+    @State private var selected: String? = AppConfig.demoRoute == "workspace-file" ? "src/components/Cart.tsx" : nil
     @State private var query = ""
     @State private var hits: [SearchHit] = []
     @State private var searching = false
@@ -50,10 +50,9 @@ struct CodeBrowser: View {
     var body: some View {
         GeometryReader { proxy in
             let split = proxy.size.width >= 640
-            HStack(spacing: 0) {
-                tree
-                    .frame(width: split ? 270 : nil)
-                if split {
+            if split {
+                HStack(spacing: 0) {
+                    tree.frame(width: 270)
                     Divider().overlay(Sand.border)
                     if let selected {
                         FileViewer(store: store, path: selected)
@@ -63,21 +62,20 @@ struct CodeBrowser: View {
                             .background(Sand.card)
                     }
                 }
-            }
-            .sheet(item: Binding(get: { split ? nil : selected.map(SelectedFile.init) }, set: { if $0 == nil { selected = nil } })) { file in
-                NavigationStack {
-                    FileViewer(store: store, path: file.path, inSheet: true)
-                }
+            } else if let selected {
+                // One column: the file replaces the list, with a way back.
+                FileViewer(store: store, path: selected, onBack: {
+                    withAnimation(.snappy(duration: 0.25)) { self.selected = nil }
+                })
+                .id(selected)
+                .transition(.move(edge: .trailing))
+            } else {
+                tree.transition(.move(edge: .leading))
             }
         }
         .task {
             if store.files.isEmpty { await store.loadFiles() }
         }
-    }
-
-    private struct SelectedFile: Identifiable {
-        var path: String
-        var id: String { path }
     }
 
     private var tree: some View {
@@ -166,7 +164,7 @@ struct CodeBrowser: View {
                     if expanded.contains(row.file.path) { expanded.remove(row.file.path) } else { expanded.insert(row.file.path) }
                 }
             } else {
-                selected = row.file.path
+                withAnimation(.snappy(duration: 0.25)) { selected = row.file.path }
             }
         } label: {
             HStack(spacing: 7) {
@@ -226,7 +224,8 @@ struct CodeBrowser: View {
 struct FileViewer: View {
     @ObservedObject var store: WorkspaceStore
     var path: String
-    var inSheet = false
+    /// Set when the viewer replaces the file list: shows a "Files" back control.
+    var onBack: (() -> Void)?
 
     @State private var content = ""
     @State private var original = ""
@@ -237,23 +236,39 @@ struct FileViewer: View {
     @State private var editing = false
     @State private var saving = false
     @State private var highlighted = AttributedString("")
-    @Environment(\.dismiss) private var dismiss
 
     private var dirty: Bool { content != original }
 
     var body: some View {
         VStack(spacing: 0) {
-            if !inSheet {
-                HStack(spacing: Space.s) {
+            HStack(spacing: Space.s) {
+                if let onBack {
+                    Button(action: onBack) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "chevron.left").font(.subheadline.weight(.semibold))
+                            Text("Files")
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Sand.text)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back to files")
+                } else {
                     Image(systemName: CodeBrowser.symbol(for: (path as NSString).lastPathComponent)).foregroundStyle(Sand.subtle)
-                    Text(path).font(.code(12.5)).foregroundStyle(Sand.muted).lineLimit(1).truncationMode(.head)
-                    Spacer()
-                    actions
                 }
-                .padding(.horizontal, Space.m)
-                .frame(minHeight: 44)
-                Divider().overlay(Sand.border)
+                Text(onBack == nil ? path : (path as NSString).lastPathComponent)
+                    .font(.code(12.5))
+                    .foregroundStyle(Sand.muted)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                Spacer()
+                actions
             }
+            .padding(.horizontal, Space.m)
+            .frame(minHeight: 44)
+            Divider().overlay(Sand.border)
             Group {
                 if loading {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -287,14 +302,6 @@ struct FileViewer: View {
                 }
             }
             .background(Sand.card)
-        }
-        .navigationTitle((path as NSString).lastPathComponent)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if inSheet {
-                ToolbarItem(placement: .topBarLeading) { Button("Close") { dismiss() } }
-                ToolbarItem(placement: .topBarTrailing) { actions }
-            }
         }
         .task { await load() }
     }
