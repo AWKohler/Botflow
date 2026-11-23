@@ -134,7 +134,7 @@ struct BuildView: View {
                         choices(modelName: model.name, chevrons: true, backendWords: true)
                     } else if room >= 306 {
                         choices(modelName: model.shortName, chevrons: true, backendWords: true)
-                    } else if room >= 270 {
+                    } else if room >= 262 {
                         choices(modelName: model.shortName, chevrons: false, backendWords: true)
                     } else {
                         choices(modelName: model.shortName, chevrons: false, backendWords: false)

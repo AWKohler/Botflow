@@ -53,6 +53,7 @@
 		A884BC941BC0B6EC6341EF82 /* Router.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C03A5480D00FEBCBAC6710B /* Router.swift */; };
 		A9306A361C61C6DE0F293F55 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03E67E29403C961E699A4827 /* Components.swift */; };
 		BDC49846E8B6D609BC4CB4A4 /* ModelCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694435E0D56659DBDA3D18E8 /* ModelCatalog.swift */; };
+		C3CB37EAF3C6671174FF4C62 /* LiveActivityUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7D534F9087201D04C5C21E5 /* LiveActivityUITests.swift */; };
 		C8319B6348B69D2F18873B01 /* AgentsHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA21956E35643B92F2BE7D80 /* AgentsHub.swift */; };
 		CA1005D07B913168934C1E30 /* Botflow.storekit in Resources */ = {isa = PBXBuildFile; fileRef = AA8ACF8E1A3BF5271B605507 /* Botflow.storekit */; };
 		CB182BAE9B06703AAC86DEF1 /* AgentLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C68739A38BEAA810D9B784F /* AgentLiveActivity.swift */; };
@@ -182,6 +183,7 @@
 		ED34B6FD69DF498EE6F5428D /* BotflowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotflowApp.swift; sourceTree = "<group>"; };
 		EF0BE25DC7CEFCAFCE864C99 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		EFD7F8111C96AE0EB5449235 /* BotflowGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotflowGlyph.swift; sourceTree = "<group>"; };
+		F7D534F9087201D04C5C21E5 /* LiveActivityUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityUITests.swift; sourceTree = "<group>"; };
 		F7E0C9000BF56241BC5D9F59 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -200,6 +202,7 @@
 			isa = PBXGroup;
 			children = (
 				50E4B09073BB81561BDB62F8 /* DemoUITests.swift */,
+				F7D534F9087201D04C5C21E5 /* LiveActivityUITests.swift */,
 				9D36548B0F9105B6B9872161 /* LiveSignInUITests.swift */,
 				2358181520393DDAC74AC6A0 /* LiveWorkspaceUITests.swift */,
 				00210DF6C41D1029B1EECCEA /* PushUITests.swift */,
@@ -584,6 +587,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2D1E1482B85D66728490E1EF /* DemoUITests.swift in Sources */,
+				C3CB37EAF3C6671174FF4C62 /* LiveActivityUITests.swift in Sources */,
 				8CF55451CAC4265315BF1232 /* LiveSignInUITests.swift in Sources */,
 				887535CFA4DDA2308337BC52 /* LiveWorkspaceUITests.swift in Sources */,
 				73EEFB5841C8C9EDB8E16853 /* PushUITests.swift in Sources */,

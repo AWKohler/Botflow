@@ -311,6 +311,7 @@ struct SegmentedTabs<Value: Hashable>: View {
     var compact = false
     @Namespace private var namespace
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         HStack(spacing: 2) {
@@ -323,13 +324,15 @@ struct SegmentedTabs<Value: Hashable>: View {
                     withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) { selection = item.value }
                 } label: {
                     HStack(spacing: 5) {
-                        if let symbol = item.symbol { Image(systemName: symbol).imageScale(.small) }
+                        // At the largest text sizes the word gets the room, not the icon.
+                        if let symbol = item.symbol, !typeSize.isAccessibilitySize { Image(systemName: symbol).imageScale(.small) }
                         Text(item.title)
                     }
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(selected ? Sand.text : Sand.muted)
                     .lineLimit(1)
-                    .padding(.horizontal, compact ? 12 : 16)
+                    .minimumScaleFactor(typeSize.isAccessibilitySize ? 0.6 : 1)
+                    .padding(.horizontal, typeSize.isAccessibilitySize ? 6 : compact ? 12 : 16)
                     // 38 + the track's 3-point padding either side: a 44-point target.
                     .frame(maxWidth: compact ? nil : .infinity, minHeight: 38)
                     .background {

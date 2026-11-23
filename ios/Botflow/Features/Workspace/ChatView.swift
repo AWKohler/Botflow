@@ -221,24 +221,32 @@ extension ChatView {
 /// Shown in place of the composer while the agent waits on a question.
 struct AnswerPrompt: View {
     var onMessage: () -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        HStack(spacing: Space.m) {
-            Image(systemName: "questionmark.bubble.fill").foregroundStyle(Sand.warningSolid)
-            Text("Answer above to continue")
-                .font(.subheadline)
-                .foregroundStyle(Sand.muted)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: Space.s)
+        let stacked = typeSize.isAccessibilitySize
+        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: Space.s)) : AnyLayout(HStackLayout(spacing: Space.m))
+        let shape = RoundedRectangle(cornerRadius: stacked ? 22 : 30, style: .continuous)
+        layout {
+            HStack(spacing: Space.m) {
+                Image(systemName: "questionmark.bubble.fill").foregroundStyle(Sand.warningSolid)
+                Text("Answer above to continue")
+                    .font(.subheadline)
+                    .foregroundStyle(Sand.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !stacked { Spacer(minLength: Space.s) }
             Button("Message", action: onMessage)
                 .buttonStyle(RaisedButtonStyle(size: .small))
+                .fixedSize()
                 .accessibilityLabel("Write a message instead")
         }
+        .frame(maxWidth: stacked ? .infinity : nil, alignment: .leading)
         .padding(.leading, Space.l)
-        .padding(.trailing, Space.s)
-        .padding(.vertical, Space.s)
-        .background(Sand.card, in: Capsule())
-        .overlay(Capsule().strokeBorder(Sand.border, lineWidth: 1))
+        .padding(.trailing, stacked ? Space.l : Space.s)
+        .padding(.vertical, stacked ? Space.m : Space.s)
+        .background(Sand.card, in: shape)
+        .overlay(shape.strokeBorder(Sand.border, lineWidth: 1))
         .shadow(color: Sand.shadow.opacity(0.08), radius: 14, y: 5)
         .padding(.horizontal, Space.m)
         .padding(.vertical, Space.s)
@@ -311,6 +319,7 @@ struct Composer: View {
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var dropTargeted = false
     @State private var composerWidth: CGFloat = 360
+    @Environment(\.dynamicTypeSize) private var typeSize
     @FocusState private var focused: Bool
 
     struct PendingAttachment: Identifiable, Equatable {
@@ -358,7 +367,7 @@ struct Composer: View {
                         HStack(spacing: 5) {
                             ProviderMark(provider: model.provider, modelId: model.id, size: 15)
                             // In a narrow column the vendor's mark stands in for its name.
-                            Text(composerWidth < 330 ? model.shortName : model.name).lineLimit(1)
+                            Text(composerWidth < 330 || typeSize.isAccessibilitySize ? model.shortName : model.name).lineLimit(1)
                             Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(Sand.subtle)
                         }
                         .font(.subheadline.weight(.medium))

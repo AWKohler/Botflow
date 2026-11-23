@@ -140,13 +140,14 @@ struct SettingsView: View {
                 Text(session.user?.displayName ?? "Your account")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(Sand.text)
-                    .lineLimit(1)
+                    .lineLimit(2)
                 if let email = session.user?.email {
-                    Text(email).font(.subheadline).foregroundStyle(Sand.muted).lineLimit(1)
+                    Text(email).font(.subheadline).foregroundStyle(Sand.muted).lineLimit(1).truncationMode(.middle)
                 }
             }
             Spacer(minLength: 0)
             Badge(text: session.tier.label, tone: session.tier == .free ? .neutral : .accent)
+                .fixedSize()
         }
         .padding(.vertical, 6)
     }
@@ -159,14 +160,35 @@ struct SettingsView: View {
     }
 
     private func row(_ symbol: String, _ title: String, value: String?) -> some View {
+        SettingsRow(symbol: symbol, title: title, value: value)
+    }
+}
+
+/// One settings row: icon, title, and a value that moves under the title at
+/// the largest text sizes instead of squeezing it.
+struct SettingsRow: View {
+    var symbol: String
+    var title: String
+    var value: String?
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
         HStack(spacing: Space.m) {
             Image(systemName: symbol)
                 .foregroundStyle(Sand.muted)
                 .frame(width: 24)
-            Text(title).foregroundStyle(Sand.text)
-            Spacer(minLength: Space.s)
-            if let value {
-                Text(value).foregroundStyle(Sand.subtle).lineLimit(1)
+            if typeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).foregroundStyle(Sand.text)
+                    if let value { Text(value).foregroundStyle(Sand.subtle) }
+                }
+                Spacer(minLength: 0)
+            } else {
+                Text(title).foregroundStyle(Sand.text)
+                Spacer(minLength: Space.s)
+                if let value {
+                    Text(value).foregroundStyle(Sand.subtle).lineLimit(1)
+                }
             }
         }
         .contentShape(Rectangle())

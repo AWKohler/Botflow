@@ -4,6 +4,7 @@ import SwiftUI
 /// finished, across all projects, with enough on each card to decide whether
 /// it needs opening.
 struct AgentsView: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     @EnvironmentObject private var hub: AgentsHub
     @EnvironmentObject private var router: Router
     @EnvironmentObject private var session: AppSession
@@ -48,7 +49,8 @@ struct AgentsView: View {
     }
 
     private func summary(_ proxy: ScrollViewProxy) -> some View {
-        HStack(spacing: Space.m) {
+        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: Space.s)) : AnyLayout(HStackLayout(spacing: Space.m))
+        return layout {
             stat(hub.needsInput.count + hub.failed.count, "Need you", .warning, target: "needs", proxy)
             stat(hub.running.count, "Working", .accent, target: "working", proxy)
             stat(hub.finished.count, "Finished", .success, target: "finished", proxy)
@@ -64,16 +66,29 @@ struct AgentsView: View {
             Haptics.select()
             withAnimation(reduceMotion ? nil : .snappy) { proxy.scrollTo(target, anchor: .top) }
         } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(count)")
-                    .font(.serif(38, relativeTo: .largeTitle))
-                    .foregroundStyle(count > 0 ? tone.foreground : Sand.subtle)
-                    .contentTransition(.numericText())
-                Text(label)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(Sand.muted)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+            Group {
+                if typeSize.isAccessibilitySize {
+                    // One per line, number beside its label, so neither is cut short.
+                    HStack(alignment: .firstTextBaseline, spacing: Space.m) {
+                        Text("\(count)")
+                            .font(.serif(30, relativeTo: .title))
+                            .foregroundStyle(count > 0 ? tone.foreground : Sand.subtle)
+                        Text(label).font(.body.weight(.medium)).foregroundStyle(Sand.muted)
+                        Spacer(minLength: 0)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(count)")
+                            .font(.serif(38, relativeTo: .largeTitle))
+                            .foregroundStyle(count > 0 ? tone.foreground : Sand.subtle)
+                            .contentTransition(.numericText())
+                        Text(label)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(Sand.muted)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, Space.l)

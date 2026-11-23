@@ -232,7 +232,9 @@ final class DemoService: BotflowService, @unchecked Sendable {
         return AsyncThrowingStream { continuation in
             let task = Task { [weak self] in
                 for step in script {
-                    try? await Task.sleep(nanoseconds: UInt64(step.delay * 1_000_000_000))
+                    // `-BotflowDemoPace 3` stretches the scripted turn, for screenshots of it in progress.
+                    let pace = max(1, UserDefaults.standard.double(forKey: "BotflowDemoPace"))
+                    try? await Task.sleep(nanoseconds: UInt64(step.delay * pace * 1_000_000_000))
                     if Task.isCancelled { break }
                     continuation.yield(step.chunk)
                 }

@@ -143,27 +143,51 @@ struct CurrentStep: View {
     var state: AgentActivityAttributes.ContentState
 
     var body: some View {
-        HStack(spacing: 7) {
-            StepSymbol(state: state)
-                .font(.footnote.weight(.semibold))
-                .frame(width: 18)
-            Text(state.action)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(Island.text)
-                .layoutPriority(1)
-            if !state.detail.isEmpty {
-                Text(state.detail)
-                    .font(.system(.caption, design: state.isFinished ? .default : .monospaced))
-                    .foregroundStyle(Island.muted)
-                    .lineLimit(state.isFinished ? 2 : 1)
-                    .truncationMode(.middle)
-            }
-            Spacer(minLength: 0)
-            if !state.isFinished, state.steps > 0 {
-                Text(state.steps == 1 ? "1 step" : "\(state.steps) steps")
-                    .font(.caption2)
-                    .foregroundStyle(Island.subtle)
-                    .monospacedDigit()
+        Group {
+            if state.isFinished {
+                // The outcome reads as a sentence, so it gets the full width under its label.
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 7) {
+                        StepSymbol(state: state)
+                            .font(.footnote.weight(.semibold))
+                            .frame(width: 18)
+                        Text(state.action)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Island.text)
+                    }
+                    if !state.detail.isEmpty {
+                        Text(state.detail)
+                            .font(.caption)
+                            .foregroundStyle(Island.muted)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(spacing: 7) {
+                    StepSymbol(state: state)
+                        .font(.footnote.weight(.semibold))
+                        .frame(width: 18)
+                    Text(state.action)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Island.text)
+                        .layoutPriority(1)
+                    if !state.detail.isEmpty {
+                        Text(state.detail)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(Island.muted)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    Spacer(minLength: 0)
+                    if state.steps > 0 {
+                        Text(state.steps == 1 ? "1 step" : "\(state.steps) steps")
+                            .font(.caption2)
+                            .foregroundStyle(Island.subtle)
+                            .monospacedDigit()
+                    }
+                }
             }
         }
         .padding(.horizontal, 10)

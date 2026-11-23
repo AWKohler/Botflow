@@ -76,6 +76,9 @@ struct ThreadStrip: View {
             }
         }
         .frame(height: 44)
+        // A bar, like the navigation bar above it: its labels stop growing
+        // at the largest standard size so the tabs stay readable as tabs.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 
     private func chip(_ thread: ThreadSummary) -> some View {
