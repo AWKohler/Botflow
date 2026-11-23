@@ -13,10 +13,7 @@
   "nonRenewingSubscriptions": [],
   "products": [],
   "settings": {
-    "_applicationInternalID": "6700000000",
-    "_developerTeamID": "W74SSCDM5V",
     "_failTransactionsEnabled": false,
-    "_lastSynchronizedDate": 0,
     "_locale": "en_US",
     "_storefront": "USA",
     "_storeKitErrors": []

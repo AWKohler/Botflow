@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		06CCE331B45AE2DA43026FD2 /* PurchaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B28326C06D0ABE3017E733F /* PurchaseTests.swift */; };
 		0B0CCEA73874EBFF60ED383C /* SimulatorSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06DE0F01F1C1EE593BC4C141 /* SimulatorSurface.swift */; };
 		0EF3C402442A64A70649FB89 /* ProjectCover.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0FF9B6632359D04F6935EC9 /* ProjectCover.swift */; };
 		1263949ECC9E109D53E223D4 /* BotflowGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFD7F8111C96AE0EB5449235 /* BotflowGlyph.swift */; };
@@ -48,6 +49,7 @@
 		8CF55451CAC4265315BF1232 /* LiveSignInUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D36548B0F9105B6B9872161 /* LiveSignInUITests.swift */; };
 		907B2F28508D522513DEC217 /* CoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C6113389CE057BBCEBC631 /* CoreTests.swift */; };
 		953884D1DE7EB6A9A3FBA287 /* InstrumentSerif-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 38EA29354590FBA60B106F74 /* InstrumentSerif-Regular.ttf */; };
+		970217B0EC68ABF9002178B0 /* Botflow.storekit in Resources */ = {isa = PBXBuildFile; fileRef = AA8ACF8E1A3BF5271B605507 /* Botflow.storekit */; };
 		97A20D04F569BBB0C6272A40 /* BotflowWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8CDF40F737AA0E9A9B3444D0 /* BotflowWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A054386267A1C339BCE3483B /* MessageStreamTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 580352DE2B20A584F74D7D78 /* MessageStreamTests.swift */; };
 		A884BC941BC0B6EC6341EF82 /* Router.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C03A5480D00FEBCBAC6710B /* Router.swift */; };
@@ -152,6 +154,7 @@
 		731FFD642E72FA320AEA4CD2 /* ThreadSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadSession.swift; sourceTree = "<group>"; };
 		775EA19A7C158B4E851307F6 /* CodeHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeHighlighter.swift; sourceTree = "<group>"; };
 		7A4D86851D173C6DE2FDED2E /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
+		7B28326C06D0ABE3017E733F /* PurchaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PurchaseTests.swift; sourceTree = "<group>"; };
 		7E15630708700F0DC80D580B /* BotflowUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = BotflowUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8563F79EB5F56892899FAB69 /* LiveActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityManager.swift; sourceTree = "<group>"; };
 		864B7B91E6C947543D4DAE37 /* Botflow.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Botflow.entitlements; sourceTree = "<group>"; };
@@ -420,6 +423,7 @@
 			children = (
 				23C6113389CE057BBCEBC631 /* CoreTests.swift */,
 				580352DE2B20A584F74D7D78 /* MessageStreamTests.swift */,
+				7B28326C06D0ABE3017E733F /* PurchaseTests.swift */,
 			);
 			path = BotflowTests;
 			sourceTree = "<group>";
@@ -467,6 +471,7 @@
 			buildConfigurationList = 1F078AE36569BAE02C756D7D /* Build configuration list for PBXNativeTarget "BotflowTests" */;
 			buildPhases = (
 				A23A9F8E83B27CA4BB73CC7F /* Sources */,
+				0457F93118D979083008E4BD /* Resources */,
 			);
 			buildRules = (
 			);
@@ -547,6 +552,14 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		0457F93118D979083008E4BD /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				970217B0EC68ABF9002178B0 /* Botflow.storekit in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		D140CCA4FA59799F43F2B1F6 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -579,6 +592,7 @@
 			files = (
 				907B2F28508D522513DEC217 /* CoreTests.swift in Sources */,
 				A054386267A1C339BCE3483B /* MessageStreamTests.swift in Sources */,
+				06CCE331B45AE2DA43026FD2 /* PurchaseTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

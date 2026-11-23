@@ -89,6 +89,9 @@ targets:
     platform: iOS
     sources:
       - path: BotflowTests
+      # The purchase tests buy from the same test store the app runs against.
+      - path: Botflow/Resources/Botflow.storekit
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.botflow.app.tests
@@ -117,6 +120,9 @@ schemes:
       storeKitConfiguration: Botflow/Resources/Botflow.storekit
     test:
       config: Debug
+      # Unit tests run inside the app; fixtures keep them off the network.
+      commandLineArguments:
+        "-BotflowDemo": true
       targets:
         - BotflowTests
         - BotflowUITests
