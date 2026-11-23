@@ -19,18 +19,24 @@ struct SimDiagnostic: Hashable, Identifiable, Sendable {
 }
 
 enum SimInput: Sendable {
-    case tap(x: Double, y: Double)
-    case swipe(startX: Double, startY: Double, endX: Double, endY: Double)
+    /// `holdMs` keeps the finger down that long (hosts with "gesture-duration").
+    case tap(x: Double, y: Double, holdMs: Double? = nil)
+    /// `durationMs` is how long the swipe takes (hosts with "gesture-duration").
+    case swipe(startX: Double, startY: Double, endX: Double, endY: Double, durationMs: Double? = nil)
     case scroll(x: Double, y: Double, deltaX: Double, deltaY: Double)
     case text(String)
     case key(String)
 
     var json: JSONValue {
         switch self {
-        case .tap(let x, let y):
-            return .object(["kind": .string("tap"), "normX": .number(x), "normY": .number(y)])
-        case .swipe(let sx, let sy, let ex, let ey):
-            return .object(["kind": .string("swipe"), "startX": .number(sx), "startY": .number(sy), "endX": .number(ex), "endY": .number(ey)])
+        case .tap(let x, let y, let holdMs):
+            var fields: [String: JSONValue] = ["kind": .string("tap"), "normX": .number(x), "normY": .number(y)]
+            if let holdMs { fields["durationMs"] = .number(holdMs.rounded()) }
+            return .object(fields)
+        case .swipe(let sx, let sy, let ex, let ey, let durationMs):
+            var fields: [String: JSONValue] = ["kind": .string("swipe"), "startX": .number(sx), "startY": .number(sy), "endX": .number(ex), "endY": .number(ey)]
+            if let durationMs { fields["durationMs"] = .number(durationMs.rounded()) }
+            return .object(fields)
         case .scroll(let x, let y, let dx, let dy):
             return .object(["kind": .string("scroll"), "normX": .number(x), "normY": .number(y), "deltaX": .number(dx), "deltaY": .number(dy)])
         case .text(let text):
@@ -45,6 +51,9 @@ enum SimEvent: Sendable {
     case open
     case state(String, queuePosition: Int?, reason: String?)
     case videoConfig(width: Int, height: Int)
+    /// The simulated screen's size in its own points, and the optional input
+    /// fields this session's host honours (empty for hosts that predate them).
+    case calibration(logicalWidth: Double?, logicalHeight: Double?, features: [String])
     case video(Data, keyframe: Bool, timestampMs: UInt64)
     case status(String)
     case error(String)
@@ -140,6 +149,10 @@ final class SimStreamClient: NSObject, URLSessionWebSocketDelegate, @unchecked S
             onEvent(.state(message["state"]?.stringValue ?? "", queuePosition: message["queuePosition"]?.intValue, reason: message["reason"]?.stringValue))
         case "video_config":
             onEvent(.videoConfig(width: message["width"]?.intValue ?? 0, height: message["height"]?.intValue ?? 0))
+        case "calibration":
+            let logical = message["deviceLogical"]
+            let features = message["features"]?.arrayValue?.compactMap(\.stringValue) ?? []
+            onEvent(.calibration(logicalWidth: logical?["w"]?.doubleValue, logicalHeight: logical?["h"]?.doubleValue, features: features))
         case "status":
             onEvent(.status(message["message"]?.stringValue ?? ""))
         case "error":

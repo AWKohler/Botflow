@@ -336,7 +336,9 @@ struct SimulatorScreen: View {
                     .font(.subheadline.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
                 if roomy {
-                    Text("Tap, flick, drag and type as you would on the phone. Each gesture is replayed in the simulator as you lift your finger.")
+                    Text(controller.hostTakesDurations
+                        ? "Tap, flick, drag, touch and hold, and type as you would on the phone. Each gesture is replayed in the simulator as you make it."
+                        : "Tap, flick, drag and type as you would on the phone. Each gesture is replayed in the simulator as you lift your finger.")
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.8))
                         .fixedSize(horizontal: false, vertical: true)
@@ -360,6 +362,9 @@ struct SimulatorScreen: View {
             .padding(.bottom, roomy ? 64 : 0)
         }
         .frame(maxWidth: .infinity)
+        // The card sits on a scaled-down screen: past the largest standard
+        // size its text would cover the app it is describing.
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
 
     @ViewBuilder

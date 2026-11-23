@@ -9,7 +9,9 @@ import UIKit
 /// positions: a tap, or a swipe from A to B that it performs at a fixed speed
 /// and then lets go of. Measured against a real session, that means every
 /// replayed swipe coasts 300 to 500 points further than it was dragged, and a
-/// press held in place cannot be sent at all.
+/// press held in place cannot be sent at all. A host that lists
+/// "gesture-duration" lifts both limits: it can hold a press, and it replays
+/// a swipe over the time the finger took, so it lets go at the finger's speed.
 /// This view maps a real finger onto that as faithfully as it can:
 ///
 /// - **Tap:** sent when the finger lifts, with a ripple where it landed.
@@ -42,6 +44,8 @@ final class SimulatorSurfaceView: UIView, UIKeyInput {
         /// Finger down, not yet moved.
         case pending
         case dragging
+        /// Held in place long enough to be a press-and-hold (already sent).
+        case held
     }
 
     private let videoLayer: AVSampleBufferDisplayLayer
@@ -49,6 +53,8 @@ final class SimulatorSurfaceView: UIView, UIKeyInput {
     private var touchStart: CGPoint = .zero
     private var lastPoint: CGPoint = .zero
     private var lastMovedAt: TimeInterval = 0
+    private var touchBeganAt: TimeInterval = 0
+    private var holdTimer: Timer?
     private var trail: CAShapeLayer?
     private var trailPath = UIBezierPath()
     private var wheelPending: CGPoint = .zero
@@ -95,6 +101,8 @@ final class SimulatorSurfaceView: UIView, UIKeyInput {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    deinit { holdTimer?.invalidate() }
 
     /// The video layer is shared with the full-screen presentation; whichever
     /// surface is on screen takes it.
@@ -150,15 +158,33 @@ final class SimulatorSurfaceView: UIView, UIKeyInput {
         touchStart = point
         lastPoint = point
         lastMovedAt = touch.timestamp
+        touchBeganAt = touch.timestamp
         trailPath = UIBezierPath()
         trailPath.move(to: point)
+        // Half a second without moving is a press-and-hold, on hosts that can hold one.
+        holdTimer?.invalidate()
+        if controller?.hostTakesDurations == true {
+            holdTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in self?.beginHold() }
+        }
+    }
+
+    private func beginHold() {
+        guard gesture == .pending else { return }
+        gesture = .held
+        let point = normalised(touchStart)
+        controller?.hold(x: point.0, y: point.1, milliseconds: 900)
+        ripple(at: touchStart, held: true)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard interactive, gesture != .none, let touch = touches.first, event?.allTouches?.count == 1 else { return }
         let point = touch.location(in: self)
         let dx = point.x - touchStart.x, dy = point.y - touchStart.y
-        if gesture == .pending, hypot(dx, dy) > 8 { gesture = .dragging }
+        if gesture == .pending, hypot(dx, dy) > 8 {
+            gesture = .dragging
+            holdTimer?.invalidate()
+        }
         guard gesture == .dragging else { return }
 
         if hypot(point.x - lastPoint.x, point.y - lastPoint.y) > 0.5 { lastMovedAt = touch.timestamp }
@@ -175,24 +201,30 @@ final class SimulatorSurfaceView: UIView, UIKeyInput {
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard interactive, let touch = touches.first else { return }
+        holdTimer?.invalidate()
         let end = touch.location(in: self)
         switch gesture {
         case .pending where hypot(end.x - touchStart.x, end.y - touchStart.y) <= 8:
             let point = normalised(end)
             controller?.tap(x: point.0, y: point.1)
-            ripple(at: end)
+            ripple(at: end, held: false)
             UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.6)
         case .pending, .dragging:
             // (A flick can be over before a single move is reported.)
             let dx = end.x - touchStart.x, dy = end.y - touchStart.y
             if hypot(dx, dy) >= 6 {
                 let settled = touch.timestamp - lastMovedAt > 0.12
+                // How long the finger was moving: a host that takes durations replays the swipe at that pace.
+                let took = max(0.06, lastMovedAt - touchBeganAt)
+                let timed = controller?.hostTakesDurations == true
                 let target = Self.replayTarget(
-                    from: touchStart, to: end, settled: settled, compensating: liveScroll, simulatedScale: simulatedScale
+                    from: touchStart, to: end, settled: settled, compensating: liveScroll, simulatedScale: simulatedScale,
+                    seconds: timed ? took : nil
                 )
-                send(from: touchStart, to: target)
+                let from = normalised(touchStart), to = normalised(target)
+                controller?.swipe(fromX: from.0, fromY: from.1, toX: to.0, toY: to.1, seconds: took)
             }
-        case .none:
+        case .held, .none:
             break
         }
         gesture = .none
@@ -207,12 +239,24 @@ final class SimulatorSurfaceView: UIView, UIKeyInput {
     /// Where the replayed swipe should end. A vertical drag whose finger had
     /// stopped is shortened by the coast the simulator will add; everything
     /// else is replayed as drawn.
-    static func replayTarget(from start: CGPoint, to end: CGPoint, settled: Bool, compensating: Bool, simulatedScale: CGFloat) -> CGPoint {
+    ///
+    /// `seconds` is set when the host will replay the swipe over that long.
+    /// The touch then lets go at the finger's own speed, and a scroll view
+    /// carries on for about half a second's worth of that speed, so the
+    /// shortening is by that much instead of by the fixed-speed coast.
+    static func replayTarget(from start: CGPoint, to end: CGPoint, settled: Bool, compensating: Bool, simulatedScale: CGFloat, seconds: Double? = nil) -> CGPoint {
         let dx = end.x - start.x, dy = end.y - start.y
         guard compensating, settled, abs(dy) > abs(dx) * 1.2 else { return end }
         let intended = abs(dy) * simulatedScale
-        let ratio = replayLength(forSettledScroll: intended) / max(1, intended)
-        return CGPoint(x: start.x + dx * ratio, y: start.y + dy * ratio)
+        let ratio: CGFloat
+        if let seconds {
+            // length + 0.5 s × (length / seconds) = intended
+            let time = CGFloat(max(0.1, seconds))
+            ratio = max(shortestDrag / max(1, intended), time / (time + 0.5))
+        } else {
+            ratio = replayLength(forSettledScroll: intended) / max(1, intended)
+        }
+        return CGPoint(x: start.x + dx * min(1, ratio), y: start.y + dy * min(1, ratio))
     }
 
     /// A drag distance eased into a small displacement: direct at first, then flattening out.
@@ -235,12 +279,8 @@ final class SimulatorSurfaceView: UIView, UIKeyInput {
         CATransaction.commit()
     }
 
-    private func send(from start: CGPoint, to end: CGPoint) {
-        let from = normalised(start), to = normalised(end)
-        controller?.swipe(fromX: from.0, fromY: from.1, toX: to.0, toY: to.1)
-    }
-
     private func cancelGesture() {
+        holdTimer?.invalidate()
         gesture = .none
         fadeTrail()
         setGive(.zero, animated: true)
@@ -267,14 +307,14 @@ final class SimulatorSurfaceView: UIView, UIKeyInput {
 
     // MARK: Feedback
 
-    private func ripple(at point: CGPoint) {
-        let radius: CGFloat = 18
+    private func ripple(at point: CGPoint, held: Bool) {
+        let radius: CGFloat = held ? 26 : 18
         let ring = CAShapeLayer()
         ring.path = UIBezierPath(ovalIn: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2)).cgPath
         ring.position = point
-        ring.fillColor = UIColor.white.withAlphaComponent(0.28).cgColor
+        ring.fillColor = UIColor.white.withAlphaComponent(held ? 0.18 : 0.28).cgColor
         ring.strokeColor = UIColor.white.withAlphaComponent(0.75).cgColor
-        ring.lineWidth = 1.5
+        ring.lineWidth = held ? 2.5 : 1.5
         layer.addSublayer(ring)
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = 1
@@ -288,7 +328,7 @@ final class SimulatorSurfaceView: UIView, UIKeyInput {
         }
         let group = CAAnimationGroup()
         group.animations = animations
-        group.duration = 0.38
+        group.duration = held ? 0.7 : 0.38
         group.timingFunction = CAMediaTimingFunction(name: .easeOut)
         group.isRemovedOnCompletion = false
         group.fillMode = .forwards

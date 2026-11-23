@@ -73,9 +73,19 @@ final class SimulatorController: ObservableObject {
     var warnings: [SimDiagnostic] { diagnostics.filter { !$0.isError } }
 
     /// Size of the device screen as shown, after rotation.
-    /// The simulated screen in its own points (the stream is its pixels: 3×
-    /// on a phone, 2× on an iPad).
+    /// Optional input fields this session's host honours, as it reports them.
+    @Published private(set) var hostFeatures: Set<String> = []
+    /// The host can hold a press and replay a swipe over a given time.
+    var hostTakesDurations: Bool { hostFeatures.contains("gesture-duration") }
+    private var reportedLogicalSize: CGSize?
+
+    /// The simulated screen in its own points: as the host reports it, or
+    /// worked out from the stream (its pixels: 3× on a phone, 2× on an iPad).
     var logicalSize: CGSize {
+        if let reported = reportedLogicalSize {
+            let portrait = CGSize(width: min(reported.width, reported.height), height: max(reported.width, reported.height))
+            return landscape ? CGSize(width: portrait.height, height: portrait.width) : portrait
+        }
         let scale: CGFloat = min(videoSize.width, videoSize.height) > 1500 ? 2 : 3
         return CGSize(width: displaySize.width / scale, height: displaySize.height / scale)
     }
@@ -196,9 +206,19 @@ final class SimulatorController: ObservableObject {
         client?.send(.tap(x: point.0, y: point.1))
     }
 
-    func swipe(fromX: Double, fromY: Double, toX: Double, toY: Double) {
+    /// A press held in place. Only hosts that take durations can do it.
+    func hold(x: Double, y: Double, milliseconds: Double) {
+        guard hostTakesDurations else { return }
+        let point = surface(x, y)
+        client?.send(.tap(x: point.0, y: point.1, holdMs: milliseconds))
+    }
+
+    /// `seconds` is how long the finger took; hosts that take durations replay
+    /// the swipe over that long, older ones at their own fixed speed.
+    func swipe(fromX: Double, fromY: Double, toX: Double, toY: Double, seconds: Double? = nil) {
         let start = surface(fromX, fromY), end = surface(toX, toY)
-        client?.send(.swipe(startX: start.0, startY: start.1, endX: end.0, endY: end.1))
+        let duration = hostTakesDurations ? seconds.map { min(3000, max(60, $0 * 1000)) } : nil
+        client?.send(.swipe(startX: start.0, startY: start.1, endX: end.0, endY: end.1, durationMs: duration))
     }
 
     func scroll(x: Double, y: Double, deltaX: Double, deltaY: Double) {
@@ -289,6 +309,9 @@ final class SimulatorController: ObservableObject {
             }
         case .videoConfig(let width, let height):
             if width > 0, height > 0 { videoSize = CGSize(width: width, height: height) }
+        case .calibration(let width, let height, let features):
+            hostFeatures = Set(features)
+            if let width, let height, width > 0, height > 0 { reportedLogicalSize = CGSize(width: width, height: height) }
         case .video:
             break
         case .status:

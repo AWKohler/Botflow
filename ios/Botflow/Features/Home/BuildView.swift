@@ -118,7 +118,8 @@ struct BuildView: View {
                 TextEditor(text: $prompt)
                     .focused($focused)
                     .scrollContentBackground(.hidden)
-                    .frame(minHeight: 96, maxHeight: 220)
+                    // Shorter on a phone held sideways, so the whole composer clears the tab bar.
+                    .frame(minHeight: verticalClass == .compact ? 44 : 96, maxHeight: verticalClass == .compact ? 120 : 220)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("build.prompt")
             }

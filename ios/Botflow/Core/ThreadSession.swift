@@ -317,14 +317,20 @@ final class ThreadSession: ObservableObject {
         lastReportedTool = nil
 
         let summary = Self.summary(of: assembler.message)
-        await LiveActivityManager.shared.finish(threadId: threadId, failed: failed, summary: summary)
+        if needsInput, !failed {
+            // The agent is waiting, not done: the activity stays up, asking.
+            LiveActivityManager.shared.waitForAnswer(threadId: threadId)
+        } else {
+            await LiveActivityManager.shared.finish(threadId: threadId, failed: failed, summary: summary)
+        }
         PushManager.shared.notifyTurnEnded(
             projectId: projectId,
             projectName: projectName,
             threadId: threadId,
             threadTitle: threadTitle,
             outcome: failed ? .error : needsInput ? .needsInput : .idle,
-            summary: summary
+            // A question's notification carries the question, not the text that led up to it.
+            summary: needsInput ? (pendingQuestion.flatMap { AgentQuestion.parse($0.input).first?.question } ?? summary) : summary
         )
         failed ? Haptics.warning() : Haptics.success()
 
@@ -403,7 +409,7 @@ enum ToolSummary {
         if let pattern = string("pattern", "query", "regex") { return "“\(firstLine(pattern, limit: 40))”" }
         if let url = string("url") { return URL(string: url)?.host ?? url }
         if let description = string("description", "prompt", "title") { return firstLine(description, limit: 60) }
-        if call.name == "ask_question", let question = AgentQuestion.parse(input).first?.question { return firstLine(question, limit: 60) }
+        if call.name == "ask_question", let question = AgentQuestion.parse(input).first?.question { return firstLine(question, limit: 120) }
         return ""
     }
 

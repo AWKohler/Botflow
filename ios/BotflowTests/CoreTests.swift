@@ -215,6 +215,21 @@ final class SimulatorGestureTests: XCTestCase {
         XCTAssertEqual(exact, CGPoint(x: 100, y: 100))
     }
 
+    func testAHostThatTakesDurationsGetsTheFingersOwnPace() {
+        // One second for 600 simulated points lets go at 600 pt/s, which coasts about 300 more:
+        // replay two thirds of it so the page lands where the finger stopped.
+        let end = SimulatorSurfaceView.replayTarget(from: CGPoint(x: 100, y: 700), to: CGPoint(x: 100, y: 100), settled: true, compensating: true, simulatedScale: 1, seconds: 1)
+        XCTAssertEqual(700 - end.y, 400, accuracy: 1)
+        // A flick is still replayed as drawn.
+        let flick = SimulatorSurfaceView.replayTarget(from: CGPoint(x: 100, y: 700), to: CGPoint(x: 100, y: 400), settled: false, compensating: true, simulatedScale: 1, seconds: 0.15)
+        XCTAssertEqual(flick, CGPoint(x: 100, y: 400))
+        // The wire format carries the times only when asked to.
+        XCTAssertNil(SimInput.swipe(startX: 0, startY: 0, endX: 0, endY: 1).json["durationMs"])
+        XCTAssertEqual(SimInput.swipe(startX: 0, startY: 0, endX: 0, endY: 1, durationMs: 420).json["durationMs"]?.doubleValue, 420)
+        XCTAssertEqual(SimInput.tap(x: 0.5, y: 0.5, holdMs: 900).json["durationMs"]?.doubleValue, 900)
+        XCTAssertNil(SimInput.tap(x: 0.5, y: 0.5).json["durationMs"])
+    }
+
     func testTheGiveUnderAFingerIsSmallAndBounded() {
         XCTAssertEqual(SimulatorSurfaceView.eased(0), 0)
         XCTAssertLessThan(SimulatorSurfaceView.eased(2000), 12.01)

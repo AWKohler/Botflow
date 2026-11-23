@@ -144,6 +144,20 @@ final class LiveActivityManager {
         )
     }
 
+    /// The turn stopped on a question. The activity stays, in its asking state,
+    /// until the answer starts the next turn (which picks it up again) or the
+    /// system retires it.
+    func waitForAnswer(threadId: String) {
+        guard var entry = tracked[threadId] else { return }
+        entry.state.phase = .needsInput
+        if entry.state.action != "Asking you" {
+            entry.state.action = "Asking you"
+            entry.state.symbol = "questionmark.bubble"
+        }
+        tracked[threadId] = entry
+        schedule(threadId)
+    }
+
     /// The turn ended. The activity shows the outcome briefly, then goes away.
     func finish(threadId: String, failed: Bool, summary: String) async {
         guard var entry = tracked.removeValue(forKey: threadId) else { return }

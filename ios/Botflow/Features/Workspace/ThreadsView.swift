@@ -55,14 +55,16 @@ struct ThreadStrip: View {
                         .hoverEffect(.highlight)
                         .accessibilityLabel("New chat")
                     }
-                    .padding(.horizontal, 14)
                 }
+                // Margins, not padding: scrolling a tab to the start then stops
+                // clear of the fade instead of underneath it.
+                .contentMargins(.horizontal, 8, for: .scrollContent)
                 .scrollIndicators(.hidden)
                 .mask {
                     HStack(spacing: 0) {
-                        LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing).frame(width: 14)
+                        LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing).frame(width: 6)
                         Color.black
-                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 14)
+                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 18)
                     }
                 }
                 // The chat being read starts the row, so its title is the one shown in full.

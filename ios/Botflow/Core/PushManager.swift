@@ -100,25 +100,45 @@ final class PushManager: NSObject, ObservableObject, UNUserNotificationCenterDel
 
     // MARK: UNUserNotificationCenterDelegate
 
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+    // The completion-handler forms, finished on the main thread: UIKit takes a
+    // snapshot when a notification's handler completes and asserts if that
+    // happens anywhere else (the async forms complete on a background thread).
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
         let threadId = notification.request.content.userInfo["threadId"] as? String
-        let visible = await MainActor.run { self.visibleThreadId }
-        if let threadId, threadId == visible { return [] }
-        return [.banner, .sound, .list]
+        Task { @MainActor in
+            // No banner for the chat already on screen.
+            if let threadId, threadId == self.visibleThreadId {
+                completionHandler([])
+            } else {
+                completionHandler([.banner, .sound, .list])
+            }
+        }
     }
 
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
         let info = response.notification.request.content.userInfo
-        guard let projectId = info["projectId"] as? String else { return }
+        let projectId = info["projectId"] as? String
         let threadId = info["threadId"] as? String
-
-        if response.actionIdentifier == Action.reply, let text = (response as? UNTextInputNotificationResponse)?.userText,
-           let threadId, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            // Answer from the notification without opening the app.
-            _ = try? await Services.shared.send(projectId: projectId, threadId: threadId, messageId: UUID().uuidString, text: text, images: [])
-            return
+        let reply = response.actionIdentifier == Action.reply ? (response as? UNTextInputNotificationResponse)?.userText : nil
+        Task { @MainActor in
+            defer { completionHandler() }
+            guard let projectId else { return }
+            if let reply, let threadId, !reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                // Answer from the notification without opening the app.
+                _ = try? await Services.shared.send(projectId: projectId, threadId: threadId, messageId: UUID().uuidString, text: reply, images: [])
+                return
+            }
+            if response.actionIdentifier == Action.reply { return }
+            self.onOpen?(projectId, threadId)
         }
-        await MainActor.run { self.onOpen?(projectId, threadId) }
     }
 }
 

@@ -261,6 +261,25 @@ enum DemoContent {
             text("t1", "I'll add the cart in three steps: the data model, the drawer, then checkout.")
             call("c1", "read", ["file_path": .string("src/components/Menu.tsx")], output: "112 lines", work: 0.9)
             call("c2", "read", ["file_path": .string("convex/schema.ts")], output: "24 lines", work: 0.7)
+            if UserDefaults.standard.bool(forKey: "BotflowDemoAsk") {
+                // The turn stops on a question, to show how a blocked agent reaches the person.
+                add(0.4, "tool-input-start", ["toolCallId": .string("q-pay"), "toolName": .string("ask_question")])
+                add(0.1, "tool-input-available", ["toolCallId": .string("q-pay"), "toolName": .string("ask_question"), "input": .object([
+                    "questions": .array([.object([
+                        "id": .string("q-0"),
+                        "header": .string("Checkout"),
+                        "question": .string("Should checkout take payment now, or save the order to pay at the counter?"),
+                        "multiSelect": .bool(false),
+                        "options": .array([
+                            .object(["id": .string("opt-0-0"), "label": .string("Pay at the counter"), "description": .string("Save the order; no card details in the app.")]),
+                            .object(["id": .string("opt-0-1"), "label": .string("Pay now"), "description": .string("Take a card payment with Stripe at checkout.")]),
+                        ]),
+                    ])]),
+                ])])
+                add(0.6, "finish-step")
+                add(0.0, "finish", ["finishReason": .string("tool-calls")])
+                return steps
+            }
             call("c3", "edit", ["file_path": .string("convex/schema.ts")], output: "Applied 1 edit", work: 1.2)
             call("c4", "write", ["file_path": .string("convex/orders.ts")], output: "Wrote 58 lines", work: 1.5)
             call("c5", "write", ["file_path": .string("src/components/Cart.tsx")], output: "Wrote 96 lines", work: 1.7)
