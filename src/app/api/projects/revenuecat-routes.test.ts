@@ -336,6 +336,23 @@ describe('POST revenuecat/disconnect', () => {
     expect(await readJson(await status(p.id))).toMatchObject({ status: 'none', connection: null });
   });
 
+  test('a status built from a project read just before the disconnect does not claim to be connected', async () => {
+    await proOwner();
+    const rc = fakeRevenueCat();
+    const p = await swiftProject();
+    await connect(p.id, { rcSecretKey: 'sk_full' });
+    // "Check again" is waiting on RevenueCat when the disconnect lands.
+    rc.during.push({
+      match: /public_api_keys/,
+      run: async () => {
+        await callRoute(disconnectRoute.POST, { method: 'POST', params: { id: p.id } });
+      },
+    });
+    const res = await callRoute(statusRoute.POST, { method: 'POST', params: { id: p.id } });
+    expect(await readJson(res)).toMatchObject({ status: 'none', connection: null });
+    expect(rc.webhooks).toEqual([]);
+  });
+
   test('while another change to the connection is in flight, it says so and removes nothing', async () => {
     await proOwner();
     const rc = fakeRevenueCat();

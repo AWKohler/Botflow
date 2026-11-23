@@ -56,10 +56,17 @@ async function probeBackend(project: Project): Promise<BackendState> {
 
 async function buildStatus(req: NextRequest, project: Project, role: ProjectRole) {
   const connection = await getRevenueCatConnection(project.id);
+  // `project` was read when the request started. If the connection was removed
+  // since (a disconnect that overlapped "Check again"), say so rather than
+  // "connected" with no connection.
+  const status = (!connection && project.revenuecatStatus === 'connected' ? 'none' : project.revenuecatStatus) as
+    | 'none'
+    | 'connecting'
+    | 'connected';
 
   const [keyCheck, backend] = await Promise.all([
     connection ? listProjects(connection.secretKey) : null,
-    project.revenuecatStatus === 'none' ? ('unknown' as BackendState) : probeBackend(project),
+    status === 'none' ? ('unknown' as BackendState) : probeBackend(project),
   ]);
   const keyOk = Boolean(keyCheck?.ok && keyCheck.data.items.some((p) => p.id === connection?.rcProjectId));
   const keyError =
@@ -74,7 +81,7 @@ async function buildStatus(req: NextRequest, project: Project, role: ProjectRole
 
   return {
     ok: true,
-    status: project.revenuecatStatus as 'none' | 'connecting' | 'connected',
+    status,
     role,
     environment: project.revenuecatEnvironment as 'sandbox' | 'production',
     connection: connection
@@ -153,13 +160,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { project } = authz;
 
   if (project.revenuecatStatus === 'connected') {
-    await refreshRevenueCatConnection(project.id, new URL(req.url).origin);
-    try {
-      await scaffoldRevenueCatIntoProject(project.id);
-      const { materializeSwiftRevenueCatConfig } = await import('@/lib/sandbox-env');
-      await materializeSwiftRevenueCatConfig(project.id);
-    } catch (err) {
-      console.error('[revenuecat/status] repair failed:', err);
+    // Null: the connection was removed or replaced while this ran. Whoever did
+    // that owns the project's files now; repair nothing on its behalf.
+    const refreshed = await refreshRevenueCatConnection(project.id, new URL(req.url).origin);
+    if (refreshed) {
+      try {
+        await scaffoldRevenueCatIntoProject(project.id);
+        const { materializeSwiftRevenueCatConfig } = await import('@/lib/sandbox-env');
+        await materializeSwiftRevenueCatConfig(project.id);
+      } catch (err) {
+        console.error('[revenuecat/status] repair failed:', err);
+      }
     }
   }
   return NextResponse.json(await buildStatus(req, project, authz.role));
