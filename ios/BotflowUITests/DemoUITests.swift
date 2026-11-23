@@ -8,6 +8,11 @@ final class DemoUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments += ["-BotflowDemo"]
+        // A system alert left up by something else (an Apple Account prompt,
+        // say) would sit on top of every screen: clear it first.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let notNow = springboard.buttons["Not Now"]
+        if notNow.exists { notNow.tap() }
     }
 
     private func launch(route: String? = nil) {

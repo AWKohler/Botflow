@@ -23,9 +23,9 @@ final class PurchaseTests: XCTestCase {
     func testTheStoreSellsEveryPlanAtTheWebPricePlusThirtyPercent() async throws {
         var products: [Product] = []
         // The test store takes a moment to come up after the session starts.
-        for _ in 0..<20 where products.isEmpty {
+        for _ in 0..<60 where products.isEmpty {
             products = try await Product.products(for: StoreManager.productIds)
-            if products.isEmpty { try await Task.sleep(nanoseconds: 300_000_000) }
+            if products.isEmpty { try await Task.sleep(nanoseconds: 500_000_000) }
         }
         XCTAssertEqual(Set(products.map(\.id)), Set(StoreManager.productIds), "A plan is missing from the store")
         // Web: Pro $20 / $204, Max $60 / $600.
@@ -103,11 +103,18 @@ final class PurchaseTests: XCTestCase {
 
     /// The app's store, once the test store has answered with its products.
     private func readyStore() async throws -> StoreManager {
+        // The iOS 27.0 simulator lists the test store's products but then asks
+        // for an Apple Account on purchase, and waits on that alert forever.
+        // Buying is exercised on 27.1 (the iPhone and iPhone Duo simulators).
+        if #unavailable(iOS 27.1) {
+            throw XCTSkip("This simulator's StoreKit asks for an Apple Account instead of using the test store.")
+        }
         let store = StoreManager.shared
-        for _ in 0..<20 {
+        // Up to half a minute: on a busy machine the test store is slow to answer.
+        for _ in 0..<60 {
             await store.load()
             if !store.products.isEmpty { return store }
-            try await Task.sleep(nanoseconds: 300_000_000)
+            try await Task.sleep(nanoseconds: 500_000_000)
         }
         XCTFail("The test store never returned its products")
         return store

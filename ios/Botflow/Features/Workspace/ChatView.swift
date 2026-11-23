@@ -24,6 +24,11 @@ struct ChatView: View {
     /// A waiting question is held with its heading at the top, through every
     /// change in layout, until the person scrolls it themselves.
     @State private var holdingQuestion = true
+    /// Where the waiting question's card starts in the transcript, and how
+    /// much of the scroll view the bars above it cover.
+    @State private var questionTop: CGFloat?
+    @State private var topInset: CGFloat = 0
+    @State private var position = ScrollPosition()
     /// How many of the latest messages are rendered.
     @State private var shownCount = 60
     /// The full composer, opened by choice while a question is waiting.
@@ -91,8 +96,19 @@ struct ChatView: View {
                 .padding(.bottom, Space.m)
                 .frame(maxWidth: 760)
                 .frame(maxWidth: .infinity)
+                .coordinateSpace(.named("transcript"))
+                .onPreferenceChange(QuestionTopKey.self) { top in
+                    questionTop = top
+                }
             }
-            .defaultScrollAnchor(.bottom)
+            .scrollPosition($position)
+            // A chat opens at its latest message and stays there as it grows.
+            // While a question waits, the system's own re-anchoring is turned
+            // to the top instead: on a short screen the card is taller than
+            // the view, and anchoring to the end would hide its wording.
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
+            .defaultScrollAnchor(question == nil ? .bottom : .top, for: .sizeChanges)
+            .defaultScrollAnchor(.bottom, for: .alignment)
             .scrollDismissesKeyboard(.interactively)
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 Self.isNearEnd(geometry)
@@ -103,8 +119,8 @@ struct ChatView: View {
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentSize.height
             } action: { _, _ in
-                if let question {
-                    if holdingQuestion { proxy.scrollTo("question-\(question.id)", anchor: .top) }
+                if question != nil {
+                    if holdingQuestion { showQuestion(animated: false) }
                 } else if following {
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
@@ -114,7 +130,16 @@ struct ChatView: View {
             .onScrollGeometryChange(for: CGSize.self) { geometry in
                 geometry.containerSize
             } action: { _, _ in
-                if let question, holdingQuestion { proxy.scrollTo("question-\(question.id)", anchor: .top) }
+                if question != nil, holdingQuestion { showQuestion(animated: false) }
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentInsets.top
+            } action: { _, inset in
+                topInset = inset
+                if question != nil, holdingQuestion { showQuestion(animated: false) }
+            }
+            .onChange(of: questionTop) { _, _ in
+                if question != nil, holdingQuestion { showQuestion(animated: false) }
             }
             .onScrollPhaseChange { old, new, context in
                 if new == .interacting {
@@ -125,7 +150,8 @@ struct ChatView: View {
                 }
             }
             .overlay(alignment: .bottomTrailing) {
-                if !atBottom {
+                // Not while a question waits: the way forward there is to answer it.
+                if !atBottom, question == nil {
                     Button {
                         following = true
                         withAnimation(reduceMotion ? nil : .snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
@@ -225,18 +251,21 @@ extension ChatView {
     /// Bring a waiting question to the top of the screen, so its wording is
     /// read before its options.
     fileprivate func reveal(_ question: ToolCall, with proxy: ScrollViewProxy, animated: Bool) {
-        let target = "question-\(question.id)"
-        // After layout, so the card exists to scroll to; and once more when
-        // the bars have settled, in case the first pass was measured without them.
-        DispatchQueue.main.async {
-            if animated, !reduceMotion {
-                withMotion(.snappy) { proxy.scrollTo(target, anchor: .top) }
-            } else {
-                proxy.scrollTo(target, anchor: .top)
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            if holdingQuestion, session.pendingQuestion?.id == question.id { proxy.scrollTo(target, anchor: .top) }
+        // After layout, so the card has reported where it is.
+        DispatchQueue.main.async { showQuestion(animated: animated) }
+    }
+
+    /// Scroll so the card's heading sits just under the bars. The card says
+    /// where it starts; nothing is looked up by name, so this holds on every
+    /// layout, including screens shorter than the card.
+    fileprivate func showQuestion(animated: Bool) {
+        guard let questionTop else { return }
+        // (`scrollTo(y:)` measures from under the bars, so they are not subtracted here.)
+        let offset = max(0, questionTop - 10)
+        if animated, !reduceMotion {
+            withAnimation(.snappy) { position.scrollTo(y: offset) }
+        } else {
+            position.scrollTo(y: offset)
         }
     }
 }

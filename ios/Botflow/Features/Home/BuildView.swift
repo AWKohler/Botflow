@@ -138,7 +138,7 @@ struct BuildView: View {
                         choices(modelName: model.name, chevrons: true, backendWords: true)
                     } else if room >= 306 {
                         choices(modelName: model.shortName, chevrons: true, backendWords: true)
-                    } else if room >= 262 {
+                    } else if room >= 280 {
                         choices(modelName: model.shortName, chevrons: false, backendWords: true)
                     } else {
                         // Too narrow for both on a line (the Duo's cover): one above the other, still in words.

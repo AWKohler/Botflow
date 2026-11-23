@@ -171,7 +171,12 @@ struct AssistantMessageView: View {
                     ToolGroupView(calls: calls, live: message.streaming && segment.id == segments.last?.id, onInspect: onInspect)
                 case .question(let call):
                     QuestionCard(call: call, onAnswer: onAnswer)
-                        .id("question-\(call.id)")
+                        // Where the card starts in the transcript, so the chat can bring its heading into view.
+                        .background {
+                            GeometryReader { proxy in
+                                Color.clear.preference(key: QuestionTopKey.self, value: proxy.frame(in: .named("transcript")).minY)
+                            }
+                        }
                 case .images(let images):
                     HStack { ForEach(images) { AttachmentThumb(url: $0.url, size: 96) } }
                 case .notice(_, let text, let isError):
@@ -668,5 +673,15 @@ struct QuestionCard: View {
             }
         }
         onAnswer(call, ids, labels, note.isEmpty ? nil : note)
+    }
+}
+
+
+/// The top of the waiting question's card, in the transcript's own coordinates.
+struct QuestionTopKey: PreferenceKey {
+    static let defaultValue: CGFloat? = nil
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
+        // The last card in the transcript is the one waiting.
+        if let next = nextValue() { value = next }
     }
 }
