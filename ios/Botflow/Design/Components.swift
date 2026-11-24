@@ -46,11 +46,15 @@ struct InkButtonStyle: ButtonStyle {
         let shape = RoundedRectangle(cornerRadius: size.radius, style: .continuous)
         configuration.label
             .font(size.font)
-            .foregroundStyle(Sand.bg)
+            .foregroundStyle(enabled ? Sand.bg : Sand.subtle)
             .padding(.horizontal, size.padding)
             .frame(minHeight: size.height)
             .frame(maxWidth: fullWidth ? .infinity : nil)
             .background {
+                // Not yet available: a quiet outline, so it does not outweigh what must be done first.
+                if !enabled {
+                    shape.strokeBorder(Sand.borderStrong.opacity(0.7), lineWidth: 1)
+                } else {
                 shape.fill(Sand.text)
                 shape.fill(LinearGradient(colors: [.white.opacity(scheme == .dark ? 0.0 : 0.1), .clear], startPoint: .top, endPoint: .center))
                 shape.strokeBorder(
@@ -61,9 +65,10 @@ struct InkButtonStyle: ButtonStyle {
                     ),
                     lineWidth: 1
                 )
+                }
             }
             .shadow(color: Sand.shadow.opacity(enabled ? 0.14 : 0), radius: 2, y: 1)
-            .opacity(enabled ? (configuration.isPressed ? 0.82 : 1) : 0.45)
+            .opacity(configuration.isPressed ? 0.82 : 1)
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
             .motion(.snappy(duration: 0.16), value: configuration.isPressed)
             .contentShape(shape.inset(by: -size.hitSlop))
@@ -627,4 +632,12 @@ extension View {
     func pulsing(_ isActive: Bool) -> some View {
         modifier(PulsingSymbol(isActive: isActive))
     }
+}
+
+
+/// Say something to VoiceOver that a sighted person would simply see happen.
+@MainActor
+func announce(_ message: String) {
+    guard UIAccessibility.isVoiceOverRunning else { return }
+    AccessibilityNotification.Announcement(message).post()
 }

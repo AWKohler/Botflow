@@ -311,6 +311,7 @@ struct CodeBlock: View {
             Divider().overlay(Sand.border)
             ScrollView(.horizontal) {
                 Text(CodeHighlighter.highlight(text, language: language, size: 12.5))
+                    .codeFont(12.5)
                     .padding(Space.m)
                     .fixedSize(horizontal: true, vertical: true)
             }

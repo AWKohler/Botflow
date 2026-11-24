@@ -41,14 +41,14 @@ struct ExploreView: View {
                 if let error, projects.isEmpty {
                     ErrorBanner(message: error) { Task { await load() } }
                 } else if !loaded {
-                    LazyVGrid(columns: columns, spacing: Space.l) {
+                    FoldAwareGrid(columns: columns, spacing: Space.l) {
                         ForEach(0..<4, id: \.self) { _ in ProjectCardSkeleton() }
                     }
                 } else if projects.isEmpty {
                     EmptyState(symbol: "safari", title: "Nothing here yet", message: "Public projects show up here once people publish them.")
                         .padding(.top, 40)
                 } else {
-                    LazyVGrid(columns: columns, spacing: Space.l) {
+                    FoldAwareGrid(columns: columns, spacing: Space.l) {
                         ForEach(projects) { project in
                             Button {
                                 Haptics.tap()
@@ -108,13 +108,14 @@ struct ExploreView: View {
 }
 
 struct PublicCard: View {
+    @Environment(\.cardCoverHeight) private var coverHeight
     var project: PublicProject
     var onStar: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ProjectCover(imageURL: project.thumbnailUrl.flatMap(URL.init(string:)), seed: project.id, platform: project.kind)
-                .aspectRatio(16 / 9.5, contentMode: .fit)
+                .cardCover(height: coverHeight)
                 .clipped()
             Divider().overlay(Sand.border)
             HStack(alignment: .top, spacing: Space.m) {

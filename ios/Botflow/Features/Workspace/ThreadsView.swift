@@ -8,8 +8,67 @@ struct ThreadStrip: View {
     var showsProject = false
     var onShowAll: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// How wide the row of tabs is, so the open chat's tab can be sized to fit inside it.
+    @State private var stripWidth: CGFloat = 240
 
     var body: some View {
+        Group {
+            if typeSize.isAccessibilitySize {
+                identity
+            } else {
+                tabs
+            }
+        }
+        // A solid bar with a hairline under it: text scrolling behind tabs
+        // that have gaps between them reads as clutter, not as glass.
+        // (The fill runs up under the navigation bar too, so that bar sits on
+        // one even surface instead of on whatever is scrolling past.)
+        .background(Sand.canvas.ignoresSafeArea(edges: [.top, .horizontal]))
+        .overlay(alignment: .bottom) { Rectangle().fill(Sand.border.opacity(0.7)).frame(height: 0.5) }
+    }
+
+    /// At the largest text sizes a row of tabs is unreadable. Say plainly
+    /// which project and chat this is, in full, and open the list of chats
+    /// from it.
+    private var identity: some View {
+        let current = store.openThreads.first { $0.id == store.currentThreadId }
+        return Button(action: onShowAll) {
+            HStack(alignment: .center, spacing: Space.m) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Label(store.project.name, systemImage: store.project.kind.symbol)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(Sand.muted)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        if let current, current.status != .idle || current.unread {
+                            StatusDot(status: current.status, unread: current.unread, size: 9)
+                        }
+                        Text(current?.displayTitle ?? "New chat")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Sand.text)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(2)
+                    }
+                }
+                Spacer(minLength: Space.s)
+                Image(systemName: "list.bullet")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(Sand.muted)
+            }
+            .padding(.horizontal, Space.l)
+            .padding(.vertical, Space.s)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(store.project.name), \(current?.displayTitle ?? "New chat"). All chats")
+        .accessibilityIdentifier("workspace.threads")
+        // Up to the size the rest of the workspace reads at, not beyond: two
+        // lines of title have to leave room for the conversation.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+    }
+
+    private var tabs: some View {
         HStack(spacing: 0) {
             if showsProject {
                 Button(action: onShowAll) {
@@ -36,10 +95,20 @@ struct ThreadStrip: View {
             }
             ScrollViewReader { proxy in
                 ScrollView(.horizontal) {
-                    HStack(spacing: 2) {
+                    HStack(spacing: 0) {
                         ForEach(store.openThreads.prefix(12)) { thread in
                             chip(thread)
+                                // The gap before a tab belongs to it, so a tab brought to
+                                // the start of the row stops clear of the edge.
+                                .padding(.leading, 8)
                                 .id(thread.id)
+                                // A tab cut off at the start of the row is hidden outright:
+                                // half a title there reads as a broken label. (At the far
+                                // end a fading tab is the cue that there are more.)
+                                .visualEffect { content, geometry in
+                                    // Measured, not interpolated: either the tab starts inside the row or it is not shown.
+                                    content.opacity(geometry.frame(in: .scrollView(axis: .horizontal)).minX < -1 ? 0 : 1)
+                                }
                         }
                         Button {
                             Haptics.tap()
@@ -55,16 +124,24 @@ struct ThreadStrip: View {
                         .hoverEffect(.highlight)
                         .accessibilityLabel("New chat")
                     }
+                    // The row always comes to rest on the edge of a tab, never part-way through one.
+                    .scrollTargetLayout()
                 }
-                // Margins, not padding: scrolling a tab to the start then stops
-                // clear of the fade instead of underneath it.
-                .contentMargins(.horizontal, 8, for: .scrollContent)
+                .scrollTargetBehavior(.viewAligned)
+                .contentMargins(.trailing, 8, for: .scrollContent)
                 .scrollIndicators(.hidden)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                    stripWidth = width
+                    // The open chat's tab is sized from this width: line it up again once it is known.
+                    if let id = store.currentThreadId {
+                        DispatchQueue.main.async { proxy.scrollTo(id, anchor: .leading) }
+                    }
+                }
                 .mask {
+                    // Only the far end fades: there, part of a tab is the cue that there are more.
                     HStack(spacing: 0) {
-                        LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing).frame(width: 6)
                         Color.black
-                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 18)
+                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 26)
                     }
                 }
                 // The chat being read starts the row, so its title is the one shown in full.
@@ -77,12 +154,6 @@ struct ThreadStrip: View {
             }
         }
         .frame(height: 44)
-        // A solid bar with a hairline under it: text scrolling behind tabs
-        // that have gaps between them reads as clutter, not as glass.
-        // (The fill runs up under the navigation bar too, so that bar sits on
-        // one even surface instead of on whatever is scrolling past.)
-        .background(Sand.canvas.ignoresSafeArea(edges: .top))
-        .overlay(alignment: .bottom) { Rectangle().fill(Sand.border.opacity(0.7)).frame(height: 0.5) }
         // A bar, like the navigation bar above it: its labels stop growing
         // at the largest standard size so the tabs stay readable as tabs.
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
@@ -101,8 +172,10 @@ struct ThreadStrip: View {
                     .font(.footnote.weight(selected ? .semibold : .regular))
                     .foregroundStyle(selected ? Sand.text : Sand.muted)
                     .lineLimit(1)
-                    // The open chat gets room for its whole title; the others are for telling apart.
-                    .frame(maxWidth: selected ? 260 : 140, alignment: .leading)
+                    // The open chat's tab is as wide as its title, up to the width of
+                    // the row itself: a long title ends in an ellipsis inside the row,
+                    // never cut off at its edge. The others are for telling apart.
+                    .frame(maxWidth: selected ? max(120, stripWidth - 16 - 24 - (marked ? 11 : 0) - 14) : 140, alignment: .leading)
                     .fixedSize(horizontal: true, vertical: false)
             }
             .padding(.leading, marked ? 6 : 12)

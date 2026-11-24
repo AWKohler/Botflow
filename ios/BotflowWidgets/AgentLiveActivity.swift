@@ -67,6 +67,10 @@ struct AgentLiveActivity: Widget {
                                     .labelStyle(DoneStepStyle())
                                     .font(.caption2)
                                     .foregroundStyle(Island.subtle)
+                                    // Lines change in place: cross-fading two file paths
+                                    // over each other is unreadable at this size.
+                                    .transition(.identity)
+                                    .contentTransition(.identity)
                                 }
                             }
                             .padding(.leading, 10)

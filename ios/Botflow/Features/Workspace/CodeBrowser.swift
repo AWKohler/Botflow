@@ -295,6 +295,7 @@ struct FileViewer: View {
                                 .multilineTextAlignment(.trailing)
                                 .accessibilityHidden(true)
                             Text(highlighted)
+                                .codeFont(13)
                                 .textSelection(.enabled)
                                 .fixedSize(horizontal: true, vertical: true)
                         }

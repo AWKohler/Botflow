@@ -61,6 +61,10 @@ final class DemoUITests: XCTestCase {
         wait(for: [ready], timeout: 20)
         send.tap()
 
+        // A first send on a fresh install asks for notification permission.
+        let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow"]
+        if allow.waitForExistence(timeout: 3) { allow.tap() }
+
         // The agent starts; the send button becomes Stop while it works.
         let stop = app.buttons["composer.stop"]
         XCTAssertTrue(stop.waitForExistence(timeout: 30))
@@ -99,7 +103,10 @@ final class DemoUITests: XCTestCase {
 
         // Full screen takes over the whole window, and its control brings you back.
         fullScreen.tap()
+        // The controls open in full the first time and start folded after that.
         let exit = app.buttons["simulator.exitFullscreen"]
+        let unfold = app.buttons["Show simulator controls"]
+        if !exit.waitForExistence(timeout: 5), unfold.waitForExistence(timeout: 5) { unfold.tap() }
         XCTAssertTrue(exit.waitForExistence(timeout: 10), "Full screen did not open")
         exit.tap()
         XCTAssertTrue(fullScreen.waitForExistence(timeout: 10), "Full screen did not close")

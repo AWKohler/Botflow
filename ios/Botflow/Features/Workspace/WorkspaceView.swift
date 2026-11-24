@@ -62,7 +62,8 @@ struct WorkspaceView: View {
                     }
                 case .halves:
                     HStack(spacing: 0) {
-                        chatColumn(compact: false).frame(width: proxy.size.width / 2)
+                        // The crease is the middle of the screen, not of the area left beside the system's rail.
+                        chatColumn(compact: false).frame(width: max(280, window.width / 2 - proxy.safeAreaInsets.leading))
                         Divider().overlay(Sand.border)
                         AppPane(store: store, tab: $appTab, showsHeader: true, sheet: $sheet, immersive: $immersive)
                     }
@@ -96,7 +97,8 @@ struct WorkspaceView: View {
             }
             .toolbar {
                 if split {
-                    ToolbarItem(placement: .principal) {
+                    // Either side of a crease, the title belongs to the chat's half, not across the fold.
+                    ToolbarItem(placement: layout == .halves ? .topBarLeading : .principal) {
                         HStack(spacing: Space.l) {
                             HStack(spacing: 6) {
                                 Image(systemName: store.project.kind.symbol).foregroundStyle(Sand.subtle)
@@ -112,7 +114,9 @@ struct WorkspaceView: View {
                                 .fixedSize()
                             }
                         }
+                        .fixedSize()
                     }
+                    .sharedBackgroundVisibility(.hidden)
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         Button {
                             showThreads = true
@@ -228,7 +232,9 @@ struct WorkspaceView: View {
                     .opacity(dragStartWidth == nil ? 0.7 : 1)
             }
             .frame(width: 17)
-            .contentShape(Rectangle())
+            // The line is thin; the area that grabs it is 44 points wide.
+            .contentShape(Rectangle().inset(by: -13.5))
+            .zIndex(1)
             .hoverEffect(.highlight)
             .gesture(
                 DragGesture(minimumDistance: 2, coordinateSpace: .global)
@@ -332,11 +338,17 @@ enum WorkspaceLayout: Equatable {
     case stacked
 
     static func choose(size: CGSize, hinge: HingePosture?) -> WorkspaceLayout {
-        if hinge == .partiallyOpen {
-            // A book-style fold: the crease runs down the middle in portrait
-            // and across the middle in landscape.
-            if size.width > size.height, size.height >= 560 { return .stacked }
-            if size.width >= 560, size.height >= 500 { return .halves }
+        if let hinge, hinge != .closed {
+            // An unfolded Duo held upright is wider than it is tall (about
+            // 951 × 669 points) and its crease runs down the middle: a pane
+            // either side of it, whether it is flat or propped like a book.
+            let upright = size.width > size.height
+            if upright, size.width >= 560, size.height >= 500 { return .halves }
+            // Turned on its side (669 × 951) the crease runs across the middle:
+            // the app above it, the conversation and keyboard below. Half open
+            // like that it sits like a small laptop; flat, the same split keeps
+            // both panes at full width instead of two narrow columns.
+            if !upright, size.height >= 700 { return .stacked }
         }
         // Two panes need room both ways: a phone on its side is wide enough
         // but far too short once the keyboard is up.

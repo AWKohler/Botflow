@@ -70,7 +70,8 @@ final class ThreadSession: ObservableObject {
     var pendingQuestion: ToolCall? {
         let source = live ?? messages.last
         guard let source, source.role == .assistant else { return nil }
-        return source.toolCalls.last { $0.name == "ask_question" && $0.state == .running }
+        // Waiting means unanswered, whatever state the stream left the call in.
+        return source.toolCalls.last { $0.name == "ask_question" && $0.state == .running && $0.output == nil && $0.errorText == nil }
     }
 
     // MARK: Loading
@@ -192,12 +193,17 @@ final class ThreadSession: ObservableObject {
         if case .failed = phase { phase = .idle }
     }
 
-    func answer(question: ToolCall, selectedIds: [String], selectedLabels: [String], text: String?) async {
+    /// Returns whether the answer reached the server; the card keeps the
+    /// person's choices and offers to try again when it did not.
+    @discardableResult
+    func answer(question: ToolCall, selectedIds: [String], selectedLabels: [String], text: String?) async -> Bool {
         do {
             try await service.answerQuestion(projectId: projectId, toolCallId: question.id, selectedIds: selectedIds, selectedLabels: selectedLabels, text: text, dismissed: false)
             Haptics.success()
+            return true
         } catch {
-            ToastCenter.shared.error(error)
+            Haptics.warning()
+            return false
         }
     }
 
@@ -293,6 +299,7 @@ final class ThreadSession: ObservableObject {
             let call = ToolCall(id: id, name: name, input: chunk.payload["input"] ?? .null, state: .running)
             LiveActivityManager.shared.step(
                 threadId: threadId,
+                callId: id,
                 toolName: name,
                 detail: ToolSummary.detail(for: call),
                 steps: assembler.message.toolCalls.count
@@ -308,7 +315,9 @@ final class ThreadSession: ObservableObject {
         var assembler = assembler
         assembler.finish()
         let failed = assembler.errorText != nil
-        let needsInput = assembler.message.toolCalls.contains { $0.name == "ask_question" && $0.output == nil && $0.errorText == nil } && !assembler.sawEndTurn
+        // Read from the turn itself, before anything is committed or cleared.
+        let asked = assembler.sawEndTurn ? nil : assembler.message.toolCalls.last { $0.name == "ask_question" && $0.output == nil && $0.errorText == nil }
+        let needsInput = asked != nil
         if !assembler.message.parts.isEmpty { commit(assembler.message) }
         live = nil
         followTask = nil
@@ -330,9 +339,17 @@ final class ThreadSession: ObservableObject {
             threadTitle: threadTitle,
             outcome: failed ? .error : needsInput ? .needsInput : .idle,
             // A question's notification carries the question, not the text that led up to it.
-            summary: needsInput ? (pendingQuestion.flatMap { AgentQuestion.parse($0.input).first?.question } ?? summary) : summary
+            summary: asked.flatMap { AgentQuestion.parse($0.input).first?.question } ?? summary
         )
         failed ? Haptics.warning() : Haptics.success()
+        // What a sighted person sees arrive in the chat, said aloud.
+        if let question = asked.flatMap({ AgentQuestion.parse($0.input).first?.question }) {
+            announce("\(threadTitle): the agent has a question. \(question)")
+        } else if failed {
+            announce("\(threadTitle): the agent stopped. \(assembler.errorText ?? "")")
+        } else {
+            announce("\(threadTitle): the agent finished.")
+        }
 
         // The server saves the turn itself, under the same message id. Take
         // its copy when it has one; when it does not (its own save has not

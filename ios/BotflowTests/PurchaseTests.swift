@@ -1,4 +1,5 @@
 import StoreKit
+import UIKit
 import StoreKitTest
 import XCTest
 @testable import Botflow
@@ -103,11 +104,11 @@ final class PurchaseTests: XCTestCase {
 
     /// The app's store, once the test store has answered with its products.
     private func readyStore() async throws -> StoreManager {
-        // The iOS 27.0 simulator lists the test store's products but then asks
-        // for an Apple Account on purchase, and waits on that alert forever.
-        // Buying is exercised on 27.1 (the iPhone and iPhone Duo simulators).
-        if #unavailable(iOS 27.1) {
-            throw XCTSkip("This simulator's StoreKit asks for an Apple Account instead of using the test store.")
+        // The iOS 27.0 iPad simulator lists the test store's products but then
+        // asks for an Apple Account on purchase, and waits on that alert for
+        // good. Buying is exercised on the iPhone and iPhone Duo simulators.
+        if UIDevice.current.userInterfaceIdiom == .pad, #unavailable(iOS 27.1) {
+            throw XCTSkip("This iPad simulator's StoreKit asks for an Apple Account instead of using the test store.")
         }
         let store = StoreManager.shared
         // Up to half a minute: on a busy machine the test store is slow to answer.
