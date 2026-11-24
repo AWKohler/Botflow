@@ -344,11 +344,11 @@ final class ThreadSession: ObservableObject {
         failed ? Haptics.warning() : Haptics.success()
         // What a sighted person sees arrive in the chat, said aloud.
         if let question = asked.flatMap({ AgentQuestion.parse($0.input).first?.question }) {
-            announce("The agent has a question: \(question)")
+            announce("\(threadTitle): the agent has a question. \(question)")
         } else if failed {
-            announce("The agent stopped. \(assembler.errorText ?? "")")
+            announce("\(threadTitle): the agent stopped. \(assembler.errorText ?? "")")
         } else {
-            announce("The agent finished.")
+            announce("\(threadTitle): the agent finished.")
         }
 
         // The server saves the turn itself, under the same message id. Take

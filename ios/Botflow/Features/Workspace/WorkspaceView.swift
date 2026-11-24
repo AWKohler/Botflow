@@ -344,10 +344,11 @@ enum WorkspaceLayout: Equatable {
             // either side of it, whether it is flat or propped like a book.
             let upright = size.width > size.height
             if upright, size.width >= 560, size.height >= 500 { return .halves }
-            // Turned on its side (669 × 951) the crease runs across the middle.
-            // Half open like that it sits like a small laptop: the app on the
-            // upright half, the conversation and keyboard on the flat one.
-            if hinge == .partiallyOpen, !upright, size.height >= 700 { return .stacked }
+            // Turned on its side (669 × 951) the crease runs across the middle:
+            // the app above it, the conversation and keyboard below. Half open
+            // like that it sits like a small laptop; flat, the same split keeps
+            // both panes at full width instead of two narrow columns.
+            if !upright, size.height >= 700 { return .stacked }
         }
         // Two panes need room both ways: a phone on its side is wide enough
         // but far too short once the keyboard is up.

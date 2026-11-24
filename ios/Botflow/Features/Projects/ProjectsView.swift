@@ -100,8 +100,35 @@ struct ProjectsView: View {
     }
 
     private var filters: some View {
-        ScrollView(.horizontal) {
+        // The count is not part of the scrolling row: there it ran off the
+        // edge mid-word on a narrow screen. It shows whole, or not at all.
+        ViewThatFits(in: .horizontal) {
             HStack(spacing: Space.s) {
+                filterChips
+                Spacer(minLength: Space.s)
+                projectCount
+            }
+            ScrollView(.horizontal) {
+                HStack(spacing: Space.s) { filterChips }
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
+
+    @ViewBuilder
+    private var projectCount: some View {
+        if loaded {
+            Text(visible.count == 1 ? "1 project" : "\(visible.count) projects")
+                .font(.footnote)
+                .foregroundStyle(Sand.subtle)
+                .fixedSize()
+        }
+    }
+
+    @ViewBuilder
+    private var filterChips: some View {
+        Group {
+            Group {
                 ForEach(Filter.allCases, id: \.self) { item in
                     let selected = filter == item
                     Button {
@@ -121,16 +148,10 @@ struct ProjectsView: View {
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(selected ? .isSelected : [])
                 }
-                Spacer()
-                if loaded {
-                    Text(visible.count == 1 ? "1 project" : "\(visible.count) projects")
-                        .font(.footnote)
-                        .foregroundStyle(Sand.subtle)
-                }
             }
         }
-        .scrollIndicators(.hidden)
     }
+
 
     private func card(_ project: Project) -> some View {
         let active = agents.agents.filter { $0.projectId == project.id }
