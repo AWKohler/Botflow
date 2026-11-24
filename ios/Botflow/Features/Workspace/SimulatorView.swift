@@ -376,6 +376,8 @@ struct SimulatorScreen: View {
                         .contentShape(Capsule().inset(by: -6))
                     if typeSize.isAccessibilitySize || !roomy {
                         Button(roomy ? "How touch works" : "How it works") { showTouchHelp = true }
+                            .lineLimit(1)
+                            .fixedSize()
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14)
