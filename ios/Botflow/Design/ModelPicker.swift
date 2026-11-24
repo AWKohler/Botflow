@@ -146,7 +146,9 @@ struct ModelPickerSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(model.name), \(model.hostLabel), \(access.runnable ? access.title : "locked: " + access.title)")
+        .accessibilityLabel("\(model.name), \(model.hostLabel)")
+        // Everything a sighted person compares models by: how much it holds, what it costs, whether it can run.
+        .accessibilityValue("\(AIModel.compact(model.contextLimit(personal: access.usesOwnAccount))) tokens of context, \(access.usesOwnAccount ? access.title : model.costLabel), \(access.runnable ? "ready to use" : "locked: " + access.title)")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

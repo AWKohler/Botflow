@@ -272,38 +272,50 @@ struct ToolGroupView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var open: Bool { live || expanded || calls.count <= 3 }
+
+    private var groupHeading: some View {
+        HStack(spacing: Space.s) {
+            Image(systemName: live ? "bolt.fill" : "checklist")
+                .font(.footnote)
+                .foregroundStyle(live ? Sand.accent : Sand.subtle)
+                .pulsing(live)
+            Text(summary)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(live ? Sand.text : Sand.muted)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            if !live {
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Sand.subtle)
+                    .rotationEffect(.degrees(expanded ? 90 : 0))
+            }
+        }
+        .padding(.horizontal, Space.m)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+    }
     private var failures: Int { calls.filter { $0.state == .error }.count }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if calls.count > 3 {
-                Button {
-                    Haptics.select()
-                    withMotion(.snappy(duration: 0.28)) { expanded.toggle() }
-                } label: {
-                    HStack(spacing: Space.s) {
-                        Image(systemName: live ? "bolt.fill" : "checklist")
-                            .font(.footnote)
-                            .foregroundStyle(live ? Sand.accent : Sand.subtle)
-                            .pulsing(live)
-                        Text(summary)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Sand.muted)
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                        if !live {
-                            Image(systemName: "chevron.right")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(Sand.subtle)
-                                .rotationEffect(.degrees(expanded ? 90 : 0))
-                        }
+                if live {
+                    // While it works this is a plain heading in full ink, not a
+                    // disabled button: it is the thing most worth reading.
+                    groupHeading
+                        .accessibilityElement(children: .combine)
+                        .accessibilityAddTraits(.isHeader)
+                } else {
+                    Button {
+                        Haptics.select()
+                        withMotion(.snappy(duration: 0.28)) { expanded.toggle() }
+                    } label: {
+                        groupHeading
                     }
-                    .padding(.horizontal, Space.m)
-                    .frame(minHeight: 44)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .accessibilityValue(expanded ? "Expanded" : "Collapsed")
                 }
-                .buttonStyle(.plain)
-                .disabled(live)
                 if open { Divider().overlay(Sand.border) }
             }
             if open {

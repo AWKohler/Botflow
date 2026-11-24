@@ -53,8 +53,7 @@ struct InkButtonStyle: ButtonStyle {
             .background {
                 // Not yet available: a quiet outline, so it does not outweigh what must be done first.
                 if !enabled {
-                    shape.fill(Sand.soft)
-                    shape.strokeBorder(Sand.border, lineWidth: 1)
+                    shape.strokeBorder(Sand.borderStrong.opacity(0.7), lineWidth: 1)
                 } else {
                 shape.fill(Sand.text)
                 shape.fill(LinearGradient(colors: [.white.opacity(scheme == .dark ? 0.0 : 0.1), .clear], startPoint: .top, endPoint: .center))
