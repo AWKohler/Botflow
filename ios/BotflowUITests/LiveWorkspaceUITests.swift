@@ -123,7 +123,17 @@ final class LiveWorkspaceUITests: XCTestCase {
         if !fullScreen.waitForExistence(timeout: 60), play.exists { play.tap() }
         XCTAssertTrue(fullScreen.waitForExistence(timeout: 420), "The simulator did not go live")
         let gotIt = app.buttons["Got it"]
-        if gotIt.waitForExistence(timeout: 5) { gotIt.tap() }
+        if gotIt.waitForExistence(timeout: 5) {
+            // The hint names touch-and-hold only when the host says it can hold a press.
+            let offersHold = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'touch and hold'")).firstMatch.exists
+            let note = XCTAttachment(string: offersHold ? "host offers gesture durations" : "host does not offer gesture durations")
+            XCTAssertTrue(offersHold || ProcessInfo.processInfo.environment["BOTFLOW_EXPECT_DURATIONS"] == nil, "The host was expected to offer gesture durations")
+            note.name = "0-host-capability"
+            note.lifetime = .keepAlways
+            add(note)
+            keep(offersHold ? "0-hint-with-hold" : "0-hint-without-hold")
+            gotIt.tap()
+        }
         sleep(8)
         keep("1-live")
 
@@ -137,6 +147,11 @@ final class LiveWorkspaceUITests: XCTestCase {
         point(0.4, 0.6).tap()
         sleep(3)
         keep("2-tapped")
+
+        // Touch and hold a row: the app under test shows which row was held.
+        point(0.4, 0.68).press(forDuration: 1.3)
+        sleep(4)
+        keep("2b-held")
 
         // A drag that stops before lifting: about 240 simulated points of travel.
         point(0.5, 0.75).press(forDuration: 0.03, thenDragTo: point(0.5, 0.55), withVelocity: 300, thenHoldForDuration: 0.5)

@@ -12,6 +12,8 @@ import UIKit
 /// press held in place cannot be sent at all. A host that lists
 /// "gesture-duration" lifts both limits: it can hold a press, and it replays
 /// a swipe over the time the finger took, so it lets go at the finger's speed.
+/// One that also lists "swipe-end-hold" rests the finger before lifting when
+/// the person's own finger had stopped, so a drag is replayed exactly as made.
 /// This view maps a real finger onto that as faithfully as it can:
 ///
 /// - **Tap:** sent when the finger lifts, with a ripple where it landed.
@@ -216,13 +218,23 @@ final class SimulatorSurfaceView: UIView, UIKeyInput {
                 let settled = touch.timestamp - lastMovedAt > 0.12
                 // How long the finger was moving: a host that takes durations replays the swipe at that pace.
                 let took = max(0.06, lastMovedAt - touchBeganAt)
-                let timed = controller?.hostTakesDurations == true
-                let target = Self.replayTarget(
-                    from: touchStart, to: end, settled: settled, compensating: liveScroll, simulatedScale: simulatedScale,
-                    seconds: timed ? took : nil
-                )
-                let from = normalised(touchStart), to = normalised(target)
-                controller?.swipe(fromX: from.0, fromY: from.1, toX: to.0, toY: to.1, seconds: took)
+                let from = normalised(touchStart)
+                if controller?.hostRestsSwipes == true {
+                    // The host moves the finger at this pace and, if it had
+                    // stopped, rests it before lifting: the drag is replayed
+                    // exactly as it was made, with nothing to correct for.
+                    let to = normalised(end)
+                    let rest = settled ? min(0.4, max(0.15, touch.timestamp - lastMovedAt)) : nil
+                    controller?.swipe(fromX: from.0, fromY: from.1, toX: to.0, toY: to.1, seconds: took, rest: rest)
+                } else {
+                    let timed = controller?.hostTakesDurations == true
+                    let target = Self.replayTarget(
+                        from: touchStart, to: end, settled: settled, compensating: liveScroll, simulatedScale: simulatedScale,
+                        seconds: timed ? took : nil
+                    )
+                    let to = normalised(target)
+                    controller?.swipe(fromX: from.0, fromY: from.1, toX: to.0, toY: to.1, seconds: took)
+                }
             }
         case .held, .none:
             break

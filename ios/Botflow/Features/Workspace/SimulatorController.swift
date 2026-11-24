@@ -77,6 +77,9 @@ final class SimulatorController: ObservableObject {
     @Published private(set) var hostFeatures: Set<String> = []
     /// The host can hold a press and replay a swipe over a given time.
     var hostTakesDurations: Bool { hostFeatures.contains("gesture-duration") }
+    /// The host can rest a finger at the end of a swipe before lifting it, so
+    /// a scroll stops where it was left.
+    var hostRestsSwipes: Bool { hostFeatures.contains("swipe-end-hold") }
     private var reportedLogicalSize: CGSize?
 
     /// The simulated screen in its own points: as the host reports it, or
@@ -213,12 +216,15 @@ final class SimulatorController: ObservableObject {
         client?.send(.tap(x: point.0, y: point.1, holdMs: milliseconds))
     }
 
-    /// `seconds` is how long the finger took; hosts that take durations replay
-    /// the swipe over that long, older ones at their own fixed speed.
-    func swipe(fromX: Double, fromY: Double, toX: Double, toY: Double, seconds: Double? = nil) {
+    /// `seconds` is how long the finger took, and `rest` how long it stayed
+    /// still before lifting. Hosts that take durations replay the swipe at
+    /// that pace; hosts that can rest a finger also hold it at the end. Older
+    /// hosts replay at their own fixed speed and let go.
+    func swipe(fromX: Double, fromY: Double, toX: Double, toY: Double, seconds: Double? = nil, rest: Double? = nil) {
         let start = surface(fromX, fromY), end = surface(toX, toY)
         let duration = hostTakesDurations ? seconds.map { min(3000, max(60, $0 * 1000)) } : nil
-        client?.send(.swipe(startX: start.0, startY: start.1, endX: end.0, endY: end.1, durationMs: duration))
+        let hold = hostRestsSwipes ? rest.map { min(1000, max(0, $0 * 1000)) } : nil
+        client?.send(.swipe(startX: start.0, startY: start.1, endX: end.0, endY: end.1, durationMs: duration, endHoldMs: hold))
     }
 
     func scroll(x: Double, y: Double, deltaX: Double, deltaY: Double) {

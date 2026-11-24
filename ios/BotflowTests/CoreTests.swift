@@ -252,6 +252,9 @@ final class SimulatorGestureTests: XCTestCase {
         XCTAssertEqual(SimInput.swipe(startX: 0, startY: 0, endX: 0, endY: 1, durationMs: 420).json["durationMs"]?.doubleValue, 420)
         XCTAssertEqual(SimInput.tap(x: 0.5, y: 0.5, holdMs: 900).json["durationMs"]?.doubleValue, 900)
         XCTAssertNil(SimInput.tap(x: 0.5, y: 0.5).json["durationMs"])
+        // A rest at the end is sent only when asked for.
+        XCTAssertNil(SimInput.swipe(startX: 0, startY: 0, endX: 0, endY: 1, durationMs: 420).json["endHoldMs"])
+        XCTAssertEqual(SimInput.swipe(startX: 0, startY: 0, endX: 0, endY: 1, durationMs: 420, endHoldMs: 150).json["endHoldMs"]?.doubleValue, 150)
     }
 
     func testTheGiveUnderAFingerIsSmallAndBounded() {

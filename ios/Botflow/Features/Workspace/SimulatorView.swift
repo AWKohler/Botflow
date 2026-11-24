@@ -169,7 +169,10 @@ struct SimulatorView: View {
             if includesRotate {
                 Button { controller.toggleOrientation() } label: { Label(controller.landscape ? "Rotate to portrait" : "Rotate to landscape", systemImage: "rectangle.portrait.rotate") }
             }
-            Toggle(isOn: $controller.liveScroll) { Label("Allow for coasting when I stop", systemImage: "hand.draw") }
+            if !controller.hostRestsSwipes {
+                // Only where the host lets go of every swipe at speed.
+                Toggle(isOn: $controller.liveScroll) { Label("Allow for coasting when I stop", systemImage: "hand.draw") }
+            }
             Button { showTouchHelp = true } label: { Label("How touch works", systemImage: "hand.tap") }
             if controller.phase.isActive {
                 Divider()
@@ -752,7 +755,7 @@ struct TouchHelpSheet: View {
             ("hand.tap", "Tap", "Sent as you lift your finger."),
             ("hand.draw", "Flick", "Replayed exactly as you drew it; the simulator adds the momentum a real flick has."),
             ("arrow.up.and.down", "Drag and stop", holds
-                ? "Replayed at your own pace, so the page stops about where you stopped."
+                ? "Replayed at your own pace, resting where you rested, so the page stops where you stopped."
                 : "Shortened to allow for the simulator coasting on after it. Short scrolls can only be approximate here."),
             ("arrow.left.and.right", "Sideways", "Paging, row actions and going back are replayed exactly."),
             ("keyboard", "Type", "With the on-screen keyboard or a hardware one."),
