@@ -15,6 +15,11 @@
  *   POST /api/auth/native/authorize  { challenge }            (signed in)  → { code }
  *   POST /api/auth/native/token      { code, verifier, … }    (no session) → session cookie
  *
+ * Sign in with Apple skips the browser: the app shows Apple's own sheet and
+ * sends the identity token it returns, bound to a nonce the app made up.
+ *
+ *   POST /api/auth/native/apple      { identityToken, nonce, … } (no session) → session cookie
+ *
  * The app's session is a separate row from the browser's, so signing out of
  * one leaves the other alone and each shows up as its own device.
  */
@@ -23,6 +28,8 @@ import type { BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthEndpoint, sessionMiddleware } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import { generateRandomString } from "better-auth/crypto";
+import { handleOAuthUserInfo, verifyProviderIdToken } from "better-auth/oauth2";
+import { appleConfig, exchangeAppleAuthorizationCode } from "./apple";
 import { z } from "zod";
 
 /** A code lives just long enough for the redirect and one request. */
@@ -46,6 +53,8 @@ function cleanDeviceName(value: string | undefined): string {
   const name = (value ?? "").replace(/[^\p{L}\p{N} '’._-]/gu, "").trim().slice(0, 60);
   return name || "iPhone";
 }
+
+const appleUserName = z.string().max(100).optional();
 
 export function nativeApp() {
   return {
@@ -109,6 +118,83 @@ export function nativeApp() {
           });
           if (!session) throw new APIError("FORBIDDEN", { message: "Sign-in is not available for this account." });
           await setSessionCookie(ctx, { session, user });
+          return ctx.json({ user: { id: user.id, name: user.name, email: user.email } });
+        },
+      ),
+      nativeApple: createAuthEndpoint(
+        "/native/apple",
+        {
+          method: "POST",
+          body: z.object({
+            identityToken: z.string().min(20).max(8192),
+            // The raw nonce; Apple's token carries its SHA-256.
+            nonce: z.string().min(16).max(128),
+            authorizationCode: z.string().max(1024).optional(),
+            // Apple shares the name only on the very first authorization.
+            givenName: appleUserName,
+            familyName: appleUserName,
+            deviceName: z.string().max(200).optional(),
+          }),
+        },
+        async (ctx) => {
+          const provider = ctx.context.socialProviders.find((p) => p.id === "apple");
+          if (!provider) throw new APIError("NOT_FOUND", { message: "Sign in with Apple is not available." });
+          const invalid = () => new APIError("UNAUTHORIZED", { message: "Apple could not confirm this sign-in. Try again." });
+
+          const { identityToken, nonce } = ctx.body;
+          // A nonce is mandatory here, so a token lifted from elsewhere cannot be replayed.
+          if (!(await verifyProviderIdToken(provider, identityToken, nonce, ctx))) throw invalid();
+
+          // Keep a refresh token so the account's Apple access can be revoked on deletion.
+          const config = appleConfig();
+          const tokens =
+            config && ctx.body.authorizationCode
+              ? await exchangeAppleAuthorizationCode(config, ctx.body.authorizationCode).catch(() => null)
+              : null;
+
+          const name =
+            ctx.body.givenName || ctx.body.familyName
+              ? { firstName: ctx.body.givenName?.trim(), lastName: ctx.body.familyName?.trim() }
+              : undefined;
+          const info = await provider.getUserInfo({ idToken: identityToken, user: name ? { name } : undefined });
+          const sub = (info?.data as { sub?: unknown } | undefined)?.sub;
+          if (!info?.user || typeof sub !== "string" || !sub) throw invalid();
+          if (!info.user.email) {
+            throw new APIError("UNAUTHORIZED", { message: "Apple did not share an email address for this account." });
+          }
+
+          const result = await handleOAuthUserInfo(ctx, {
+            userInfo: {
+              ...info.user,
+              id: sub,
+              email: info.user.email,
+              name: info.user.name || "",
+              emailVerified: info.user.emailVerified || false,
+            },
+            account: {
+              providerId: "apple",
+              accountId: sub,
+              idToken: identityToken,
+              accessToken: tokens?.accessToken,
+              refreshToken: tokens?.refreshToken,
+            },
+            disableSignUp: provider.disableSignUp,
+          });
+          if (result.error || !result.data) {
+            throw new APIError("UNAUTHORIZED", {
+              message:
+                result.error === "account not linked"
+                  ? "An account with this email already exists. Sign in another way, then connect Apple in Settings."
+                  : "Sign in with Apple could not be completed for this account.",
+            });
+          }
+          const { session, user } = result.data;
+          if ((user as { banned?: boolean | null }).banned) throw invalid();
+
+          // Name the device the way the browser-sheet sign-in does.
+          const userAgent = `Botflow for iOS (${cleanDeviceName(ctx.body.deviceName)})`;
+          const updated = await ctx.context.internalAdapter.updateSession(session.token, { userAgent });
+          await setSessionCookie(ctx, { session: updated ?? { ...session, userAgent }, user });
           return ctx.json({ user: { id: user.id, name: user.name, email: user.email } });
         },
       ),

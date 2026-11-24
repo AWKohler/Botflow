@@ -59,6 +59,7 @@ targets:
       path: Botflow/Botflow.entitlements
       properties:
         aps-environment: development
+        com.apple.developer.applesignin: [Default]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.botflow.app

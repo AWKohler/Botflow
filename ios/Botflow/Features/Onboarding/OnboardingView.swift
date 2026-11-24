@@ -1,12 +1,16 @@
+import AuthenticationServices
 import SwiftUI
 
 /// The signed-out screen: what Botflow is, a glimpse of an agent at work, and
-/// the two ways in.
+/// the ways in: Apple's native button, or Botflow's own sign-in page.
 struct OnboardingView: View {
     @EnvironmentObject private var session: AppSession
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.verticalSizeClass) private var verticalClass
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.colorScheme) private var colorScheme
+    /// The raw nonce behind the Apple request in flight.
+    @State private var appleNonce = ""
 
     var body: some View {
         GeometryReader { proxy in
@@ -107,6 +111,22 @@ struct OnboardingView: View {
                 ErrorBanner(message: error)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
+            SignInWithAppleButton(.continue) { request in
+                let nonce = AuthManager.appleNonce()
+                appleNonce = nonce.raw
+                request.requestedScopes = [.fullName, .email]
+                request.nonce = nonce.hashed
+            } onCompletion: { result in
+                let nonce = appleNonce
+                Task { await session.signInWithApple(result, nonce: nonce) }
+            }
+            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+            // The button ignores style changes once drawn; rebuild it when the scheme flips.
+            .id(colorScheme)
+            .frame(height: ButtonSize.large.height)
+            .clipShape(RoundedRectangle(cornerRadius: ButtonSize.large.radius, style: .continuous))
+            .accessibilityIdentifier("onboarding.apple")
+
             Button {
                 Task { await session.signIn(mode: .signUp) }
             } label: {
@@ -129,6 +149,7 @@ struct OnboardingView: View {
                 .foregroundStyle(Sand.subtle)
                 .tint(Sand.muted)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, Space.xs)
         }
         .disabled(session.isAuthenticating)

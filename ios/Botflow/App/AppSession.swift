@@ -1,3 +1,4 @@
+import AuthenticationServices
 import Foundation
 import SwiftUI
 
@@ -80,6 +81,37 @@ final class AppSession: ObservableObject {
             withMotion(.smooth(duration: 0.45)) { phase = .signedIn }
             await loadAccount()
             PushManager.shared.registerIfAuthorized()
+        } catch {
+            Haptics.error()
+            authError = error.localizedDescription
+        }
+    }
+
+    /// Finishes the native Sign in with Apple button. `nonce` is the raw value
+    /// whose hash went into the Apple request.
+    func signInWithApple(_ result: Result<ASAuthorization, Error>, nonce: String) async {
+        guard !isAuthenticating else { return }
+        isAuthenticating = true
+        authError = nil
+        defer { isAuthenticating = false }
+        do {
+            let authorization = try result.get()
+            if AppConfig.isDemo {
+                await loadAccount()
+                withMotion(.smooth(duration: 0.45)) { phase = .signedIn }
+                return
+            }
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+                throw AuthManager.AuthError(message: "Apple sign-in did not return an Apple ID.")
+            }
+            try await auth.completeAppleSignIn(credential, nonce: nonce)
+            user = try await service.me()
+            Haptics.success()
+            withMotion(.smooth(duration: 0.45)) { phase = .signedIn }
+            await loadAccount()
+            PushManager.shared.registerIfAuthorized()
+        } catch let error as ASAuthorizationError where error.code == .canceled {
+            return
         } catch {
             Haptics.error()
             authError = error.localizedDescription

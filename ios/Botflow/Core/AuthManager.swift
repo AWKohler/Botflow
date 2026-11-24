@@ -4,10 +4,13 @@ import Foundation
 import UIKit
 
 /// Sign-in through the website. A system browser sheet opens Botflow's own
-/// sign-in page (password, email code, Google or GitHub: whatever the web
-/// offers, including creating an account). When the person is signed in there,
+/// sign-in page (password, email code, Apple, Google or GitHub: whatever the
+/// web offers, including creating an account). When the person is signed in there,
 /// the site hands this app a one-time code; the app trades it, with a secret
 /// only it holds (PKCE), for a session of its own.
+///
+/// Sign in with Apple also has a native button (`completeAppleSignIn`), which
+/// skips the browser entirely.
 @MainActor
 final class AuthManager: NSObject, ASWebAuthenticationPresentationContextProviding {
     enum Mode: String {
@@ -83,6 +86,42 @@ final class AuthManager: NSObject, ASWebAuthenticationPresentationContextProvidi
             throw AuthError(message: "Sign-in finished but no session was returned. Try again.")
         }
         return true
+    }
+
+    // MARK: Sign in with Apple
+
+    /// A fresh nonce for Apple's sheet. Apple puts the SHA-256 (hex) of `hashed`'s
+    /// source into the identity token; only this app knows `raw`, which the server
+    /// checks against it, so a token lifted elsewhere cannot be replayed.
+    static func appleNonce() -> (raw: String, hashed: String) {
+        let raw = randomToken(bytes: 32)
+        let hashed = SHA256.hash(data: Data(raw.utf8)).map { String(format: "%02x", $0) }.joined()
+        return (raw, hashed)
+    }
+
+    /// Trades the credential from Apple's sheet for a Botflow session. The
+    /// response sets the session cookie, as the browser-sheet sign-in does.
+    func completeAppleSignIn(_ credential: ASAuthorizationAppleIDCredential, nonce: String) async throws {
+        guard let tokenData = credential.identityToken, let identityToken = String(data: tokenData, encoding: .utf8) else {
+            throw AuthError(message: "Apple didn't return a sign-in token. Try again.")
+        }
+        var body: [String: JSONValue] = [
+            "identityToken": .string(identityToken),
+            "nonce": .string(nonce),
+            "deviceName": .string(UIDevice.current.name),
+        ]
+        // Lets the server revoke Botflow's Apple access if the account is deleted.
+        if let codeData = credential.authorizationCode, let code = String(data: codeData, encoding: .utf8) {
+            body["authorizationCode"] = .string(code)
+        }
+        // Apple shares the name only the first time someone signs in to Botflow.
+        if let given = credential.fullName?.givenName, !given.isEmpty { body["givenName"] = .string(given) }
+        if let family = credential.fullName?.familyName, !family.isEmpty { body["familyName"] = .string(family) }
+
+        _ = try await APIClient.shared.json("POST", "api/auth/native/apple", body: .object(body))
+        guard APIClient.shared.hasSessionCookie else {
+            throw AuthError(message: "Sign-in finished but no session was returned. Try again.")
+        }
     }
 
     static func randomToken(bytes: Int) -> String {
