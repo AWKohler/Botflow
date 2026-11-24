@@ -24,7 +24,7 @@ struct ThreadStrip: View {
         // that have gaps between them reads as clutter, not as glass.
         // (The fill runs up under the navigation bar too, so that bar sits on
         // one even surface instead of on whatever is scrolling past.)
-        .background(Sand.canvas.ignoresSafeArea(edges: .top))
+        .background(Sand.canvas.ignoresSafeArea(edges: [.top, .horizontal]))
         .overlay(alignment: .bottom) { Rectangle().fill(Sand.border.opacity(0.7)).frame(height: 0.5) }
     }
 
@@ -95,15 +95,19 @@ struct ThreadStrip: View {
             }
             ScrollViewReader { proxy in
                 ScrollView(.horizontal) {
-                    HStack(spacing: 2) {
+                    HStack(spacing: 0) {
                         ForEach(store.openThreads.prefix(12)) { thread in
                             chip(thread)
+                                // The gap before a tab belongs to it, so a tab brought to
+                                // the start of the row stops clear of the edge.
+                                .padding(.leading, 8)
                                 .id(thread.id)
                                 // A tab cut off at the start of the row is hidden outright:
                                 // half a title there reads as a broken label. (At the far
                                 // end a fading tab is the cue that there are more.)
-                                .scrollTransition(.interactive.threshold(.visible(0.98)), axis: .horizontal) { content, phase in
-                                    content.opacity(phase == .topLeading ? 0 : 1)
+                                .visualEffect { content, geometry in
+                                    // Measured, not interpolated: either the tab starts inside the row or it is not shown.
+                                    content.opacity(geometry.frame(in: .scrollView(axis: .horizontal)).minX < -1 ? 0 : 1)
                                 }
                         }
                         Button {
@@ -124,15 +128,20 @@ struct ThreadStrip: View {
                     .scrollTargetLayout()
                 }
                 .scrollTargetBehavior(.viewAligned)
-                // Margins, not padding: a tab scrolled to the start stops clear of the fade.
-                .contentMargins(.horizontal, 8, for: .scrollContent)
+                .contentMargins(.trailing, 8, for: .scrollContent)
                 .scrollIndicators(.hidden)
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { stripWidth = $0 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                    stripWidth = width
+                    // The open chat's tab is sized from this width: line it up again once it is known.
+                    if let id = store.currentThreadId {
+                        DispatchQueue.main.async { proxy.scrollTo(id, anchor: .leading) }
+                    }
+                }
                 .mask {
+                    // Only the far end fades: there, part of a tab is the cue that there are more.
                     HStack(spacing: 0) {
-                        LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing).frame(width: 8)
                         Color.black
-                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 14)
+                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 26)
                     }
                 }
                 // The chat being read starts the row, so its title is the one shown in full.

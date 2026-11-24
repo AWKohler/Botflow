@@ -186,6 +186,20 @@ describe("with an APNs key", () => {
     expect(state.startedAt).toBe(startedAt / 1000 - 978_307_200);
   });
 
+  test("a repeated beacon never lists the running step as done", async () => {
+    const { projectId, threadId } = await seed();
+    await registerLiveActivity("u1", threadId, { token: ACTIVITY, environment: "production", projectId });
+    await seedActivityState("u1", threadId, Date.now());
+    // The stream is replayed from its start after a reconnect: read A, read B, then A and B again.
+    for (const file of ["a.ts", "b.ts", "a.ts", "b.ts"]) {
+      await pushTurnProgress({ userId: "u1", threadId, tool: "Read", detail: file, steps: 2 });
+    }
+    const state = (sent[sent.length - 1].payload as { aps: { "content-state": { action: string; detail: string; recent: string[] } } }).aps["content-state"];
+    expect(state.action).toBe("Reading");
+    expect(state.detail).toBe("b.ts");
+    expect(state.recent).not.toContain("Read b.ts");
+  });
+
   test("progress for a thread with no activity sends nothing", async () => {
     const { threadId } = await seed();
     expect(await pushTurnProgress({ userId: "u1", threadId, tool: "Read", detail: "a.ts", steps: 1 })).toBe(false);

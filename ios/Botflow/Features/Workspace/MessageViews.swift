@@ -601,7 +601,6 @@ struct QuestionCard: View {
                         .font(.footnote)
                         .foregroundStyle(Sand.danger)
                         .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityAddTraits(.updatesFrequently)
                 }
                 Button {
                     submit()
@@ -688,9 +687,12 @@ struct QuestionCard: View {
             // On success the card turns into "You answered" by itself. On
             // failure it must not stay locked: the agent is waiting on this.
             let sent = await onAnswer(call, ids, labels, answer)
-            if !sent {
+            if sent {
+                announce("Answer sent.")
+            } else {
                 sending = false
                 withMotion(.snappy) { failed = true }
+                announce("Your answer didn't send. It is still here: try again.")
             }
         }
     }

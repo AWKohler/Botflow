@@ -22,7 +22,7 @@ struct SimulatorView: View {
                 // Controls and device sit together in the middle, a fixed gap
                 // apart, instead of at opposite ends of a wide pane.
                 let aspect = controller.displaySize.width / max(1, controller.displaySize.height)
-                let deviceWidth = min(max(120, paneSize.width - 2 * Space.l - 32 - 180), (paneSize.height - 2 * Space.s) * aspect)
+                let deviceWidth = min(max(120, paneSize.width - 2 * Space.l - 32 - 210), (paneSize.height - 2 * Space.s) * aspect)
                 HStack(alignment: .center, spacing: 32) {
                     sideControls
                     stage(bezel: 5).frame(width: immersive ? 200 : deviceWidth)
@@ -72,17 +72,20 @@ struct SimulatorView: View {
     private var sideControls: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             SimulatorStatusPill(controller: controller)
-            if controller.phase == .live {
-                Button {
-                    Haptics.tap()
-                    immersive = true
-                } label: {
-                    Label("Full screen", systemImage: "arrow.up.left.and.arrow.down.right")
-                }
-                .buttonStyle(InkButtonStyle(size: .small))
-                .accessibilityIdentifier("simulator.fullscreen")
-            }
+            // One row, the way into full screen first: from here that is
+            // where an app can really be tried.
             HStack(spacing: Space.s) {
+                if controller.phase == .live {
+                    Button {
+                        Haptics.tap()
+                        immersive = true
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right").frame(width: 20, height: 20)
+                    }
+                    .buttonStyle(InkButtonStyle(size: .small))
+                    .accessibilityLabel("Full screen")
+                    .accessibilityIdentifier("simulator.fullscreen")
+                }
                 deviceMenu(label: false)
                 rotateButton
                 optionsMenu(includesRotate: false)
@@ -297,6 +300,8 @@ struct SimulatorScreen: View {
     var keyboard: Bool
     var cornerRadius: CGFloat
     var onShowIssues: () -> Void
+    @State private var showTouchHelp = false
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         ZStack {
@@ -322,6 +327,7 @@ struct SimulatorScreen: View {
         .aspectRatio(controller.displaySize.width / max(1, controller.displaySize.height), contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .motion(.snappy(duration: 0.3), value: controller.touchHintSeen)
+        .sheet(isPresented: $showTouchHelp) { TouchHelpSheet(holds: controller.hostTakesDurations).tint(Sand.text) }
     }
 
     private var touchHint: some View {
@@ -342,28 +348,43 @@ struct SimulatorScreen: View {
                 Text("Control the cloud simulator")
                     .font(.subheadline.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
-                if roomy {
+                if typeSize.isAccessibilitySize {
+                    // At the largest text sizes a paragraph here would cover the
+                    // app. The explanation is one tap away, at full size.
+                    EmptyView()
+                } else if roomy {
                     Text(controller.hostTakesDurations
-                        ? "Tap, flick, drag, touch and hold, and type as you would on the phone. Each gesture is replayed in the simulator as you make it."
+                        ? "Tap, flick, drag, touch and hold, and type as you would on the phone. Drags replay at your own pace after you lift your finger."
                         : "Tap, flick, drag and type as you would on the phone. Each gesture is replayed in the simulator as you lift your finger.")
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.8))
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     // Even the smallest card keeps the one fact that matters.
-                    Text(controller.hostTakesDurations ? "Gestures play back as you make them." : "Gestures play back as you lift your finger.")
+                    Text(controller.hostTakesDurations ? "Gestures replay at your pace after you lift your finger." : "Gestures play back as you lift your finger.")
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.8))
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Button("Got it") { controller.touchHintSeen = true }
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 34)
-                    .background(.white, in: Capsule())
-                    .contentShape(Capsule().inset(by: -6))
-                    .padding(.top, 2)
+                HStack(spacing: Space.s) {
+                    Button("Got it") { controller.touchHintSeen = true }
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 34)
+                        .background(.white, in: Capsule())
+                        .contentShape(Capsule().inset(by: -6))
+                    if typeSize.isAccessibilitySize || !roomy {
+                        Button(roomy ? "How touch works" : "How it works") { showTouchHelp = true }
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 34)
+                            .overlay(Capsule().strokeBorder(.white.opacity(0.5), lineWidth: 1))
+                            .contentShape(Capsule().inset(by: -6))
+                    }
+                }
+                .padding(.top, 2)
             }
             .foregroundStyle(.white)
             .padding(roomy ? Space.l : Space.m)
@@ -748,8 +769,8 @@ struct TouchHelpSheet: View {
                     }
                 } footer: {
                     Text(holds
-                        ? "The simulator runs on a Mac in the cloud. What you see is its screen; each gesture is replayed there."
-                        : "The simulator runs on a Mac in the cloud. What you see is its screen; each gesture is replayed there once you finish it, so the picture moves a moment after your finger. Touch and hold and pinch are not available yet.")
+                        ? "The simulator runs on a Mac in the cloud. What you see is its screen; each gesture is replayed there after you lift your finger, so the picture moves a moment after you do. VoiceOver reads the simulator as one picture: the controls inside your app are not announced."
+                        : "The simulator runs on a Mac in the cloud. What you see is its screen; each gesture is replayed there once you finish it, so the picture moves a moment after your finger. Touch and hold and pinch are not available yet. VoiceOver reads the simulator as one picture: the controls inside your app are not announced.")
                 }
             }
             .scrollContentBackground(.hidden)

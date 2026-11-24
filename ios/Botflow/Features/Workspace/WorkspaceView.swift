@@ -97,7 +97,8 @@ struct WorkspaceView: View {
             }
             .toolbar {
                 if split {
-                    ToolbarItem(placement: .principal) {
+                    // Either side of a crease, the title belongs to the chat's half, not across the fold.
+                    ToolbarItem(placement: layout == .halves ? .topBarLeading : .principal) {
                         HStack(spacing: Space.l) {
                             HStack(spacing: 6) {
                                 Image(systemName: store.project.kind.symbol).foregroundStyle(Sand.subtle)
@@ -113,7 +114,9 @@ struct WorkspaceView: View {
                                 .fixedSize()
                             }
                         }
+                        .fixedSize()
                     }
+                    .sharedBackgroundVisibility(.hidden)
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         Button {
                             showThreads = true

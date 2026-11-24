@@ -299,6 +299,7 @@ final class ThreadSession: ObservableObject {
             let call = ToolCall(id: id, name: name, input: chunk.payload["input"] ?? .null, state: .running)
             LiveActivityManager.shared.step(
                 threadId: threadId,
+                callId: id,
                 toolName: name,
                 detail: ToolSummary.detail(for: call),
                 steps: assembler.message.toolCalls.count
@@ -341,6 +342,14 @@ final class ThreadSession: ObservableObject {
             summary: asked.flatMap { AgentQuestion.parse($0.input).first?.question } ?? summary
         )
         failed ? Haptics.warning() : Haptics.success()
+        // What a sighted person sees arrive in the chat, said aloud.
+        if let question = asked.flatMap({ AgentQuestion.parse($0.input).first?.question }) {
+            announce("The agent has a question: \(question)")
+        } else if failed {
+            announce("The agent stopped. \(assembler.errorText ?? "")")
+        } else {
+            announce("The agent finished.")
+        }
 
         // The server saves the turn itself, under the same message id. Take
         // its copy when it has one; when it does not (its own save has not

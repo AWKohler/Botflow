@@ -214,7 +214,7 @@ struct ChatView: View {
                     ThreadStrip(store: store, showsProject: compact, onShowAll: onShowThreads)
                 } else {
                     // No strip to show: still give the navigation bar an even surface to sit on.
-                    Color.clear.frame(height: 0).background(Sand.canvas.ignoresSafeArea(edges: .top))
+                    Color.clear.frame(height: 0).background(Sand.canvas.ignoresSafeArea(edges: [.top, .horizontal]))
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {

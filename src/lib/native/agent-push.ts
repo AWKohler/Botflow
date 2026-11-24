@@ -241,6 +241,9 @@ export async function pushTurnProgress(input: {
       const line = previous.detail ? `${done} ${previous.detail}` : done;
       if (recent[recent.length - 1] !== line) recent = [...recent, line].slice(-3);
     }
+    // The step now running is never also listed as done (a beacon can repeat).
+    const runningAsDone = detail ? `${describeTool(input.tool).past} ${detail}` : describeTool(input.tool).past;
+    recent = recent.filter((line) => line !== runningAsDone);
     const next: ActivityState = {
       startedAt: state.startedAt,
       steps: Math.max(state.steps, input.steps),

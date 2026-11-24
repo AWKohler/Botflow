@@ -90,7 +90,7 @@ final class SimulatorSurfaceView: UIView, UIKeyInput {
         clipsToBounds = true
         isAccessibilityElement = true
         accessibilityLabel = "Simulator screen"
-        accessibilityHint = "Shows your app running. Touches pass straight through to it."
+        accessibilityHint = "Shows your app running in the cloud. Gestures are replayed there after you lift your finger. The controls inside your app are not announced."
         accessibilityTraits = [.image]
         attachVideoLayer()
         // A trackpad or mouse wheel on iPad scrolls the simulator.

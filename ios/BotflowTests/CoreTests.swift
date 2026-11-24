@@ -188,6 +188,25 @@ final class WorkspaceLayoutTests: XCTestCase {
     }
 }
 
+@MainActor
+final class CreaseTests: XCTestCase {
+    func testOnlyAnUnfoldedUprightDuoHasACreaseToRespect() {
+        let hinge = DeviceHingeModel()
+        hinge.windowSize = CGSize(width: 951, height: 669)
+        hinge.posture = nil                      // an iPad of the same shape
+        XCTAssertNil(hinge.creaseX)
+        hinge.posture = .closed
+        XCTAssertNil(hinge.creaseX)
+        hinge.posture = .fullyOpen
+        XCTAssertEqual(hinge.creaseX, 475.5)
+        hinge.posture = .partiallyOpen
+        XCTAssertEqual(hinge.creaseX, 475.5)
+        // Turned on its side the crease runs across, not down.
+        hinge.windowSize = CGSize(width: 669, height: 951)
+        XCTAssertNil(hinge.creaseX)
+    }
+}
+
 final class SimulatorGestureTests: XCTestCase {
     func testAFlickIsReplayedAsDrawn() {
         let end = SimulatorSurfaceView.replayTarget(from: CGPoint(x: 100, y: 500), to: CGPoint(x: 100, y: 300), settled: false, compensating: true, simulatedScale: 1.4)

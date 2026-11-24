@@ -4,6 +4,7 @@ import SwiftUI
 /// finished, across all projects, with enough on each card to decide whether
 /// it needs opening.
 struct AgentsView: View {
+    @EnvironmentObject private var hinge: DeviceHingeModel
     @Environment(\.dynamicTypeSize) private var typeSize
     @EnvironmentObject private var hub: AgentsHub
     @EnvironmentObject private var router: Router
@@ -55,7 +56,8 @@ struct AgentsView: View {
             stat(hub.running.count, "Working", .accent, target: "working", proxy)
             stat(hub.finished.count, "Finished", .success, target: "finished", proxy)
         }
-        .frame(maxWidth: 640)
+        // On an unfolded Duo the three counts keep to the half before the crease.
+        .frame(maxWidth: hinge.creaseX.map { $0 - Space.gutter - Space.m / 2 } ?? 640)
         .padding(.top, Space.s)
     }
 
@@ -110,7 +112,7 @@ struct AgentsView: View {
                     .textCase(.uppercase)
                     .kerning(0.4)
                     .accessibilityAddTraits(.isHeader)
-                LazyVGrid(columns: columns, alignment: .leading, spacing: Space.m) {
+                FoldAwareGrid(columns: columns, alignment: .leading, spacing: Space.m) {
                     ForEach(items) { agent in
                         card(agent)
                     }
@@ -201,23 +203,32 @@ struct AgentCard: View {
     }
 
     /// The line that answers "what is it doing?" or "what does it want?".
+    private func working(steps: Bool, queued: Bool) -> some View {
+        HStack(spacing: 6) {
+            if let step = agent.currentStep {
+                let info = ToolPresentation.info(for: step.tool)
+                Image(systemName: info.symbol).font(.footnote)
+                Text(info.verb).fontWeight(.medium).fixedSize()
+                if !step.detail.isEmpty {
+                    Text(ToolSummary.shortPath(step.detail)).codeFont(12.5).foregroundStyle(Sand.subtle).lineLimit(1).truncationMode(.middle)
+                }
+                if steps { Text("· \(step.steps) steps").foregroundStyle(Sand.subtle).fixedSize() }
+            } else {
+                Text("Working").fontWeight(.medium)
+            }
+            if queued, agent.thread.queued > 0 { Text("· \(agent.thread.queued) queued").foregroundStyle(Sand.subtle).fixedSize() }
+        }
+    }
+
     @ViewBuilder
     private var now: some View {
         switch agent.thread.status {
         case .running:
-            HStack(spacing: 6) {
-                if let step = agent.currentStep {
-                    let info = ToolPresentation.info(for: step.tool)
-                    Image(systemName: info.symbol).font(.footnote)
-                    Text(info.verb).fontWeight(.medium)
-                    if !step.detail.isEmpty {
-                        Text(ToolSummary.shortPath(step.detail)).codeFont(12.5).foregroundStyle(Sand.subtle).lineLimit(1).truncationMode(.middle)
-                    }
-                    Text("· \(step.steps) steps").foregroundStyle(Sand.subtle).layoutPriority(-1)
-                } else {
-                    Text("Working").fontWeight(.medium)
-                }
-                if agent.thread.queued > 0 { Text("· \(agent.thread.queued) queued").foregroundStyle(Sand.subtle) }
+            // The fullest line that fits; a count or a separator is dropped whole, never cut.
+            ViewThatFits(in: .horizontal) {
+                working(steps: true, queued: true)
+                working(steps: false, queued: true)
+                working(steps: false, queued: false)
             }
             .font(.subheadline)
             .foregroundStyle(Sand.accent)

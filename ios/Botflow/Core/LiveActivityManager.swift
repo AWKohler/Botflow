@@ -14,6 +14,9 @@ final class LiveActivityManager {
         var pending: Task<Void, Never>?
         /// The step in progress, so it can be recorded as done when the next begins.
         var currentStep: (tool: String, detail: String)?
+        /// Every call already shown: a stream replayed from its start (after a
+        /// reconnect) reports them all again, and must not move anything.
+        var seenCalls: Set<String> = []
         var alertOnNextPush = false
     }
 
@@ -68,21 +71,23 @@ final class LiveActivityManager {
     }
 
     /// Report the agent's latest step. Updates are coalesced to about one a second.
-    func step(threadId: String, toolName: String, detail: String, steps: Int) {
+    func step(threadId: String, callId: String, toolName: String, detail: String, steps: Int) {
         guard var entry = tracked[threadId] else { return }
+        guard entry.seenCalls.insert(callId).inserted else { return }
         let info = ToolPresentation.info(for: toolName)
         var state = entry.state
         let asking = toolName == "ask_question"
         let becameQuestion = asking && state.phase != .needsInput
-        if entry.currentStep?.tool != toolName || entry.currentStep?.detail != detail {
-            Self.completeCurrentStep(of: entry, into: &state)
-        }
+        Self.completeCurrentStep(of: entry, into: &state)
         entry.currentStep = (toolName, detail)
+        // The step now running is never also listed as done.
+        let running = detail.isEmpty ? info.past : "\(info.past) \(detail)"
+        state.recent.removeAll { $0 == running }
         state.phase = asking ? .needsInput : .working
         state.action = info.verb
         state.detail = detail
         state.symbol = info.symbol
-        state.steps = steps
+        state.steps = max(state.steps, steps)
         entry.state = state
         // A question brings the island forward and lights the Lock Screen: the agent is stuck until answered.
         if becameQuestion { entry.alertOnNextPush = true }

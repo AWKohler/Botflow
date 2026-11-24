@@ -52,14 +52,14 @@ struct ProjectsView: View {
                 } else {
                     filters
                     if !loaded {
-                        LazyVGrid(columns: columns, spacing: Space.l) {
+                        FoldAwareGrid(columns: columns, spacing: Space.l) {
                             ForEach(0..<4, id: \.self) { _ in ProjectCardSkeleton() }
                         }
                     } else if visible.isEmpty {
                         EmptyState(symbol: "magnifyingglass", title: "Nothing matches", message: "Try a different name or filter.")
                             .padding(.top, 40)
                     } else {
-                        LazyVGrid(columns: columns, spacing: Space.l) {
+                        FoldAwareGrid(columns: columns, spacing: Space.l) {
                             ForEach(visible) { project in
                                 card(project)
                             }
@@ -187,6 +187,7 @@ struct ProjectsView: View {
 }
 
 struct ProjectCard: View {
+    @Environment(\.cardCoverHeight) private var coverHeight
     var project: Project
     var activity: [AgentActivity] = []
 
@@ -200,7 +201,7 @@ struct ProjectCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ProjectCover(project: project)
-                .aspectRatio(16 / 9.5, contentMode: .fit)
+                .cardCover(height: coverHeight)
                 .clipped()
             Divider().overlay(Sand.border)
             HStack(alignment: .center, spacing: Space.m) {
