@@ -341,6 +341,30 @@ struct SimulatorScreen: View {
         }
     }
 
+    @ViewBuilder
+    private func hintButtons(roomy: Bool) -> some View {
+        Button("Got it") { controller.touchHintSeen = true }
+            .lineLimit(1)
+            .fixedSize()
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.black)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 34)
+            .background(.white, in: Capsule())
+            .contentShape(Capsule().inset(by: -6))
+        if typeSize.isAccessibilitySize || !roomy {
+            Button(roomy ? "How touch works" : "How it works") { showTouchHelp = true }
+                .lineLimit(1)
+                .fixedSize()
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 34)
+                .overlay(Capsule().strokeBorder(.white.opacity(0.5), lineWidth: 1))
+                .contentShape(Capsule().inset(by: -6))
+        }
+    }
+
     private func touchHintCard(roomy: Bool) -> some View {
         VStack {
             Spacer()
@@ -366,25 +390,10 @@ struct SimulatorScreen: View {
                         .foregroundStyle(.white.opacity(0.8))
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                HStack(spacing: Space.s) {
-                    Button("Got it") { controller.touchHintSeen = true }
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 14)
-                        .frame(minHeight: 34)
-                        .background(.white, in: Capsule())
-                        .contentShape(Capsule().inset(by: -6))
-                    if typeSize.isAccessibilitySize || !roomy {
-                        Button(roomy ? "How touch works" : "How it works") { showTouchHelp = true }
-                            .lineLimit(1)
-                            .fixedSize()
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .frame(minHeight: 34)
-                            .overlay(Capsule().strokeBorder(.white.opacity(0.5), lineWidth: 1))
-                            .contentShape(Capsule().inset(by: -6))
-                    }
+                // Side by side where both fit on one line each; one above the other where they don't.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Space.s) { hintButtons(roomy: roomy) }
+                    VStack(alignment: .leading, spacing: Space.s) { hintButtons(roomy: roomy) }
                 }
                 .padding(.top, 2)
             }
