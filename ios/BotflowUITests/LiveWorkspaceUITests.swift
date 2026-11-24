@@ -127,6 +127,7 @@ final class LiveWorkspaceUITests: XCTestCase {
             // The hint names touch-and-hold only when the host says it can hold a press.
             let offersHold = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'touch and hold'")).firstMatch.exists
             let note = XCTAttachment(string: offersHold ? "host offers gesture durations" : "host does not offer gesture durations")
+            XCTAssertTrue(offersHold || ProcessInfo.processInfo.environment["BOTFLOW_EXPECT_DURATIONS"] == nil, "The host was expected to offer gesture durations")
             note.name = "0-host-capability"
             note.lifetime = .keepAlways
             add(note)

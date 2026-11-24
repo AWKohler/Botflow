@@ -21,8 +21,9 @@ struct SimDiagnostic: Hashable, Identifiable, Sendable {
 enum SimInput: Sendable {
     /// `holdMs` keeps the finger down that long (hosts with "gesture-duration").
     case tap(x: Double, y: Double, holdMs: Double? = nil)
-    /// `durationMs` is how long the swipe takes (hosts with "gesture-duration").
-    case swipe(startX: Double, startY: Double, endX: Double, endY: Double, durationMs: Double? = nil)
+    /// `durationMs` is how long the swipe takes (hosts with "gesture-duration");
+    /// `endHoldMs` is how long the finger rests before lifting (hosts with "swipe-end-hold").
+    case swipe(startX: Double, startY: Double, endX: Double, endY: Double, durationMs: Double? = nil, endHoldMs: Double? = nil)
     case scroll(x: Double, y: Double, deltaX: Double, deltaY: Double)
     case text(String)
     case key(String)
@@ -33,9 +34,10 @@ enum SimInput: Sendable {
             var fields: [String: JSONValue] = ["kind": .string("tap"), "normX": .number(x), "normY": .number(y)]
             if let holdMs { fields["durationMs"] = .number(holdMs.rounded()) }
             return .object(fields)
-        case .swipe(let sx, let sy, let ex, let ey, let durationMs):
+        case .swipe(let sx, let sy, let ex, let ey, let durationMs, let endHoldMs):
             var fields: [String: JSONValue] = ["kind": .string("swipe"), "startX": .number(sx), "startY": .number(sy), "endX": .number(ex), "endY": .number(ey)]
             if let durationMs { fields["durationMs"] = .number(durationMs.rounded()) }
+            if let endHoldMs { fields["endHoldMs"] = .number(endHoldMs.rounded()) }
             return .object(fields)
         case .scroll(let x, let y, let dx, let dy):
             return .object(["kind": .string("scroll"), "normX": .number(x), "normY": .number(y), "deltaX": .number(dx), "deltaY": .number(dy)])
