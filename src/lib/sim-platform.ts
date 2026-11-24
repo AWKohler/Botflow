@@ -58,7 +58,36 @@ export interface DeviceBuildSummary {
   ipaUrl: string | null;
 }
 
-function controllerBase(): { http: string; ws: string } {
+/**
+ * Which controller a call goes to. Every function below takes one; omitted, it
+ * is the deployment's env-configured controller (SIM_CONTROLLER_URL et al.).
+ * The registry in src/lib/sim-hosts builds these from the admin panel's hosts.
+ */
+export interface SimTarget {
+  /** Registry id, or "env" for the env-configured controller. */
+  hostId: string;
+  http: string;
+  ws: string;
+  token: string;
+}
+
+/** The env-configured controller. Throws when SIM_CONTROLLER_URL is unset. */
+export function envSimTarget(): SimTarget {
+  const { http, ws } = envControllerBase();
+  return { hostId: "env", http, ws, token: envPlatformToken() };
+}
+
+/** Browser WS base for a controller URL: same host, ws(s) scheme. */
+export function deriveStreamBase(controllerUrl: string): string {
+  return controllerUrl.replace(/\/$/, "").replace(/^http/, "ws");
+}
+
+function controllerBase(target?: SimTarget): { http: string; ws: string } {
+  if (target) return { http: target.http.replace(/\/$/, ""), ws: target.ws.replace(/\/$/, "") };
+  return envControllerBase();
+}
+
+function envControllerBase(): { http: string; ws: string } {
   const http = process.env.SIM_CONTROLLER_URL;
   if (!http) {
     throw new Error("SIM_CONTROLLER_URL is not set");
@@ -71,7 +100,11 @@ function controllerBase(): { http: string; ws: string } {
   return { http: trimmedHttp, ws };
 }
 
-function platformToken(): string {
+function platformToken(target?: SimTarget): string {
+  return target ? target.token : envPlatformToken();
+}
+
+function envPlatformToken(): string {
   const t = process.env.SIM_PLATFORM_TOKEN;
   if (!t) throw new Error("SIM_PLATFORM_TOKEN is not set");
   return t;
@@ -103,13 +136,14 @@ async function jsonOrText(res: Response): Promise<string> {
 
 export async function createSession(
   input: CreateSessionInput = {},
+  target?: SimTarget,
 ): Promise<CreateSessionResult> {
-  const { http } = controllerBase();
+  const { http } = controllerBase(target);
   const res = await fetch(`${http}/api/sessions`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-platform-token": platformToken(),
+      "x-platform-token": platformToken(target),
     },
     body: JSON.stringify({
       deviceModel: input.deviceModel ?? "iPhone-16-Pro",
@@ -129,12 +163,13 @@ export async function uploadBuild(
   sessionId: string,
   tarball: Buffer,
   input: UploadBuildInput = {},
+  target?: SimTarget,
 ): Promise<void> {
-  const { http } = controllerBase();
+  const { http } = controllerBase(target);
   const headers: Record<string, string> = {
     "content-type": "application/octet-stream",
     "content-length": String(tarball.length),
-    "x-platform-token": platformToken(),
+    "x-platform-token": platformToken(target),
   };
   if (input.scheme) headers["x-build-scheme"] = input.scheme;
   if (input.bundleId) headers["x-build-bundle-id"] = input.bundleId;
@@ -153,11 +188,11 @@ export async function uploadBuild(
   }
 }
 
-export async function releaseSession(sessionId: string): Promise<void> {
-  const { http } = controllerBase();
+export async function releaseSession(sessionId: string, target?: SimTarget): Promise<void> {
+  const { http } = controllerBase(target);
   const res = await fetch(`${http}/api/sessions/${sessionId}`, {
     method: "DELETE",
-    headers: { "x-platform-token": platformToken() },
+    headers: { "x-platform-token": platformToken(target) },
   });
   if (!res.ok && res.status !== 204) {
     throw new Error(
@@ -169,12 +204,13 @@ export async function releaseSession(sessionId: string): Promise<void> {
 export async function createDeviceBuild(
   tarball: Buffer,
   input: UploadBuildInput = {},
+  target?: SimTarget,
 ): Promise<DeviceBuildSummary> {
-  const { http } = controllerBase();
+  const { http } = controllerBase(target);
   const headers: Record<string, string> = {
     "content-type": "application/octet-stream",
     "content-length": String(tarball.length),
-    "x-platform-token": platformToken(),
+    "x-platform-token": platformToken(target),
   };
   if (input.scheme) headers["x-build-scheme"] = input.scheme;
   if (input.bundleId) headers["x-build-bundle-id"] = input.bundleId;
@@ -192,10 +228,10 @@ export async function createDeviceBuild(
   return (await res.json()) as DeviceBuildSummary;
 }
 
-export async function getDeviceBuild(buildId: string): Promise<DeviceBuildSummary> {
-  const { http } = controllerBase();
+export async function getDeviceBuild(buildId: string, target?: SimTarget): Promise<DeviceBuildSummary> {
+  const { http } = controllerBase(target);
   const res = await fetch(`${http}/api/device-builds/${buildId}`, {
-    headers: { "x-platform-token": platformToken() },
+    headers: { "x-platform-token": platformToken(target) },
     cache: "no-store",
   });
   if (!res.ok) {
@@ -206,14 +242,14 @@ export async function getDeviceBuild(buildId: string): Promise<DeviceBuildSummar
   return (await res.json()) as DeviceBuildSummary;
 }
 
-export async function downloadDeviceBuildIpa(buildId: string): Promise<{
+export async function downloadDeviceBuildIpa(buildId: string, target?: SimTarget): Promise<{
   bytes: ArrayBuffer;
   contentType: string;
   contentDisposition: string | null;
 }> {
-  const { http } = controllerBase();
+  const { http } = controllerBase(target);
   const res = await fetch(`${http}/api/device-builds/${buildId}/ipa`, {
-    headers: { "x-platform-token": platformToken() },
+    headers: { "x-platform-token": platformToken(target) },
     cache: "no-store",
   });
   if (!res.ok) {
@@ -280,12 +316,13 @@ export interface SubmitAppStoreBuildParams {
 export async function submitAppStoreBuild(
   tarball: Buffer,
   params: SubmitAppStoreBuildParams,
+  target?: SimTarget,
 ): Promise<AppStoreBuildSummary> {
-  const { http } = controllerBase();
+  const { http } = controllerBase(target);
   const headers: Record<string, string> = {
     "content-type": "application/octet-stream",
     "content-length": String(tarball.length),
-    "x-platform-token": platformToken(),
+    "x-platform-token": platformToken(target),
     "x-team-id": params.teamId,
     "x-asc-key-id": params.keyId,
     "x-asc-issuer-id": params.issuerId,
@@ -312,10 +349,11 @@ export async function submitAppStoreBuild(
 
 export async function getAppStoreBuildStatus(
   buildId: string,
+  target?: SimTarget,
 ): Promise<AppStoreBuildSummary> {
-  const { http } = controllerBase();
+  const { http } = controllerBase(target);
   const res = await fetch(`${http}/api/app-store-builds/${buildId}`, {
-    headers: { "x-platform-token": platformToken() },
+    headers: { "x-platform-token": platformToken(target) },
     cache: "no-store",
   });
   if (!res.ok) {
@@ -334,8 +372,8 @@ export async function getAppStoreBuildStatus(
  * param: in secured mode the controller rejects session WS upgrades whose token
  * doesn't match, so a leaked/guessed sessionId alone can't open a stream.
  */
-export function sessionWsUrl(sessionId: string, streamToken?: string): string {
-  const { ws } = controllerBase();
+export function sessionWsUrl(sessionId: string, streamToken?: string, target?: SimTarget): string {
+  const { ws } = controllerBase(target);
   const base = `${ws}/ws/session/${sessionId}`;
   return streamToken ? `${base}?token=${encodeURIComponent(streamToken)}` : base;
 }

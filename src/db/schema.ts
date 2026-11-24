@@ -977,3 +977,45 @@ export const platformSecrets = pgTable('platform_secrets', {
 });
 
 export type PlatformSecret = typeof platformSecrets.$inferSelect;
+
+// Macs that serve the iOS simulator (admin panel → Simulators). Each row is
+// one controller + host agent. The swift-preview, device-build and App Store
+// build routes pick a host from the serving rows (src/lib/sim-hosts/routing.ts);
+// with no rows at all they fall back to SIM_CONTROLLER_URL.
+export const simHosts = pgTable('sim_hosts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  controllerUrl: text('controller_url').notNull(),
+  /** Browser-facing wss:// URL; null = derived from controller_url. */
+  streamUrl: text('stream_url'),
+  /** Host id the agent announces to its controller (matches /health). */
+  agentHostId: text('agent_host_id'),
+  /** encryptSecret() of this controller's platform token; null = SIM_PLATFORM_TOKEN. */
+  platformTokenEnc: text('platform_token_enc'),
+  /**
+   * 'isolated' (build + simulator in Virtualization.framework VMs) |
+   * 'build-isolated' (build in a VM, simulator on the Mac as a restricted user) |
+   * 'unsecure' (both on bare metal).
+   */
+  runtime: text('runtime').notNull().default('build-isolated'),
+  /** "26" → Xcode Simulator.app; "27"+ → Device Hub. */
+  macosVersion: text('macos_version').notNull(),
+  hardwareModel: text('hardware_model'),
+  chip: text('chip'),
+  ramGb: integer('ram_gb'),
+  /** The stock two-VM Virtualization.framework cap has been removed on this Mac. */
+  vmCapUnlocked: boolean('vm_cap_unlocked').notNull().default(false),
+  maxSessions: integer('max_sessions').notNull().default(2),
+  serving: boolean('serving').notNull().default(false),
+  /** 'all' | 'beta' (only users with publicMetadata.isBeta). */
+  scope: text('scope').notNull().default('all'),
+  /** Lower is tried first. */
+  priority: integer('priority').notNull().default(100),
+  notes: text('notes'),
+  /** SimHostTestResult from the last admin test run. */
+  lastTest: jsonb('last_test'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type SimHostRow = typeof simHosts.$inferSelect;
