@@ -42,6 +42,15 @@ final class LiveSignInUITests: XCTestCase {
             return query(app)
         }
 
+        // The browser may still be signed in from an earlier run: then the
+        // sheet opens straight on the consent page.
+        let already = browser.webViews.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Continue as'")).firstMatch
+        if already.waitForExistence(timeout: 20) {
+            already.tap()
+            XCTAssertTrue(app.textViews["build.prompt"].waitForExistence(timeout: 40), "The app did not finish signing in")
+            return
+        }
+
         let emailField = web { $0.webViews.textFields.firstMatch }
         XCTAssertTrue(emailField.waitForExistence(timeout: 40), "The sign-in page did not load")
         emailField.tap()
