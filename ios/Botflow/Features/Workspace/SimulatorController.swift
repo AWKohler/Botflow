@@ -585,7 +585,8 @@ final class SimulatorController: ObservableObject {
         try? await Task.sleep(nanoseconds: 500_000_000)
         if device == .duo {
             // Stand-in pictures for both panels, and the panel an open Duo lights.
-            duoState = SimDuoState(hingeAngle: 180, hingeMoving: false, orientation: nil, coverLit: false, innerLit: true)
+            // (Unless the device was already folded while this "built": then that stands.)
+            duoState = duoState ?? SimDuoState(hingeAngle: 180, hingeMoving: false, orientation: nil, coverLit: false, innerLit: true)
             for (display, frame) in DuoDemoFrames.make() { deliverDuoFrameForDemo(display, frame) }
         }
         hasFrame = true
