@@ -35,8 +35,10 @@ import { simInputForKey } from "./sim-key-input";
 import { SwiftCameraCapture, type CameraCaptureState } from "./swift-camera-capture";
 import { SimVideoDecoder } from "./sim-video-decoder";
 import { DeviceFrame, type OrientationUI } from "./device-frame";
+import { usePreviewDevices } from "./use-preview-devices";
 import {
   PREVIEW_DEVICE_LABELS,
+  loadDevicePref,
   resolveDevicePref,
   saveDevicePref,
   loadOrientationPref,
@@ -141,13 +143,18 @@ interface LogLine {
 
 const LOG_RING = 400;
 
+/** A local Mac (Botflow Companion) runs the iPhone and the iPad. */
+const LOCAL_DEVICES: PreviewDeviceModel[] = ["iPhone-16-Pro", "iPad-Pro"];
+
 let localSetupConfirmed = false;
 
 export function SwiftSimulatorPreview(props: SwiftSimulatorPreviewProps) {
   const [provider, setProvider] = useState<SimulatorProvider | null>(null);
   // Devices this user can start. The iPhone Duo is only listed when a
-  // simulator host that has it serves them.
-  const [devices, setDevices] = useState<PreviewDeviceModel[]>(["iPhone-16-Pro", "iPad-Pro"]);
+  // simulator host that has it serves them; the answer arrives separately (it
+  // asks the hosts) and nothing here waits on it — except a user whose last
+  // device was the Duo, who needs it to know what to start.
+  const { devices, ready: devicesReady } = usePreviewDevices();
   const [error, setError] = useState<string | null>(null);
   const [localReady, setLocalReady] = useState(localSetupConfirmed);
   const [retry, setRetry] = useState(0);
@@ -161,12 +168,6 @@ export function SwiftSimulatorPreview(props: SwiftSimulatorPreviewProps) {
         if (!response.ok || !["cloud", "local"].includes(body.provider)) {
           throw new Error(body.error || "Could not load preview configuration.");
         }
-        if (Array.isArray(body.devices)) {
-          const known = (body.devices as unknown[]).filter(
-            (d): d is PreviewDeviceModel => d === "iPhone-16-Pro" || d === "iPad-Pro" || d === "iPhone-Duo",
-          );
-          if (known.length > 0) setDevices(known);
-        }
         setProvider(body.provider);
       } catch (error) {
         if (!controller.signal.aborted) setError((error as Error).message);
@@ -175,9 +176,10 @@ export function SwiftSimulatorPreview(props: SwiftSimulatorPreviewProps) {
     return () => controller.abort();
   }, [retry]);
   if (error) return <div className="p-5 text-sm text-muted" role="alert">{error} <button className="text-accent underline" onClick={() => setRetry((r) => r + 1)}>Retry</button></div>;
-  if (!provider) return <div className="flex items-center gap-2 p-5 text-sm text-muted"><Loader2 size={16} className="animate-spin" />Checking preview availability…</div>;
+  const awaitingDevices = !devicesReady && loadDevicePref() === "iPhone-Duo";
+  if (!provider || awaitingDevices) return <div className="flex items-center gap-2 p-5 text-sm text-muted"><Loader2 size={16} className="animate-spin" />Checking preview availability…</div>;
   if (provider === "local" && !localReady) return <LocalSimulatorSetup onReady={() => { localSetupConfirmed = true; setLocalReady(true); }} />;
-  return <ActiveSwiftSimulatorPreview {...props} provider={provider} devices={devices} onLocalSetup={() => { localSetupConfirmed = false; setLocalReady(false); }} />;
+  return <ActiveSwiftSimulatorPreview {...props} provider={provider} devices={provider === "local" ? LOCAL_DEVICES : devices} onLocalSetup={() => { localSetupConfirmed = false; setLocalReady(false); }} />;
 }
 
 function ActiveSwiftSimulatorPreview({

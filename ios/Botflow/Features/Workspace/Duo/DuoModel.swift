@@ -373,13 +373,12 @@ final class DuoModel {
         let half = Self.H / 2 - 1.4
         var vertices: [SCNVector3] = [], normals: [SCNVector3] = []
         var indices: [UInt16] = []
+        let profile = Duo.spineProfile(beta: beta, segments: segments, radius: radius)
         // The curved wall.
-        for i in 0...segments {
-            let phi = beta * Double(i) / Double(segments)
-            let nx = -sin(phi), nz = -cos(phi)
+        for point in profile {
             for y in [half, -half] {
-                vertices.append(SCNVector3(Float(radius * nx), Float(y), Float(Duo.hingeAxisZ + radius * nz)))
-                normals.append(SCNVector3(Float(nx), 0, Float(nz)))
+                vertices.append(SCNVector3(Float(point.x), Float(y), Float(point.z)))
+                normals.append(SCNVector3(Float(point.nx), 0, Float(point.nz)))
             }
         }
         for i in 0..<segments {
@@ -391,9 +390,8 @@ final class DuoModel {
             let centre = UInt16(vertices.count)
             vertices.append(SCNVector3(0, Float(y), Float(Duo.hingeAxisZ)))
             normals.append(SCNVector3(0, Float(ny), 0))
-            for i in 0...segments {
-                let phi = beta * Double(i) / Double(segments)
-                vertices.append(SCNVector3(Float(-radius * sin(phi)), Float(y), Float(Duo.hingeAxisZ - radius * cos(phi))))
+            for point in profile {
+                vertices.append(SCNVector3(Float(point.x), Float(y), Float(point.z)))
                 normals.append(SCNVector3(0, Float(ny), 0))
             }
             for i in 0..<segments {

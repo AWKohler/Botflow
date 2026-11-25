@@ -14,14 +14,26 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { BookOpen, House, Laptop, RotateCcw, RotateCw, ScanLine, Smartphone, Tablet } from "lucide-react";
+import {
+  BookOpen,
+  CircleHelp,
+  House,
+  ImageDown,
+  Laptop,
+  Lock,
+  RotateCcw,
+  RotateCw,
+  ScanLine,
+  Smartphone,
+  Tablet,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaQuery } from "@/components/ui/use-media-query";
 import type { SimDuoState, SimInput } from "../swift-stream-client";
 import { simInputForKey } from "../sim-key-input";
 import { DUO_POSES, hingePostureLabel, type DuoDisplay, type DuoPoseId } from "./duo-geometry";
 import type { DuoFinishId } from "./duo-model";
-import type { DuoScene, DuoSceneInput } from "./duo-scene";
+import type { DuoPosture, DuoScene, DuoSceneInput } from "./duo-scene";
 
 export interface DuoViewerHandle {
   /** A decoded frame for a panel. The viewer takes it over and closes it. */
@@ -62,6 +74,13 @@ function loadFinish(): DuoFinishId {
   }
 }
 
+/**
+ * How the device was last left on this page. The stopped preview and the
+ * running one are separate views of it: this is what makes pressing Play keep
+ * the fold and the attitude instead of springing back to open.
+ */
+let leftPosture: DuoPosture | null = null;
+
 const POSE_ICONS: Record<DuoPoseId, typeof Smartphone> = {
   closed: Smartphone,
   open: Tablet,
@@ -88,7 +107,10 @@ export const DuoViewer = forwardRef<DuoViewerHandle, DuoViewerProps>(function Du
   const [finish, setFinish] = useState<DuoFinishId>("natural");
   const [failed, setFailed] = useState<string | null>(null);
   const [hintVisible, setHintVisible] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const dark = useMediaQuery("(prefers-color-scheme: dark)");
+  const darkRef = useRef(dark);
+  darkRef.current = dark;
 
   // The latest props, for callbacks the scene holds on to.
   const liveRef = useRef(live);
@@ -98,6 +120,8 @@ export const DuoViewer = forwardRef<DuoViewerHandle, DuoViewerProps>(function Du
   const onInputRef = useRef(onInput);
   onInputRef.current = onInput;
 
+  /** Set once the 3D code has loaded and the scene exists. */
+  const [sceneReady, setSceneReady] = useState(false);
   const hingeSend = useRef<{ timer: ReturnType<typeof setTimeout> | null; last: number; pending: number | null }>({
     timer: null,
     last: 0,
@@ -168,6 +192,7 @@ export const DuoViewer = forwardRef<DuoViewerHandle, DuoViewerProps>(function Du
             onEngage: () => {
               canvas.focus({ preventScroll: true });
               setHintVisible(false);
+              setHelpOpen(false);
               try {
                 window.localStorage.setItem(HINT_KEY, "1");
               } catch {
@@ -178,7 +203,13 @@ export const DuoViewer = forwardRef<DuoViewerHandle, DuoViewerProps>(function Du
           loadFinish(),
         );
         sceneRef.current = scene;
+        // The module loaded after this component's effects first ran: bring
+        // the new scene up to date with everything they would have told it.
+        if (leftPosture) scene.restorePosture(leftPosture);
         scene.setLive(liveRef.current);
+        scene.setDim(liveRef.current ? 0 : 0.55);
+        scene.setDarkBackdrop(darkRef.current);
+        setSceneReady(true);
         for (const display of ["cover", "inner"] as const) {
           const frame = earlyFrames.current[display];
           if (frame) scene.setFrame(display, frame);
@@ -215,6 +246,7 @@ export const DuoViewer = forwardRef<DuoViewerHandle, DuoViewerProps>(function Du
       observer.disconnect();
       if (sending.timer) clearTimeout(sending.timer);
       sending.timer = null;
+      if (scene) leftPosture = scene.getPosture();
       scene?.dispose();
       sceneRef.current = null;
       for (const frame of Object.values(earlyFrames.current)) frame?.close();
@@ -254,10 +286,12 @@ export const DuoViewer = forwardRef<DuoViewerHandle, DuoViewerProps>(function Du
     if (!live) hingeSent.current = null;
   }, [live]);
 
-  // A session comes up open and upright. The first time it reports in, the
-  // device here may already be folded or turned (posed while the app was
-  // building): then the session is told, instead of the device being put
-  // back. After that the host's reports are followed.
+  // The first time a session reports in, one of two things is true of the
+  // device here. Either the person has posed it (folded or turned it while the
+  // app was building, or before pressing Play): then the session is told, and
+  // starts that way. Or they have not touched it — and the session may already
+  // be under way, folded by another view of it: then this view takes up the
+  // session's posture and changes nothing. After that the host is followed.
   const announced = useRef(false);
   useEffect(() => {
     if (!live || !state) {
@@ -265,24 +299,28 @@ export const DuoViewer = forwardRef<DuoViewerHandle, DuoViewerProps>(function Du
       return;
     }
     const scene = sceneRef.current;
-    if (!scene) return;
+    if (!scene) return; // (runs again when the scene has loaded)
     scene.setLit({ cover: state.cover.lit, inner: state.inner.lit });
     if (announced.current) {
       scene.setReportedHinge(state.hingeAngle);
       return;
     }
     announced.current = true;
+    const reportedOrientation = state.orientation ?? "portrait";
+    if (!scene.hasUserPosture()) {
+      scene.setReportedHinge(state.hingeAngle, true);
+      scene.adoptOrientation(reportedOrientation);
+      return;
+    }
     if (Math.abs(scene.getHinge() - state.hingeAngle) > 1) {
       // Through the scene, so it also holds off the host's reports while the hinge eases there.
       scene.setHinge(scene.getHinge(), true);
-    } else {
-      scene.setReportedHinge(state.hingeAngle);
     }
     const held = scene.getOrientation();
-    if (held !== (state.orientation ?? "portrait") && features.includes("device-orientation")) {
+    if (held !== reportedOrientation && features.includes("device-orientation")) {
       onInputRef.current({ kind: "device_orientation", orientation: held });
     }
-  }, [live, state, features]);
+  }, [live, state, features, sceneReady]);
 
   useEffect(() => {
     sceneRef.current?.setDarkBackdrop(dark);
@@ -305,6 +343,16 @@ export const DuoViewer = forwardRef<DuoViewerHandle, DuoViewerProps>(function Du
     } catch {
       /* storage blocked */
     }
+  };
+  const savePicture = async (): Promise<void> => {
+    const blob = await sceneRef.current?.snapshot(3);
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "iphone-duo.png";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
   };
   const activePose: DuoPoseId | null =
     hinge <= 3 ? "closed" : hinge >= 177 ? "open" : pose && DUO_POSES.find((p) => p.id === pose)?.hinge === hinge ? pose : null;
@@ -357,6 +405,29 @@ export const DuoViewer = forwardRef<DuoViewerHandle, DuoViewerProps>(function Du
       {hintVisible && !compact && !overlay && (
         <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap rounded-full border border-border bg-elevated/90 px-3 py-1 text-[11px] text-muted shadow-sm backdrop-blur @max-[30rem]:hidden">
           Drag to turn · scroll to zoom · pull an outer edge to fold
+        </div>
+      )}
+
+      {helpOpen && !compact && (
+        <div
+          role="dialog"
+          aria-label="How to move and use the device"
+          className="absolute bottom-16 left-1/2 w-[min(22rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-xl border border-border bg-elevated/95 p-3 text-[12px] leading-5 text-muted shadow-lg backdrop-blur"
+        >
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            <dt className="text-fg">Turn it</dt>
+            <dd>Drag beside the device, or Shift-drag anywhere</dd>
+            <dt className="text-fg">Zoom</dt>
+            <dd>Scroll beside it, or pinch. Double-click the background to reset</dd>
+            <dt className="text-fg">Fold it</dt>
+            <dd>The slider, a posture, or pull a half by its outer edge</dd>
+            <dt className="text-fg">Use the app</dt>
+            <dd>Click, drag and scroll on either screen; click it first to type</dd>
+            <dt className="text-fg">Pinch in the app</dt>
+            <dd>Option-drag on a screen (two fingers on a touch screen)</dd>
+            <dt className="text-fg">Buttons</dt>
+            <dd>The side and volume buttons on the device can be clicked</dd>
+          </dl>
         </div>
       )}
 
@@ -421,16 +492,28 @@ export const DuoViewer = forwardRef<DuoViewerHandle, DuoViewerProps>(function Du
             <span className="h-4 w-px bg-border @max-[26rem]:hidden" aria-hidden />
             <div className="flex items-center gap-0.5" role="group" aria-label="Device and view">
               {features.includes("hardware-buttons") && (
-                <button
-                  type="button"
-                  className={iconButton}
-                  disabled={!live}
-                  onClick={() => onInput({ kind: "button", button: "home" })}
-                  title="Go to the Home Screen"
-                  aria-label="Go to the Home Screen"
-                >
-                  <House size={13} />
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className={iconButton}
+                    disabled={!live}
+                    onClick={() => onInput({ kind: "button", button: "home" })}
+                    title="Go to the Home Screen"
+                    aria-label="Go to the Home Screen"
+                  >
+                    <House size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className={iconButton}
+                    disabled={!live}
+                    onClick={() => onInput({ kind: "button", button: "lock" })}
+                    title="Press the side button (lock or wake)"
+                    aria-label="Press the side button"
+                  >
+                    <Lock size={13} />
+                  </button>
+                </>
               )}
               <button
                 type="button"
@@ -475,6 +558,25 @@ export const DuoViewer = forwardRef<DuoViewerHandle, DuoViewerProps>(function Du
                         : "linear-gradient(135deg,#5b5c61,#2a2b2e)",
                   }}
                 />
+              </button>
+              <button
+                type="button"
+                className={iconButton}
+                onClick={() => void savePicture()}
+                title="Save a picture of the device as it stands (PNG, transparent background)"
+                aria-label="Save a picture of the device"
+              >
+                <ImageDown size={13} />
+              </button>
+              <button
+                type="button"
+                className={iconButton}
+                onClick={() => setHelpOpen((open) => !open)}
+                aria-expanded={helpOpen}
+                title="How to move and use the device"
+                aria-label="How to move and use the device"
+              >
+                <CircleHelp size={13} />
               </button>
             </div>
           </>

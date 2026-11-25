@@ -59,6 +59,9 @@ final class SimulatorController: ObservableObject {
     @Published private(set) var duoState: SimDuoState?
     /// The latest picture of each panel, for a Duo view that appears mid-session.
     private(set) var duoFrames: [DuoDisplay: DuoFrame] = [:]
+    /// How the Duo was last left (fold, attitude, zoom), shared by the views
+    /// of it: the pane and full screen show the same device, not two.
+    var duoPosture = DuoSceneView.Posture()
     private var duoSinks: [UUID: (DuoDisplay, DuoFrame) -> Void] = [:]
     private let duoDecoders: [DuoDisplay: DuoVideoDecoder]
     private let duoRelay = DuoFrameRelay()
@@ -90,8 +93,19 @@ final class SimulatorController: ObservableObject {
         })
         displayLayer.videoGravity = .resizeAspect
         displayLayer.backgroundColor = UIColor.black.cgColor
-        relay.handler = { [weak self] display, frame in
-            Task { @MainActor in self?.deliverDuoFrame(display, frame) }
+        relay.handler = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                for (display, frame) in relay.take() { self.deliverDuoFrame(display, frame) }
+            }
+        }
+        // Back from the background the decoders start over: ask for each
+        // panel's picture again instead of waiting for its next keyframe,
+        // which on a still screen is seconds away.
+        foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.resyncDuoVideo() }
         }
         #if DEBUG
         // `-BotflowSimDevice iPhone-Duo` starts on a given device, for tests and screenshots.
@@ -105,6 +119,16 @@ final class SimulatorController: ObservableObject {
     deinit {
         desiredTask?.cancel()
         client?.close()
+        if let foregroundObserver { NotificationCenter.default.removeObserver(foregroundObserver) }
+    }
+
+    private var foregroundObserver: NSObjectProtocol?
+
+    private func resyncDuoVideo() {
+        guard device == .duo, phase == .live, !isDemo else { return }
+        let decoders = duoDecoders
+        decodeQueue.async { for decoder in decoders.values { decoder.reset() } }
+        client?.resyncVideo()
     }
 
     /// Ask which devices this person can start (once per controller).
@@ -603,10 +627,34 @@ final class SimulatorController: ObservableObject {
 
 /// Carries decoded Duo frames from the decoders (made before the controller
 /// exists as `self`) to the controller.
+///
+/// Frames arrive on VideoToolbox's threads, up to 120 a second, each holding a
+/// buffer of many megabytes. Only the newest of each panel is kept, and at most
+/// one hop to the main actor is pending at a time: if the main thread stalls,
+/// frames are dropped here instead of piling up behind it.
 final class DuoFrameRelay: @unchecked Sendable {
-    var handler: (@Sendable (DuoDisplay, DuoFrame) -> Void)?
+    /// Called (on any thread) when there are frames to `take`.
+    var handler: (@Sendable () -> Void)?
+    private let lock = NSLock()
+    private var latest: [DuoDisplay: DuoFrame] = [:]
+    private var hopPending = false
 
     func deliver(_ display: DuoDisplay, _ frame: DuoFrame) {
-        handler?(display, frame)
+        lock.lock()
+        latest[display] = frame
+        let hop = !hopPending
+        hopPending = true
+        lock.unlock()
+        if hop { handler?() }
+    }
+
+    /// The newest frame of each panel since the last call.
+    func take() -> [DuoDisplay: DuoFrame] {
+        lock.lock()
+        defer { lock.unlock() }
+        let frames = latest
+        latest = [:]
+        hopPending = false
+        return frames
     }
 }

@@ -15,7 +15,7 @@ function isDevice(value: unknown): value is PreviewDeviceModel {
 
 /** Asked once per page load; a failure just means the base two. */
 export function fetchPreviewDevices(): Promise<PreviewDeviceModel[]> {
-  cached ??= fetch("/api/swift-preview/config", { cache: "no-store" })
+  cached ??= fetch("/api/swift-preview/devices", { cache: "no-store" })
     .then(async (res) => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as { devices?: unknown };
@@ -29,16 +29,17 @@ export function fetchPreviewDevices(): Promise<PreviewDeviceModel[]> {
   return cached;
 }
 
-export function usePreviewDevices(): PreviewDeviceModel[] {
-  const [devices, setDevices] = useState<PreviewDeviceModel[]>(BASE);
+/** `ready` is false until the answer is in; until then `devices` is the base two. */
+export function usePreviewDevices(): { devices: PreviewDeviceModel[]; ready: boolean } {
+  const [result, setResult] = useState<{ devices: PreviewDeviceModel[]; ready: boolean }>({ devices: BASE, ready: false });
   useEffect(() => {
     let live = true;
-    void fetchPreviewDevices().then((d) => {
-      if (live) setDevices(d);
+    void fetchPreviewDevices().then((devices) => {
+      if (live) setResult({ devices, ready: true });
     });
     return () => {
       live = false;
     };
   }, []);
-  return devices;
+  return result;
 }

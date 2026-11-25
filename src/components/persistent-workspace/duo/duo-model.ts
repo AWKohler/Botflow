@@ -135,7 +135,6 @@ const SCREEN_VERTEX = /* glsl */ `
 const SCREEN_FRAGMENT = /* glsl */ `
   uniform sampler2D uMap;
   uniform float uHasMap;
-  uniform float uLit;
   uniform vec2 uOutlineCenter;
   uniform vec2 uOutlineHalf;
   uniform vec2 uOutlineRadii;   // corners at −x, corners at +x
@@ -176,9 +175,12 @@ const SCREEN_FRAGMENT = /* glsl */ `
 
     vec2 fb = (uFlatToFramebuffer * vec3(vFlat, 1.0)).xy;
     vec3 picture = texture2D(uMap, clamp(fb, 0.0, 1.0)).rgb;
-    // An unlit panel is not quite as black as the glass around it.
+    // With no picture yet the panel is not quite as black as the glass around
+    // it. Once there is one it is always shown: a panel iOS has switched off
+    // streams black anyway, and whether it is "off" is only a guess from its
+    // pixels, which must never hide an app that happens to be dark.
     vec3 off = uGlass + vec3(0.006, 0.006, 0.008);
-    vec3 color = mix(uGlass, mix(off, picture * (1.0 - uDim), uLit * uHasMap), inPanel);
+    vec3 color = mix(uGlass, mix(off, picture * (1.0 - uDim), uHasMap), inPanel);
 
     vec3 n = normalize(gl_FrontFacing ? vWorldNormal : -vWorldNormal);
     vec3 v = normalize(cameraPosition - vWorldPosition);
@@ -210,7 +212,6 @@ function screenMaterial(layout: ScreenFaceLayout): THREE.ShaderMaterial {
     uniforms: {
       uMap: { value: null },
       uHasMap: { value: 0 },
-      uLit: { value: 0 },
       uOutlineCenter: { value: new THREE.Vector2(...layout.outlineCenter) },
       uOutlineHalf: { value: new THREE.Vector2(...layout.outlineHalf) },
       uOutlineRadii: { value: new THREE.Vector2(...layout.outlineRadii) },
@@ -466,6 +467,11 @@ export function buildDuoModel(finishId: DuoFinishId = "natural"): DuoModel {
   // as the gap that has opened.
   const spineSegments = 28;
   const spineRadius = HINGE_AXIS_Z + T / 2 - 0.02;
+  // A plain arc about the hinge would stand a full half-thickness proud of the
+  // closed device, like a thick rail. The real hinge is flatter: so the arc is
+  // pulled in towards the axis in its middle, more the further it has closed,
+  // until shut it stands out only this far.
+  const spineProud = 2.3;
   const spineHalfLength = H / 2 - 1.4;
   // Curved wall: two rings of (segments + 1). Caps: a centre plus a ring each.
   const wallVerts = (spineSegments + 1) * 2;
@@ -526,12 +532,9 @@ export function buildDuoModel(finishId: DuoFinishId = "natural"): DuoModel {
     };
     put(capTop, 0, spineHalfLength, HINGE_AXIS_Z, 0, 1, 0);
     put(capBottom, 0, -spineHalfLength, HINGE_AXIS_Z, 0, -1, 0);
+    const profile = spineProfile(beta, spineSegments, spineRadius, spineProud);
     for (let i = 0; i <= spineSegments; i++) {
-      const phi = (beta * i) / spineSegments;
-      const nx = -Math.sin(phi);
-      const nz = -Math.cos(phi);
-      const x = spineRadius * nx;
-      const z = HINGE_AXIS_Z + spineRadius * nz;
+      const { x, z, nx, nz } = profile[i];
       put(i * 2, x, spineHalfLength, z, nx, 0, nz);
       put(i * 2 + 1, x, -spineHalfLength, z, nx, 0, nz);
       put(capTop + 1 + i, x, spineHalfLength, z, 0, 1, 0);
@@ -561,6 +564,39 @@ export function buildDuoModel(finishId: DuoFinishId = "natural"): DuoModel {
       for (const d of disposables) d.dispose();
     },
   };
+}
+
+/**
+ * The hinge's back in cross-section, for a fold: points from straight behind
+ * the camera half round to straight behind the cover half, each with its
+ * outward normal. Flush with both backs at its ends; in between, flattened
+ * towards the axis so that shut it stands `proud` beyond the halves' edges
+ * instead of a whole radius.
+ */
+export function spineProfile(
+  beta: number,
+  segments: number,
+  radius: number,
+  proud: number,
+): Array<{ x: number; z: number; nx: number; nz: number }> {
+  const flatten = (1 - proud / radius) * Math.sin(beta / 2) ** 2;
+  const points: Array<{ x: number; z: number }> = [];
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const phi = beta * t;
+    const r = radius * (1 - flatten * Math.sin(Math.PI * t));
+    points.push({ x: -r * Math.sin(phi), z: HINGE_AXIS_Z - r * Math.cos(phi) });
+  }
+  return points.map((p, i) => {
+    // Outward normal: perpendicular to the run of the curve here.
+    const a = points[Math.max(0, i - 1)];
+    const b = points[Math.min(segments, i + 1)];
+    const tx = b.x - a.x;
+    const tz = b.z - a.z;
+    const length = Math.hypot(tx, tz) || 1;
+    // The curve runs from −z round towards −x; its outside is to the right of travel.
+    return { x: p.x, z: p.z, nx: -tz / length, nz: tx / length };
+  });
 }
 
 /** Z of the inner face, re-exported for callers that place things on it. */

@@ -21,6 +21,7 @@ import {
   orientationFromUp,
   uprightQuarterTurns,
 } from './duo-geometry';
+import { spineProfile } from './duo-model';
 
 const RAD = Math.PI / 180;
 const close = (a: number, b: number, eps = 1e-6) => expect(Math.abs(a - b)).toBeLessThan(eps);
@@ -225,5 +226,34 @@ describe('postures', () => {
       expect(pose.hinge).toBeLessThanOrEqual(180);
     }
     expect(new Set(DUO_POSES.map((p) => p.id)).size).toBe(DUO_POSES.length);
+  });
+});
+
+describe('hinge spine', () => {
+  const radius = HINGE_AXIS_Z + DUO.thickness / 2;
+
+  test('meets the back of each half flush, whatever the fold', () => {
+    for (const beta of [20 * RAD, 90 * RAD, Math.PI]) {
+      const profile = spineProfile(beta, 28, radius, 2.3);
+      // Starts straight behind the camera half…
+      close(profile[0].x, 0, 1e-9);
+      close(profile[0].z, HINGE_AXIS_Z - radius, 1e-9);
+      // …and ends straight behind the cover half, the same distance from the axis.
+      const end = profile[profile.length - 1];
+      close(Math.hypot(end.x, end.z - HINGE_AXIS_Z), radius, 1e-9);
+    }
+  });
+
+  test('shut, it stands only a little proud of the edges, not a whole radius', () => {
+    const profile = spineProfile(Math.PI, 28, radius, 2.3);
+    const furthest = Math.min(...profile.map((p) => p.x));
+    close(furthest, -2.3, 0.2);
+  });
+
+  test('its normals point away from the hinge axis', () => {
+    for (const p of spineProfile(120 * RAD, 28, radius, 2.3)) {
+      expect(p.nx * p.x + p.nz * (p.z - HINGE_AXIS_Z)).toBeGreaterThan(0);
+      close(Math.hypot(p.nx, p.nz), 1, 1e-6);
+    }
   });
 });

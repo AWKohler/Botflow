@@ -61,6 +61,22 @@ export interface DuoPanelLit {
   inner: boolean;
 }
 
+/**
+ * How the device was left: fold, attitude and zoom. Carried from one view of
+ * the device to the next (the stopped preview to the running one), so it does
+ * not spring back to open and square on.
+ */
+export interface DuoPosture {
+  hinge: number;
+  /** The person's turn of the device: x, y, z, w. */
+  turn: [number, number, number, number];
+  /** A whole-device attitude being held (tabletop), if any: x, y, z, w. */
+  attitude: [number, number, number, number] | null;
+  zoom: number;
+  /** The person set any of this themselves (as opposed to it being the default). */
+  posed: boolean;
+}
+
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
@@ -119,7 +135,6 @@ export class DuoScene {
   // Fold.
   private hingeShown = 180;
   private hingeTarget = 180;
-  private hingeReported: number | null = null;
   private hingeUserAt = 0;
   private foldApplied = -1;
 
@@ -135,10 +150,12 @@ export class DuoScene {
   private distance = 600;
   private distanceTarget = 600;
   private framed = false;
+  /** The person has folded or turned the device themselves. */
+  private posed = false;
+  private touchKeepAlive: ReturnType<typeof setInterval> | null = null;
 
   // Panels.
   private lit: DuoPanelLit = { cover: false, inner: true };
-  private litShown: Record<DuoDisplay, number> = { cover: 0, inner: 0 };
   private live = false;
   private dim = 0;
   private dimTarget = 0;
@@ -171,13 +188,7 @@ export class DuoScene {
     this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.renderer.toneMappingExposure = 1.05;
 
-    // A neutral studio to reflect in the metal and glass.
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    const room = new RoomEnvironment();
-    this.scene.environment = pmrem.fromScene(room, 0.03).texture;
-    this.scene.environmentIntensity = 0.95;
-    room.dispose();
-    pmrem.dispose();
+    this.buildEnvironment();
 
     const key = new THREE.DirectionalLight(0xffffff, 1.6);
     key.position.set(-260, 420, 520);
@@ -232,6 +243,17 @@ export class DuoScene {
 
     this.applyFold();
     this.invalidate();
+  }
+
+  /** A neutral studio to reflect in the metal and glass. */
+  private buildEnvironment(): void {
+    this.scene.environment?.dispose();
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const room = new RoomEnvironment();
+    this.scene.environment = pmrem.fromScene(room, 0.03).texture;
+    this.scene.environmentIntensity = 1.0;
+    room.dispose();
+    pmrem.dispose();
   }
 
   // ── Public surface ─────────────────────────────────────────────────────────
@@ -315,24 +337,97 @@ export class DuoScene {
     this.invalidate();
   }
 
-  /** The host's report of where the hinge is. Followed unless the user has just moved it. */
-  setReportedHinge(hinge: number): void {
-    this.hingeReported = hinge;
-    if (performance.now() - this.hingeUserAt > HINGE_USER_HOLD_MS && Math.abs(hinge - this.hingeTarget) > 0.5) {
+  /**
+   * The host's report of where the hinge is. Followed unless the user has just
+   * moved it (`adopt` follows it regardless: joining a session already under way).
+   */
+  setReportedHinge(hinge: number, adopt = false): void {
+    const held = !adopt && performance.now() - this.hingeUserAt <= HINGE_USER_HOLD_MS;
+    if (!held && Math.abs(hinge - this.hingeTarget) > 0.5) {
       this.hingeTarget = hinge;
       this.invalidate();
     }
   }
 
-  /** The host's report of how the device is held (after a reconnect, say). */
-  setReportedOrientation(orientation: DeviceOrientation): void {
+  /**
+   * Take up the way the session's device is already held (joining a session
+   * under way): turn the model to match, so this view does not then tell iOS
+   * the device has been turned back.
+   */
+  adoptOrientation(orientation: DeviceOrientation): void {
+    if (orientation === this.orientation) return;
+    const quarter: Record<DeviceOrientation, number> = {
+      portrait: 0,
+      "landscape-left": 1,
+      "portrait-upside-down": 2,
+      "landscape-right": -1,
+    };
+    this.attitudeTarget = null;
+    this.userQuatTarget.setFromAxisAngle(AXIS_Z, (quarter[orientation] * Math.PI) / 2);
     this.orientation = orientation;
     this.orientationCandidate = orientation;
+    this.invalidate();
+  }
+
+  /** Whether the person has folded or turned the device themselves. */
+  hasUserPosture(): boolean {
+    return this.posed;
+  }
+
+  getPosture(): DuoPosture {
+    const q = this.userQuatTarget;
+    const a = this.attitudeTarget;
+    return {
+      hinge: this.hingeTarget,
+      turn: [q.x, q.y, q.z, q.w],
+      attitude: a ? [a.x, a.y, a.z, a.w] : null,
+      zoom: this.zoomTarget,
+      posed: this.posed,
+    };
+  }
+
+  /** Put the device as it was left (no animation, nothing sent). */
+  restorePosture(posture: DuoPosture): void {
+    this.hingeTarget = this.hingeShown = clamp(posture.hinge, 0, 180);
+    this.userQuatTarget.set(...posture.turn).normalize();
+    this.attitudeTarget = posture.attitude ? new THREE.Quaternion(...posture.attitude).normalize() : null;
+    if (this.attitudeTarget) {
+      const auto = new THREE.Quaternion().setFromAxisAngle(AXIS_Y, autoYaw(hingeToBeta(this.hingeTarget)));
+      this.userQuatTarget.copy(this.attitudeTarget).multiply(auto.invert());
+    }
+    this.userQuat.copy(this.userQuatTarget);
+    this.zoom = this.zoomTarget = clamp(posture.zoom, ZOOM_MIN, ZOOM_MAX);
+    this.posed = posture.posed;
+    this.spin = { x: 0, y: 0 };
+    this.applyFold();
+    if (this.framed) this.distance = this.distanceTarget = this.fitDistance();
+    this.invalidate();
+  }
+
+  /**
+   * A picture of the device as it stands, on a transparent background, at
+   * `scale` times the size on screen: for decks, posts and store pages.
+   */
+  snapshot(scale = 3): Promise<Blob | null> {
+    if (this.disposed) return Promise.resolve(null);
+    const previous = this.renderer.getPixelRatio();
+    // Stay inside what a GPU will allocate for one canvas.
+    const limit = Math.min(4, 8192 / Math.max(this.width, this.height));
+    this.renderer.setPixelRatio(Math.max(1, Math.min(scale, limit)));
+    this.renderer.setSize(this.width, this.height, false);
+    this.renderer.render(this.scene, this.camera);
+    // The canvas is read at the moment of the call; encoding happens after.
+    const blob = new Promise<Blob | null>((resolve) => this.canvas.toBlob(resolve, "image/png"));
+    this.renderer.setPixelRatio(previous);
+    this.renderer.setSize(this.width, this.height, false);
+    this.invalidate();
+    return blob;
   }
 
   /** Fold to an angle (from the slider). */
   setHinge(hinge: number, settled: boolean): void {
     this.hingeTarget = clamp(hinge, 0, 180);
+    this.posed = true;
     this.hingeUserAt = performance.now();
     this.callbacks.onHingeRequest(this.hingeTarget, settled);
     this.invalidate();
@@ -382,6 +477,7 @@ export class DuoScene {
 
   /** Turn the device a quarter turn in the plane of the screen. */
   rollQuarter(direction: "left" | "right"): void {
+    this.posed = true;
     this.settleAttitude();
     const turn = new THREE.Quaternion().setFromAxisAngle(AXIS_Z, ((direction === "left" ? 1 : -1) * Math.PI) / 2);
     this.userQuatTarget.premultiply(turn);
@@ -433,6 +529,7 @@ export class DuoScene {
     if (this.disposed) return;
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    if (this.touchKeepAlive) clearInterval(this.touchKeepAlive);
     const c = this.canvas;
     c.removeEventListener("pointerdown", this.onPointerDown);
     c.removeEventListener("pointermove", this.onPointerMove);
@@ -545,18 +642,8 @@ export class DuoScene {
     this.camera.lookAt(0, 0, 0);
     this.placeShadow();
 
-    // Panels fade on and off rather than snapping.
     for (const display of ["cover", "inner"] as const) {
-      const target = this.lit[display] ? 1 : 0;
-      if (!near(this.litShown[display], target, 0.004)) {
-        this.litShown[display] = approach(this.litShown[display], target, dt, 0.07);
-        moving = true;
-      } else {
-        this.litShown[display] = target;
-      }
-      const uniforms = this.model.screens[display].material.uniforms;
-      uniforms.uLit.value = this.litShown[display];
-      uniforms.uDim.value = this.dim;
+      this.model.screens[display].material.uniforms.uDim.value = this.dim;
     }
     if (!near(this.dim, this.dimTarget, 0.004)) {
       this.dim = approach(this.dim, this.dimTarget, dt, 0.12);
@@ -816,8 +903,10 @@ export class DuoScene {
     } else if (pick?.kind === "body" && pick.edge && !e.shiftKey) {
       drag = { kind: "hinge", lastX: e.clientX, lastY: e.clientY, half: pick.half, flat: pick.flat };
       this.hingeUserAt = performance.now();
+      this.posed = true;
     } else {
       drag = { kind: "orbit", lastX: e.clientX, lastY: e.clientY };
+      this.posed = true;
       this.settleAttitude();
       this.spin = { x: 0, y: 0 };
       this.userQuatTarget.copy(this.userQuat);
@@ -992,6 +1081,8 @@ export class DuoScene {
   };
 
   private readonly onContextRestored = (): void => {
+    // The studio the metal reflects lived on the GPU: make it again.
+    this.buildEnvironment();
     for (const display of ["cover", "inner"] as const) this.textures[display].needsUpdate = true;
     this.invalidate();
   };
@@ -1034,6 +1125,38 @@ export class DuoScene {
 
   private sendTouch(display: DuoDisplay, phase: "down" | "move" | "up", u: number, v: number, finger: 0 | 1): void {
     this.callbacks.onInput({ kind: "touch", display, phase, normX: clamp(u, 0, 1), normY: clamp(v, 0, 1), finger });
+    this.keepTouchesAlive();
+  }
+
+  /**
+   * The host lifts a finger it has heard nothing of for a few seconds (in case
+   * the client has gone). A finger held still sends nothing, so while any is
+   * down its position is repeated every couple of seconds: a long press, or a
+   * drag paused mid-way, stays down.
+   */
+  private keepTouchesAlive(): void {
+    const touching = [...this.drags.values()].some((d) => d.kind === "touch");
+    if (!touching) {
+      if (this.touchKeepAlive) clearInterval(this.touchKeepAlive);
+      this.touchKeepAlive = null;
+      return;
+    }
+    if (this.touchKeepAlive) return;
+    this.touchKeepAlive = setInterval(() => {
+      let any = false;
+      for (const d of this.drags.values()) {
+        if (d.kind !== "touch") continue;
+        any = true;
+        this.callbacks.onInput({ kind: "touch", display: d.display, phase: "move", normX: d.u, normY: d.v, finger: d.finger });
+        if (d.pinch) {
+          this.callbacks.onInput({ kind: "touch", display: d.display, phase: "move", normX: 1 - d.u, normY: 1 - d.v, finger: 1 });
+        }
+      }
+      if (!any && this.touchKeepAlive) {
+        clearInterval(this.touchKeepAlive);
+        this.touchKeepAlive = null;
+      }
+    }, 2000);
   }
 
   /** Moves are gathered and sent once per drawn frame: no faster than the picture can answer. */

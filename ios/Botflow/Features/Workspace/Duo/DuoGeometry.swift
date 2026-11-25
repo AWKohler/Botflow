@@ -113,6 +113,29 @@ enum Duo {
         return -beta / 2 * bookish
     }
 
+    /// The hinge's back in cross-section, for a fold: points from straight
+    /// behind the camera half round to straight behind the cover half, each
+    /// with its outward normal. Flush with both backs at its ends; in between
+    /// it is pulled in towards the axis, more the further the device has
+    /// closed, so that shut it stands `proud` beyond the halves' edges rather
+    /// than a whole radius (a plain arc would look like a thick rail).
+    static func spineProfile(beta: Double, segments: Int, radius: Double, proud: Double = 2.3) -> [(x: Double, z: Double, nx: Double, nz: Double)] {
+        let flatten = (1 - proud / radius) * pow(sin(beta / 2), 2)
+        let points: [(x: Double, z: Double)] = (0...segments).map { i in
+            let t = Double(i) / Double(segments)
+            let phi = beta * t
+            let r = radius * (1 - flatten * sin(.pi * t))
+            return (-r * sin(phi), hingeAxisZ - r * cos(phi))
+        }
+        return points.indices.map { i in
+            // Outward normal: perpendicular to the run of the curve here.
+            let a = points[max(0, i - 1)], b = points[min(segments, i + 1)]
+            let tx = b.x - a.x, tz = b.z - a.z
+            let length = max(1e-9, (tx * tx + tz * tz).squareRoot())
+            return (points[i].x, points[i].z, -tz / length, tx / length)
+        }
+    }
+
     // MARK: Where the pictures sit
     // A framebuffer coordinate is (u, v) in 0…1, origin at the top left of the
     // image the host streams. Touches are sent in the same terms.

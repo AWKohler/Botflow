@@ -94,6 +94,17 @@ final class DuoGeometryTests: XCTestCase {
         XCTAssertEqual(O.from(cameraHalf: SIMD2(1, 0), coverHalf: SIMD2(0, 1), coverInUse: true, previous: .landscapeLeft), .portrait)
     }
 
+    func testHingeSpineIsFlushAtItsEndsAndOnlyALittleProudWhenShut() {
+        let radius = Duo.hingeAxisZ + Duo.thickness / 2
+        let shut = Duo.spineProfile(beta: .pi, segments: 28, radius: radius)
+        XCTAssertEqual(shut.first!.x, 0, accuracy: 1e-9)
+        XCTAssertEqual(shut.first!.z, Duo.hingeAxisZ - radius, accuracy: 1e-9)
+        XCTAssertEqual(shut.map(\.x).min()!, -2.3, accuracy: 0.2)
+        for p in Duo.spineProfile(beta: 120 * rad, segments: 28, radius: radius) {
+            XCTAssertGreaterThan(p.nx * p.x + p.nz * (p.z - Duo.hingeAxisZ), 0)
+        }
+    }
+
     func testStreamFlagsCarryTheDuoPanel() {
         XCTAssertEqual(DuoDisplay.cover.streamIndex, 0)
         XCTAssertEqual(DuoDisplay.inner.streamIndex, 1)

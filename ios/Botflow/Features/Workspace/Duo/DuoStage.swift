@@ -41,11 +41,13 @@ struct DuoStage: View {
                         }
                         .frame(maxWidth: 340)
                         .padding(Space.l)
-                } else if !hintSeen, !fullScreen {
-                    hint
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                // Above the device, never over it.
+                if live, !hintSeen, !fullScreen { hint }
+            }
             controls
         }
         .environment(\.colorScheme, fullScreen ? .dark : colorSchemeFromEnvironment)
@@ -64,8 +66,8 @@ struct DuoStage: View {
     @Environment(\.colorScheme) private var colorSchemeFromEnvironment
 
     private var hint: some View {
-        VStack {
-            Text("Drag beside the device to turn it. Pinch to zoom.")
+        VStack(spacing: 0) {
+            Text("Drag beside the device to turn it, pinch to zoom, pull an outer edge to fold.")
                 .font(.footnote)
                 .foregroundStyle(Sand.muted)
                 .multilineTextAlignment(.center)
@@ -76,10 +78,8 @@ struct DuoStage: View {
                 .onTapGesture { hintSeen = true }
                 .accessibilityAddTraits(.isButton)
                 .accessibilityHint("Dismisses this note")
-            Spacer()
         }
-        .padding(.top, Space.s)
-        .allowsHitTesting(true)
+        .padding(.bottom, Space.s)
         .transition(.opacity)
     }
 
@@ -246,6 +246,7 @@ struct DuoSceneRepresentable: UIViewRepresentable {
         link.view = view
         let controller = controller
         context.coordinator.controller = controller
+
         view.onTouch = { [weak controller] display, phase, x, y, finger in
             controller?.duoTouch(display, phase: phase, x: x, y: y, finger: finger)
         }
@@ -256,6 +257,15 @@ struct DuoSceneRepresentable: UIViewRepresentable {
         view.onText = { [weak controller] text in controller?.type(text) }
         view.onKey = { [weak controller] key in controller?.key(key) }
         context.coordinator.sink = controller.addDuoSink { [weak view] display, frame in view?.setFrame(display, frame) }
+        // The same device as any other view of it (the pane, full screen): as it was left.
+        view.restore(controller.duoPosture)
+        view.onPostureSettled = { [weak controller] posture in
+            if controller?.duoPosture != posture { controller?.duoPosture = posture }
+        }
+        // (Restoring reported the angle while this view was still being made,
+        // when SwiftUI state cannot be set: say it again once it can.)
+        let restored = controller.duoPosture.hinge
+        DispatchQueue.main.async { onHingeShown(restored) }
         return view
     }
 
@@ -265,23 +275,29 @@ struct DuoSceneRepresentable: UIViewRepresentable {
         view.dim = live ? 0 : 0.55
         view.finish = finish
         if !controller.phase.isActive, !controller.hasFrame { view.clearFrames() }
-        // A session comes up open and upright. The first time it reports in,
-        // the device here may already be folded or turned (posed while the app
-        // was building): then the session is told, instead of the device being
-        // put back. After that the host's reports are followed.
+        // The first time a session reports in, one of two things is true of
+        // the device here. Either the person has posed it (folded or turned it
+        // while the app was building, or before pressing play): then the
+        // session is told, and starts that way. Or they have not touched it —
+        // and the session may already be under way: then this view takes up
+        // the session's posture and changes nothing. After that the host is followed.
         if live, let state = controller.duoState {
             view.lit = [.cover: state.coverLit, .inner: state.innerLit]
             if context.coordinator.announced {
                 view.setReportedHinge(state.hingeAngle)
             } else {
                 context.coordinator.announced = true
-                if abs(view.hingeTarget - state.hingeAngle) > 1 {
-                    // Through the view, so it also holds off the host's reports while the hinge eases there.
-                    view.setHinge(view.hingeTarget, settled: true)
+                let reported = state.orientation.flatMap(DuoHeldOrientation.init(rawValue:)) ?? .portrait
+                if !view.posed {
+                    view.setReportedHinge(state.hingeAngle, adopt: true)
+                    view.adoptOrientation(reported)
                 } else {
-                    view.setReportedHinge(state.hingeAngle)
+                    if abs(view.hingeTarget - state.hingeAngle) > 1 {
+                        // Through the view, so it also holds off the host's reports while the hinge eases there.
+                        view.setHinge(view.hingeTarget, settled: true)
+                    }
+                    if view.orientation != reported { controller.setDuoOrientation(view.orientation) }
                 }
-                controller.setDuoOrientation(view.orientation)
             }
         } else {
             context.coordinator.announced = false
@@ -295,6 +311,7 @@ struct DuoSceneRepresentable: UIViewRepresentable {
 
     static func dismantleUIView(_ view: DuoSceneView, coordinator: Coordinator) {
         if let sink = coordinator.sink { coordinator.controller?.removeDuoSink(sink) }
+        coordinator.controller?.duoPosture = view.posture
     }
 }
 
@@ -316,7 +333,9 @@ enum DuoDemoFrames {
             let renderer = ImageRenderer(content: DemoAppScreen().frame(width: points.width, height: points.height).background(Color.black))
             renderer.scale = 2
             guard let upright = renderer.cgImage else { continue }
-            let image = quarterTurn ? rotatedQuarterTurnCounterClockwise(upright) ?? upright : upright
+            // Both go through the same redraw, which also settles the pixel
+            // format (the renderer's own image may be wide-colour or 16-bit).
+            guard let image = framebufferImage(upright, quarterTurn: quarterTurn) else { continue }
             let options: [MTKTextureLoader.Option: Any] = [.SRGB: true, .origin: MTKTextureLoader.Origin.topLeft, .generateMipmaps: false]
             guard let texture = try? loader.newTexture(cgImage: image, options: options) else { continue }
             frames[display] = DuoFrame(texture: texture, backing: nil, pixelBuffer: nil)
@@ -324,17 +343,20 @@ enum DuoDemoFrames {
         return frames
     }
 
-    /// The image turned so its top is at the left: how the inner panel's
+    /// The image as a panel's framebuffer holds it, in plain 8-bit sRGB.
+    /// `quarterTurn` turns it so its top is at the left: how the inner panel's
     /// framebuffer holds an interface that reads upright on the open device.
-    private static func rotatedQuarterTurnCounterClockwise(_ image: CGImage) -> CGImage? {
+    private static func framebufferImage(_ image: CGImage, quarterTurn: Bool) -> CGImage? {
         let w = image.width, h = image.height
         guard let context = CGContext(
-            data: nil, width: h, height: w, bitsPerComponent: 8, bytesPerRow: 0,
+            data: nil, width: quarterTurn ? h : w, height: quarterTurn ? w : h, bitsPerComponent: 8, bytesPerRow: 0,
             space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
-        context.translateBy(x: CGFloat(h), y: 0)
-        context.rotate(by: .pi / 2)
+        if quarterTurn {
+            context.translateBy(x: CGFloat(h), y: 0)
+            context.rotate(by: .pi / 2)
+        }
         context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
         return context.makeImage()
     }

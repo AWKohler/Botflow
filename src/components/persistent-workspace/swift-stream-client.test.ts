@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from 'vitest';
 import { simInputForKey } from './sim-key-input';
-import { SIM_STREAM_INDEX, decodeVideoFlags } from './swift-stream-client';
+import { SIM_STREAM_INDEX, decodeVideoFlags, parseDuoState } from './swift-stream-client';
 
 describe('video chunk flags', () => {
   test('a single-screen stream reads as before: bit 0 is the keyframe', () => {
@@ -40,5 +40,28 @@ describe('keys for the device', () => {
     expect(key('v', { ctrlKey: true })).toBeNull();
     expect(key('F5')).toBeNull();
     expect(key('Shift')).toBeNull();
+  });
+});
+
+describe('duo_state', () => {
+  const panel = (lit: boolean) => ({ width: 10, height: 20, scale: 3, lit });
+
+  test('a well-formed report is read', () => {
+    expect(
+      parseDuoState({ type: 'duo_state', hingeAngle: 105, hingeMoving: true, orientation: 'landscape-left', cover: panel(false), inner: panel(true) }),
+    ).toEqual({ hingeAngle: 105, hingeMoving: true, orientation: 'landscape-left', cover: panel(false), inner: panel(true) });
+  });
+
+  test('the angle is kept in range and an unknown orientation is left out', () => {
+    const state = parseDuoState({ hingeAngle: 400, orientation: 'sideways', cover: panel(true), inner: panel(false) });
+    expect(state?.hingeAngle).toBe(180);
+    expect(state?.orientation).toBeUndefined();
+    expect(state?.hingeMoving).toBe(false);
+  });
+
+  test('anything else is not a state at all', () => {
+    expect(parseDuoState({ hingeAngle: 'open', cover: panel(true), inner: panel(true) })).toBeNull();
+    expect(parseDuoState({ hingeAngle: 90, cover: panel(true) })).toBeNull();
+    expect(parseDuoState({ hingeAngle: 90, cover: { width: 1 }, inner: panel(true) })).toBeNull();
   });
 });

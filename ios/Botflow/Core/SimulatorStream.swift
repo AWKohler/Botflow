@@ -144,6 +144,11 @@ final class SimStreamClient: NSObject, URLSessionWebSocketDelegate, @unchecked S
         sendJSON(.object(["type": .string("input"), "input": input.json]))
     }
 
+    /// iPhone Duo: ask for each panel's picture so far again (after the decoders had to start over).
+    func resyncVideo() {
+        sendJSON(.object(["type": .string("resync_video")]))
+    }
+
     func setOrientation(landscape: Bool) {
         sendJSON(.object(["type": .string("set_orientation"), "orientation": .string(landscape ? "landscape" : "portrait")]))
     }

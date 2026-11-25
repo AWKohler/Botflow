@@ -92,9 +92,44 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
     private var zoomTarget = 1.0
     private var distance = 600.0
     private var framed = false
+    /// The person has folded or turned the device themselves.
+    private(set) var posed = false
+    /// Called when the device comes to rest in a new posture.
+    var onPostureSettled: ((Posture) -> Void)?
+    private var keepAlive: Timer?
+
+    /// How the device was left: fold, attitude and zoom. Carried from one view
+    /// of the device to the next (the pane to full screen and back), so it
+    /// does not spring back to open and square on.
+    struct Posture: Equatable {
+        var hinge = 180.0
+        var turn = simd_quatd(ix: 0, iy: 0, iz: 0, r: 1)
+        var attitude: simd_quatd?
+        var zoom = 1.0
+        var posed = false
+    }
+
+    var posture: Posture {
+        Posture(hinge: hingeTarget, turn: userQuatTarget, attitude: attitudeTarget, zoom: zoomTarget, posed: posed)
+    }
+
+    /// Put the device as it was left (no animation, nothing sent).
+    func restore(_ posture: Posture) {
+        hingeTarget = min(180, max(0, posture.hinge))
+        hingeShown = hingeTarget
+        attitudeTarget = posture.attitude
+        userQuatTarget = posture.attitude.map { $0 * autoQuat(Duo.beta(hinge: hingeTarget)).inverse } ?? posture.turn
+        userQuat = userQuatTarget
+        zoomTarget = min(Self.zoomRange.upperBound, max(Self.zoomRange.lowerBound, posture.zoom))
+        zoom = zoomTarget
+        posed = posture.posed
+        spin = .zero
+        applyFold()
+        if framed { distance = fitDistance() }
+        invalidate()
+    }
 
     // Panels.
-    private var litShown: [DuoDisplay: Double] = [.cover: 0, .inner: 0]
     private var dimShown = 0.0
 
     // Held orientation.
@@ -110,7 +145,8 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
     private var pending: [DuoDisplay: DuoFrame] = [:]
     private var shown: [DuoDisplay: DuoFrame] = [:]
     private var mipped: [DuoDisplay: MTLTexture] = [:]
-    private var needsMaterial: Set<DuoDisplay> = []
+    /// Bumped by `clearFrames`: a texture made for an earlier session is not shown.
+    private var textureGeneration = 0
 
     // Touches.
     private enum Pick {
@@ -198,7 +234,10 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    deinit { link?.invalidate() }
+    deinit {
+        link?.invalidate()
+        keepAlive?.invalidate()
+    }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
@@ -243,22 +282,44 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
         pending.removeAll()
         shown.removeAll()
         mipped.removeAll()
-        needsMaterial.removeAll()
+        textureGeneration += 1
         textureLock.unlock()
         for display in DuoDisplay.allCases { model.screenMaterials[display]?.diffuse.contents = UIColor.black }
         invalidate()
     }
 
-    /// The host's report of where the hinge is. Followed unless the person has just moved it.
-    func setReportedHinge(_ hinge: Double) {
-        if CACurrentMediaTime() - hingeUserAt > Self.hingeUserHold, abs(hinge - hingeTarget) > 0.5 {
+    /// The host's report of where the hinge is. Followed unless the person has
+    /// just moved it (`adopt` follows it regardless: joining a session under way).
+    func setReportedHinge(_ hinge: Double, adopt: Bool = false) {
+        let held = !adopt && CACurrentMediaTime() - hingeUserAt <= Self.hingeUserHold
+        if !held, abs(hinge - hingeTarget) > 0.5 {
             hingeTarget = hinge
             invalidate()
         }
     }
 
+    /// Take up the way the session's device is already held (joining a session
+    /// under way): turn the model to match, so this view does not then tell
+    /// iOS the device has been turned back.
+    func adoptOrientation(_ held: DuoHeldOrientation) {
+        guard held != orientation else { return }
+        let quarters: Double
+        switch held {
+        case .portrait: quarters = 0
+        case .landscapeLeft: quarters = 1
+        case .portraitUpsideDown: quarters = 2
+        case .landscapeRight: quarters = -1
+        }
+        attitudeTarget = nil
+        userQuatTarget = simd_quatd(angle: quarters * .pi / 2, axis: SIMD3(0, 0, 1))
+        orientation = held
+        orientationCandidate = held
+        invalidate()
+    }
+
     /// Fold to an angle (from the slider).
     func setHinge(_ hinge: Double, settled: Bool) {
+        posed = true
         hingeTarget = min(180, max(0, hinge))
         hingeUserAt = CACurrentMediaTime()
         onHingeRequest?(hingeTarget, settled)
@@ -292,6 +353,7 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
 
     /// Turn the device a quarter turn in the plane of the screen.
     func rollQuarter(left: Bool) {
+        posed = true
         settleAttitude()
         userQuatTarget = simd_quatd(angle: (left ? 1 : -1) * .pi / 2, axis: SIMD3(0, 0, 1)) * userQuatTarget
         spin = .zero
@@ -332,6 +394,7 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
         if settleFrames <= 0 {
             link.isPaused = true
             lastTick = 0
+            onPostureSettled?(posture)
         }
     }
 
@@ -395,19 +458,12 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
         cameraNode.simdPosition = SIMD3(0, 0, Float(distance / zoom))
         placeShadow(total)
 
-        // Panels fade on and off rather than snapping.
+        // A picture is always shown as it is (dimmed behind a status message).
+        // Whether a panel is "off" is only a guess from its pixels, and must
+        // never hide an app that happens to be dark; an off panel streams
+        // black anyway.
         for display in DuoDisplay.allCases {
-            let target = (lit[display] ?? false) ? 1.0 : 0.0
-            var value = litShown[display] ?? 0
-            if abs(value - target) > 0.004 {
-                value = approach(value, target, dt, 0.07)
-                moving = true
-            } else {
-                value = target
-            }
-            litShown[display] = value
-            let level = value * (1 - dimShown)
-            model.screenMaterials[display]?.multiply.contents = UIColor(white: level, alpha: 1)
+            model.screenMaterials[display]?.multiply.contents = UIColor(white: 1 - dimShown, alpha: 1)
         }
         if abs(dimShown - dim) > 0.004 {
             dimShown = approach(dimShown, dim, dt, 0.12)
@@ -628,6 +684,7 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
             case .body(let camera, let flat, let edge)? where edge:
                 drag = .hinge(last: point, camera: camera, flat: flat)
                 hingeUserAt = CACurrentMediaTime()
+                posed = true
             default:
                 // Beside the device, or on its body: turn it. Two quick taps beside it reset the view.
                 if picked == nil {
@@ -635,13 +692,36 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
                     lastTapAt = touch.timestamp
                 }
                 drag = .orbit(last: point)
+                posed = true
                 settleAttitude()
                 spin = .zero
                 userQuatTarget = userQuat
             }
             drags[ObjectIdentifier(touch)] = drag
         }
+        keepFingersAlive()
         invalidate()
+    }
+
+    /// The host lifts a finger it has heard nothing of for a few seconds (in
+    /// case the client has gone). A finger held still sends nothing, so while
+    /// any is down its position is repeated every couple of seconds: a long
+    /// press, or a drag paused mid-way, stays down.
+    private func keepFingersAlive() {
+        let touching = drags.values.contains { if case .finger = $0 { return true } else { return false } }
+        guard touching else {
+            keepAlive?.invalidate()
+            keepAlive = nil
+            return
+        }
+        guard keepAlive == nil else { return }
+        keepAlive = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            for drag in self.drags.values {
+                if case .finger(let display, let index, let u, let v) = drag { self.onTouch?(display, "move", u, v, index) }
+            }
+            self.keepFingersAlive()
+        }
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -731,6 +811,7 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
                 if pressed.remove(index) != nil, !cancelled { onButton?(model.buttons[index].name) }
             }
         }
+        keepFingersAlive()
         invalidate()
     }
 
@@ -755,6 +836,7 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
               let commands = queue.makeCommandBuffer(), let blit = commands.makeBlitCommandEncoder() else { return }
         var fresh: [DuoDisplay: MTLTexture] = [:]
         textureLock.lock()
+        let generation = textureGeneration
         for (display, frame) in frames {
             let source = frame.texture
             var target = mipped[display]
@@ -772,15 +854,22 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
                       sourceSize: MTLSize(width: source.width, height: source.height, depth: 1),
                       to: target, destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
             blit.generateMipmaps(for: target)
-            shown[display] = frame   // keeps the source alive until the copy has run
+            shown[display] = frame   // the latest picture, for screenshots
         }
         textureLock.unlock()
         blit.endEncoding()
+        // The decoder's buffers go back to its pool when nothing holds them:
+        // hold these until the GPU has actually copied out of them.
+        commands.addCompletedHandler { _ in _ = frames }
         commands.commit()
         if !fresh.isEmpty {
             // A new texture object: hand it to the material (on the main thread), then draw again.
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
+                self.textureLock.lock()
+                let current = self.textureGeneration == generation
+                self.textureLock.unlock()
+                guard current else { return }   // the session it belonged to has gone
                 for (display, texture) in fresh { self.model.screenMaterials[display]?.diffuse.contents = texture }
                 self.sceneView.setNeedsDisplay()
             }

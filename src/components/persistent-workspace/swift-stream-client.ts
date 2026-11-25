@@ -122,6 +122,30 @@ export type SimInput =
   | { kind: "text"; text: string }
   | { kind: "key"; key: string };
 
+const DEVICE_ORIENTATIONS: readonly string[] = ["portrait", "portrait-upside-down", "landscape-left", "landscape-right"];
+
+/** A `duo_state` message as a SimDuoState, or null if it is not one. */
+export function parseDuoState(msg: Record<string, unknown>): SimDuoState | null {
+  const panel = (value: unknown): SimDuoPanel | null => {
+    if (!value || typeof value !== "object") return null;
+    const p = value as Record<string, unknown>;
+    if (typeof p.width !== "number" || typeof p.height !== "number" || typeof p.lit !== "boolean") return null;
+    return { width: p.width, height: p.height, scale: typeof p.scale === "number" ? p.scale : 3, lit: p.lit };
+  };
+  const cover = panel(msg.cover);
+  const inner = panel(msg.inner);
+  if (!cover || !inner || typeof msg.hingeAngle !== "number" || !Number.isFinite(msg.hingeAngle)) return null;
+  return {
+    hingeAngle: Math.min(180, Math.max(0, msg.hingeAngle)),
+    hingeMoving: msg.hingeMoving === true,
+    ...(typeof msg.orientation === "string" && DEVICE_ORIENTATIONS.includes(msg.orientation)
+      ? { orientation: msg.orientation as SimDeviceOrientation }
+      : {}),
+    cover,
+    inner,
+  };
+}
+
 /** Stream index of a Duo panel in a video chunk's flags (bits 1–2). */
 export const SIM_STREAM_INDEX: Record<SimDuoDisplay, number> = { cover: 0, inner: 1 };
 
@@ -230,9 +254,11 @@ export class SwiftStreamClient {
             ...(msg.display === "cover" || msg.display === "inner" ? { display: msg.display } : {}),
           });
           break;
-        case "duo_state":
-          this.handlers.onDuoState?.(msg as unknown as SimDuoState);
+        case "duo_state": {
+          const state = parseDuoState(msg);
+          if (state) this.handlers.onDuoState?.(state);
           break;
+        }
         case "status":
           this.handlers.onStatus(msg.message as string);
           break;
