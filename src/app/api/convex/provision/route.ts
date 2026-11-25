@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
       if (isConvexQuotaError(errText)) {
         return NextResponse.json({
           error: 'convex_quota',
-          message: 'Your Convex team has reached its limit of projects. Delete projects you no longer use at dashboard.convex.dev (deleting a project in Botflow leaves its Convex project in your account), or upgrade your Convex plan.',
+          message: 'Your Convex team has reached its limit of projects. Delete projects you no longer use at dashboard.convex.dev (projects deleted in Botflow may have left theirs there), or upgrade your Convex plan.',
         }, { status: 402 });
       }
       throw new Error(`Convex create_project failed: ${res.status} ${errText}`);
