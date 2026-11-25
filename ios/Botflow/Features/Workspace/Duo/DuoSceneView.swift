@@ -43,7 +43,11 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
         didSet {
             guard live != oldValue else { return }
             accessibilityTraits = live ? [.allowsDirectInteraction] : [.image]
-            if !live { liftAllFingers() }
+            if !live {
+                liftAllFingers()
+                // No session, no reports to follow: the device stays as the person has it.
+                orientationReported = nil
+            }
             invalidate()
         }
     }
@@ -337,7 +341,7 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
         let now = CACurrentMediaTime()
         // While the person here is turning the device, or just has, theirs is
         // the newer fact and a report that disagrees an older one. Look again later.
-        let turning = drags.values.contains { drag in
+        let turning = simd_length(spin) > 1e-4 || drags.values.contains { drag in
             switch drag {
             case .orbit, .hinge: return true
             default: return false
@@ -357,11 +361,21 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
         // How this model, as it is, would be said to be held (leaning towards
         // the report): only if that is something else does it need turning.
         let beta = Duo.beta(hinge: hingeTarget)
-        let own = heldOrientation(beta: beta, total: attitudeTarget ?? userQuatTarget * autoQuat(beta), previous: reported)
+        let attitude = attitudeTarget ?? userQuatTarget * autoQuat(beta)
+        let own = heldOrientation(beta: beta, total: attitude, previous: reported)
         if own != reported {
-            settleAttitude()
+            // Which way round the turn goes depends on which way the device
+            // faces (seen from the back, a turn to the left is one to its
+            // right): take the turn that does bring it to what was reported,
+            // the likeliest first.
             let quarters = Double(Self.quarterTurns(reported) - Self.quarterTurns(own))
-            userQuatTarget = simd_quatd(angle: quarters * .pi / 2, axis: SIMD3(0, 0, 1)) * userQuatTarget
+            let turn = [quarters, -quarters, 2, 1, -1]
+                .map { simd_quatd(angle: $0 * .pi / 2, axis: SIMD3(0, 0, 1)) }
+                .first { heldOrientation(beta: beta, total: $0 * attitude, previous: reported) == reported }
+            // (None does, from some odd attitude: leave the model be, and say nothing.)
+            guard let turn else { return }
+            settleAttitude()
+            userQuatTarget = turn * userQuatTarget
             spin = .zero
         }
         orientation = reported

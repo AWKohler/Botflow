@@ -508,6 +508,11 @@ final class SimulatorController: ObservableObject {
             if display == nil, width > 0, height > 0 { videoSize = CGSize(width: width, height: height) }
         case .duoState(let state):
             duoState = state
+            // "Already asked for" holds only while the session is where this
+            // app put it: once another view has folded or turned it, the same
+            // fold or turn is news again.
+            if !state.hingeMoving, let sent = duoHingeSent, abs(state.hingeAngle - sent) > 0.5 { duoHingeSent = nil }
+            if let reported = state.orientation, reported != duoOrientationSent { duoOrientationSent = nil }
         case .calibration(let width, let height, let features):
             hostFeatures = Set(features)
             if let width, let height, width > 0, height > 0 { reportedLogicalSize = CGSize(width: width, height: height) }

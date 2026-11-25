@@ -334,6 +334,12 @@ export class DuoScene {
   /** Whether the simulator is streaming: only then do the screens take touches. */
   setLive(live: boolean): void {
     this.live = live;
+    if (!live) {
+      // No session, no reports to follow: the device stays as the person has it.
+      if (this.followTimer) clearTimeout(this.followTimer);
+      this.followTimer = null;
+      this.orientationReported = null;
+    }
     this.invalidate();
   }
 
@@ -393,7 +399,9 @@ export class DuoScene {
     const now = performance.now();
     // While the person here is turning the device, or just has, theirs is the
     // newer fact and a report that disagrees an older one. Look again later.
-    const turning = [...this.drags.values()].some((d) => d.kind === "orbit" || d.kind === "hinge");
+    const turning =
+      Math.abs(this.spin.x) + Math.abs(this.spin.y) > 1e-4 ||
+      [...this.drags.values()].some((d) => d.kind === "orbit" || d.kind === "hinge");
     const wait = turning ? 400 : this.orientationOwnAt + ORIENTATION_OWN_HOLD_MS - now;
     if (wait > 0) {
       this.followTimer ??= setTimeout(() => {
@@ -410,9 +418,17 @@ export class DuoScene {
       this.userQuatTarget.clone().multiply(new THREE.Quaternion().setFromAxisAngle(AXIS_Y, autoYaw(beta)));
     const own = this.heldOrientation(beta, attitude, reported);
     if (own !== reported) {
-      this.settleAttitude();
+      // Which way round the turn goes depends on which way the device faces
+      // (seen from the back, a turn to the left is one to its right): take
+      // the turn that does bring it to what was reported, the likeliest first.
       const quarters = QUARTER_TURNS[reported] - QUARTER_TURNS[own];
-      this.userQuatTarget.premultiply(new THREE.Quaternion().setFromAxisAngle(AXIS_Z, (quarters * Math.PI) / 2));
+      const turn = [quarters, -quarters, 2, 1, -1]
+        .map((k) => new THREE.Quaternion().setFromAxisAngle(AXIS_Z, (k * Math.PI) / 2))
+        .find((q) => this.heldOrientation(beta, q.clone().multiply(attitude), reported) === reported);
+      // (None does, from some odd attitude: leave the model be, and say nothing.)
+      if (!turn) return;
+      this.settleAttitude();
+      this.userQuatTarget.premultiply(turn);
       this.spin = { x: 0, y: 0 };
     }
     this.orientation = this.orientationCandidate = reported;

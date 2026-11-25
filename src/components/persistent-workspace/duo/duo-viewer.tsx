@@ -303,6 +303,11 @@ export const DuoViewer = forwardRef<DuoViewerHandle, DuoViewerProps>(function Du
     const scene = sceneRef.current;
     if (!scene) return; // (runs again when the scene has loaded)
     scene.setLit({ cover: state.cover.lit, inner: state.inner.lit });
+    // "Already asked for" holds only while the session is where this view put
+    // it: once another view has folded it elsewhere, the same angle is news again.
+    if (!state.hingeMoving && hingeSent.current !== null && Math.abs(state.hingeAngle - hingeSent.current) > 0.5) {
+      hingeSent.current = null;
+    }
     if (announced.current) {
       scene.setReportedHinge(state.hingeAngle);
       if (state.orientation) scene.followOrientation(state.orientation);
