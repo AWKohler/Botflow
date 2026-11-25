@@ -10,7 +10,7 @@
  * helper knows to rewrite it on the next agent turn.
  */
 
-export const BRIDGE_SCRIPT_VERSION = "39";
+export const BRIDGE_SCRIPT_VERSION = "40";
 
 export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
 /* eslint-disable */
@@ -46,6 +46,7 @@ export const BRIDGE_SCRIPT_SOURCE = `#!/usr/bin/env node
  *   BOTFLOW_CONFIG_PATH   — path to the config JSON file (required)
  *   BOTFLOW_API_BASE      — origin for our internal callback API (https://...)
  *   BOTFLOW_TURN_TOKEN    — bearer for the end-of-turn notify (server-side save)
+ *   BOTFLOW_PROGRESS_BEACON — "1" to send throttled step heartbeats (iOS Live Activity)
  *   BOTFLOW_TOOL_TOKEN    — bearer token validated by the callback endpoint
  *   BOTFLOW_EVENT_FILE    — NDJSON tee file; every stdout event is also
  *                           appended here so the host can re-attach to this
@@ -82,6 +83,67 @@ function emit(event) {
   if (EVENT_FILE) {
     try { appendFileSync(EVENT_FILE, line); } catch { /* tee is best-effort */ }
   }
+  if (PROGRESS_BEACON && event && event.type === "sdk_message") {
+    try {
+      const m = event.message;
+      // Main-thread tool calls only; a subagent's inner steps stay inside it.
+      if (m && m.type === "assistant" && !m.parent_tool_use_id && m.message && Array.isArray(m.message.content)) {
+        for (const block of m.message.content) {
+          if (block && block.type === "tool_use") noteToolStarted(block.id, block.name, block.input);
+        }
+      }
+    } catch {}
+  }
+}
+
+// Live Activity heartbeat for the Botflow iOS app (/api/internal/agent/
+// turn-progress): "the agent just started this step". Off unless the platform
+// asks for it (the person who started the turn uses the app), fire-and-forget,
+// and at most one request every four seconds however fast the agent works.
+const PROGRESS_BEACON = process.env.BOTFLOW_PROGRESS_BEACON === "1";
+const progressSeen = new Set();
+let progressSteps = 0;
+let progressLastSent = 0;
+let progressPending = null;
+let progressTimer = null;
+
+function progressDetail(input) {
+  if (!input || typeof input !== "object") return "";
+  const v = input.file_path || input.filePath || input.path || input.command || input.pattern || input.query || input.url || input.description || "";
+  return typeof v === "string" ? v.split("\\n")[0].slice(0, 160) : "";
+}
+
+function sendProgress() {
+  progressTimer = null;
+  const next = progressPending;
+  progressPending = null;
+  const base = process.env.BOTFLOW_API_BASE;
+  const token = process.env.BOTFLOW_TURN_TOKEN;
+  if (!next || !base || !token) return;
+  progressLastSent = Date.now();
+  const headers = { "authorization": "Bearer " + token, "content-type": "application/json" };
+  if (process.env.BOTFLOW_VERCEL_BYPASS) {
+    headers["x-vercel-protection-bypass"] = process.env.BOTFLOW_VERCEL_BYPASS;
+  }
+  try {
+    fetch(base + "/api/internal/agent/turn-progress", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(next),
+      signal: AbortSignal.timeout(8000),
+    }).catch(() => {});
+  } catch {}
+}
+
+function noteToolStarted(id, name, input) {
+  if (!PROGRESS_BEACON || !id || progressSeen.has(id)) return;
+  progressSeen.add(id);
+  progressSteps += 1;
+  progressPending = { tool: String(name || "tool"), detail: progressDetail(input), steps: progressSteps };
+  if (progressTimer) return;
+  progressTimer = setTimeout(sendProgress, Math.max(0, 4000 - (Date.now() - progressLastSent)));
+  // Never keep the bridge alive just to send a heartbeat.
+  if (progressTimer.unref) progressTimer.unref();
 }
 
 // Tell the platform this turn is over so it saves the reply server-side — no

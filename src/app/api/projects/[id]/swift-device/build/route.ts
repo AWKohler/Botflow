@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { materializeSwiftBuildConfig } from "@/lib/sandbox-env";
 import { createDeviceBuild } from "@/lib/sim-platform";
+import { NoSimHostError, pickSimTarget, rememberSimRoute } from "@/lib/sim-hosts/routing";
 import { swiftProjectForbidden } from "@/lib/swift-access";
 import { recordSwiftDeviceBuild } from "@/lib/swift-device-build-store";
 import { tarSandboxProject } from "@/lib/vercel-sandbox";
@@ -47,10 +48,15 @@ export async function POST(
   try {
     await materializeSwiftBuildConfig(projectId);
     const tarball = await tarSandboxProject(projectId, { excludeConvex: true });
-    const build = await createDeviceBuild(tarball);
+    const target = await pickSimTarget(userId);
+    const build = await createDeviceBuild(tarball, {}, target);
+    await rememberSimRoute("device-build", build.buildId, target);
     await recordSwiftDeviceBuild(build.buildId, userId, projectId);
     return NextResponse.json({ ...build, ipaUrl: null });
   } catch (error) {
+    if (error instanceof NoSimHostError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
     const message = error instanceof Error ? error.message : "Device build failed";
     console.error("[swift-device/build]", message);
     return NextResponse.json({ error: message }, { status: 500 });

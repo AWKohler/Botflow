@@ -24,6 +24,7 @@ import { drainThreadQueue } from "@/lib/agent/thread-queue";
 import { setClaudeCodeSessionId } from "@/lib/agent/claude-code/session-store";
 import { setOpenCodeSessionId } from "@/lib/agent/opencode/session-store";
 import { enforce, identifierFor } from "@/lib/rate-limit";
+import { notifyTurnEnded } from "@/lib/native/agent-push";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,6 +74,8 @@ export async function POST(req: Request) {
 
   // Only the thread's CURRENT turn updates its live record and status; a
   // late notify from a superseded turn just saves its partial reply.
+  // Runs alongside the queue drain below; it never throws.
+  let notified: Promise<void> = Promise.resolve();
   const record = await getTurnRecord(projectId, threadId);
   if (record?.turnId === turnId) {
     if (sawEndTurn) await markTurnEnded(projectId, threadId, turnId);
@@ -85,6 +88,15 @@ export async function POST(req: Request) {
       const save = backend === "opencode" ? setOpenCodeSessionId : setClaudeCodeSessionId;
       await save(threadId, sessionId).catch(() => {});
     }
+    // Tell the iOS app of the person who started the turn (no-op without it).
+    const lastText = message?.parts.filter((p) => p.type === "text").pop();
+    notified = notifyTurnEnded({
+      userId: binding.userId,
+      projectId,
+      threadId,
+      outcome: failure ? "failed" : errorText ? "stopped" : "done",
+      summary: failure ?? (lastText && "text" in lastText ? lastText.text : ""),
+    });
   }
 
   // Start the next queued message now that this thread's agent is free. A
@@ -98,5 +110,6 @@ export async function POST(req: Request) {
     return null;
   });
 
+  await notified;
   return NextResponse.json({ ok: true, saved: Boolean(message), drain });
 }

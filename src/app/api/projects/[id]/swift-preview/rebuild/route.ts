@@ -12,6 +12,7 @@ import {
 import { canUseSwift, swiftProjectForbidden } from "@/lib/swift-access";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 import { simulatorProvider } from "@/lib/simulator-provider";
+import { targetForSimWork } from "@/lib/sim-hosts/routing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -84,7 +85,7 @@ export async function POST(
     }
     await materializeSwiftBuildConfig(projectId);
     const tarball = await tarSandboxProject(projectId, { excludeConvex: true });
-    await uploadBuild(sessionId, tarball);
+    await uploadBuild(sessionId, tarball, {}, await targetForSimWork("session", sessionId));
     return NextResponse.json({ ok: true, tarBytes: tarball.length });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Rebuild failed";

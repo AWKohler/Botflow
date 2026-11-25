@@ -68,6 +68,7 @@ import {
   resolveWithSide,
 } from "@/lib/sandbox-git";
 import { randomBytes, randomUUID } from "node:crypto";
+import { notifyNeedsInput } from "@/lib/native/agent-push";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -2041,6 +2042,16 @@ export async function POST(req: Request) {
           questions: inputQuestions as unknown as object,
           status: "pending",
         });
+        if (binding.threadId) {
+          const first = (inputQuestions[0] ?? {}) as { question?: unknown };
+          // Best-effort; resolves long before the wait below ends.
+          void notifyNeedsInput({
+            userId: binding.userId,
+            projectId: binding.projectId,
+            threadId: binding.threadId,
+            question: typeof first.question === "string" ? first.question : "",
+          });
+        }
       }
 
       const ASK_CEILING_MS = 270 * 1000; // preserves the original 5-min semantics

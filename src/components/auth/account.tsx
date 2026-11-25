@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { authClient } from "@/lib/auth/client";
 import { ChangePlanModal } from "./change-plan";
-import { ProviderLogo } from "./sign-in";
+import { ProviderLogo, providerName } from "./sign-in";
 import { PaymentMethodForm } from "./payment-method";
 import { useCaptcha } from "./captcha";
 import dynamic from "next/dynamic";
@@ -697,13 +697,13 @@ export function AccountPanel() {
               <Card className="p-5 sm:p-6">
                 <SectionHeader title="Sign-in methods" description="Other ways to sign in to this account, besides your password." />
                 <ul className="mt-4 divide-y divide-border">
-                  {(["google", "github"] as const).map((provider) => {
+                  {(["apple", "google", "github"] as const).map((provider) => {
                     const linked = socialAccounts.find((a) => a.providerId === provider);
                     return (
                       <li key={provider} className="flex items-center justify-between gap-3 py-3">
                         <span className="flex items-center gap-2.5 text-sm">
                           <ProviderLogo provider={provider} />
-                          {provider === "google" ? "Google" : "GitHub"}
+                          {providerName(provider)}
                           {linked && <Badge tone="success">Connected</Badge>}
                         </span>
                         {linked ? (
@@ -748,7 +748,7 @@ export function AccountPanel() {
                     );
                   })}
                   {socialAccounts
-                    .filter((a) => a.providerId !== "google" && a.providerId !== "github")
+                    .filter((a) => !["apple", "google", "github"].includes(a.providerId))
                     .map((a) => (
                       <li key={a.id} className="flex items-center justify-between gap-3 py-3">
                         <span className="flex items-center gap-2 text-sm capitalize">

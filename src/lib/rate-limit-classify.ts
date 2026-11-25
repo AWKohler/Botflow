@@ -87,6 +87,9 @@ const RULES: Array<[RegExp, Tier]> = [
   // bucket must never block loading the projects page, and saturated polling
   // must never block a model-select PATCH.
   [/^\/api\/projects/, { read: 'read', mutate: 'write' }],
+  // iOS app: the agents overview is a DB/Redis poll like the thread list.
+  [/^\/api\/native\/agents/, 'poll'],
+  [/^\/api\/native\//, { read: 'read', mutate: 'write' }],
   [/^\/api\/usage\//, 'read'],
   [/^\/api\/user/, 'read'],
 ];

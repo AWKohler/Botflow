@@ -46,6 +46,25 @@ function connect(project: { id: string; name: string; userId: string }, secretKe
   });
 }
 
+/**
+ * Make the next write of a RevenueCat connection fail, and only that write: a
+ * plain "next insert fails" mock can be used up by any other insert, and then
+ * leaks into the next test. Always restore it in a `finally`.
+ */
+function failNextConnectionInsert() {
+  const db = currentTestDb();
+  const realInsert = db.insert.bind(db);
+  let armed = true;
+  const spy = vi.spyOn(db, 'insert').mockImplementation(((table: unknown) => {
+    if (armed && table === projectRevenueCatConnections) {
+      armed = false;
+      throw new Error('database unavailable');
+    }
+    return realInsert(table as Parameters<typeof realInsert>[0]);
+  }) as typeof db.insert);
+  return { restore: () => spy.mockRestore(), wasUsed: () => !armed };
+}
+
 async function connectionRow(projectId: string) {
   const [row] = await currentTestDb()
     .select()
@@ -495,11 +514,13 @@ describe('changes that overlap or fail half-way', () => {
     await connect(project, 'sk_full');
     const before = await connectionRow(project.id);
 
-    const insert = vi.spyOn(currentTestDb(), 'insert').mockImplementationOnce(() => {
-      throw new Error('database unavailable');
-    });
-    await expect(connect(project, 'sk_full_2')).rejects.toThrow('database unavailable');
-    insert.mockRestore();
+    const failing = failNextConnectionInsert();
+    try {
+      await expect(connect(project, 'sk_full_2')).rejects.toThrow('database unavailable');
+    } finally {
+      failing.restore();
+    }
+    expect(failing.wasUsed()).toBe(true);
 
     // The webhook was only updated in place; it is still there and still stored.
     expect(rc.webhooks.map((w) => w.id)).toEqual([before.rcWebhookIntegrationId]);
@@ -509,11 +530,13 @@ describe('changes that overlap or fail half-way', () => {
   test('a database error on a first connect removes the webhook that call created', async () => {
     const rc = fakeRevenueCat();
     const project = await swiftProject();
-    const insert = vi.spyOn(currentTestDb(), 'insert').mockImplementationOnce(() => {
-      throw new Error('database unavailable');
-    });
-    await expect(connect(project, 'sk_full')).rejects.toThrow('database unavailable');
-    insert.mockRestore();
+    const failing = failNextConnectionInsert();
+    try {
+      await expect(connect(project, 'sk_full')).rejects.toThrow('database unavailable');
+    } finally {
+      failing.restore();
+    }
+    expect(failing.wasUsed()).toBe(true);
     expect(rc.webhooks).toEqual([]);
     expect(await connectionRow(project.id)).toBeUndefined();
   });

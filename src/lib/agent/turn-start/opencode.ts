@@ -141,6 +141,7 @@ import {
 } from "@/lib/agent/turn-input";
 import type { TurnStartContext, TurnStartResult } from "./types";
 import { acquireThreadSpawnLock, releaseThreadSpawnLock } from "./spawn-lock";
+import { wantsProgressBeacon } from "@/lib/native/agent-push";
 
 /**
  * Start one turn on this agent in a thread: derive and check credentials,
@@ -493,6 +494,7 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
       BOTFLOW_PID_FILE: threadPidFile(threadId),
       BOTFLOW_API_BASE: origin,
       BOTFLOW_TURN_TOKEN: toolToken,
+      ...((await wantsProgressBeacon(userId)) ? { BOTFLOW_PROGRESS_BEACON: "1" } : {}),
       ...(process.env.VERCEL_ENV === "preview" && process.env.VERCEL_AUTOMATION_BYPASS_SECRET
         ? { BOTFLOW_VERCEL_BYPASS: process.env.VERCEL_AUTOMATION_BYPASS_SECRET }
         : {}),

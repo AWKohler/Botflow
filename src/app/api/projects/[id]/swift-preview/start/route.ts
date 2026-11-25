@@ -14,6 +14,8 @@ import { canUseSwift, swiftProjectForbidden } from "@/lib/swift-access";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 import type { SimDeviceModel, SimOrientation } from "@/lib/sim-platform";
 import { simulatorProvider } from "@/lib/simulator-provider";
+import { NoSimHostError, pickSimTarget, rememberSimRoute } from "@/lib/sim-hosts/routing";
+import type { SimTarget } from "@/lib/sim-platform";
 
 const DEVICE_MODELS: readonly SimDeviceModel[] = ["iPhone-16-Pro", "iPad-Pro"];
 const ORIENTATIONS: readonly SimOrientation[] = ["portrait", "landscape"];
@@ -78,12 +80,17 @@ export async function POST(
   }
 
   let sessionId: string | null = null;
+  let target: SimTarget | undefined;
   try {
     if (simulatorProvider() !== "cloud") {
       return NextResponse.json({ error: "Botflow’s Mac cloud is currently at capacity. Use Botflow Companion for local preview.", provider: "local" }, { status: 409 });
     }
-    const session = await createSession({ awaitBuild: true, deviceModel, orientation });
+    // The admin panel's simulator host registry decides which Mac serves
+    // this user (src/lib/sim-hosts/routing.ts).
+    target = await pickSimTarget(userId);
+    const session = await createSession({ awaitBuild: true, deviceModel, orientation }, target);
     sessionId = session.sessionId;
+    await rememberSimRoute("session", sessionId, target);
     recordSwiftPreviewSession(sessionId, userId, projectId);
 
     // Bake the project's Convex deployment URL into ConvexConfig.swift before
@@ -92,17 +99,20 @@ export async function POST(
     // build it.
     await materializeSwiftBuildConfig(projectId);
     const tarball = await tarSandboxProject(projectId, { excludeConvex: true });
-    await uploadBuild(sessionId, tarball);
+    await uploadBuild(sessionId, tarball, {}, target);
 
     return NextResponse.json({
       sessionId,
-      wsUrl: sessionWsUrl(sessionId, session.streamToken),
+      wsUrl: sessionWsUrl(sessionId, session.streamToken, target),
       tarBytes: tarball.length,
     });
   } catch (error) {
     if (sessionId) {
       // Best-effort cleanup — we don't want a stranded session holding a slot.
-      await releaseSession(sessionId).catch(() => undefined);
+      await releaseSession(sessionId, target).catch(() => undefined);
+    }
+    if (error instanceof NoSimHostError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
     }
     const message = error instanceof Error ? error.message : "Failed to start preview";
     console.error("[swift-preview/start]", message);

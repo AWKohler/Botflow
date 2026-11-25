@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* The iOS app is Swift, not markup: keep it out of the class scan. */
+@source not "../../ios";
 
 :root {
     color-scheme: light dark;

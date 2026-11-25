@@ -2,6 +2,7 @@ import { prepareAccountDeletion } from "./delete-account";
 import { identityBaseURL } from "./base-url";
 import { betterAuth } from "better-auth";
 import { google } from "better-auth/social-providers";
+import { decryptOAuthToken } from "better-auth/oauth2";
 import { admin, emailOTP, username } from "better-auth/plugins";
 import { getIdentityDb } from "./database";
 import { password } from "./password";
@@ -10,6 +11,14 @@ import { encryptPrivateData } from "./crypto";
 import { sendAuthEmail } from "./email";
 import { emailAliases } from "./email-aliases";
 import { captchaPlugin } from "./captcha";
+import { nativeApp } from "./native-app";
+import {
+  APPLE_ISSUER,
+  appleAudiences,
+  appleClientSecret,
+  appleConfig,
+  revokeAppleTokens,
+} from "./apple";
 import { gateNewUser, isGateBannedUser } from "./username-gate";
 
 export function createIdentityAuth(
@@ -18,12 +27,14 @@ export function createIdentityAuth(
   if (!process.env.BETTER_AUTH_SECRET) {
     throw new Error("BETTER_AUTH_SECRET and BETTER_AUTH_URL are required");
   }
-  return betterAuth({
+  const apple = appleConfig();
+  const auth = betterAuth({
     appName: "Botflow",
     baseURL: identityBaseURL(),
     secret: process.env.BETTER_AUTH_SECRET,
     database: getIdentityDb(),
-    trustedOrigins: [identityBaseURL()],
+    // Apple returns from its sign-in page with a cross-site form POST.
+    trustedOrigins: [identityBaseURL(), ...(apple ? [APPLE_ISSUER] : [])],
     databaseHooks: {
       user: {
         create: {
@@ -70,7 +81,25 @@ export function createIdentityAuth(
             "Confirm deletion of your Botflow account",
             `Confirm account deletion: ${identityBaseURL()}/account?delete_token=${encodeURIComponent(token)} . This link expires in 10 minutes. Your login, profile, and stored integration secrets will be removed, your subscriptions will be canceled, and your projects will no longer be accessible through this account. Ignore this email if you did not request deletion.`,
           ),
-        beforeDelete: prepareAccountDeletion,
+        beforeDelete: async (user) => {
+          await prepareAccountDeletion(user);
+          // Apple requires apps to revoke Sign in with Apple on account deletion.
+          if (apple) {
+            const ctx = (await auth.$context) as unknown as Parameters<typeof decryptOAuthToken>[1];
+            const accounts = await ctx.internalAdapter.findAccounts(user.id);
+            await revokeAppleTokens(
+              await Promise.all(
+                accounts
+                  .filter((a) => a.providerId === "apple")
+                  .map(async (a) => ({
+                    idToken: a.idToken,
+                    refreshToken: await decryptOAuthToken(a.refreshToken ?? "", ctx),
+                    accessToken: await decryptOAuthToken(a.accessToken ?? "", ctx),
+                  })),
+              ),
+            ).catch((error) => console.error("Apple token revocation failed", error));
+          }
+        },
       },
     },
     session: {
@@ -133,6 +162,19 @@ export function createIdentityAuth(
             },
           }
         : {}),
+      ...(apple
+        ? {
+            apple: {
+              // The web redirect flow needs a Services ID; without one only the
+              // iOS app's native button (identity tokens for the bundle ID) works.
+              clientId: apple.serviceId ?? apple.bundleId,
+              get clientSecret() {
+                return appleClientSecret(apple, apple.serviceId ?? apple.bundleId);
+              },
+              audience: appleAudiences(apple),
+            },
+          }
+        : {}),
     },
     rateLimit: {
       enabled: true,
@@ -143,6 +185,7 @@ export function createIdentityAuth(
     },
     plugins: [
       captchaPlugin(),
+      nativeApp(),
       emailAliases(),
       username(),
       admin({
@@ -174,6 +217,7 @@ export function createIdentityAuth(
       }),
     ],
   });
+  return auth;
 }
 let instance: ReturnType<typeof createIdentityAuth> | undefined;
 export function getAuth() {

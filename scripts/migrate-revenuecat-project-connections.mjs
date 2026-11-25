@@ -3,7 +3,7 @@
 // Reads DATABASE_URL from .env.local (falls back to process.env), mirroring the
 // other scripts/migrate-*.mjs runners (raw SQL via @neondatabase/serverless).
 //
-// Applies drizzle/0016_revenuecat_project_connections.sql: creates
+// Applies drizzle/0017_revenuecat_project_connections.sql: creates
 // project_revenuecat_connections (one RevenueCat connection per project).
 // Additive and idempotent; safe to run before the code that uses it deploys.
 import { neon } from '@neondatabase/serverless';
@@ -29,7 +29,7 @@ async function run() {
   url = url.trim().replace(/^postgresql:\/\//, 'postgres://');
   const sql = neon(url);
 
-  const migrationPath = path.resolve(process.cwd(), 'drizzle/0016_revenuecat_project_connections.sql');
+  const migrationPath = path.resolve(process.cwd(), 'drizzle/0017_revenuecat_project_connections.sql');
   const ddlRaw = fs.readFileSync(migrationPath, 'utf8');
   const ddl = ddlRaw
     .split('\n')
@@ -40,7 +40,7 @@ async function run() {
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
-  console.log(`Running ${statements.length} statements from 0016_revenuecat_project_connections.sql...`);
+  console.log(`Running ${statements.length} statements from 0017_revenuecat_project_connections.sql...`);
   for (const stmt of statements) {
     const preview = stmt.replace(/\s+/g, ' ').slice(0, 80);
     console.log(`  → ${preview}${stmt.length > 80 ? '…' : ''}`);
