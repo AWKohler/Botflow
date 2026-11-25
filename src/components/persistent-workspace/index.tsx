@@ -34,12 +34,15 @@ import {
 import { useWorkspacePoll, rateLimitDelayMs } from "@/components/sandboxed-web-workspace/use-workspace-poll";
 import { RevenueCatTab } from "./revenuecat-tab";
 import { REVENUECAT_ENABLED } from "@/lib/feature-flags";
-import { ChevronLeft, ChevronRight, PanelLeft, Play, Save, Loader2, Database, Rocket, Smartphone, Tablet, RotateCw, ArrowUpRight, Globe } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, PanelLeft, Play, Save, Loader2, Database, Rocket, Smartphone, Tablet, RotateCw, ArrowUpRight, Globe } from "lucide-react";
 import type { ProjectPlatform } from "@/lib/project-platform";
-import { DeviceFrame, type DeviceModelUI, type OrientationUI } from "./device-frame";
+import { DeviceFrame, type OrientationUI } from "./device-frame";
+import { DuoViewer } from "./duo/duo-viewer";
+import { usePreviewDevices } from "./use-preview-devices";
 import {
   loadDevicePref,
   saveDevicePref,
+  type PreviewDeviceModel,
   loadOrientationPref,
   saveOrientationPref,
 } from "./swift-preview-prefs";
@@ -1064,12 +1067,16 @@ function StoppedPreviewPlaceholder({
    *  switched-off screen) to make Play feel like "resume". */
   screenshots?: { iphone?: string | null; ipad?: string | null };
 }) {
-  const [device, setDevice] = useState<DeviceModelUI>(loadDevicePref);
+  const devices = usePreviewDevices();
+  const [picked, setDevice] = useState<PreviewDeviceModel>(loadDevicePref);
+  // The Duo, if it was the last device used but no host with one serves this
+  // user now, falls back to the iPhone (as the live preview does).
+  const device: PreviewDeviceModel = devices.includes(picked) ? picked : "iPhone-16-Pro";
   const [orientation, setOrientation] = useState<OrientationUI>(loadOrientationPref);
   const screenshotUrl =
-    device === "iPad-Pro" ? screenshots?.ipad : screenshots?.iphone;
+    device === "iPad-Pro" ? screenshots?.ipad : device === "iPhone-16-Pro" ? screenshots?.iphone : null;
 
-  const pickDevice = (d: DeviceModelUI): void => {
+  const pickDevice = (d: PreviewDeviceModel): void => {
     if (d === device) return;
     setDevice(d);
     saveDevicePref(d);
@@ -1095,9 +1102,10 @@ function StoppedPreviewPlaceholder({
         <div className="ml-auto flex items-center gap-1.5">
           <div className="flex items-center gap-0.5 rounded-md border border-border bg-elevated p-0.5">
             {([
-              { id: "iPhone-16-Pro" as DeviceModelUI, label: "iPhone", Icon: Smartphone },
-              { id: "iPad-Pro" as DeviceModelUI, label: "iPad", Icon: Tablet },
-            ]).map(({ id, label, Icon }) => (
+              { id: "iPhone-16-Pro" as PreviewDeviceModel, label: "iPhone", Icon: Smartphone },
+              { id: "iPad-Pro" as PreviewDeviceModel, label: "iPad", Icon: Tablet },
+              { id: "iPhone-Duo" as PreviewDeviceModel, label: "Duo", Icon: BookOpen },
+            ]).filter(({ id }) => devices.includes(id)).map(({ id, label, Icon }) => (
               <button
                 key={id}
                 type="button"
@@ -1115,7 +1123,7 @@ function StoppedPreviewPlaceholder({
               </button>
             ))}
           </div>
-          <button
+          {device !== "iPhone-Duo" && <button
             type="button"
             onClick={toggleOrientation}
             className="flex items-center gap-1.5 rounded-md border border-border bg-elevated px-2 py-1 text-[11px] text-muted hover:text-fg pointer-coarse:h-10 pointer-coarse:px-3 pointer-coarse:text-xs"
@@ -1123,7 +1131,7 @@ function StoppedPreviewPlaceholder({
           >
             <RotateCw size={12} />
             <span className="capitalize max-[389px]:hidden">{orientation}</span>
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -1131,6 +1139,27 @@ function StoppedPreviewPlaceholder({
           `flex flex-col` is required so DeviceFrame's `flex-1` root gets a
           bounded height (otherwise it grows to the device's own size). */}
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-elevated/60">
+        {device === "iPhone-Duo" ? (
+          // The Duo is a 3D model, not a flat bezel: it can already be turned
+          // and folded here, and the session starts in the posture it is left in.
+          <DuoViewer
+            live={false}
+            state={null}
+            features={[]}
+            onInput={() => undefined}
+            overlayBare
+            overlay={
+              <button
+                type="button"
+                onClick={onPlay}
+                className="pointer-events-auto flex h-16 w-16 items-center justify-center rounded-full bg-accent text-bg shadow-xl transition hover:scale-105"
+                title="Start the simulator"
+              >
+                <Play size={30} className="ml-1 fill-current" />
+              </button>
+            }
+          />
+        ) : (
         <DeviceFrame
           deviceModel={device}
           orientation={orientation}
@@ -1159,6 +1188,7 @@ function StoppedPreviewPlaceholder({
             <></>
           )}
         </DeviceFrame>
+        )}
       </div>
     </div>
   );

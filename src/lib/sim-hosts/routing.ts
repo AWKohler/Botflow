@@ -19,9 +19,15 @@
 
 import type { SimHostRow } from "@/db/schema";
 import { redis } from "@/lib/redis";
-import { envSimTarget, type SimTarget } from "@/lib/sim-platform";
+import {
+  ALL_SIM_DEVICE_MODELS,
+  BASE_SIM_DEVICE_MODELS,
+  envSimTarget,
+  type SimDeviceModel,
+  type SimTarget,
+} from "@/lib/sim-platform";
 import { isBetaUser } from "@/lib/tier";
-import { freeSlots, probeSimHostHealth } from "./health";
+import { freeSlots, hostSupportsDevice, probeSimHostHealth } from "./health";
 import { runtimeRank as rankOf } from "./model";
 import { getSimHostRow, listSimHostRows, toSimTarget } from "./store";
 
@@ -29,11 +35,29 @@ export type SimWorkKind = "session" | "device-build" | "app-store-build";
 
 /** Raised when the registry has hosts but none may serve this user right now. */
 export class NoSimHostError extends Error {
-  constructor() {
-    super("No iOS simulator host is available right now. Please try again in a few minutes.");
+  constructor(message = "No iOS simulator host is available right now. Please try again in a few minutes.") {
+    super(message);
     this.name = "NoSimHostError";
   }
 }
+
+/** What new work needs of a host. */
+export interface SimTargetNeeds {
+  /** An App Store build: kept off beta-only hosts. */
+  release?: boolean;
+  /**
+   * The device a simulator session is for. The iPhone and the iPad run
+   * anywhere; the iPhone Duo only on hosts whose /health lists it, so such a
+   * session goes to one of those or not at all.
+   */
+  deviceModel?: SimDeviceModel;
+}
+
+const DEVICE_NAMES: Record<SimDeviceModel, string> = {
+  "iPhone-16-Pro": "iPhone",
+  "iPad-Pro": "iPad",
+  "iPhone-Duo": "iPhone Duo",
+};
 
 const ROUTE_TTL_SECONDS = 6 * 60 * 60;
 const routeKey = (kind: SimWorkKind, id: string) => `simroute:${kind}:${id}`;
@@ -70,9 +94,23 @@ function runtimeRank(row: SimHostRow): number {
 }
 
 /** Choose the host for new simulator or build work by this user. */
-export async function pickSimTarget(userId: string, opts: { release?: boolean } = {}): Promise<SimTarget> {
+export async function pickSimTarget(userId: string, opts: SimTargetNeeds = {}): Promise<SimTarget> {
+  // A device only some hosts have: a host must say it has it. Without that
+  // need, a host that fails its health check is still tried (below).
+  const special = opts.deviceModel && !BASE_SIM_DEVICE_MODELS.includes(opts.deviceModel) ? opts.deviceModel : null;
+  const unavailable = (): NoSimHostError =>
+    new NoSimHostError(
+      `No simulator host with the ${DEVICE_NAMES[special ?? "iPhone-16-Pro"]} is available to you right now. Pick another device, or try again in a few minutes.`,
+    );
+
   const rows = await loadRows();
-  if (!rows || rows.length === 0) return envSimTarget();
+  if (!rows || rows.length === 0) {
+    if (special) {
+      const health = await probeSimHostHealth({ controllerUrl: envControllerUrl(), agentHostId: null });
+      if (!hostSupportsDevice(health, special)) throw unavailable();
+    }
+    return envSimTarget();
+  }
 
   const candidates = await eligibleSimHosts(rows, userId, opts);
   if (candidates.length === 0) throw new NoSimHostError();
@@ -80,7 +118,10 @@ export async function pickSimTarget(userId: string, opts: { release?: boolean } 
   const probed = await Promise.all(
     candidates.map(async (row) => ({ row, health: await probeSimHostHealth(row) })),
   );
-  const up = probed.filter((p) => p.health.reachable && p.health.agentConnected);
+  const up = probed.filter(
+    (p) => p.health.reachable && p.health.agentConnected && (!special || hostSupportsDevice(p.health, special)),
+  );
+  if (special && up.length === 0) throw unavailable();
   const withRoom = up
     .map((p) => ({ ...p, free: freeSlots(p.row, p.health) }))
     .filter((p) => p.free > 0)
@@ -88,6 +129,37 @@ export async function pickSimTarget(userId: string, opts: { release?: boolean } 
 
   const chosen = withRoom[0]?.row ?? up[0]?.row ?? candidates[0];
   return toSimTarget(chosen);
+}
+
+function envControllerUrl(): string {
+  return (process.env.SIM_CONTROLLER_URL ?? "").replace(/\/$/, "");
+}
+
+/**
+ * The devices a user can start a simulator on right now: the iPhone and the
+ * iPad always, plus whatever else a host that may serve them says it has.
+ * Never throws; when in doubt it is the base two.
+ */
+export async function availableSimDevices(userId: string): Promise<SimDeviceModel[]> {
+  const base = [...BASE_SIM_DEVICE_MODELS];
+  try {
+    const rows = await loadRows();
+    const healths =
+      !rows || rows.length === 0
+        ? envControllerUrl()
+          ? [await probeSimHostHealth({ controllerUrl: envControllerUrl(), agentHostId: null })]
+          : []
+        : await Promise.all((await eligibleSimHosts(rows, userId)).map((row) => probeSimHostHealth(row)));
+    const extra = ALL_SIM_DEVICE_MODELS.filter(
+      (model) =>
+        !base.includes(model) &&
+        healths.some((h) => h.reachable && h.agentConnected && hostSupportsDevice(h, model)),
+    );
+    return [...base, ...extra];
+  } catch (error) {
+    console.warn("[sim-hosts] could not list devices:", error instanceof Error ? error.message : error);
+    return base;
+  }
 }
 
 /** Remember which host holds a session or build, for follow-up calls. */

@@ -17,7 +17,7 @@ import { simulatorProvider } from "@/lib/simulator-provider";
 import { NoSimHostError, pickSimTarget, rememberSimRoute } from "@/lib/sim-hosts/routing";
 import type { SimTarget } from "@/lib/sim-platform";
 
-const DEVICE_MODELS: readonly SimDeviceModel[] = ["iPhone-16-Pro", "iPad-Pro"];
+const DEVICE_MODELS: readonly SimDeviceModel[] = ["iPhone-16-Pro", "iPad-Pro", "iPhone-Duo"];
 const ORIENTATIONS: readonly SimOrientation[] = ["portrait", "landscape"];
 
 export const runtime = "nodejs";
@@ -86,8 +86,9 @@ export async function POST(
       return NextResponse.json({ error: "Botflow’s Mac cloud is currently at capacity. Use Botflow Companion for local preview.", provider: "local" }, { status: 409 });
     }
     // The admin panel's simulator host registry decides which Mac serves
-    // this user (src/lib/sim-hosts/routing.ts).
-    target = await pickSimTarget(userId);
+    // this user (src/lib/sim-hosts/routing.ts): one that has the device asked
+    // for, which for the iPhone Duo is not every host.
+    target = await pickSimTarget(userId, { deviceModel });
     const session = await createSession({ awaitBuild: true, deviceModel, orientation }, target);
     sessionId = session.sessionId;
     await rememberSimRoute("session", sessionId, target);
