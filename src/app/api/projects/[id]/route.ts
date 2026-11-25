@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/db';
 import { projects, chatImages, projectAssets } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { auth } from '@/lib/auth/server';
 import { requireProjectAccess, sanitizeProjectForRole } from '@/lib/project-access';
 import { getUserTier } from '@/lib/tier';
 import { deleteConvexBackend } from '@/lib/convex-platform';
+import { convexDashboardUrl, convexTeamSlug, deleteUserConvexProject } from '@/lib/convex-user-projects';
+import { getUserCredentials } from '@/lib/user-credentials';
 import { deletePersistentSandbox } from '@/lib/vercel-sandbox';
 import { isSandboxPlatform } from '@/lib/project-platform';
 import { isAcceptedModelInput, isModelDisabled, modelDisabledReason, resolveModelId } from '@/lib/agent/models';
@@ -86,7 +88,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+/**
+ * Delete a project and everything the platform owns for it.
+ *
+ * `?deleteConvexProject=true`: also delete the project's Convex project when
+ * it lives in the owner's own Convex account (BYOC). Without it (the default,
+ * and what older clients send) that Convex project and its data are kept.
+ */
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
   try {
     const { userId } = await auth();
@@ -98,10 +107,17 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
     // What was torn down, reported back so callers (e.g. the canary) can
     // detect leaks instead of assuming a clean delete.
-    const cleanup: { sandbox: 'deleted' | 'none' | 'failed'; convex: 'deleted' | 'detached' | 'none' | 'failed' } = {
+    const cleanup: {
+      sandbox: 'deleted' | 'none' | 'failed';
+      /** 'detached': the user's own Convex project was kept (their choice, or it could not be deleted). */
+      convex: 'deleted' | 'detached' | 'none' | 'failed';
+      /** The user's own Convex project: what happened to it and where to find it. */
+      userConvexProject?: { slug: string; dashboardUrl: string; deleted: boolean; error?: string };
+    } = {
       sandbox: 'none',
       convex: 'none',
     };
+    const deleteUsersConvexProject = req.nextUrl.searchParams.get('deleteConvexProject') === 'true';
 
     // Release the persistent sandbox VM + its snapshots. Must run before the
     // row is deleted (the provider is looked up from it), and nothing else
@@ -128,9 +144,11 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    // Delete Convex backend if it exists. Platform-managed only: BYOC projects
-    // live in the user's own Convex account (string slug id, wrong token here),
-    // so we detach rather than destroy — same rule as the sandbox reaper.
+    // Delete the Convex backend if it exists. A platform-managed one is
+    // Botflow's and always goes. One in the user's own Convex account (BYOC)
+    // holds their data: it is deleted only when they asked for it here, with
+    // their own Convex connection; otherwise it is detached and kept. The
+    // sandbox reaper never deletes those.
     if (proj.convexProjectId && proj.backendType === 'platform') {
       try {
         await deleteConvexBackend(proj.convexProjectId);
@@ -141,6 +159,45 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
         cleanup.convex = 'failed';
         console.error('Failed to delete Convex backend:', error);
       }
+    } else if (proj.convexProjectId && proj.backendType === 'user') {
+      const creds = await getUserCredentials(proj.userId);
+      const teamSlug = convexTeamSlug(creds);
+      const report: NonNullable<typeof cleanup.userConvexProject> = {
+        slug: proj.convexProjectId,
+        dashboardUrl: convexDashboardUrl(teamSlug, proj.convexProjectId),
+        deleted: false,
+      };
+      cleanup.convex = 'detached';
+      if (deleteUsersConvexProject) {
+        // Never delete a Convex project another Botflow project still uses.
+        const [sharedWith] = await db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(
+            and(
+              eq(projects.convexProjectId, proj.convexProjectId),
+              eq(projects.backendType, 'user'),
+              ne(projects.id, proj.id),
+            ),
+          )
+          .limit(1);
+        if (sharedWith) {
+          report.error = 'Another of your Botflow projects uses this Convex project, so it was kept.';
+        } else {
+          const result = await deleteUserConvexProject({
+            token: creds.convexOAuthAccessToken,
+            projectSlug: proj.convexProjectId,
+          });
+          if (result.ok) {
+            report.deleted = true;
+            cleanup.convex = 'deleted';
+          } else {
+            report.error = result.message;
+            if (result.reason === 'not-found') report.dashboardUrl = convexDashboardUrl(teamSlug);
+          }
+        }
+      }
+      cleanup.userConvexProject = report;
     } else if (proj.convexProjectId) {
       cleanup.convex = 'detached';
     }

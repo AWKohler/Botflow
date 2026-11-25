@@ -31,6 +31,7 @@ import { Menu, MenuItem, MenuSeparator, menuItemClass } from '@/components/ui/me
 import { MODEL_CONFIGS } from '@/lib/agent/models';
 import type { Project } from '@/db/schema';
 import { getProjectPlatformLabel } from '@/lib/project-platform';
+import { DeleteProjectDialog } from '@/components/projects/delete-project-dialog';
 
 export default function ProjectsPage() {
   const router = useRouter();
@@ -38,7 +39,7 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Project | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [thumbnailErrors, setThumbnailErrors] = useState<Record<string, true>>({});
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
@@ -84,23 +85,24 @@ export default function ProjectsPage() {
     };
   }, []);
 
-  const handleDeleteProject = async (projectId: string) => {
-    if (!window.confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
-      return;
-    }
+  const handleDeleteProject = (project: Project) => {
+    setOpenMenuId(null);
+    setConfirmDelete(project);
+  };
 
-    setDeletingId(projectId);
-    try {
-      const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
-      if (res.ok) {
-        setProjects((prev) => prev.filter((p) => p.id !== projectId));
-      }
-    } catch (error) {
-      console.error('Failed to delete project:', error);
-    } finally {
-      setDeletingId(null);
-      setOpenMenuId(null);
-    }
+  const handleProjectDeleted: Parameters<typeof DeleteProjectDialog>[0]['onDeleted'] = (projectId, convex) => {
+    setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    // A Convex project that was kept although the user asked to delete it is
+    // explained in the dialog itself, with a link to it.
+    if (convex && !convex.deleted) return;
+    toast({
+      title: 'Project deleted',
+      description: convex?.deleted
+        ? `Its Convex project ${convex.slug} was deleted too.`
+        : convex
+          ? `Its Convex project ${convex.slug} is still in your Convex account.`
+          : undefined,
+    });
   };
 
 
@@ -352,15 +354,16 @@ export default function ProjectsPage() {
                                 </a>
                               </>
                             )}
-                            <MenuSeparator />
-                            <MenuItem
-                              tone="danger"
-                              onClick={() => handleDeleteProject(project.id)}
-                              disabled={deletingId === project.id}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              {deletingId === project.id ? 'Deleting…' : 'Delete project'}
-                            </MenuItem>
+                            {/* Only the owner can delete; a project shared with you has no Delete. */}
+                            {!(project as Project & { shared?: boolean }).shared && (
+                              <>
+                                <MenuSeparator />
+                                <MenuItem tone="danger" onClick={() => handleDeleteProject(project)}>
+                                  <Trash2 className="h-4 w-4" />
+                                  Delete project
+                                </MenuItem>
+                              </>
+                            )}
                           </Menu>
                         )}
                       </div>
@@ -372,6 +375,11 @@ export default function ProjectsPage() {
           )}
         </SignedIn>
       </div>
+      <DeleteProjectDialog
+        project={confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onDeleted={handleProjectDeleted}
+      />
 
       {openMenuId && (
         <div className="fixed inset-0 z-30" onClick={() => setOpenMenuId(null)} />
