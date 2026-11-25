@@ -297,6 +297,10 @@ export function PublishToAppStore({
   const [appStatus, setAppStatus] = useState<AppStatusState>({ checked: false, found: false });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // The server refused because this build would ship with in-app purchases
+  // switched off (RevenueCat connected, no App Store app yet). The user can
+  // fix that in the Payments tab, or choose to upload it anyway.
+  const [purchasesOffRefused, setPurchasesOffRefused] = useState(false);
   const [build, setBuild] = useState<PublishBuildSummary | null>(null);
   const [pollNonce, setPollNonce] = useState(0);
   const [logOpen, setLogOpen] = useState(false);
@@ -656,10 +660,11 @@ export function PublishToAppStore({
     }
   };
 
-  const handleSubmit = async (): Promise<void> => {
+  const handleSubmit = async (allowPurchasesOff = false): Promise<void> => {
     if (submitting) return;
     setSubmitting(true);
     setSubmitError(null);
+    setPurchasesOffRefused(false);
     try {
       const res = await fetch(`/api/projects/${projectId}/swift-publish/submit`, {
         method: "POST",
@@ -668,6 +673,7 @@ export function PublishToAppStore({
           bundleId: bundleId.trim(),
           marketingVersion: marketingVersion.trim(),
           appName: appName.trim(),
+          ...(allowPurchasesOff ? { allowPurchasesOff: true } : {}),
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -679,6 +685,7 @@ export function PublishToAppStore({
         error?: string;
         missingCredentials?: boolean;
         appRecordMissing?: boolean;
+        purchasesOff?: boolean;
       };
       if (res.ok && data.buildId) {
         processingPollsRef.current = 0;
@@ -705,6 +712,9 @@ export function PublishToAppStore({
         setSubmitError(
           data.error ?? "The App Store Connect app record was not found. Create it below.",
         );
+      } else if (res.status === 409 && data.purchasesOff) {
+        setPurchasesOffRefused(true);
+        setSubmitError(data.error ?? "This build would ship with in-app purchases switched off.");
       } else {
         setSubmitError(data.error ?? `Submit failed (HTTP ${res.status}).`);
       }
@@ -872,6 +882,8 @@ export function PublishToAppStore({
               creds={creds}
               submitting={submitting}
               submitError={submitError}
+              purchasesOffRefused={purchasesOffRefused}
+              onSubmitWithoutPurchases={() => void handleSubmit(true)}
               build={build}
               phase={buildPhase}
               lastActiveState={lastActiveStateRef.current}
@@ -1336,6 +1348,8 @@ function Step3Submit({
   creds,
   submitting,
   submitError,
+  purchasesOffRefused,
+  onSubmitWithoutPurchases,
   build,
   phase,
   lastActiveState,
@@ -1353,6 +1367,8 @@ function Step3Submit({
   creds: AppleCredsState;
   submitting: boolean;
   submitError: string | null;
+  purchasesOffRefused: boolean;
+  onSubmitWithoutPurchases: () => void;
   build: PublishBuildSummary | null;
   phase: PublishPhase;
   lastActiveState: PublishBuildState;
@@ -1421,7 +1437,16 @@ function Step3Submit({
       {submitError && (
         <div className="flex items-start gap-2 rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-[11px] leading-snug text-danger">
           <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-          {submitError}
+          <div className="min-w-0">
+            {submitError}
+            {purchasesOffRefused && (
+              <div className="mt-2">
+                <Button size="sm" variant="outline" disabled={submitting} onClick={onSubmitWithoutPurchases}>
+                  Submit without purchases
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

@@ -876,11 +876,55 @@ export type StripeObjectProjectMap = typeof stripeObjectProjectMap.$inferSelect;
 
 // ─── RevenueCat (iOS in-app purchases) ─────────────────────────────────────────
 
-// One row per Botflow user. BYO model: the user links their own RevenueCat
-// account once and reuses it across their iOS apps (mirrors how one Stripe
-// account is reused across projects). Bearer secrets (RevenueCat secret key,
-// Apple .p8) are encrypted at rest via src/lib/secrets.ts.
-// See drizzle/0023_add_revenuecat_integration.sql.
+// One row per connected Botflow project. A RevenueCat project maps to ONE app
+// (its SDK keys, Test Store, offerings, entitlements and webhooks are all per
+// RevenueCat project), so the connection lives on the Botflow project, not the
+// user, and a RevenueCat project can be connected to only one Botflow project:
+// each app pastes the secret key of its own RevenueCat project. Everything except
+// that key is discovered through the RevenueCat API at connect time and cached
+// here so builds and webhooks never wait on RevenueCat.
+// See drizzle/0017_revenuecat_project_connections.sql.
+export const projectRevenueCatConnections = pgTable('project_revenuecat_connections', {
+  projectId: uuid('project_id').primaryKey().references(() => projects.id, { onDelete: 'cascade' }),
+  // The project owner who connected it (audit only; access goes through the project).
+  userId: text('user_id').notNull(),
+  // Encrypted (src/lib/secrets.ts) RevenueCat API v2 secret key (sk_…).
+  rcSecretKey: text('rc_secret_key').notNull(),
+  rcProjectId: text('rc_project_id').notNull(), // proj…
+  rcProjectName: text('rc_project_name'),
+  // Test Store app + its PUBLIC SDK key (test_…): baked into development builds.
+  rcTestStoreAppId: text('rc_test_store_app_id'),
+  rcTestStoreSdkKey: text('rc_test_store_sdk_key'),
+  // App Store app + its PUBLIC SDK key (appl_…): baked into release builds.
+  rcAppStoreAppId: text('rc_app_store_app_id'),
+  rcAppStoreSdkKey: text('rc_app_store_sdk_key'),
+  // Authorization header RevenueCat sends on its webhook to us. One per
+  // connection, so an inbound event resolves to exactly one Botflow project.
+  inboundWebhookSecret: text('inbound_webhook_secret').notNull(),
+  inboundWebhookSecretDigest: text('inbound_webhook_secret_digest').notNull(),
+  // The webhook integration Botflow created in the RevenueCat project. Null
+  // when automatic setup failed (the tab then shows the manual steps).
+  rcWebhookIntegrationId: text('rc_webhook_integration_id'),
+  webhookError: text('webhook_error'),
+  // Last time RevenueCat reached our webhook for this connection (any event,
+  // including RevenueCat's "send test event").
+  lastEventAt: timestamp('last_event_at'),
+  connectedAt: timestamp('connected_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  inboundDigestUnique: uniqueIndex('project_revenuecat_connections_inbound_digest_unique').on(t.inboundWebhookSecretDigest),
+  // One RevenueCat project per Botflow project: its webhooks are project-wide,
+  // so two apps on one RevenueCat project would receive each other's purchases.
+  rcProjectUnique: uniqueIndex('project_revenuecat_connections_rc_project_unique').on(t.rcProjectId),
+}));
+
+export type ProjectRevenueCatConnection = typeof projectRevenueCatConnections.$inferSelect;
+
+// LEGACY, no longer read or written: the first version stored one RevenueCat
+// connection per Botflow user. No row was ever created (connecting could not
+// succeed), so there is nothing to migrate. The table stays defined until a
+// later migration drops it, so the deploy that removes its last readers never
+// races the drop.
 export const userRevenueCatIdentity = pgTable('user_revenuecat_identity', {
   userId: text('user_id').primaryKey(),
   // RevenueCat credentials.

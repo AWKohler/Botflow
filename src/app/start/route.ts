@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth/server';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { provisionConvexBackend } from '@/lib/convex-platform';
+import { isConvexQuotaError, provisionConvexBackend } from '@/lib/convex-platform';
 import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
 import { countUserConvexProjects } from '@/lib/usage';
 import { getUserCredentials, setUserCredentials, type UserCredentials } from '@/lib/user-credentials';
@@ -367,7 +367,7 @@ export async function GET(request: Request) {
         const msg = error instanceof Error ? error.message : String(error);
         console.error('BYOC Convex provisioning failed:', msg);
         const errUrl = new URL('/', request.url);
-        if (msg.includes('ProjectQuotaReached')) {
+        if (isConvexQuotaError(msg)) {
           errUrl.searchParams.set('error', 'convex_quota');
         } else {
           errUrl.searchParams.set('error', 'convex_provision_failed');
@@ -396,7 +396,7 @@ export async function GET(request: Request) {
           console.log(`Convex backend provisioned for project ${project.id}: ${convex.deployUrl}`);
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error);
-          if (msg.includes('ProjectQuotaReached')) {
+          if (isConvexQuotaError(msg)) {
             console.error('Convex quota reached, cannot create project:', msg);
             const errUrl = new URL('/', request.url);
             errUrl.searchParams.set('error', 'convex_quota');

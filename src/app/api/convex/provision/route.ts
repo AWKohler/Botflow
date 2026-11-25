@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { requireProjectAccess } from '@/lib/project-access';
 import { getUserCredentials, setUserCredentials } from '@/lib/user-credentials';
 import { enforce, identifierFor } from '@/lib/rate-limit';
+import { isConvexQuotaError } from '@/lib/convex-platform';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -70,10 +71,14 @@ export async function POST(req: NextRequest) {
 
     if (!res.ok) {
       const errText = await res.text();
-      if (errText.includes('ProjectQuotaReached')) {
+      // Convex reports a full team as DeploymentQuotaReached (the limit counts
+      // deployments) or ProjectQuotaReached. Deleted Botflow projects leave
+      // their Convex project behind in the user's account, so this is where a
+      // long-time user eventually lands.
+      if (isConvexQuotaError(errText)) {
         return NextResponse.json({
           error: 'convex_quota',
-          message: 'Your Convex account has reached its project quota. Delete unused projects at dashboard.convex.dev or upgrade your Convex plan.',
+          message: 'Your Convex team has reached its limit of projects. Delete projects you no longer use at dashboard.convex.dev (deleting a project in Botflow leaves its Convex project in your account), or upgrade your Convex plan.',
         }, { status: 402 });
       }
       throw new Error(`Convex create_project failed: ${res.status} ${errText}`);

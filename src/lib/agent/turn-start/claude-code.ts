@@ -235,6 +235,7 @@ export async function startClaudeCodeTurn(ctx: TurnStartContext): Promise<TurnSt
       hasBackend: usesConvex,
       usesMuhkoo,
       hasConvexEnv: usesConvex && Boolean(project.userConvexUrl || project.convexDeployUrl),
+      revenuecatEnabled: REVENUECAT_ENABLED,
     }),
     otherAgents,
   ].filter(Boolean).join("\n\n");

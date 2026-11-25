@@ -1,11 +1,14 @@
 /**
- * Platform RevenueCat webhook: per-user Authorization secret, routing by the
- * project-namespaced app_user_id (bfp_<projectId>__<id>), idempotency.
+ * Platform RevenueCat webhook: one Authorization secret per connected project
+ * (so a request maps to exactly one project), the project-namespaced
+ * app_user_id (bfp_<projectId>__<id>) as a filter when two apps share a
+ * RevenueCat project, and idempotency.
  */
 import { createHash } from 'node:crypto';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, test, vi } from 'vitest';
-import { revenueCatWebhookDeliveries, userRevenueCatIdentity } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+import { projectRevenueCatConnections, revenueCatWebhookDeliveries } from '@/db/schema';
 import {
   buildNamespacedAppUserId,
   parseProjectIdFromAppUserId,
@@ -26,18 +29,14 @@ setupTestDb();
 const SECRET_A = 'Bearer rc_inbound_secret_owner_a';
 const SECRET_B = 'Bearer rc_inbound_secret_owner_b';
 
-async function identity(userId: string, secret: string) {
-  await currentTestDb()
-    .insert(userRevenueCatIdentity)
-    .values({
-      userId,
-      rcInboundWebhookSecret: secret,
-      rcInboundWebhookSecretDigest: createHash('sha256').update(secret).digest('hex'),
-    });
-}
-
-async function rcProject(userId: string, site: string, overrides: Record<string, unknown> = {}) {
-  return createProject({
+/** A connected Swift project whose RevenueCat webhook carries `secret`. */
+async function rcProject(
+  userId: string,
+  site: string,
+  secret: string,
+  overrides: Record<string, unknown> = {},
+) {
+  const project = await createProject({
     userId,
     platform: 'swift',
     revenuecatStatus: 'connected',
@@ -45,6 +44,17 @@ async function rcProject(userId: string, site: string, overrides: Record<string,
     convexDeployUrl: `https://${site}.convex.cloud`,
     ...overrides,
   });
+  await currentTestDb()
+    .insert(projectRevenueCatConnections)
+    .values({
+      projectId: project.id,
+      userId,
+      rcSecretKey: 'enc:unused-in-these-tests',
+      rcProjectId: `proj_${site}`,
+      inboundWebhookSecret: secret,
+      inboundWebhookSecretDigest: createHash('sha256').update(secret).digest('hex'),
+    });
+  return project;
 }
 
 function mockSites() {
@@ -120,8 +130,7 @@ describe('authorization', () => {
     ['real secret plus junk', `${SECRET_A}x`],
     ['different case', SECRET_A.toUpperCase()],
   ])('%s Authorization → 401, nothing recorded', async (_label, auth) => {
-    await identity('owner_a', SECRET_A);
-    const p = await rcProject('owner_a', 'a');
+    const p = await rcProject('owner_a', 'a', SECRET_A);
     const hits = mockSites();
     const before = await snapshotDb();
     const res = await send(rcEvent(buildNamespacedAppUserId(p.id, 'u1')), auth);
@@ -132,10 +141,9 @@ describe('authorization', () => {
 });
 
 describe('routing', () => {
-  test('namespaced event → exactly that project, app user id stripped', async () => {
-    await identity('owner_a', SECRET_A);
-    const p = await rcProject('owner_a', 'a');
-    await rcProject('owner_a', 'a2');
+  test("an event goes to the connection's project only, app user id stripped", async () => {
+    const p = await rcProject('owner_a', 'a', SECRET_A);
+    await rcProject('owner_a', 'a2', SECRET_B);
     const hits = mockSites();
     const res = await send(rcEvent(buildNamespacedAppUserId(p.id, 'u1')));
     expect(res.status).toBe(200);
@@ -146,11 +154,18 @@ describe('routing', () => {
     });
   });
 
-  test("owner A's secret cannot deliver into owner B's project (cross-tenant)", async () => {
-    await identity('owner_a', SECRET_A);
-    await identity('owner_b', SECRET_B);
-    await rcProject('owner_a', 'a');
-    const victim = await rcProject('owner_b', 'b');
+  test('a plain app user id (no project prefix) is delivered unchanged, to that project only', async () => {
+    await rcProject('owner_a', 'a', SECRET_A);
+    await rcProject('owner_a', 'a2', SECRET_B);
+    const hits = mockSites();
+    await send(rcEvent('user_42'));
+    expect(hits.map((h) => h.site)).toEqual(['a']);
+    expect(hits[0].body).toMatchObject({ data: { appUserId: 'user_42' } });
+  });
+
+  test("one project's secret cannot deliver into another project (cross-tenant)", async () => {
+    await rcProject('owner_a', 'a', SECRET_A);
+    const victim = await rcProject('owner_b', 'b', SECRET_B);
     const hits = mockSites();
     const res = await send(rcEvent(buildNamespacedAppUserId(victim.id, 'u1')), SECRET_A);
     expect(res.status).toBe(200);
@@ -159,36 +174,35 @@ describe('routing', () => {
   });
 
   test('disconnected project is not delivered to', async () => {
-    await identity('owner_a', SECRET_A);
-    const p = await rcProject('owner_a', 'a', { revenuecatStatus: 'none' });
+    const p = await rcProject('owner_a', 'a', SECRET_A, { revenuecatStatus: 'none' });
     const hits = mockSites();
     await send(rcEvent(buildNamespacedAppUserId(p.id, 'u1')));
     expect(hits).toEqual([]);
   });
 
-  test("un-namespaced event broadcasts only to this owner's connected projects", async () => {
-    await identity('owner_a', SECRET_A);
-    await identity('owner_b', SECRET_B);
-    await rcProject('owner_a', 'a');
-    await rcProject('owner_a', 'a2');
-    await rcProject('owner_a', 'aoff', { revenuecatStatus: 'none' });
-    await rcProject('owner_b', 'b');
-    const hits = mockSites();
-    await send(rcEvent('legacy_user'));
-    expect(hits.map((h) => h.site).sort()).toEqual(['a', 'a2']);
-  });
-
   test('RevenueCat retries (same event id) deliver once', async () => {
-    await identity('owner_a', SECRET_A);
-    const p = await rcProject('owner_a', 'a');
+    const p = await rcProject('owner_a', 'a', SECRET_A);
     const hits = mockSites();
     const evt = rcEvent(buildNamespacedAppUserId(p.id, 'u1'));
     for (let i = 0; i < 5; i++) await send(evt);
     expect(hits).toHaveLength(1);
   });
 
+  test("RevenueCat's test event proves the webhook works without delivering anything", async () => {
+    const p = await rcProject('owner_a', 'a', SECRET_A);
+    const hits = mockSites();
+    const res = await send({ event: { id: 'rcevt_test', type: 'TEST' } });
+    expect(res.status).toBe(200);
+    expect(hits).toEqual([]);
+    const [connection] = await currentTestDb()
+      .select()
+      .from(projectRevenueCatConnections)
+      .where(eq(projectRevenueCatConnections.projectId, p.id));
+    expect(connection.lastEventAt).toBeInstanceOf(Date);
+  });
+
   test('malformed JSON → 400 after auth', async () => {
-    await identity('owner_a', SECRET_A);
+    await rcProject('owner_a', 'a', SECRET_A);
     const res = await callRoute(POST, {
       method: 'POST',
       body: '{not json',

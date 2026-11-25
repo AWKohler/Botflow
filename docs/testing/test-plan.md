@@ -437,8 +437,9 @@ All "A" layer: scripted model, LocalSandbox, PGlite.
 
 ## 14. RevenueCat
 
-- [ ] R P1 `revenuecat/*` routes: connect (validateConnection), initialize, products, status, activity, disconnect
-- [ ] R P1 `scaffoldRevenueCatIntoProject` idempotent; `discoverTestStore`
+- [x] R P1 `revenuecat/*` routes: connect (one secret key), status (GET + POST re-check), products, disconnect — `revenuecat-routes.test.ts`; connection lifecycle and refused keys — `revenuecat-connection.test.ts`; catalog diagnosis and `create_revenuecat_product` — `revenuecat-catalog.test.ts` (all against `src/test/revenuecat-fake.ts`)
+- [ ] R P1 `revenuecat/activity`
+- [ ] R P1 `scaffoldRevenueCatIntoProject` idempotent
 - [ ] R P1 provisioning sequence (entitlement → offering → products → packages → attach) recovers from partial failure
 - [ ] U P1 `dashboardUrl`
 

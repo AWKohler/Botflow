@@ -116,6 +116,18 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    // Remove the webhook Botflow added to the user's RevenueCat project, so
+    // RevenueCat does not keep calling us for an app that no longer exists.
+    // The stored key goes with the row (cascade). Best-effort.
+    if (proj.revenuecatStatus === 'connected') {
+      try {
+        const { disconnectRevenueCat } = await import('@/lib/revenuecat-connection');
+        await disconnectRevenueCat(resolvedParams.id, { force: true });
+      } catch (error) {
+        console.error('Failed to remove the RevenueCat webhook:', error);
+      }
+    }
+
     // Delete Convex backend if it exists. Platform-managed only: BYOC projects
     // live in the user's own Convex account (string slug id, wrong token here),
     // so we detach rather than destroy — same rule as the sandbox reaper.

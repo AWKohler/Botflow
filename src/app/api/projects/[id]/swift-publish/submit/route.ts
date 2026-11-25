@@ -27,6 +27,8 @@ const MARKETING_VERSION_RE = /^\d+\.\d+(\.\d+)?$/;
 interface SubmitBody {
   bundleId?: unknown;
   marketingVersion?: unknown;
+  /** The user chose to upload a build whose in-app purchases are switched off. */
+  allowPurchasesOff?: unknown;
   appName?: unknown;
   scheme?: unknown;
 }
@@ -131,6 +133,45 @@ export async function POST(
     // 4. Snapshot the project source (same prep as the device-build flow).
     //    'release': App Store builds always carry the production appl_ key —
     //    never the Test Store key (dev builds are always test mode instead).
+    //    The App Store app is usually added to RevenueCat long after the
+    //    first connect, so look for its key again right before baking it.
+    //
+    //    An App Store build without the App Store key has purchases switched
+    //    off. That is a legitimate choice (a first TestFlight build before the
+    //    products exist), but never a silent one: Apple would review an app
+    //    whose paywall says purchases are not set up. This covers an app whose
+    //    payment setup was started and never finished ('connecting') as well.
+    if (project.revenuecatStatus !== "none") {
+      const { getRevenueCatConnection, refreshRevenueCatConnection } = await import("@/lib/revenuecat-connection");
+      const refreshed =
+        project.revenuecatStatus === "connected"
+          ? await refreshRevenueCatConnection(projectId).catch((err) => {
+              console.error("[swift-publish/submit] RevenueCat refresh failed:", err);
+              return null;
+            })
+          : null;
+      const connection = await getRevenueCatConnection(projectId);
+      if (!connection?.rcAppStoreSdkKey && body?.allowPurchasesOff !== true) {
+        const why = !connection
+          ? "RevenueCat is not connected yet (finish the setup in the Payments tab)"
+          : refreshed && !refreshed.keyValid
+            ? "its RevenueCat key no longer works (connect again in the Payments tab)"
+            : refreshed?.unreachable
+              ? "RevenueCat could not be reached to look up the App Store key (try again in a moment)"
+              : refreshed?.appStoreAmbiguous
+                ? "its RevenueCat project has more than one App Store app, so Botflow cannot tell which one this build is (keep one, then choose Check again in the Payments tab)"
+                : "its RevenueCat project has no App Store app yet (follow \"Selling for real on the App Store\" in the Payments tab, then choose Check again there)";
+        return NextResponse.json(
+          {
+            error:
+              `This app sells in-app purchases, but ${why}, so this build would ship with purchases switched off. ` +
+              "You can also submit anyway to upload a build without purchases.",
+            purchasesOff: true,
+          },
+          { status: 409 },
+        );
+      }
+    }
     await materializeSwiftBuildConfig(projectId, "release");
     const tarball = await tarSandboxProject(projectId, { excludeConvex: true });
 

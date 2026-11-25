@@ -4,7 +4,7 @@ import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { requireProjectAccess } from '@/lib/project-access';
-import { provisionConvexBackend, getConvexPlatformClient } from '@/lib/convex-platform';
+import { provisionConvexBackend, getConvexPlatformClient, isConvexQuotaError } from '@/lib/convex-platform';
 import { getUserTierAndLimits, isBetaUser } from '@/lib/tier';
 import { countUserConvexProjects } from '@/lib/usage';
 import { limitReachedResponse } from '@/lib/plan-response';
@@ -137,7 +137,7 @@ export async function POST(
         } catch (provisionErr) {
           const msg = provisionErr instanceof Error ? provisionErr.message : String(provisionErr);
           console.error('[convex/deploy] provisioning failed:', msg);
-          const isQuota = msg.includes('ProjectQuotaReached');
+          const isQuota = isConvexQuotaError(msg);
           return NextResponse.json(
             {
               // Generic for non-quota so we never echo an upstream Convex body to

@@ -177,11 +177,49 @@ export const HOST_TOOL_DEFINITIONS: Record<string, HostToolDefinition> = {
   initialize_revenuecat_payments: {
     name: "initialize_revenuecat_payments",
     description:
-      "Set up RevenueCat in-app purchases for this Swift project. Call this FIRST when the user asks for a paywall, subscriptions, premium features, consumables, or any iOS payment flow. " +
-      "It opens the Payments setup wizard when the user has not linked RevenueCat yet, or enables the project immediately when they have. " +
-      "Do not hardcode a RevenueCat SDK key: Botflow writes Sources/Core/RevenueCatConfig.swift before builds. " +
-      "Returns status='already-connected', 'needs-connect', 'tier-blocked', or 'backend-blocked'.",
+      "Set up RevenueCat in-app purchases for this Swift project. Call this FIRST when the user asks for a paywall, subscriptions, premium features, a tip jar, consumables, or any iOS payment flow. It adds the backend receiver files and Sources/Core/RevenueCatConfig.swift, and opens the Payments tab for the user if they have not connected RevenueCat yet. It never blocks. Returns status='already-connected' (go on to get_revenuecat_products / create_revenuecat_product), 'needs-connect' (keep building; the user pastes one key in the Payments tab and a system note tells you when they have), 'tier-blocked' (relay the message) or 'backend-blocked' (the project has no backend). Never ask the user for keys and never hardcode one.",
     inputSchema: EMPTY_INPUT,
+  },
+  get_revenuecat_products: {
+    name: "get_revenuecat_products",
+    description:
+      "Read what this app sells in RevenueCat: products (with Test Store price and the entitlements they unlock), entitlements, and offerings with their packages. Also returns 'issues': anything that would leave the paywall empty or a purchase unlocking nothing, and 'readyForTestPurchases'. Call it before writing paywall or entitlement code so you use real identifiers, and after creating products to confirm there are no blocker issues. Returns status='needs-connect' when the user has not finished the Payments tab.",
+    inputSchema: EMPTY_INPUT,
+  },
+  create_revenuecat_product: {
+    name: "create_revenuecat_product",
+    description:
+      "Create one purchasable product in RevenueCat, end to end, in a single idempotent call: the product (in the Test Store, and in the App Store app when one exists), its Test Store price, the entitlement it unlocks, and its slot on the paywall (offering + package). Calling it again with the same arguments changes nothing. Typical monthly subscription: { storeIdentifier: 'pro_monthly', type: 'subscription', displayName: 'Pro (monthly)', priceUsd: 4.99, subscriptionDuration: 'P1M', entitlement: 'pro', package: '$rc_monthly' }. Yearly: package '$rc_annual', subscriptionDuration 'P1Y'. Lifetime unlock: type 'non_consumable', package '$rc_lifetime'. Consumable (coins, tips): type 'consumable', a custom package key, and usually no entitlement. Use the returned 'identifiers' verbatim in the app. A Test Store price cannot be changed later: a new price means a new storeIdentifier in the same package (it replaces the old product). The result's 'notes' say what is still missing; relay the ones the user must act on. Returns status='needs-connect' when the user has not finished the Payments tab.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        storeIdentifier: { type: "string", description: "Product id, letters/digits/._ only, e.g. pro_monthly" },
+        type: {
+          type: "string",
+          enum: ["subscription", "non_consumable", "consumable", "non_renewing_subscription"],
+        },
+        displayName: { type: "string", description: "Name the buyer sees" },
+        priceUsd: { type: "number", description: "Test Store price in US dollars, e.g. 4.99" },
+        subscriptionDuration: { type: "string", enum: ["P1W", "P1M", "P2M", "P3M", "P6M", "P1Y"] },
+        entitlement: { type: "string", description: "Entitlement this purchase unlocks, e.g. pro" },
+        offering: { type: "string", description: "Offering to place it in; omit to use the one the paywall already shows" },
+        package: { type: "string", description: "Package slot: $rc_monthly, $rc_annual, $rc_lifetime, or a custom key" },
+      },
+      required: ["storeIdentifier", "type"],
+    },
+  },
+  remove_revenuecat_package: {
+    name: "remove_revenuecat_package",
+    description:
+      "Remove a package (a paywall slot such as $rc_annual) from the offering the paywall shows, so the app stops offering it. Use it for products the user did not ask for, typically the starter Monthly / Yearly / Lifetime products RevenueCat adds to every new project, or for a plan that is no longer sold. The products stay in RevenueCat; only the paywall slot goes. Removing a slot that does not exist is a no-op. Returns the packages that remain.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        package: { type: "string", description: "Package identifier to remove, e.g. $rc_annual" },
+        offering: { type: "string", description: "Offering it is in; omit for the one the paywall shows" },
+      },
+      required: ["package"],
+    },
   },
   get_stripe_products: {
     name: "get_stripe_products",
@@ -697,7 +735,14 @@ export function selectHostTools(input: SelectHostToolsInput): string[] {
       // aware in the host route — the Swift OAuth flow is served entirely by
       // the generated convex/http.ts, no client work).
       customTools.push("convex_deploy", "get_convex_logs", "setup_auth", "setup_oauth_provider");
-      if (revenuecatEnabled) customTools.push("initialize_revenuecat_payments");
+      if (revenuecatEnabled) {
+        customTools.push(
+          "initialize_revenuecat_payments",
+          "get_revenuecat_products",
+          "create_revenuecat_product",
+          "remove_revenuecat_package",
+        );
+      }
     }
     // Git tools — same surface as sandboxed-web. The host route executes them
     // via sandbox-git against the persistent sandbox, which is platform-

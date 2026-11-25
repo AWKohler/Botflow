@@ -1,5 +1,7 @@
 # RevenueCat iOS Payments — Integration Plan
 
+> **Superseded in part (2026-11-22).** Connections are now per project, not per user, and setup takes one pasted secret key: see `src/lib/revenuecat-connection.ts` and `docs/features/revenuecat-ios.mdx`. The App Store Connect automation described below is still future work.
+
 Status: **APPROVED — Model B (BYO RevenueCat key) locked for v1.** Model A (platform-hosted) deferred to a parallel business track (Phase 5).
 Mirrors the existing Stripe Connect slice, but targets the **Swift / persistent workspace** instead of the sandboxed-web workspace.
 

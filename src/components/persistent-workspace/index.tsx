@@ -595,7 +595,11 @@ export function PersistentWorkspace({
                 { value: "preview", text: "Preview" },
                 { value: "code", text: "Code" },
                 ...(hasBackend ? [{ value: "database", text: "Database" }] : []),
-                ...(revenuecatEnabled ? [{ value: "revenuecat", text: "Payments" }] : []),
+                // The dot says "the agent is waiting for you here": it asked for
+                // payments and the RevenueCat key has not been pasted yet.
+                ...(revenuecatEnabled
+                  ? [{ value: "revenuecat", text: "Payments", attention: revenuecatStatus === "connecting" }]
+                  : []),
               ] as TabOption<WorkspaceView>[]
             }
             selected={currentView}
@@ -897,7 +901,8 @@ export function PersistentWorkspace({
               <div className="h-full w-full overflow-hidden rounded-xl border border-border bg-bg">
                 <RevenueCatTab
                   projectId={projectId}
-                  status={revenuecatStatus === "connected" ? "connected" : "connecting"}
+                  status={revenuecatStatus}
+                  active={currentView === "revenuecat"}
                   onChanged={() => void refreshProject()}
                 />
               </div>

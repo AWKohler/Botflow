@@ -658,8 +658,11 @@ FILES WRITTEN (WRITE THESE EXACTLY AS PROVIDED IN THE files ARRAY):
 REQUIRED SEQUENCE AFTER WRITING FILES:
   1. Add the mobile-Safari OAuth cookie-fix postinstall entry to package.json
      (see MOBILE SAFARI OAUTH COOKIE FIX below — copy the line exactly).
-  2. pnpm add @convex-dev/auth @auth/core   (the postinstall runs during this
-     install; its "[fix-auth-cookies]" line in the output confirms it)
+  2. pnpm add @convex-dev/auth@0.0.98 @auth/core@0.37.0
+     (EXACTLY these versions: @convex-dev/auth 2.x removed authTables and the
+     server API this boilerplate uses, so an unpinned install fails to deploy.
+     The postinstall runs during this install; its "[fix-auth-cookies]" line in
+     the output confirms it)
   3. convexDeploy  ← MUST run this before the frontend can sign in
   4. After wiring the sign-in form, sign up with a test email then call
      getBrowserLog. If the catch handler fires, READ the logged error before
@@ -934,7 +937,9 @@ WHAT YOU MUST DO AFTER setupAuth RETURNS:
      every Convex deploy. After installing, READ its "[fix-auth-cookies]"
      output line: "patched"/"ok" = in place; "WARNING" = could not land,
      follow its instructions; no line at all = the entry was mis-pasted.
-  3. pnpm add @convex-dev/auth @auth/core   (in that same directory)
+  3. pnpm add @convex-dev/auth@0.0.98 @auth/core@0.37.0   (in that same directory;
+     EXACTLY these versions: @convex-dev/auth 2.x removed authTables and the
+     server API this boilerplate uses, so an unpinned install fails to deploy)
   4. Run convexDeploy. The sign-in page and auth functions are NOT live until you do.
   5. That is it for enabling sign-in — do NOT edit ConvexConfig.swift (platform-
      managed) and do NOT build a native login form; the hosted page IS the form.
