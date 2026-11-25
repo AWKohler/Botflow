@@ -254,31 +254,35 @@ export const DuoViewer = forwardRef<DuoViewerHandle, DuoViewerProps>(function Du
     if (!live) hingeSent.current = null;
   }, [live]);
 
-  useEffect(() => {
-    const scene = sceneRef.current;
-    if (!scene || !state) return;
-    scene.setLit({ cover: state.cover.lit, inner: state.inner.lit });
-    scene.setReportedHinge(state.hingeAngle);
-  }, [state]);
-
-  // When a session comes up, it starts open and upright. If the device here
-  // was already folded or turned (posed while the app was building), say so.
+  // A session comes up open and upright. The first time it reports in, the
+  // device here may already be folded or turned (posed while the app was
+  // building): then the session is told, instead of the device being put
+  // back. After that the host's reports are followed.
   const announced = useRef(false);
   useEffect(() => {
     if (!live || !state) {
       announced.current = false;
       return;
     }
-    if (announced.current) return;
-    announced.current = true;
     const scene = sceneRef.current;
     if (!scene) return;
-    if (Math.abs(scene.getHinge() - state.hingeAngle) > 1) requestHinge(scene.getHinge(), true);
+    scene.setLit({ cover: state.cover.lit, inner: state.inner.lit });
+    if (announced.current) {
+      scene.setReportedHinge(state.hingeAngle);
+      return;
+    }
+    announced.current = true;
+    if (Math.abs(scene.getHinge() - state.hingeAngle) > 1) {
+      // Through the scene, so it also holds off the host's reports while the hinge eases there.
+      scene.setHinge(scene.getHinge(), true);
+    } else {
+      scene.setReportedHinge(state.hingeAngle);
+    }
     const held = scene.getOrientation();
     if (held !== (state.orientation ?? "portrait") && features.includes("device-orientation")) {
       onInputRef.current({ kind: "device_orientation", orientation: held });
     }
-  }, [live, state, features, requestHinge]);
+  }, [live, state, features]);
 
   useEffect(() => {
     sceneRef.current?.setDarkBackdrop(dark);

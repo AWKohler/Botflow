@@ -27,6 +27,16 @@ enum SimInput: Sendable {
     case scroll(x: Double, y: Double, deltaX: Double, deltaY: Double)
     case text(String)
     case key(String)
+    // The rest are honoured by iPhone Duo sessions (the calibration's features say so).
+    /// One finger, live, on one of the Duo's panels ("cover" / "inner").
+    /// `phase` is "down", "move" or "up"; `finger` is 0 or 1.
+    case touch(display: String, phase: String, x: Double, y: Double, finger: Int)
+    /// Fold the Duo to this hinge angle (0 shut … 180 open flat).
+    case hinge(Double)
+    /// How the Duo is held ("portrait", "landscape-left", …).
+    case deviceOrientation(String)
+    /// A hardware button: "home", "lock", "volumeUp", "volumeDown".
+    case button(String)
 
     var json: JSONValue {
         switch self {
@@ -45,18 +55,43 @@ enum SimInput: Sendable {
             return .object(["kind": .string("text"), "text": .string(text)])
         case .key(let key):
             return .object(["kind": .string("key"), "key": .string(key)])
+        case .touch(let display, let phase, let x, let y, let finger):
+            return .object([
+                "kind": .string("touch"), "display": .string(display), "phase": .string(phase),
+                "normX": .number(x), "normY": .number(y), "finger": .number(Double(finger)),
+            ])
+        case .hinge(let angle):
+            return .object(["kind": .string("hinge"), "angle": .number((angle * 10).rounded() / 10)])
+        case .deviceOrientation(let orientation):
+            return .object(["kind": .string("device_orientation"), "orientation": .string(orientation)])
+        case .button(let button):
+            return .object(["kind": .string("button"), "button": .string(button)])
         }
     }
+}
+
+/// The host's report of an iPhone Duo's hinge and panels.
+struct SimDuoState: Equatable, Sendable {
+    /// 0 shut … 180 open flat.
+    var hingeAngle: Double
+    var hingeMoving: Bool
+    var orientation: String?
+    var coverLit: Bool
+    var innerLit: Bool
 }
 
 enum SimEvent: Sendable {
     case open
     case state(String, queuePosition: Int?, reason: String?)
-    case videoConfig(width: Int, height: Int)
+    /// `display` is "cover" or "inner" for an iPhone Duo (one stream per panel), nil otherwise.
+    case videoConfig(width: Int, height: Int, display: String?)
+    /// iPhone Duo: where the hinge is and which panels are on.
+    case duoState(SimDuoState)
     /// The simulated screen's size in its own points, and the optional input
     /// fields this session's host honours (empty for hosts that predate them).
     case calibration(logicalWidth: Double?, logicalHeight: Double?, features: [String])
-    case video(Data, keyframe: Bool, timestampMs: UInt64)
+    /// `stream` is 0 except for the iPhone Duo's inner panel (1).
+    case video(Data, keyframe: Bool, timestampMs: UInt64, stream: Int)
     case status(String)
     case error(String)
     case buildStatus(state: String, exitCode: Int?, message: String?)
@@ -141,7 +176,11 @@ final class SimStreamClient: NSObject, URLSessionWebSocketDelegate, @unchecked S
         let flags = data[data.startIndex + 1]
         var timestamp: UInt64 = 0
         for offset in 2..<10 { timestamp = (timestamp << 8) | UInt64(data[data.startIndex + offset]) }
-        onEvent(.video(data.subdata(in: (data.startIndex + 10)..<data.endIndex), keyframe: flags & 1 == 1, timestampMs: timestamp))
+        // Flags: bit 0 keyframe, bits 1–2 the stream (an iPhone Duo's panel).
+        onEvent(.video(
+            data.subdata(in: (data.startIndex + 10)..<data.endIndex),
+            keyframe: flags & 1 == 1, timestampMs: timestamp, stream: Int((flags & 0b110) >> 1)
+        ))
     }
 
     private func handleText(_ text: String) {
@@ -150,7 +189,15 @@ final class SimStreamClient: NSObject, URLSessionWebSocketDelegate, @unchecked S
         case "state":
             onEvent(.state(message["state"]?.stringValue ?? "", queuePosition: message["queuePosition"]?.intValue, reason: message["reason"]?.stringValue))
         case "video_config":
-            onEvent(.videoConfig(width: message["width"]?.intValue ?? 0, height: message["height"]?.intValue ?? 0))
+            onEvent(.videoConfig(width: message["width"]?.intValue ?? 0, height: message["height"]?.intValue ?? 0, display: message["display"]?.stringValue))
+        case "duo_state":
+            onEvent(.duoState(SimDuoState(
+                hingeAngle: message["hingeAngle"]?.doubleValue ?? 180,
+                hingeMoving: message["hingeMoving"]?.boolValue ?? false,
+                orientation: message["orientation"]?.stringValue,
+                coverLit: message["cover"]?["lit"]?.boolValue ?? false,
+                innerLit: message["inner"]?["lit"]?.boolValue ?? true
+            )))
         case "calibration":
             let logical = message["deviceLogical"]
             let features = message["features"]?.arrayValue?.compactMap(\.stringValue) ?? []

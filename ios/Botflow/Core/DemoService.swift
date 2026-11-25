@@ -363,8 +363,15 @@ final class DemoService: BotflowService, @unchecked Sendable {
 
     // MARK: Simulator
 
+    func simulatorDevices() async -> [SimDevice] { SimDevice.allCases }
+
     func startSimulator(projectId: String, device: SimDevice, landscape: Bool) async throws -> SimulatorSession {
         await delay(0.8)
+        // `-BotflowSimStreamURL ws://…` plays a real simulator stream in demo
+        // mode: for trying the simulator views against a host without signing in.
+        if let stream = UserDefaults.standard.string(forKey: "BotflowSimStreamURL") {
+            return SimulatorSession(sessionId: "debug-stream", wsUrl: stream)
+        }
         return SimulatorSession(sessionId: "demo-sim", wsUrl: "demo://simulator")
     }
 
