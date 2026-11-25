@@ -96,6 +96,15 @@ const HINGE_GRAB_MM = 15;
 /** After the user moves the hinge, the host's reports are ignored this long
  * (they trail behind while it eases there). */
 const HINGE_USER_HOLD_MS = 1400;
+/** How long after this view turned the device a report that disagrees is taken to be an older one. */
+const ORIENTATION_OWN_HOLD_MS = 2500;
+/** Quarter turns, anticlockwise as seen, that put the device in each orientation. */
+const QUARTER_TURNS: Record<DeviceOrientation, number> = {
+  portrait: 0,
+  "landscape-left": 1,
+  "portrait-upside-down": 2,
+  "landscape-right": -1,
+};
 
 type Pick =
   | { kind: "button"; index: number }
@@ -166,6 +175,12 @@ export class DuoScene {
   private orientation: DeviceOrientation = "portrait";
   private orientationCandidate: DeviceOrientation = "portrait";
   private orientationSince = 0;
+  /** When this view last told the session how the device is held. */
+  private orientationOwnAt = Number.NEGATIVE_INFINITY;
+  /** Sensing is off until then (the model is being turned to follow the session). */
+  private orientationQuietUntil = 0;
+  private orientationReported: DeviceOrientation | null = null;
+  private followTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Pointer.
   private readonly drags = new Map<number, Drag>();
@@ -358,17 +373,57 @@ export class DuoScene {
    */
   adoptOrientation(orientation: DeviceOrientation): void {
     if (orientation === this.orientation) return;
-    const quarter: Record<DeviceOrientation, number> = {
-      portrait: 0,
-      "landscape-left": 1,
-      "portrait-upside-down": 2,
-      "landscape-right": -1,
-    };
     this.attitudeTarget = null;
-    this.userQuatTarget.setFromAxisAngle(AXIS_Z, (quarter[orientation] * Math.PI) / 2);
+    this.userQuatTarget.setFromAxisAngle(AXIS_Z, (QUARTER_TURNS[orientation] * Math.PI) / 2);
     this.orientation = orientation;
     this.orientationCandidate = orientation;
     this.invalidate();
+  }
+
+  /**
+   * The session's report of how its device is held, after this view has joined
+   * it. Usually it is this view's own turn coming back. When it is not —
+   * another view of the same session turned the device (the full-screen view
+   * over this one, another tab) — this model is turned to match, keeping its
+   * tilt: otherwise it would show a picture drawn for a device held another way.
+   */
+  followOrientation(reported: DeviceOrientation): void {
+    this.orientationReported = reported;
+    if (this.disposed || reported === this.orientation) return;
+    const now = performance.now();
+    // While the person here is turning the device, or just has, theirs is the
+    // newer fact and a report that disagrees an older one. Look again later.
+    const turning = [...this.drags.values()].some((d) => d.kind === "orbit" || d.kind === "hinge");
+    const wait = turning ? 400 : this.orientationOwnAt + ORIENTATION_OWN_HOLD_MS - now;
+    if (wait > 0) {
+      this.followTimer ??= setTimeout(() => {
+        this.followTimer = null;
+        if (this.orientationReported) this.followOrientation(this.orientationReported);
+      }, wait + 20);
+      return;
+    }
+    // How this model, as it is, would be said to be held (leaning towards the
+    // report): only if that is something else does it need turning.
+    const beta = hingeToBeta(this.hingeTarget);
+    const attitude =
+      this.attitudeTarget?.clone() ??
+      this.userQuatTarget.clone().multiply(new THREE.Quaternion().setFromAxisAngle(AXIS_Y, autoYaw(beta)));
+    const own = this.heldOrientation(beta, attitude, reported);
+    if (own !== reported) {
+      this.settleAttitude();
+      const quarters = QUARTER_TURNS[reported] - QUARTER_TURNS[own];
+      this.userQuatTarget.premultiply(new THREE.Quaternion().setFromAxisAngle(AXIS_Z, (quarters * Math.PI) / 2));
+      this.spin = { x: 0, y: 0 };
+    }
+    this.orientation = this.orientationCandidate = reported;
+    this.orientationQuietUntil = now + 900;
+    this.invalidate();
+  }
+
+  /** How the device is held, to tell a session that has just been joined. */
+  announceOrientation(): DeviceOrientation {
+    this.orientationOwnAt = performance.now();
+    return this.orientation;
   }
 
   /** Whether the person has folded or turned the device themselves. */
@@ -538,6 +593,7 @@ export class DuoScene {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     if (this.touchKeepAlive) clearInterval(this.touchKeepAlive);
+    if (this.followTimer) clearTimeout(this.followTimer);
     const c = this.canvas;
     c.removeEventListener("pointerdown", this.onPointerDown);
     c.removeEventListener("pointermove", this.onPointerMove);
@@ -804,6 +860,12 @@ export class DuoScene {
   }
 
   private senseOrientation(beta: number, now: number, moving: boolean): void {
+    if (performance.now() < this.orientationQuietUntil) {
+      // Being turned to follow the session: what it passes through on the way is not news.
+      this.orientationCandidate = this.orientation;
+      if (!moving) this.settleFrames = Math.max(this.settleFrames, 2);
+      return;
+    }
     const next = this.heldOrientation(beta, this.pivot.quaternion, this.orientation);
     if (next !== this.orientationCandidate) {
       this.orientationCandidate = next;
@@ -812,6 +874,7 @@ export class DuoScene {
     if (this.orientationCandidate !== this.orientation) {
       if (now - this.orientationSince > 260) {
         this.orientation = this.orientationCandidate;
+        this.orientationOwnAt = performance.now();
         this.callbacks.onOrientation?.(this.orientation);
       } else if (!moving) {
         // Nothing else is animating: come back to check when the wait is over.

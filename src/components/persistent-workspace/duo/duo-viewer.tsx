@@ -305,6 +305,7 @@ export const DuoViewer = forwardRef<DuoViewerHandle, DuoViewerProps>(function Du
     scene.setLit({ cover: state.cover.lit, inner: state.inner.lit });
     if (announced.current) {
       scene.setReportedHinge(state.hingeAngle);
+      if (state.orientation) scene.followOrientation(state.orientation);
       return;
     }
     announced.current = true;
@@ -318,7 +319,7 @@ export const DuoViewer = forwardRef<DuoViewerHandle, DuoViewerProps>(function Du
       // Through the scene, so it also holds off the host's reports while the hinge eases there.
       scene.setHinge(scene.getHinge(), true);
     }
-    const held = scene.getOrientation();
+    const held = scene.announceOrientation();
     if (held !== reportedOrientation && features.includes("device-orientation")) {
       onInputRef.current({ kind: "device_orientation", orientation: held });
     }

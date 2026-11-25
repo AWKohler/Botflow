@@ -143,6 +143,14 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
     private(set) var orientation: DuoHeldOrientation = .portrait
     private var orientationCandidate: DuoHeldOrientation = .portrait
     private var orientationSince: CFTimeInterval = 0
+    /// When this view last told the session how the device is held.
+    private var orientationOwnAt: CFTimeInterval = -.infinity
+    /// Sensing is off until then (the model is being turned to follow the session).
+    private var orientationQuietUntil: CFTimeInterval = 0
+    private var orientationReported: DuoHeldOrientation?
+    private var followScheduled = false
+    /// How long after this view turned the device a report that disagrees is taken to be an older one.
+    private static let orientationOwnHold: CFTimeInterval = 2.5
 
     // Textures. The decoder's textures have no mipmaps, and a 2,853-pixel
     // panel drawn a few hundred points wide shimmers without them; so each new
@@ -310,18 +318,72 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
     /// iOS the device has been turned back.
     func adoptOrientation(_ held: DuoHeldOrientation) {
         guard held != orientation else { return }
-        let quarters: Double
-        switch held {
-        case .portrait: quarters = 0
-        case .landscapeLeft: quarters = 1
-        case .portraitUpsideDown: quarters = 2
-        case .landscapeRight: quarters = -1
-        }
         attitudeTarget = nil
-        userQuatTarget = simd_quatd(angle: quarters * .pi / 2, axis: SIMD3(0, 0, 1))
+        userQuatTarget = simd_quatd(angle: Double(Self.quarterTurns(held)) * .pi / 2, axis: SIMD3(0, 0, 1))
         orientation = held
         orientationCandidate = held
         invalidate()
+    }
+
+    /// The session's report of how its device is held, after this view has
+    /// joined it. Usually it is this view's own turn coming back. When it is
+    /// not — another view of the same session turned the device (the
+    /// full-screen view over this one) — this model is turned to match,
+    /// keeping its tilt: otherwise it would show a picture drawn for a device
+    /// held another way.
+    func followOrientation(_ reported: DuoHeldOrientation) {
+        orientationReported = reported
+        guard reported != orientation else { return }
+        let now = CACurrentMediaTime()
+        // While the person here is turning the device, or just has, theirs is
+        // the newer fact and a report that disagrees an older one. Look again later.
+        let turning = drags.values.contains { drag in
+            switch drag {
+            case .orbit, .hinge: return true
+            default: return false
+            }
+        }
+        let wait = turning ? 0.4 : orientationOwnAt + Self.orientationOwnHold - now
+        if wait > 0 {
+            guard !followScheduled else { return }
+            followScheduled = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait + 0.02) { [weak self] in
+                guard let self else { return }
+                self.followScheduled = false
+                if let reported = self.orientationReported { self.followOrientation(reported) }
+            }
+            return
+        }
+        // How this model, as it is, would be said to be held (leaning towards
+        // the report): only if that is something else does it need turning.
+        let beta = Duo.beta(hinge: hingeTarget)
+        let own = heldOrientation(beta: beta, total: attitudeTarget ?? userQuatTarget * autoQuat(beta), previous: reported)
+        if own != reported {
+            settleAttitude()
+            let quarters = Double(Self.quarterTurns(reported) - Self.quarterTurns(own))
+            userQuatTarget = simd_quatd(angle: quarters * .pi / 2, axis: SIMD3(0, 0, 1)) * userQuatTarget
+            spin = .zero
+        }
+        orientation = reported
+        orientationCandidate = reported
+        orientationQuietUntil = now + 0.9
+        invalidate()
+    }
+
+    /// How the device is held, to tell a session that has just been joined.
+    func announceOrientation() -> DuoHeldOrientation {
+        orientationOwnAt = CACurrentMediaTime()
+        return orientation
+    }
+
+    /// Quarter turns, anticlockwise as seen, that put the device in an orientation.
+    private static func quarterTurns(_ held: DuoHeldOrientation) -> Int {
+        switch held {
+        case .portrait: return 0
+        case .landscapeLeft: return 1
+        case .portraitUpsideDown: return 2
+        case .landscapeRight: return -1
+        }
     }
 
     /// Fold to an angle (from the slider).
@@ -610,6 +672,12 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
     }
 
     private func senseOrientation(beta: Double, total: simd_quatd, now: CFTimeInterval, moving: Bool) {
+        if CACurrentMediaTime() < orientationQuietUntil {
+            // Being turned to follow the session: what it passes through on the way is not news.
+            orientationCandidate = orientation
+            if !moving { settleFrames = max(settleFrames, 2) }
+            return
+        }
         let next = heldOrientation(beta: beta, total: total, previous: orientation)
         if next != orientationCandidate {
             orientationCandidate = next
@@ -618,6 +686,7 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
         if orientationCandidate != orientation {
             if now - orientationSince > 0.26 {
                 orientation = orientationCandidate
+                orientationOwnAt = CACurrentMediaTime()
                 onOrientation?(orientation)
             } else if !moving {
                 settleFrames = max(settleFrames, 2)

@@ -285,6 +285,9 @@ struct DuoSceneRepresentable: UIViewRepresentable {
             view.lit = [.cover: state.coverLit, .inner: state.innerLit]
             if context.coordinator.announced {
                 view.setReportedHinge(state.hingeAngle)
+                if let reported = state.orientation.flatMap(DuoHeldOrientation.init(rawValue:)) {
+                    view.followOrientation(reported)
+                }
             } else {
                 context.coordinator.announced = true
                 let reported = state.orientation.flatMap(DuoHeldOrientation.init(rawValue:)) ?? .portrait
@@ -296,7 +299,8 @@ struct DuoSceneRepresentable: UIViewRepresentable {
                         // Through the view, so it also holds off the host's reports while the hinge eases there.
                         view.setHinge(view.hingeTarget, settled: true)
                     }
-                    if view.orientation != reported { controller.setDuoOrientation(view.orientation) }
+                    let held = view.announceOrientation()
+                    if held != reported { controller.setDuoOrientation(held) }
                 }
             }
         } else {
