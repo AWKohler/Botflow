@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { releaseSession } from "@/lib/sim-platform";
+import { forgetSimRoute, targetForSimWork } from "@/lib/sim-hosts/routing";
 import {
   dropSwiftPreviewSession,
   hasSwiftPreviewSession,
@@ -54,7 +55,8 @@ export async function DELETE(
   }
 
   try {
-    await releaseSession(sessionId);
+    await releaseSession(sessionId, await targetForSimWork("session", sessionId));
+    await forgetSimRoute("session", sessionId);
   } catch (error) {
     console.warn(
       "[swift-preview/release]",

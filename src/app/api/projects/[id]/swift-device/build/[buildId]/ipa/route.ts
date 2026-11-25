@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { downloadDeviceBuildIpa } from "@/lib/sim-platform";
+import { targetForSimWork } from "@/lib/sim-hosts/routing";
 import { swiftProjectForbidden } from "@/lib/swift-access";
 import {
   ownsSwiftDeviceBuild,
@@ -49,7 +50,7 @@ export async function GET(
   }
 
   try {
-    const artifact = await downloadDeviceBuildIpa(buildId);
+    const artifact = await downloadDeviceBuildIpa(buildId, await targetForSimWork("device-build", buildId));
     const headers = new Headers({
       "content-type": artifact.contentType,
       "cache-control": "private, max-age=300",

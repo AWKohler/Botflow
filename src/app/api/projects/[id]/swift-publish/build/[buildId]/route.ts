@@ -7,6 +7,7 @@ import {
   type AscAuth,
 } from "@/lib/asc-publish";
 import { getAppStoreBuildStatus, type AppStoreBuildSummary } from "@/lib/sim-platform";
+import { targetForSimWork } from "@/lib/sim-hosts/routing";
 import { swiftProjectForbidden } from "@/lib/swift-access";
 import { ownsSwiftPublishBuild } from "@/lib/swift-publish-store";
 import { getUserCredentials } from "@/lib/user-credentials";
@@ -47,7 +48,7 @@ export async function GET(
   }
 
   try {
-    const build = await getAppStoreBuildStatus(buildId);
+    const build = await getAppStoreBuildStatus(buildId, await targetForSimWork("app-store-build", buildId));
     if (build.state !== "succeeded") {
       return NextResponse.json(build);
     }

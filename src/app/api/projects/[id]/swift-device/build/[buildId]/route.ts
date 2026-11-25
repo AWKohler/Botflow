@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { requireProjectAccess } from "@/lib/project-access";
 import { getDeviceBuild } from "@/lib/sim-platform";
+import { targetForSimWork } from "@/lib/sim-hosts/routing";
 import { swiftProjectForbidden } from "@/lib/swift-access";
 import {
   ownsSwiftDeviceBuild,
@@ -44,7 +45,7 @@ export async function GET(
   }
 
   try {
-    const build = await getDeviceBuild(buildId);
+    const build = await getDeviceBuild(buildId, await targetForSimWork("device-build", buildId));
     return NextResponse.json(await withDownloadUrl(build, req, projectId));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Device build status failed";

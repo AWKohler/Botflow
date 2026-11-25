@@ -7,13 +7,14 @@ import { UserButton } from '@/components/auth';
 import { cn } from '@/lib/utils';
 import { BrandMark } from '@/components/site/SiteHeader';
 import { Badge } from '@/components/ui/badge';
-import { Activity, Boxes, Gauge, UserCog, Users } from 'lucide-react';
+import { Activity, Boxes, Gauge, Smartphone, UserCog, Users } from 'lucide-react';
 
 const TABS = [
   { href: '/panel', label: 'Overview', icon: Gauge },
   { href: '/panel/users', label: 'Users', icon: Users },
   { href: '/panel/accounts', label: 'Accounts', icon: UserCog },
   { href: '/panel/infra', label: 'Infrastructure', icon: Boxes },
+  { href: '/panel/simulators', label: 'Simulators', icon: Smartphone },
   { href: '/panel/providers', label: 'Providers', icon: Activity },
 ];
 

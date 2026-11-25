@@ -9,6 +9,7 @@ import {
 } from "@/lib/asc-publish";
 import { materializeSwiftBuildConfig } from "@/lib/sandbox-env";
 import { submitAppStoreBuild } from "@/lib/sim-platform";
+import { NoSimHostError, pickSimTarget, rememberSimRoute } from "@/lib/sim-hosts/routing";
 import { swiftProjectForbidden } from "@/lib/swift-access";
 import { recordSwiftPublishBuild } from "@/lib/swift-publish-store";
 import { getUserCredentials } from "@/lib/user-credentials";
@@ -134,6 +135,8 @@ export async function POST(
     const tarball = await tarSandboxProject(projectId, { excludeConvex: true });
 
     // 5. Hand off to the Mac controller for archive → signed export → upload.
+    //    Release builds never go to beta-only hosts (the experimental ones).
+    const target = await pickSimTarget(userId, { release: true });
     const build = await submitAppStoreBuild(tarball, {
       teamId: appleTeamId,
       keyId: appleAscKeyId,
@@ -144,7 +147,8 @@ export async function POST(
       marketingVersion,
       buildNumber,
       ...(scheme ? { scheme } : {}),
-    });
+    }, target);
+    await rememberSimRoute("app-store-build", build.buildId, target);
 
     // 6. Record ownership so status polls can be authorized cross-instance.
     await recordSwiftPublishBuild(build.buildId, userId, projectId);
@@ -157,6 +161,9 @@ export async function POST(
       bundleId,
     });
   } catch (error) {
+    if (error instanceof NoSimHostError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
     // User-actionable failures (missing creds / app record / bad input) are
     // returned above. Anything reaching here is unexpected: log the detail
     // server-side (the p8 + x-asc-* headers are never part of these messages)
