@@ -75,6 +75,8 @@ export interface DuoPosture {
   zoom: number;
   /** The person set any of this themselves (as opposed to it being the default). */
   posed: boolean;
+  /** How iOS was last told the device is held. */
+  held: DeviceOrientation;
 }
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
@@ -383,6 +385,7 @@ export class DuoScene {
       attitude: a ? [a.x, a.y, a.z, a.w] : null,
       zoom: this.zoomTarget,
       posed: this.posed,
+      held: this.orientation,
     };
   }
 
@@ -399,6 +402,11 @@ export class DuoScene {
     this.zoom = this.zoomTarget = clamp(posture.zoom, ZOOM_MIN, ZOOM_MAX);
     this.posed = posture.posed;
     this.spin = { x: 0, y: 0 };
+    // The device is already held this way: know it now, rather than starting
+    // from "upright" and telling iOS it was turned back for a moment.
+    const beta = hingeToBeta(this.hingeTarget);
+    const attitude = this.userQuat.clone().multiply(new THREE.Quaternion().setFromAxisAngle(AXIS_Y, autoYaw(beta)));
+    this.orientation = this.orientationCandidate = this.heldOrientation(beta, attitude, posture.held);
     this.applyFold();
     if (this.framed) this.distance = this.distanceTarget = this.fitDistance();
     this.invalidate();
@@ -782,16 +790,21 @@ export class DuoScene {
    * Work out how the device is being held and, once it has stayed that way a
    * moment, say so (iOS turns the interface to match).
    */
-  private senseOrientation(beta: number, now: number, moving: boolean): void {
+  /** How a device in this fold and attitude is being held (see orientationFromUp). */
+  private heldOrientation(beta: number, attitude: THREE.Quaternion, previous: DeviceOrientation): DeviceOrientation {
     // World up, in the device's own axes.
-    const up = WORLD_UP.clone().applyQuaternion(this.pivot.quaternion.clone().invert());
+    const up = WORLD_UP.clone().applyQuaternion(attitude.clone().invert());
     const coverX = coverHalfDirection({ x: 1, y: 0, z: 0 }, beta);
-    const next = orientationFromUp(
+    return orientationFromUp(
       { x: up.x, y: up.y },
       { x: up.x * coverX.x + up.y * coverX.y + up.z * coverX.z, y: up.y },
       this.lit.cover && !this.lit.inner,
-      this.orientation,
+      previous,
     );
+  }
+
+  private senseOrientation(beta: number, now: number, moving: boolean): void {
+    const next = this.heldOrientation(beta, this.pivot.quaternion, this.orientation);
     if (next !== this.orientationCandidate) {
       this.orientationCandidate = next;
       this.orientationSince = now;

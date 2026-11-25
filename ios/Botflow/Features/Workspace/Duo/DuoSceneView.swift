@@ -107,10 +107,12 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
         var attitude: simd_quatd?
         var zoom = 1.0
         var posed = false
+        /// How iOS was last told the device is held.
+        var held = DuoHeldOrientation.portrait
     }
 
     var posture: Posture {
-        Posture(hinge: hingeTarget, turn: userQuatTarget, attitude: attitudeTarget, zoom: zoomTarget, posed: posed)
+        Posture(hinge: hingeTarget, turn: userQuatTarget, attitude: attitudeTarget, zoom: zoomTarget, posed: posed, held: orientation)
     }
 
     /// Put the device as it was left (no animation, nothing sent).
@@ -124,6 +126,11 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
         zoom = zoomTarget
         posed = posture.posed
         spin = .zero
+        // The device is already held this way: know it now, rather than
+        // starting from "upright" and telling iOS it was turned back for a moment.
+        let beta = Duo.beta(hinge: hingeTarget)
+        orientation = heldOrientation(beta: beta, total: userQuat * autoQuat(beta), previous: posture.held)
+        orientationCandidate = orientation
         applyFold()
         if framed { distance = fitDistance() }
         invalidate()
@@ -589,16 +596,21 @@ final class DuoSceneView: UIView, SCNSceneRendererDelegate, UIKeyInput {
 
     /// Work out how the device is being held and, once it has stayed that way
     /// a moment, say so (iOS turns the interface to match).
-    private func senseOrientation(beta: Double, total: simd_quatd, now: CFTimeInterval, moving: Bool) {
+    /// How a device in this fold and attitude is being held.
+    private func heldOrientation(beta: Double, total: simd_quatd, previous: DuoHeldOrientation) -> DuoHeldOrientation {
         // World up, in the device's own axes.
         let up = total.inverse.act(SIMD3(0, 1, 0))
         let coverX = Duo.coverHalfDirection(SIMD3(1, 0, 0), beta: beta)
-        let next = DuoHeldOrientation.from(
+        return DuoHeldOrientation.from(
             cameraHalf: SIMD2(up.x, up.y),
             coverHalf: SIMD2(simd_dot(up, coverX), up.y),
             coverInUse: displayInUse == .cover,
-            previous: orientation
+            previous: previous
         )
+    }
+
+    private func senseOrientation(beta: Double, total: simd_quatd, now: CFTimeInterval, moving: Bool) {
+        let next = heldOrientation(beta: beta, total: total, previous: orientation)
         if next != orientationCandidate {
             orientationCandidate = next
             orientationSince = now

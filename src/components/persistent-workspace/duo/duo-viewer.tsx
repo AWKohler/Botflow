@@ -77,7 +77,9 @@ function loadFinish(): DuoFinishId {
 /**
  * How the device was last left on this page. The stopped preview and the
  * running one are separate views of it: this is what makes pressing Play keep
- * the fold and the attitude instead of springing back to open.
+ * the fold and the attitude instead of springing back to open. It is kept for
+ * the page, not per project, on purpose: like the choice of device, it is how
+ * this person has the Duo, and the next project's session starts the same way.
  */
 let leftPosture: DuoPosture | null = null;
 

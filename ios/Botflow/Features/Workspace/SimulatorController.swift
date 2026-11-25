@@ -93,9 +93,10 @@ final class SimulatorController: ObservableObject {
         })
         displayLayer.videoGravity = .resizeAspect
         displayLayer.backgroundColor = UIColor.black.cgColor
-        relay.handler = { [weak self] in
+        // (Weakly: the relay holds this closure, so holding the relay back would keep both for ever.)
+        relay.handler = { [weak self, weak relay] in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, let relay else { return }
                 for (display, frame) in relay.take() { self.deliverDuoFrame(display, frame) }
             }
         }

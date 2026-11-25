@@ -1067,10 +1067,13 @@ function StoppedPreviewPlaceholder({
    *  switched-off screen) to make Play feel like "resume". */
   screenshots?: { iphone?: string | null; ipad?: string | null };
 }) {
-  const { devices } = usePreviewDevices();
+  const { devices: listed, ready } = usePreviewDevices();
   const [picked, setDevice] = useState<PreviewDeviceModel>(loadDevicePref);
-  // The Duo, if it was the last device used but no host with one serves this
-  // user now, falls back to the iPhone (as the live preview does).
+  // Until the list is in, the device last used is taken at its word (so a Duo
+  // user sees the Duo at once, not an iPhone that then changes). Once it is:
+  // the Duo, if no host with one serves this user now, falls back to the
+  // iPhone, as the live preview does.
+  const devices = ready || listed.includes(picked) ? listed : [...listed, picked];
   const device: PreviewDeviceModel = devices.includes(picked) ? picked : "iPhone-16-Pro";
   const [orientation, setOrientation] = useState<OrientationUI>(loadOrientationPref);
   const screenshotUrl =
