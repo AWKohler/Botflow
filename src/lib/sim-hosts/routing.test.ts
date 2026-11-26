@@ -8,7 +8,7 @@ import { simHosts } from '@/db/schema';
 import { currentTestDb, setupTestDb } from '@/test/db';
 import { server } from '@/test/network';
 import { clearSimHostHealthCache } from './health';
-import { NoSimHostError, pickSimTarget, rememberSimRoute, targetForSimWork } from './routing';
+import { NoSimHostError, availableSimDevices, pickSimTarget, rememberSimRoute, targetForSimWork } from './routing';
 import { createSimHost } from './store';
 import type { SimHostInput } from './model';
 
@@ -48,14 +48,26 @@ async function add(name: string, over: Partial<SimHostInput> = {}, opts: { servi
 }
 
 /** /health for a host: `active` of `slots` busy, or down. */
-function health(name: string, h: { slots?: number; active?: number; down?: boolean; kind?: string } = {}) {
+function health(
+  name: string,
+  h: { slots?: number; active?: number; down?: boolean; kind?: string; deviceModels?: string[] } = {},
+) {
   server.use(
     http.get(`https://${name}.test/health`, () =>
       h.down
         ? new HttpResponse(null, { status: 503 })
         : HttpResponse.json({
             ok: true,
-            hosts: [{ id: `${name}-agent`, slots: h.slots ?? 2, active: h.active ?? 0, kind: h.kind ?? 'vm', lastHeartbeat: Date.now() }],
+            hosts: [
+              {
+                id: `${name}-agent`,
+                slots: h.slots ?? 2,
+                active: h.active ?? 0,
+                kind: h.kind ?? 'vm',
+                lastHeartbeat: Date.now(),
+                ...(h.deviceModels ? { deviceModels: h.deviceModels } : {}),
+              },
+            ],
           }),
     ),
   );
@@ -198,5 +210,62 @@ describe('targetForSimWork', () => {
 
   test('an empty registry uses the env controller', async () => {
     expect((await targetForSimWork('session', SID)).hostId).toBe('env');
+  });
+});
+
+describe('devices only some hosts have (the iPhone Duo)', () => {
+  const DUO = ['iPhone-16-Pro', 'iPad-Pro', 'iPhone-Duo'];
+
+  test('a Duo session goes to a host that has the Duo, whatever the priorities', async () => {
+    const plain = await add('plain', { priority: 1 });
+    const duo = await add('duo', { priority: 50 });
+    health('plain'); // an older controller: says nothing about devices
+    health('duo', { deviceModels: DUO });
+    expect((await pickSimTarget('u1', { deviceModel: 'iPhone-Duo' })).hostId).toBe(duo.id);
+    // The iPhone still goes by priority.
+    expect((await pickSimTarget('u1', { deviceModel: 'iPhone-16-Pro' })).hostId).toBe(plain.id);
+    expect((await pickSimTarget('u1')).hostId).toBe(plain.id);
+  });
+
+  test('no host with the Duo: a clear refusal, not a session that can never start', async () => {
+    await add('plain');
+    health('plain', { deviceModels: ['iPhone-16-Pro', 'iPad-Pro'] });
+    await expect(pickSimTarget('u1', { deviceModel: 'iPhone-Duo' })).rejects.toThrow(/iPhone Duo/);
+  });
+
+  test('a Duo host that is down is not picked on faith', async () => {
+    await add('duo');
+    health('duo', { down: true });
+    await expect(pickSimTarget('u1', { deviceModel: 'iPhone-Duo' })).rejects.toBeInstanceOf(NoSimHostError);
+  });
+
+  test('a beta-only Duo host serves beta users only', async () => {
+    await add('pub');
+    await add('lab', { scope: 'beta', runtime: 'unsecure' });
+    health('pub');
+    health('lab', { deviceModels: DUO });
+    await expect(pickSimTarget('regular', { deviceModel: 'iPhone-Duo' })).rejects.toThrow(/iPhone Duo/);
+    beta.add('tester');
+    expect((await pickSimTarget('tester', { deviceModel: 'iPhone-Duo' })).hostId).toBeTruthy();
+  });
+
+  test('the devices offered to a user are those a host that may serve them has', async () => {
+    await add('pub');
+    await add('lab', { scope: 'beta', runtime: 'unsecure' });
+    health('pub');
+    health('lab', { deviceModels: DUO });
+    expect(await availableSimDevices('regular')).toEqual(['iPhone-16-Pro', 'iPad-Pro']);
+    beta.add('tester');
+    expect(await availableSimDevices('tester')).toEqual(['iPhone-16-Pro', 'iPad-Pro', 'iPhone-Duo']);
+  });
+
+  test('without a registry, the env controller is asked', async () => {
+    server.use(
+      http.get('https://env-sim.test/health', () =>
+        HttpResponse.json({ ok: true, hosts: [{ id: 'env-agent', slots: 1, active: 0, deviceModels: DUO }] }),
+      ),
+    );
+    expect(await availableSimDevices('u1')).toContain('iPhone-Duo');
+    expect((await pickSimTarget('u1', { deviceModel: 'iPhone-Duo' })).hostId).toBe('env');
   });
 });

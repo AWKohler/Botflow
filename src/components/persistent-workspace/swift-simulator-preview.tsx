@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  BookOpen,
   Camera,
   CameraOff,
   Check,
@@ -23,21 +24,26 @@ import {
   type SimBuildStatus,
   type SimCalibration,
   type SimLogStream,
+  type SimDuoDisplay,
+  type SimDuoState,
+  type SimInput,
   type SimSessionState,
   type SimVideoConfig,
 } from "./swift-stream-client";
+import { DuoViewer, type DuoViewerHandle } from "./duo/duo-viewer";
+import { simInputForKey } from "./sim-key-input";
 import { SwiftCameraCapture, type CameraCaptureState } from "./swift-camera-capture";
 import { SimVideoDecoder } from "./sim-video-decoder";
+import { DeviceFrame, type OrientationUI } from "./device-frame";
+import { usePreviewDevices } from "./use-preview-devices";
 import {
-  DeviceFrame,
-  type DeviceModelUI,
-  type OrientationUI,
-} from "./device-frame";
-import {
+  PREVIEW_DEVICE_LABELS,
   loadDevicePref,
+  resolveDevicePref,
   saveDevicePref,
   loadOrientationPref,
   saveOrientationPref,
+  type PreviewDeviceModel,
 } from "./swift-preview-prefs";
 import { cn } from "@/lib/utils";
 import type { SimulatorProvider } from "@/lib/simulator-provider";
@@ -55,7 +61,7 @@ import {
 // Device bezel geometry lives in <DeviceFrame>. Both devices default to portrait
 // (the orientation they actually boot in) so a session never depends on a
 // rotation to come up; landscape is reached via the orientation toggle.
-function naturalOrientation(_model: DeviceModelUI): OrientationUI {
+function naturalOrientation(_model: PreviewDeviceModel): OrientationUI {
   return "portrait";
 }
 
@@ -137,10 +143,18 @@ interface LogLine {
 
 const LOG_RING = 400;
 
+/** A local Mac (Botflow Companion) runs the iPhone and the iPad. */
+const LOCAL_DEVICES: PreviewDeviceModel[] = ["iPhone-16-Pro", "iPad-Pro"];
+
 let localSetupConfirmed = false;
 
 export function SwiftSimulatorPreview(props: SwiftSimulatorPreviewProps) {
   const [provider, setProvider] = useState<SimulatorProvider | null>(null);
+  // Devices this user can start. The iPhone Duo is only listed when a
+  // simulator host that has it serves them; the answer arrives separately (it
+  // asks the hosts) and nothing here waits on it — except a user whose last
+  // device was the Duo, who needs it to know what to start.
+  const { devices, ready: devicesReady } = usePreviewDevices();
   const [error, setError] = useState<string | null>(null);
   const [localReady, setLocalReady] = useState(localSetupConfirmed);
   const [retry, setRetry] = useState(0);
@@ -162,9 +176,10 @@ export function SwiftSimulatorPreview(props: SwiftSimulatorPreviewProps) {
     return () => controller.abort();
   }, [retry]);
   if (error) return <div className="p-5 text-sm text-muted" role="alert">{error} <button className="text-accent underline" onClick={() => setRetry((r) => r + 1)}>Retry</button></div>;
-  if (!provider) return <div className="flex items-center gap-2 p-5 text-sm text-muted"><Loader2 size={16} className="animate-spin" />Checking preview availability…</div>;
+  const awaitingDevices = !devicesReady && loadDevicePref() === "iPhone-Duo";
+  if (!provider || awaitingDevices) return <div className="flex items-center gap-2 p-5 text-sm text-muted"><Loader2 size={16} className="animate-spin" />Checking preview availability…</div>;
   if (provider === "local" && !localReady) return <LocalSimulatorSetup onReady={() => { localSetupConfirmed = true; setLocalReady(true); }} />;
-  return <ActiveSwiftSimulatorPreview {...props} provider={provider} onLocalSetup={() => { localSetupConfirmed = false; setLocalReady(false); }} />;
+  return <ActiveSwiftSimulatorPreview {...props} provider={provider} devices={provider === "local" ? LOCAL_DEVICES : devices} onLocalSetup={() => { localSetupConfirmed = false; setLocalReady(false); }} />;
 }
 
 function ActiveSwiftSimulatorPreview({
@@ -176,8 +191,13 @@ function ActiveSwiftSimulatorPreview({
   onRestartRequested,
   screenshots,
   provider,
+  devices,
   onLocalSetup,
-}: SwiftSimulatorPreviewProps & { provider: SimulatorProvider; onLocalSetup: () => void }) {
+}: SwiftSimulatorPreviewProps & {
+  provider: SimulatorProvider;
+  devices: PreviewDeviceModel[];
+  onLocalSetup: () => void;
+}) {
   const isPip = mode === "pip";
   const { toast } = useToast();
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -197,8 +217,16 @@ function ActiveSwiftSimulatorPreview({
   // is what the host reports — used for the bezel so it matches the real stream
   // even if a rotate silently fails.
   // Default to the device/orientation the user last used (persisted globally).
-  const [deviceModel, setDeviceModel] = useState<DeviceModelUI>(loadDevicePref);
+  const [deviceModel, setDeviceModel] = useState<PreviewDeviceModel>(() => resolveDevicePref(devices));
+  const isDuo = deviceModel === "iPhone-Duo";
   const [orientation, setOrientation] = useState<OrientationUI>(loadOrientationPref);
+  // iPhone Duo: the host's report of the hinge and the two panels, and the
+  // optional input its session honours (hinge, second finger, orientation).
+  const [duoState, setDuoState] = useState<SimDuoState | null>(null);
+  const [features, setFeatures] = useState<string[]>([]);
+  const duoRef = useRef<DuoViewerHandle | null>(null);
+  const duoDecodersRef = useRef<Partial<Record<SimDuoDisplay, SimVideoDecoder>>>({});
+  const duoStateRef = useRef<SimDuoState | null>(null);
   const [liveOrientation, setLiveOrientation] = useState<OrientationUI | null>(null);
   const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -287,7 +315,7 @@ function ActiveSwiftSimulatorPreview({
   const [hasFrame, setHasFrame] = useState(false);
   const hasFrameRef = useRef(false);
   const [screenshotOverlayGone, setScreenshotOverlayGone] = useState(false);
-  const deviceModelRef = useRef<DeviceModelUI>(loadDevicePref());
+  const deviceModelRef = useRef<PreviewDeviceModel>(deviceModel);
   const lastScreenshotAtRef = useRef(0);
 
   const markFrame = useCallback(() => {
@@ -298,6 +326,9 @@ function ActiveSwiftSimulatorPreview({
   }, []);
 
   const captureScreenshot = useCallback((force = false) => {
+    // The stored "last seen" frame and the project thumbnail are drawn into a
+    // flat iPhone or iPad bezel; a Duo frame has no place in either yet.
+    if (deviceModelRef.current === "iPhone-Duo") return;
     const canvas = canvasRef.current;
     if (!canvas || !hasFrameRef.current) return;
     if (!force && Date.now() - lastScreenshotAtRef.current < 10_000) return;
@@ -358,6 +389,10 @@ function ActiveSwiftSimulatorPreview({
     setHasFrame(false);
     setScreenshotOverlayGone(false);
     deviceModelRef.current = deviceModel;
+    setDuoState(null);
+    duoStateRef.current = null;
+    setFeatures([]);
+    duoRef.current?.clearFrames();
 
     (async () => {
       try {
@@ -371,7 +406,14 @@ function ActiveSwiftSimulatorPreview({
           onOpen: () => setPill({ kind: "starting", label: "Waiting for host…" }),
           onClose: () => setPill((p) => (p.kind === "live" ? { kind: "ended" } : p)),
           onState: handleState,
-          onCalibration: setCalibration,
+          onCalibration: (cal) => {
+            setCalibration(cal);
+            setFeatures(cal.features);
+          },
+          onDuoState: (state) => {
+            duoStateRef.current = state;
+            setDuoState(state);
+          },
           onFrame: drawFrame,
           onVideoConfig: handleVideoConfig,
           onVideoChunk: handleVideoChunk,
@@ -428,6 +470,8 @@ function ActiveSwiftSimulatorPreview({
       }
       videoDecoderRef.current?.close();
       videoDecoderRef.current = null;
+      for (const decoder of Object.values(duoDecodersRef.current)) decoder?.close();
+      duoDecodersRef.current = {};
       // Refcounted: the pool may defer the actual DELETE in case a strict-
       // mode remount re-claims within the grace window. Keyed by deviceModel so
       // switching device tears down the old simulator and starts a new one.
@@ -449,7 +493,7 @@ function ActiveSwiftSimulatorPreview({
   // deviceModel) tears down the old simulator and starts a new one in the new
   // device's natural orientation.
   const switchDevice = useCallback(
-    (m: DeviceModelUI) => {
+    (m: PreviewDeviceModel) => {
       setDeviceMenuOpen(false);
       if (m === deviceModel) return;
       setDeviceModel(m);
@@ -776,6 +820,13 @@ function ActiveSwiftSimulatorPreview({
             },
           }),
         );
+      if (deviceModelRef.current === "iPhone-Duo") {
+        // The Duo has no flat canvas: ask its viewer for the panel in use, upright.
+        void (duoRef.current?.capture() ?? Promise.resolve(null)).then((blob) =>
+          respond(blob ? { blob } : { error: "The simulator isn't streaming a frame yet." }),
+        );
+        return;
+      }
       const canvas = canvasRef.current;
       if (!canvas || !hasFrameRef.current) {
         respond({ error: "The simulator isn't streaming a frame yet." });
@@ -829,9 +880,18 @@ function ActiveSwiftSimulatorPreview({
     img.src = `data:image/jpeg;base64,${b64}`;
   }, [markFrame]);
 
+  const countFrame = useCallback(() => {
+    frameCountRef.current++;
+    const now = Date.now();
+    const elapsed = now - fpsTimeRef.current;
+    if (elapsed >= 1000) {
+      setFps(Math.round((frameCountRef.current * 1000) / elapsed));
+      frameCountRef.current = 0;
+      fpsTimeRef.current = now;
+    }
+  }, []);
+
   const handleVideoConfig = useCallback((config: SimVideoConfig) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
     if (!("VideoDecoder" in window)) {
       setPill({
         kind: "error",
@@ -839,6 +899,31 @@ function ActiveSwiftSimulatorPreview({
       });
       return;
     }
+
+    // iPhone Duo: one stream per panel, decoded straight onto the 3D model.
+    const display = config.display;
+    if (display) {
+      duoDecodersRef.current[display]?.close();
+      duoDecodersRef.current[display] = new SimVideoDecoder({
+        width: config.width,
+        height: config.height,
+        onFrame: (frame) => {
+          // The decoder closes its frame when this returns; the viewer keeps a copy.
+          duoRef.current?.pushFrame(display, frame.clone());
+          markFrame();
+          // Count the panel that is on (the other only ticks over).
+          const state = duoStateRef.current;
+          if (!state || state[display].lit) countFrame();
+        },
+        onFatal: (message) => {
+          setPill({ kind: "error", message: `Video decoder error: ${message}` });
+        },
+      });
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
     videoDecoderRef.current?.close();
 
@@ -876,10 +961,21 @@ function ActiveSwiftSimulatorPreview({
         setPill({ kind: "error", message: `Video decoder error: ${message}` });
       },
     });
-  }, [markFrame]);
+  }, [markFrame, countFrame]);
 
-  const handleVideoChunk = useCallback((chunk: Uint8Array, timestampMs: number, keyframe: boolean) => {
-    videoDecoderRef.current?.decode(chunk, timestampMs, keyframe);
+  const handleVideoChunk = useCallback(
+    (chunk: Uint8Array, timestampMs: number, keyframe: boolean, streamIndex: number) => {
+      if (deviceModelRef.current === "iPhone-Duo") {
+        duoDecodersRef.current[streamIndex === 1 ? "inner" : "cover"]?.decode(chunk, timestampMs, keyframe);
+        return;
+      }
+      videoDecoderRef.current?.decode(chunk, timestampMs, keyframe);
+    },
+    [],
+  );
+
+  const sendDuoInput = useCallback((input: SimInput) => {
+    clientRef.current?.sendInput(input);
   }, []);
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -945,36 +1041,16 @@ function ActiveSwiftSimulatorPreview({
     };
     const onCtx = (e: MouseEvent): void => e.preventDefault();
 
-    // Keyboard: the canvas is focusable (tabIndex=0). Single printable chars go
-    // as `text`; named non-printables (Enter, Backspace, arrows…) go as `key`
-    // and the host maps them to HID codes. We let copy/paste/devtools shortcuts
-    // (Cmd/Ctrl combos) fall through to the browser.
-    const SPECIAL_KEYS = new Set([
-      "Enter",
-      "Backspace",
-      "Tab",
-      "Escape",
-      "ArrowUp",
-      "ArrowDown",
-      "ArrowLeft",
-      "ArrowRight",
-      "Home",
-      "End",
-      "PageUp",
-      "PageDown",
-      "Delete",
-    ]);
+    // Keyboard: the canvas is focusable (tabIndex=0). Printable characters and
+    // the named keys go to the device; Cmd/Ctrl/Alt shortcuts stay with the
+    // browser (see simInputForKey).
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return; // let browser shortcuts through
       const client = clientRef.current;
       if (!client) return;
-      if (e.key.length === 1) {
-        e.preventDefault();
-        client.sendInput({ kind: "text", text: e.key });
-      } else if (SPECIAL_KEYS.has(e.key)) {
-        e.preventDefault();
-        client.sendInput({ kind: "key", key: e.key });
-      }
+      const input = simInputForKey(e);
+      if (!input) return;
+      e.preventDefault();
+      client.sendInput(input);
     };
     const onFocusChange = (): void => setKbdFocused(document.activeElement === canvas);
 
@@ -1098,16 +1174,10 @@ function ActiveSwiftSimulatorPreview({
                 "flex items-center rounded-md border border-border bg-elevated text-muted hover:text-fg",
                 isPip ? "h-5 w-5 justify-center" : "gap-1.5 px-2 py-1 text-[11px]",
               )}
-              title={deviceModel === "iPad-Pro" ? "iPad Pro" : provider === "local" ? "iPhone" : "iPhone 17 Pro"}
+              title={deviceLabel(deviceModel, provider)}
             >
-              {deviceModel === "iPad-Pro" ? (
-                <Tablet size={isPip ? 11 : 12} />
-              ) : (
-                <Smartphone size={isPip ? 11 : 12} />
-              )}
-              {!isPip && (
-                <span>{deviceModel === "iPad-Pro" ? "iPad Pro" : provider === "local" ? "iPhone" : "iPhone 17 Pro"}</span>
-              )}
+              <DeviceIcon model={deviceModel} size={isPip ? 11 : 12} />
+              {!isPip && <span>{deviceLabel(deviceModel, provider)}</span>}
               {!isPip && <ChevronDown size={12} />}
             </button>
             {deviceMenuOpen && (
@@ -1117,18 +1187,15 @@ function ActiveSwiftSimulatorPreview({
                   onClick={() => setDeviceMenuOpen(false)}
                 />
                 <Menu className="absolute right-0 z-[61] mt-1 w-44">
-                  {([
-                    { id: "iPhone-16-Pro" as DeviceModelUI, label: provider === "local" ? "iPhone" : "iPhone 17 Pro", Icon: Smartphone },
-                    { id: "iPad-Pro" as DeviceModelUI, label: "iPad Pro", Icon: Tablet },
-                  ]).map(({ id, label, Icon }) => (
+                  {devices.map((id) => (
                     <MenuItem
                       key={id}
                       role="menuitemradio"
                       aria-checked={id === deviceModel}
                       onClick={() => switchDevice(id)}
                     >
-                      <Icon size={14} className="text-muted" />
-                      <span className="flex-1">{label}</span>
+                      <DeviceIcon model={id} size={14} className="text-muted" />
+                      <span className="flex-1">{deviceLabel(id, provider)}</span>
                       <Check size={14} className={cn("text-fg", id !== deviceModel && "invisible")} />
                     </MenuItem>
                   ))}
@@ -1136,8 +1203,9 @@ function ActiveSwiftSimulatorPreview({
               </>
             )}
           </div>
-          {/* Orientation toggle — live rotate (no rebuild) while streaming. */}
-          <button
+          {/* Orientation toggle — live rotate (no rebuild) while streaming. The
+              Duo is turned by hand in its 3D view instead. */}
+          {!isDuo && <button
             onClick={toggleOrientation}
             disabled={pill.kind !== "live"}
             className={cn(
@@ -1151,7 +1219,7 @@ function ActiveSwiftSimulatorPreview({
             {!isPip && (
               <span className="capitalize">{liveOrientation ?? orientation}</span>
             )}
-          </button>
+          </button>}
           {/* Refresh — both modes; iconic in PIP */}
           <button
             onClick={onRebuild}
@@ -1248,26 +1316,25 @@ function ActiveSwiftSimulatorPreview({
                 <>
                   <div className="fixed inset-0 z-[60]" onClick={() => setMoreOpen(false)} />
                   <Menu className="absolute right-0 z-[61] mt-1 w-60">
-                    {([
-                      { id: "iPhone-16-Pro" as DeviceModelUI, label: provider === "local" ? "iPhone" : "iPhone 17 Pro", Icon: Smartphone },
-                      { id: "iPad-Pro" as DeviceModelUI, label: "iPad Pro", Icon: Tablet },
-                    ]).map(({ id, label, Icon }) => (
+                    {devices.map((id) => (
                       <MenuItem
                         key={id}
                         role="menuitemradio"
                         aria-checked={id === deviceModel}
                         onClick={() => { setMoreOpen(false); switchDevice(id); }}
                       >
-                        <Icon size={15} className="text-muted" />
-                        <span className="flex-1">{label}</span>
+                        <DeviceIcon model={id} size={15} className="text-muted" />
+                        <span className="flex-1">{deviceLabel(id, provider)}</span>
                         <Check size={15} className={cn("text-fg", id !== deviceModel && "invisible")} />
                       </MenuItem>
                     ))}
                     <MenuSeparator />
-                    <MenuItem disabled={pill.kind !== "live"} onClick={() => { setMoreOpen(false); toggleOrientation(); }}>
-                      <RotateCw size={15} className="text-muted" />
-                      Rotate to {(liveOrientation ?? orientation) === "portrait" ? "landscape" : "portrait"}
-                    </MenuItem>
+                    {!isDuo && (
+                      <MenuItem disabled={pill.kind !== "live"} onClick={() => { setMoreOpen(false); toggleOrientation(); }}>
+                        <RotateCw size={15} className="text-muted" />
+                        Rotate to {(liveOrientation ?? orientation) === "portrait" ? "landscape" : "portrait"}
+                      </MenuItem>
+                    )}
                     <MenuItem
                       disabled={pill.kind !== "live" || provider === "local"}
                       onClick={() => { setMoreOpen(false); toggleCamera(); }}
@@ -1314,6 +1381,34 @@ function ActiveSwiftSimulatorPreview({
           !isPip && "rounded-xl border border-border bg-elevated/60",
         )}
       >
+        {isDuo ? (
+          <>
+            <DuoViewer
+              ref={duoRef}
+              live={pill.kind === "live"}
+              state={duoState}
+              features={features}
+              onInput={sendDuoInput}
+              compact={isPip}
+              onKeyboardFocusChange={setKbdFocused}
+              overlay={
+                pill.kind !== "live" ? (
+                  <CenterContent
+                    pill={pill}
+                    hasCalibration={!!calibration}
+                    compact={isPip}
+                    canRefresh={!!sessionId}
+                  />
+                ) : undefined
+              }
+            />
+            {!isPip && pill.kind === "live" && kbdFocused && (
+              <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/55 px-2 py-0.5 text-[11px] text-white/70 backdrop-blur">
+                Keyboard connected — typing goes to the device
+              </div>
+            )}
+          </>
+        ) : (
         <DeviceFrame
           deviceModel={deviceModel}
           orientation={liveOrientation ?? orientation}
@@ -1374,6 +1469,7 @@ function ActiveSwiftSimulatorPreview({
             );
           })()}
         </DeviceFrame>
+        )}
       </div>
 
       {/* Structured build Issues panel — full mode only.
@@ -1406,6 +1502,17 @@ function ActiveSwiftSimulatorPreview({
       )}
     </div>
   );
+}
+
+/** The picker's name for a device. A local Mac runs whichever iPhone it has. */
+function deviceLabel(model: PreviewDeviceModel, provider: SimulatorProvider): string {
+  if (model === "iPhone-16-Pro" && provider === "local") return "iPhone";
+  return PREVIEW_DEVICE_LABELS[model];
+}
+
+function DeviceIcon({ model, size, className }: { model: PreviewDeviceModel; size: number; className?: string }) {
+  const Icon = model === "iPad-Pro" ? Tablet : model === "iPhone-Duo" ? BookOpen : Smartphone;
+  return <Icon size={size} className={className} />;
 }
 
 function StatusPill({ pill, compact = false }: { pill: PillState; compact?: boolean }) {

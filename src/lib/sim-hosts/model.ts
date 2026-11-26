@@ -103,6 +103,12 @@ export interface SimHostHealth {
   reportedKind: string | null;
   reportedSlots: number | null;
   activeSessions: number | null;
+  /**
+   * Device families the agent says it can run (e.g. "iPhone-Duo" only on a
+   * Mac whose Xcode has it). Null when the controller predates the field, in
+   * which case the host has the iPhone and the iPad and nothing else.
+   */
+  deviceModels?: string[] | null;
   lastHeartbeatAt: string | null;
   latencyMs: number | null;
   error: string | null;

@@ -2,7 +2,12 @@
 // Used by the swift-preview API routes to provision sessions and ship build
 // tarballs across the Tailscale Funnel / Cloudflare Tunnel boundary.
 
-export type SimDeviceModel = "iPhone-16-Pro" | "iPad-Pro";
+export type SimDeviceModel = "iPhone-16-Pro" | "iPad-Pro" | "iPhone-Duo";
+
+/** Every simulator host has these. Others (the iPhone Duo) only where the
+ * host's Xcode and macOS can run them; its /health says which. */
+export const BASE_SIM_DEVICE_MODELS: readonly SimDeviceModel[] = ["iPhone-16-Pro", "iPad-Pro"];
+export const ALL_SIM_DEVICE_MODELS: readonly SimDeviceModel[] = ["iPhone-16-Pro", "iPad-Pro", "iPhone-Duo"];
 export type SimOrientation = "portrait" | "landscape";
 
 export interface CreateSessionInput {

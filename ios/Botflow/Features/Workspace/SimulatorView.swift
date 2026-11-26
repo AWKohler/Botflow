@@ -49,6 +49,7 @@ struct SimulatorView: View {
             if case .failed = phase, !controller.diagnostics.isEmpty { showIssues = true }
         }
         .onDisappear { keyboard = false }
+        .task { await controller.loadDevices() }
     }
 
     @ViewBuilder
@@ -60,6 +61,10 @@ struct SimulatorView: View {
                 Text("Playing full screen").font(.subheadline).foregroundStyle(Sand.muted)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if controller.device == .duo {
+            // Two screens and a hinge: a 3D model instead of a flat bezel.
+            DuoStage(controller: controller, keyboard: keyboard) { showIssues = true }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             device(bezel: bezel).frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -134,7 +139,7 @@ struct SimulatorView: View {
     private func deviceMenu(label: Bool) -> some View {
         Menu {
             Picker("Device", selection: Binding(get: { controller.device }, set: { device in Task { await controller.setDevice(device) } })) {
-                ForEach(SimDevice.allCases, id: \.self) { device in
+                ForEach(controller.availableDevices, id: \.self) { device in
                     Label(device.label, systemImage: device.symbol).tag(device)
                 }
             }
@@ -149,14 +154,18 @@ struct SimulatorView: View {
         .accessibilityLabel("Device: \(controller.device.label)")
     }
 
+    /// The iPhone and the iPad turn with this. The Duo is turned by hand in its own view.
+    @ViewBuilder
     private var rotateButton: some View {
-        Button {
-            controller.toggleOrientation()
-        } label: {
-            Image(systemName: controller.landscape ? "rectangle.landscape.rotate" : "rectangle.portrait.rotate")
+        if controller.device != .duo {
+            Button {
+                controller.toggleOrientation()
+            } label: {
+                Image(systemName: controller.landscape ? "rectangle.landscape.rotate" : "rectangle.portrait.rotate")
+            }
+            .buttonStyle(RaisedButtonStyle(size: .small))
+            .accessibilityLabel(controller.landscape ? "Rotate to portrait" : "Rotate to landscape")
         }
-        .buttonStyle(RaisedButtonStyle(size: .small))
-        .accessibilityLabel(controller.landscape ? "Rotate to portrait" : "Rotate to landscape")
     }
 
     private func optionsMenu(includesRotate: Bool) -> some View {
@@ -166,14 +175,17 @@ struct SimulatorView: View {
                 Button { keyboard.toggle() } label: { Label(keyboard ? "Hide keyboard" : "Type with the keyboard", systemImage: "keyboard") }
                     .disabled(controller.phase != .live)
             }
-            if includesRotate {
+            if includesRotate, controller.device != .duo {
                 Button { controller.toggleOrientation() } label: { Label(controller.landscape ? "Rotate to portrait" : "Rotate to landscape", systemImage: "rectangle.portrait.rotate") }
             }
-            if !controller.hostRestsSwipes {
-                // Only where the host lets go of every swipe at speed.
-                Toggle(isOn: $controller.liveScroll) { Label("Allow for coasting when I stop", systemImage: "hand.draw") }
+            if controller.device != .duo {
+                // (A Duo's screens take the finger itself, as it moves: nothing to replay or explain.)
+                if !controller.hostRestsSwipes {
+                    // Only where the host lets go of every swipe at speed.
+                    Toggle(isOn: $controller.liveScroll) { Label("Allow for coasting when I stop", systemImage: "hand.draw") }
+                }
+                Button { showTouchHelp = true } label: { Label("How touch works", systemImage: "hand.tap") }
             }
-            Button { showTouchHelp = true } label: { Label("How touch works", systemImage: "hand.tap") }
             if controller.phase.isActive {
                 Divider()
                 Button(role: .destructive) { Task { await controller.stop() } } label: { Label("Stop simulator", systemImage: "stop.fill") }
@@ -321,7 +333,7 @@ struct SimulatorScreen: View {
             if controller.phase != .live, controller.hasFrame {
                 Color.black.opacity(0.62).transition(.opacity)
             }
-            overlay
+            SimulatorStateOverlay(controller: controller, onShowIssues: onShowIssues)
             if controller.phase == .live, !controller.touchHintSeen {
                 touchHint
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -414,6 +426,17 @@ struct SimulatorScreen: View {
         // size its text would cover the app it is describing.
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
+
+}
+
+/// What the simulator is doing, when it is not live: the play button, the
+/// progress of a build, a failure with its way out. Drawn in white, for a dark
+/// surface (the simulated screen, or a dark card over the Duo).
+struct SimulatorStateOverlay: View {
+    @ObservedObject var controller: SimulatorController
+    var onShowIssues: () -> Void
+
+    var body: some View { overlay }
 
     @ViewBuilder
     private var overlay: some View {
@@ -510,10 +533,20 @@ struct ImmersiveSimulatorView: View {
             let videoWidth = fills ? proxy.size.width : min(proxy.size.width - 20, (proxy.size.height - 20) * aspect)
             ZStack {
                 Color.black
-                SimulatorScreen(controller: controller, keyboard: keyboard, cornerRadius: fills ? 0 : 36) { immersive = false }
-                    .padding(fills ? 0 : 10)
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                controls(in: proxy.size, margin: (proxy.size.width - videoWidth) / 2)
+                if controller.device == .duo {
+                    // The Duo is an object in space, not a flat screen to fill
+                    // this one with: it gets the whole screen to be turned in.
+                    DuoStage(controller: controller, keyboard: keyboard, fullScreen: true) { immersive = false }
+                        .padding(.horizontal, Space.m)
+                        .padding(.top, proxy.safeAreaInsets.top + Space.s)
+                        .padding(.bottom, proxy.safeAreaInsets.bottom + Space.s)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                } else {
+                    SimulatorScreen(controller: controller, keyboard: keyboard, cornerRadius: fills ? 0 : 36) { immersive = false }
+                        .padding(fills ? 0 : 10)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                }
+                controls(in: proxy.size, margin: controller.device == .duo ? 0 : (proxy.size.width - videoWidth) / 2)
             }
         }
         .ignoresSafeArea()
@@ -541,7 +574,7 @@ struct ImmersiveSimulatorView: View {
     /// simulated screen they sit in the empty margin instead. Drag them to
     /// either side, at any height; they stay there next time.
     private func controls(in size: CGSize, margin: CGFloat) -> some View {
-        let count: CGFloat = 5
+        let count: CGFloat = controller.device == .duo ? 4 : 5
         let extent = expanded ? count * 44 + 8 : 44          // the pill's length
         let inset = margin >= 64 ? margin / 2 : 34            // centre of the pill from the edge
         let x = dockTrailing ? size.width - inset : inset
@@ -552,7 +585,9 @@ struct ImmersiveSimulatorView: View {
                     control("arrow.down.right.and.arrow.up.left", "Exit full screen") { immersive = false }
                         .accessibilityIdentifier("simulator.exitFullscreen")
                     control(keyboard ? "keyboard.chevron.compact.down" : "keyboard", keyboard ? "Hide keyboard" : "Keyboard") { keyboard.toggle() }
-                    control("rectangle.portrait.rotate", "Rotate") { controller.toggleOrientation() }
+                    if controller.device != .duo {
+                        control("rectangle.portrait.rotate", "Rotate") { controller.toggleOrientation() }
+                    }
                     control("hammer", "Rebuild") { Task { await controller.rebuild() } }
                     control(dockTrailing ? "chevron.right" : "chevron.left", "Hide controls") { setExpanded(false) }
                 }

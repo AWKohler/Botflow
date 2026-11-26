@@ -8,6 +8,8 @@ export async function GET() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
+    // (Which devices the user can start is /api/swift-preview/devices: it asks
+    // the hosts, and this answer should not wait for that.)
     return NextResponse.json({ provider: simulatorProvider() }, {
       headers: { "Cache-Control": "private, no-store" },
     });

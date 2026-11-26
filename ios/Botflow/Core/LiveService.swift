@@ -348,6 +348,12 @@ final class LiveService: BotflowService, @unchecked Sendable {
 
     // MARK: Simulator
 
+    func simulatorDevices() async -> [SimDevice] {
+        guard let raw = try? await api.json("GET", "api/swift-preview/devices") else { return SimDevice.base }
+        let listed = (raw["devices"]?.arrayValue ?? []).compactMap { $0.stringValue.flatMap(SimDevice.init(rawValue:)) }
+        return listed.isEmpty ? SimDevice.base : listed
+    }
+
     func startSimulator(projectId: String, device: SimDevice, landscape: Bool) async throws -> SimulatorSession {
         let raw = try await api.json(
             "POST",

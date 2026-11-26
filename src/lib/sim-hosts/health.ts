@@ -6,7 +6,14 @@ import type { SimHostHealth } from "./model";
 
 interface HealthBody {
   ok?: boolean;
-  hosts?: Array<{ id?: string; slots?: number; active?: number; kind?: string; lastHeartbeat?: number }>;
+  hosts?: Array<{
+    id?: string;
+    slots?: number;
+    active?: number;
+    kind?: string;
+    deviceModels?: string[];
+    lastHeartbeat?: number;
+  }>;
 }
 
 const TIMEOUT_MS = 3_000;
@@ -88,10 +95,22 @@ function summarize(body: HealthBody, agentHostId: string | null, latencyMs: numb
     reportedKind: kinds.length === 1 ? kinds[0]! : kinds.length > 1 ? "mixed" : null,
     reportedSlots: agents.reduce((n, a) => n + (a.slots ?? 0), 0),
     activeSessions: agents.reduce((n, a) => n + (a.active ?? 0), 0),
+    deviceModels: agents.some((a) => Array.isArray(a.deviceModels))
+      ? [...new Set(agents.flatMap((a) => (Array.isArray(a.deviceModels) ? a.deviceModels : [])))]
+      : null,
     lastHeartbeatAt: beat > 0 ? new Date(beat).toISOString() : null,
     latencyMs,
     error: null,
   };
+}
+
+/**
+ * Whether a host can run a device family. A host that does not say (an older
+ * controller) has the iPhone and the iPad only.
+ */
+export function hostSupportsDevice(health: SimHostHealth, deviceModel: string): boolean {
+  if (health.deviceModels) return health.deviceModels.includes(deviceModel);
+  return deviceModel === "iPhone-16-Pro" || deviceModel === "iPad-Pro";
 }
 
 /** Sessions this host can still take: the lower of its limit and the agent's slots, minus active ones. */

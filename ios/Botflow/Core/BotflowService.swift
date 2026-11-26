@@ -54,6 +54,9 @@ protocol BotflowService: AnyObject, Sendable {
     func invite(projectId: String, email: String) async throws
 
     // Simulator
+    /// The devices this person can start a simulator on. The iPhone Duo is
+    /// only among them when a host that has it serves them.
+    func simulatorDevices() async -> [SimDevice]
     func startSimulator(projectId: String, device: SimDevice, landscape: Bool) async throws -> SimulatorSession
     func stopSimulator(projectId: String, sessionId: String) async
     func rebuildSimulator(projectId: String, sessionId: String) async throws
@@ -96,9 +99,27 @@ enum PublishEvent: Sendable {
 enum SimDevice: String, CaseIterable, Sendable {
     case iPhone = "iPhone-16-Pro"
     case iPad = "iPad-Pro"
+    /// Two screens and a hinge: shown as a 3D model (see Features/Workspace/Duo).
+    case duo = "iPhone-Duo"
 
-    var label: String { self == .iPhone ? "iPhone" : "iPad" }
-    var symbol: String { self == .iPhone ? "iphone" : "ipad" }
+    var label: String {
+        switch self {
+        case .iPhone: return "iPhone"
+        case .iPad: return "iPad"
+        case .duo: return "iPhone Duo"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .iPhone: return "iphone"
+        case .iPad: return "ipad"
+        case .duo: return "book"
+        }
+    }
+
+    /// Every simulator host has these two.
+    static let base: [SimDevice] = [.iPhone, .iPad]
 }
 
 enum Services {

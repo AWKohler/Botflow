@@ -143,6 +143,7 @@ const POLICY: Record<string, Gate> = {
   'GET stripe/oauth/callback': 'callback',
   'GET stripe/oauth/start': 'session',
   'GET swift-preview/config': 'session',
+  'GET swift-preview/devices': 'session',
   'GET uploadthing': 'public', // UploadThing's own route handler; uploads auth in the file router
   'POST uploadthing': 'webhook',
   'GET native/agents': 'session',

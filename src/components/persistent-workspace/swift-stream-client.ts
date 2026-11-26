@@ -38,6 +38,37 @@ export interface SimCalibration {
   windowInfo: SimWindowInfo;
   screenRect: SimScreenRect;
   deviceLogical: SimDeviceLogical;
+  /** Optional input this session's host honours (see @sim/shared INPUT_FEATURES). */
+  features: string[];
+}
+
+/** The iPhone Duo's two panels. */
+export type SimDuoDisplay = "cover" | "inner";
+
+/** How an iPhone Duo is held (see @sim/shared DeviceOrientationInput). */
+export type SimDeviceOrientation =
+  | "portrait"
+  | "portrait-upside-down"
+  | "landscape-left"
+  | "landscape-right";
+
+export interface SimDuoPanel {
+  /** Framebuffer size in pixels. */
+  width: number;
+  height: number;
+  scale: number;
+  /** iOS has the panel switched on. */
+  lit: boolean;
+}
+
+/** Mirrors @sim/shared DuoState: where the hinge is and which panels are on. */
+export interface SimDuoState {
+  /** 0 shut … 180 open flat. */
+  hingeAngle: number;
+  hingeMoving: boolean;
+  orientation?: SimDeviceOrientation;
+  cover: SimDuoPanel;
+  inner: SimDuoPanel;
 }
 
 export interface SimBuildStatus {
@@ -67,21 +98,71 @@ export interface SimVideoConfig {
   fps: number;
   bitrate: number;
   format: "annexb";
+  /** iPhone Duo: which panel this stream is. Absent on a single-screen device. */
+  display?: SimDuoDisplay;
 }
 
+// `display`, `touch`, `hinge`, `device_orientation` and the volume buttons are
+// honoured by iPhone Duo sessions only (the calibration's `features` says so).
 export type SimInput =
-  | { kind: "tap"; normX: number; normY: number }
-  | { kind: "swipe"; startX: number; startY: number; endX: number; endY: number }
-  | { kind: "scroll"; normX: number; normY: number; deltaX: number; deltaY: number }
+  | { kind: "tap"; normX: number; normY: number; display?: SimDuoDisplay }
+  | { kind: "swipe"; startX: number; startY: number; endX: number; endY: number; display?: SimDuoDisplay }
+  | { kind: "scroll"; normX: number; normY: number; deltaX: number; deltaY: number; display?: SimDuoDisplay }
+  | {
+      kind: "touch";
+      phase: "down" | "move" | "up";
+      normX: number;
+      normY: number;
+      display?: SimDuoDisplay;
+      finger?: 0 | 1;
+    }
+  | { kind: "button"; button: "home" | "lock" | "volumeUp" | "volumeDown" }
+  | { kind: "hinge"; angle: number; instant?: boolean }
+  | { kind: "device_orientation"; orientation: SimDeviceOrientation }
   | { kind: "text"; text: string }
   | { kind: "key"; key: string };
+
+const DEVICE_ORIENTATIONS: readonly string[] = ["portrait", "portrait-upside-down", "landscape-left", "landscape-right"];
+
+/** A `duo_state` message as a SimDuoState, or null if it is not one. */
+export function parseDuoState(msg: Record<string, unknown>): SimDuoState | null {
+  const panel = (value: unknown): SimDuoPanel | null => {
+    if (!value || typeof value !== "object") return null;
+    const p = value as Record<string, unknown>;
+    if (typeof p.width !== "number" || typeof p.height !== "number" || typeof p.lit !== "boolean") return null;
+    return { width: p.width, height: p.height, scale: typeof p.scale === "number" ? p.scale : 3, lit: p.lit };
+  };
+  const cover = panel(msg.cover);
+  const inner = panel(msg.inner);
+  if (!cover || !inner || typeof msg.hingeAngle !== "number" || !Number.isFinite(msg.hingeAngle)) return null;
+  return {
+    hingeAngle: Math.min(180, Math.max(0, msg.hingeAngle)),
+    hingeMoving: msg.hingeMoving === true,
+    ...(typeof msg.orientation === "string" && DEVICE_ORIENTATIONS.includes(msg.orientation)
+      ? { orientation: msg.orientation as SimDeviceOrientation }
+      : {}),
+    cover,
+    inner,
+  };
+}
+
+/** Stream index of a Duo panel in a video chunk's flags (bits 1–2). */
+export const SIM_STREAM_INDEX: Record<SimDuoDisplay, number> = { cover: 0, inner: 1 };
+
+/** Split a video chunk's flags byte: bit 0 keyframe, bits 1–2 stream index. */
+export function decodeVideoFlags(flags: number): { keyframe: boolean; streamIndex: number } {
+  return { keyframe: (flags & 1) === 1, streamIndex: (flags & 0b110) >> 1 };
+}
 
 export interface SimStreamHandlers {
   onState: (state: SimSessionState, queuePosition?: number, reason?: string) => void;
   onCalibration: (cal: SimCalibration) => void;
   onFrame: (jpegBase64: string) => void;
   onVideoConfig: (config: SimVideoConfig) => void;
-  onVideoChunk: (chunk: Uint8Array, timestampMs: number, keyframe: boolean) => void;
+  /** `streamIndex` is 0 except for the iPhone Duo's inner panel (see SIM_STREAM_INDEX). */
+  onVideoChunk: (chunk: Uint8Array, timestampMs: number, keyframe: boolean, streamIndex: number) => void;
+  /** iPhone Duo: the hinge moved or a panel went on or off. */
+  onDuoState?: (state: SimDuoState) => void;
   onStatus: (message: string) => void;
   onError: (message: string) => void;
   onBuildStatus: (status: SimBuildStatus) => void;
@@ -156,6 +237,7 @@ export class SwiftStreamClient {
             windowInfo: msg.windowInfo as SimWindowInfo,
             screenRect: msg.screenRect as SimScreenRect,
             deviceLogical: msg.deviceLogical as SimDeviceLogical,
+            features: Array.isArray(msg.features) ? (msg.features as string[]) : [],
           });
           break;
         case "frame":
@@ -169,8 +251,14 @@ export class SwiftStreamClient {
             fps: msg.fps as number,
             bitrate: msg.bitrate as number,
             format: "annexb",
+            ...(msg.display === "cover" || msg.display === "inner" ? { display: msg.display } : {}),
           });
           break;
+        case "duo_state": {
+          const state = parseDuoState(msg);
+          if (state) this.handlers.onDuoState?.(state);
+          break;
+        }
         case "status":
           this.handlers.onStatus(msg.message as string);
           break;
@@ -223,9 +311,9 @@ export class SwiftStreamClient {
     const buf = new Uint8Array(ab);
     if (buf.length < 10 || buf[0] !== 1) return;
     const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-    const flags = view.getUint8(1);
+    const { keyframe, streamIndex } = decodeVideoFlags(view.getUint8(1));
     const timestampMs = Number(view.getBigUint64(2));
-    this.handlers.onVideoChunk(buf.subarray(10), timestampMs, (flags & 1) === 1);
+    this.handlers.onVideoChunk(buf.subarray(10), timestampMs, keyframe, streamIndex);
   }
 
   sendInput(input: SimInput): void {

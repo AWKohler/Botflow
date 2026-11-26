@@ -47,6 +47,31 @@ final class SimulatorController: ObservableObject {
     /// The layer the video is drawn into; the view hosts it.
     let displayLayer = AVSampleBufferDisplayLayer()
 
+    // MARK: iPhone Duo
+    // The Duo has two screens and a hinge. Its pictures go on a 3D model
+    // (Features/Workspace/Duo) instead of the layer above: one decoder per
+    // panel hands frames to whichever Duo views are on screen.
+
+    /// The devices this person can start: the iPhone and the iPad, plus the
+    /// Duo when a host that has it serves them.
+    @Published private(set) var availableDevices: [SimDevice] = SimDevice.base
+    /// The host's report of the Duo's hinge and panels. Nil until it streams.
+    @Published private(set) var duoState: SimDuoState?
+    /// The latest picture of each panel, for a Duo view that appears mid-session.
+    private(set) var duoFrames: [DuoDisplay: DuoFrame] = [:]
+    /// How the Duo was last left (fold, attitude, zoom), shared by the views
+    /// of it: the pane and full screen show the same device, not two.
+    var duoPosture = DuoSceneView.Posture()
+    private var duoSinks: [UUID: (DuoDisplay, DuoFrame) -> Void] = [:]
+    private let duoDecoders: [DuoDisplay: DuoVideoDecoder]
+    private let duoRelay = DuoFrameRelay()
+    /// The hinge angle and held orientation last asked of the host, to avoid repeats.
+    private var duoHingeSent: Double?
+    private var duoOrientationSent: String?
+    private var duoHingeTimer: Timer?
+    private var duoHingePending: Double?
+    private var duoHingeSentAt: Date = .distantPast
+
     private var client: SimStreamClient?
     private var sessionId: String?
     private let decoder = H264Decoder()
@@ -56,17 +81,161 @@ final class SimulatorController: ObservableObject {
     private var buildState: String?
     private var diagnosticsFinal = false
     private var isDemo = false
+    /// Whether the running session is an iPhone Duo's. Read on the decode queue.
+    private nonisolated(unsafe) var isDuoSession = false
 
     init(projectId: String, service: BotflowService = Services.shared) {
         self.projectId = projectId
         self.service = service
+        let relay = duoRelay
+        duoDecoders = Dictionary(uniqueKeysWithValues: DuoDisplay.allCases.map { display in
+            (display, DuoVideoDecoder(display: display) { display, frame in relay.deliver(display, frame) })
+        })
         displayLayer.videoGravity = .resizeAspect
         displayLayer.backgroundColor = UIColor.black.cgColor
+        // (Weakly: the relay holds this closure, so holding the relay back would keep both for ever.)
+        relay.handler = { [weak self, weak relay] in
+            Task { @MainActor in
+                guard let self, let relay else { return }
+                for (display, frame) in relay.take() { self.deliverDuoFrame(display, frame) }
+            }
+        }
+        // Back from the background the decoders start over: ask for each
+        // panel's picture again instead of waiting for its next keyframe,
+        // which on a still screen is seconds away.
+        foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.resyncDuoVideo() }
+        }
+        #if DEBUG
+        // `-BotflowSimDevice iPhone-Duo` starts on a given device, for tests and screenshots.
+        if let raw = UserDefaults.standard.string(forKey: "BotflowSimDevice"), let chosen = SimDevice(rawValue: raw) {
+            device = chosen
+            if chosen == .duo { videoSize = Duo.innerPixels }
+        }
+        #endif
     }
 
     deinit {
         desiredTask?.cancel()
         client?.close()
+        if let foregroundObserver { NotificationCenter.default.removeObserver(foregroundObserver) }
+    }
+
+    private var foregroundObserver: NSObjectProtocol?
+
+    private func resyncDuoVideo() {
+        guard device == .duo, phase == .live, !isDemo else { return }
+        let decoders = duoDecoders
+        decodeQueue.async { for decoder in decoders.values { decoder.reset() } }
+        client?.resyncVideo()
+    }
+
+    /// Ask which devices this person can start (once per controller).
+    func loadDevices() async {
+        let devices = await service.simulatorDevices()
+        availableDevices = devices
+        // The Duo was picked last time but no host with one serves them now.
+        if !devices.contains(device), !phase.isActive { device = .iPhone }
+    }
+
+    /// Hand each panel's frames to a Duo view. Returns a token to stop with.
+    func addDuoSink(_ sink: @escaping (DuoDisplay, DuoFrame) -> Void) -> UUID {
+        let id = UUID()
+        duoSinks[id] = sink
+        for (display, frame) in duoFrames { sink(display, frame) }
+        return id
+    }
+
+    func removeDuoSink(_ id: UUID) {
+        duoSinks[id] = nil
+    }
+
+    private func deliverDuoFrame(_ display: DuoDisplay, _ frame: DuoFrame) {
+        guard device == .duo, phase.isActive else { return }
+        duoFrames[display] = frame
+        for sink in duoSinks.values { sink(display, frame) }
+        if !hasFrame { withMotion(.easeOut(duration: 0.5)) { hasFrame = true } }
+    }
+
+    private var hostTakesDuoInput: Bool { device == .duo && (isDemo || hostFeatures.contains("duo-displays")) }
+
+    /// One finger on one of the Duo's panels, as it moves.
+    func duoTouch(_ display: DuoDisplay, phase: String, x: Double, y: Double, finger: Int) {
+        guard hostTakesDuoInput, finger == 0 || hostFeatures.contains("multi-touch") else { return }
+        client?.send(.touch(display: display.rawValue, phase: phase, x: min(1, max(0, x)), y: min(1, max(0, y)), finger: finger))
+    }
+
+    /// Fold the Duo. While the hinge is being dragged the angle is sent about
+    /// thirty times a second; `settled` sends the final one at once.
+    func setDuoHinge(_ hinge: Double, settled: Bool) {
+        guard device == .duo else { return }
+        if isDemo {
+            // No host to answer: light the panel a real Duo would.
+            let open = hinge > 90
+            duoState = SimDuoState(hingeAngle: hinge, hingeMoving: false, orientation: duoOrientationSent, coverLit: !open, innerLit: open)
+            return
+        }
+        guard phase == .live, hostFeatures.contains("duo-hinge") else { return }
+        if settled {
+            duoHingeTimer?.invalidate()
+            duoHingeTimer = nil
+            duoHingePending = nil
+            sendDuoHinge(hinge)
+            return
+        }
+        duoHingePending = hinge
+        guard duoHingeTimer == nil else { return }
+        let wait = max(0, 0.033 - Date().timeIntervalSince(duoHingeSentAt))
+        duoHingeTimer = Timer.scheduledTimer(withTimeInterval: wait, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.duoHingeTimer = nil
+                if let pending = self.duoHingePending { self.sendDuoHinge(pending) }
+                self.duoHingePending = nil
+            }
+        }
+    }
+
+    private func sendDuoHinge(_ hinge: Double) {
+        let rounded = (hinge * 10).rounded() / 10
+        duoHingeSentAt = Date()
+        guard duoHingeSent != rounded else { return }
+        duoHingeSent = rounded
+        client?.send(.hinge(rounded))
+    }
+
+    /// How the Duo is held: iOS turns the interface to match.
+    func setDuoOrientation(_ orientation: DuoHeldOrientation) {
+        guard device == .duo, duoOrientationSent != orientation.rawValue else { return }
+        if isDemo {
+            duoOrientationSent = orientation.rawValue
+            return
+        }
+        guard phase == .live, hostFeatures.contains("device-orientation") else { return }
+        duoOrientationSent = orientation.rawValue
+        client?.send(.deviceOrientation(orientation.rawValue))
+    }
+
+    /// A hardware button: "home", "lock", "volumeUp", "volumeDown".
+    func pressButton(_ button: String) {
+        guard phase == .live, hostFeatures.contains("hardware-buttons") else { return }
+        if button.hasPrefix("volume"), !hostFeatures.contains("volume-buttons") { return }
+        client?.send(.button(button))
+        Haptics.tap()
+    }
+
+    private func resetDuo() {
+        duoState = nil
+        duoFrames = [:]
+        duoHingeSent = nil
+        duoOrientationSent = nil
+        duoHingeTimer?.invalidate()
+        duoHingeTimer = nil
+        duoHingePending = nil
+        let decoders = duoDecoders
+        decodeQueue.async { for decoder in decoders.values { decoder.reset() } }
     }
 
     var errors: [SimDiagnostic] { diagnostics.filter(\.isError) }
@@ -135,6 +304,8 @@ final class SimulatorController: ObservableObject {
         diagnostics = []
         logTail = []
         hasFrame = false
+        resetDuo()
+        isDuoSession = device == .duo
         do {
             let session = try await service.startSimulator(projectId: projectId, device: device, landscape: landscape)
             sessionId = session.sessionId
@@ -158,6 +329,7 @@ final class SimulatorController: ObservableObject {
         sessionId = nil
         flushDisplay()
         hasFrame = false
+        resetDuo()
         setPhase(.stopped)
         if let id, !isDemo { await service.stopSimulator(projectId: projectId, sessionId: id) }
     }
@@ -181,7 +353,12 @@ final class SimulatorController: ObservableObject {
     func setDevice(_ device: SimDevice) async {
         guard device != self.device else { return }
         self.device = device
-        videoSize = device == .iPhone ? CGSize(width: 1206, height: 2622) : CGSize(width: 2064, height: 2752)
+        switch device {
+        case .iPhone: videoSize = CGSize(width: 1206, height: 2622)
+        case .iPad: videoSize = CGSize(width: 2064, height: 2752)
+        case .duo: videoSize = Duo.innerPixels   // not laid out from this: the Duo is a 3D model
+        }
+        landscape = false
         if phase.isActive {
             await stop()
             await start()
@@ -247,8 +424,8 @@ final class SimulatorController: ObservableObject {
     private func connect(_ url: URL) {
         decoder.reset()
         let client = SimStreamClient(url: url) { [weak self] event in
-            if case .video(let data, let keyframe, _) = event {
-                self?.enqueue(data, keyframe: keyframe)
+            if case .video(let data, let keyframe, _, let stream) = event {
+                self?.enqueue(data, keyframe: keyframe, stream: stream)
                 return
             }
             Task { @MainActor in self?.handle(event) }
@@ -257,9 +434,14 @@ final class SimulatorController: ObservableObject {
         client.start()
     }
 
-    private nonisolated func enqueue(_ data: Data, keyframe: Bool) {
+    private nonisolated func enqueue(_ data: Data, keyframe: Bool, stream: Int) {
         decodeQueue.async { [weak self] in
             guard let self else { return }
+            // An iPhone Duo: one stream per panel, decoded to textures for the 3D model.
+            if let decoder = self.duoDecoder(forStream: stream) {
+                decoder.decode(data, keyframe: keyframe)
+                return
+            }
             let renderer = self.displayLayer.sampleBufferRenderer
             if renderer.status == .failed {
                 // A decode error: clear the pipeline and resume at the next keyframe.
@@ -276,6 +458,14 @@ final class SimulatorController: ObservableObject {
                 }
             }
         }
+    }
+
+    /// The Duo decoder for a stream, or nil when the session is not a Duo's.
+    /// (Called on the decode queue; the flag it reads is set on the main actor
+    /// before any frame of a session can arrive.)
+    private nonisolated func duoDecoder(forStream stream: Int) -> DuoVideoDecoder? {
+        guard isDuoSession else { return nil }
+        return duoDecoders[stream == 1 ? .inner : .cover]
     }
 
     private func flushDisplay() {
@@ -313,8 +503,16 @@ final class SimulatorController: ObservableObject {
             default:
                 break
             }
-        case .videoConfig(let width, let height):
-            if width > 0, height > 0 { videoSize = CGSize(width: width, height: height) }
+        case .videoConfig(let width, let height, let display):
+            // A Duo's two streams are sized by its model, not by this.
+            if display == nil, width > 0, height > 0 { videoSize = CGSize(width: width, height: height) }
+        case .duoState(let state):
+            duoState = state
+            // "Already asked for" holds only while the session is where this
+            // app put it: once another view has folded or turned it, the same
+            // fold or turn is news again.
+            if !state.hingeMoving, let sent = duoHingeSent, abs(state.hingeAngle - sent) > 0.5 { duoHingeSent = nil }
+            if let reported = state.orientation, reported != duoOrientationSent { duoOrientationSent = nil }
         case .calibration(let width, let height, let features):
             hostFeatures = Set(features)
             if let width, let height, width > 0, height > 0 { reportedLogicalSize = CGSize(width: width, height: height) }
@@ -415,9 +613,54 @@ final class SimulatorController: ObservableObject {
         try? await Task.sleep(nanoseconds: 900_000_000)
         setPhase(.installing)
         try? await Task.sleep(nanoseconds: 500_000_000)
+        if device == .duo {
+            // Stand-in pictures for both panels, and the panel an open Duo lights.
+            // (Unless the device was already folded while this "built": then that stands.)
+            duoState = duoState ?? SimDuoState(hingeAngle: 180, hingeMoving: false, orientation: nil, coverLit: false, innerLit: true)
+            for (display, frame) in DuoDemoFrames.make() { deliverDuoFrameForDemo(display, frame) }
+        }
         hasFrame = true
         setPhase(.live)
     }
 
+    private func deliverDuoFrameForDemo(_ display: DuoDisplay, _ frame: DuoFrame) {
+        duoFrames[display] = frame
+        for sink in duoSinks.values { sink(display, frame) }
+    }
+
     var isDemoSession: Bool { isDemo }
+}
+
+/// Carries decoded Duo frames from the decoders (made before the controller
+/// exists as `self`) to the controller.
+///
+/// Frames arrive on VideoToolbox's threads, up to 120 a second, each holding a
+/// buffer of many megabytes. Only the newest of each panel is kept, and at most
+/// one hop to the main actor is pending at a time: if the main thread stalls,
+/// frames are dropped here instead of piling up behind it.
+final class DuoFrameRelay: @unchecked Sendable {
+    /// Called (on any thread) when there are frames to `take`.
+    var handler: (@Sendable () -> Void)?
+    private let lock = NSLock()
+    private var latest: [DuoDisplay: DuoFrame] = [:]
+    private var hopPending = false
+
+    func deliver(_ display: DuoDisplay, _ frame: DuoFrame) {
+        lock.lock()
+        latest[display] = frame
+        let hop = !hopPending
+        hopPending = true
+        lock.unlock()
+        if hop { handler?() }
+    }
+
+    /// The newest frame of each panel since the last call.
+    func take() -> [DuoDisplay: DuoFrame] {
+        lock.lock()
+        defer { lock.unlock() }
+        let frames = latest
+        latest = [:]
+        hopPending = false
+        return frames
+    }
 }
