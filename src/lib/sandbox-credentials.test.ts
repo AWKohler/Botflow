@@ -11,7 +11,8 @@ import { createProject } from '@/test/factories';
 import { chatSessions, projectMembers } from '@/db/schema';
 
 const purge = vi.hoisted(() => ({ fn: vi.fn(async (projectId: string) => { void projectId; return { stoppedAgents: 0 }; }) }));
-vi.mock('@/lib/agent/opencode/setup', () => ({
+vi.mock('@/lib/agent/opencode/setup', async (orig) => ({
+  ...(await orig<typeof import('@/lib/agent/opencode/setup')>()),
   purgeOpenCodeCredentials: (projectId: string) => purge.fn(projectId),
 }));
 
@@ -213,5 +214,44 @@ describe('compare-and-set: correctness does not depend on the lock', () => {
     expect(r.sandboxCredentials).toBe('present');
     expect(r.credentialWriteUntil?.getTime()).toBe(claim!.until.getTime());
     expect(claim!.until.getTime()).toBeGreaterThan(Date.now() + 300_000);
+  });
+});
+
+describe('the in-flight window is released only when the write definitely ended', () => {
+  test('an ambiguous failure (e.g. transport error) keeps the window — no admission', async () => {
+    const { secureProjectForSharing, withPersonalSandboxCredential, SandboxCredentialWriteInProgress } = await import(
+      './sandbox-credentials'
+    );
+    const p = await createProject({ userId: OWNER });
+    await expect(
+      withPersonalSandboxCredential(p.id, async () => {
+        throw new Error('socket hang up');
+      }),
+    ).rejects.toThrow('socket hang up');
+    expect((await row(p.id)).credentialWriteUntil).toBeInstanceOf(Date);
+    await expect(secureProjectForSharing(p.id)).rejects.toBeInstanceOf(SandboxCredentialWriteInProgress);
+  });
+
+  test.each([['shared'], ['expired']])('a definite refusal (%s) releases it', async (kind) => {
+    const { withPersonalSandboxCredential } = await import('./sandbox-credentials');
+    const { SandboxSharedError, SandboxCredentialWriteExpired } = await import('@/lib/agent/opencode/setup');
+    const p = await createProject({ userId: OWNER });
+    await expect(
+      withPersonalSandboxCredential(p.id, async () => {
+        throw kind === 'shared' ? new SandboxSharedError() : new SandboxCredentialWriteExpired();
+      }),
+    ).rejects.toBeTruthy();
+    expect((await row(p.id)).credentialWriteUntil).toBeNull();
+  });
+
+  test('the writer is told its window, to pass to the sandbox as a deadline', async () => {
+    const { withPersonalSandboxCredential } = await import('./sandbox-credentials');
+    const p = await createProject({ userId: OWNER });
+    let seen: Date | null = null;
+    await withPersonalSandboxCredential(p.id, async (claim) => {
+      seen = claim.until;
+      expect((await row(p.id)).credentialWriteUntil?.getTime()).toBe(claim.until.getTime());
+    });
+    expect(seen).toBeInstanceOf(Date);
   });
 });

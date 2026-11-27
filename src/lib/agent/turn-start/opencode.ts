@@ -87,6 +87,7 @@ import {
   writeOpenCodeAuth,
   readOpenCodeAuth,
   SandboxSharedError,
+  SandboxCredentialWriteExpired,
   writeOpenCodeScripts,
   writeOpenCodeAppendPrompt,
   resolveOpenCodePaths,
@@ -298,13 +299,18 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
   if (useCodex) {
     let locked;
     try {
-      locked = await withPersonalSandboxCredential(projectId, async () => {
+      locked = await withPersonalSandboxCredential(projectId, async (claim) => {
         const codex = await resolveCodexCredentialsForTurn(projectId, userId, creds);
         if (!codex) return null;
-        await writeOpenCodeAuth(projectId, {
-          codex: { accessToken: codex.accessToken, refreshToken: codex.refreshToken, expiresAt: codex.expiresAt },
-          proxy: null,
-        });
+        await writeOpenCodeAuth(
+          projectId,
+          {
+            codex: { accessToken: codex.accessToken, refreshToken: codex.refreshToken, expiresAt: codex.expiresAt },
+            proxy: null,
+          },
+          // A minute inside the in-flight window, by the sandbox's clock.
+          { notAfter: new Date(claim.until.getTime() - 60_000) },
+        );
         return codex;
       });
     } catch (err) {
@@ -317,6 +323,9 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
       // The sandbox's own fence refused the write: it was shared meanwhile.
       if (err instanceof SandboxSharedError) {
         return { ok: false, response: agentUnavailableResponse("codex_shared_project") };
+      }
+      if (err instanceof SandboxCredentialWriteExpired) {
+        return { ok: false, response: jsonError(503, "Setting up this turn took too long. Send your message again.") };
       }
       throw err;
     }

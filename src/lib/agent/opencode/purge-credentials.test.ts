@@ -180,6 +180,22 @@ describe('fenced Codex write and read (real script, local shell)', () => {
     expect(fs.readdirSync(path.dirname(authPath))).toEqual([]);
   });
 
+  test('a write that reaches the sandbox after its deadline writes nothing', async () => {
+    const { writeOpenCodeAuth, SandboxCredentialWriteExpired } = await import('./setup');
+    fs.rmSync(authPath);
+    await expect(
+      writeOpenCodeAuth(projectId, { codex }, { notAfter: new Date(Date.now() - 1000) }),
+    ).rejects.toBeInstanceOf(SandboxCredentialWriteExpired);
+    expect(fs.readdirSync(path.dirname(authPath))).toEqual([]);
+  });
+
+  test('a write within its deadline succeeds', async () => {
+    const { writeOpenCodeAuth } = await import('./setup');
+    fs.rmSync(authPath);
+    await writeOpenCodeAuth(projectId, { codex }, { notAfter: new Date(Date.now() + 60_000) });
+    expect(fs.existsSync(authPath)).toBe(true);
+  });
+
   test('a share landing between the two marker checks leaves no token behind', async () => {
     const { writeOpenCodeAuth, SandboxSharedError } = await import('./setup');
     fs.rmSync(authPath);

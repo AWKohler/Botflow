@@ -196,13 +196,25 @@ const OPENCODE_BRIDGE_PATTERN = "[/]\\.botflow/opencode/opencode-bridge";
 
 export const PURGE_OK_MARKER = "BOTFLOW_PURGED";
 const FENCED_MARKER = "BOTFLOW_FENCED";
+const EXPIRED_MARKER = "BOTFLOW_EXPIRED";
 const WRITTEN_MARKER = "BOTFLOW_WRITTEN";
 
-/** Thrown when a personal-credential write or read is refused because the
- *  sandbox has been shared (its fence marker exists). */
-export class SandboxSharedError extends Error {
+/** A personal-credential write that DEFINITELY wrote nothing: the sandbox
+ *  shell ran and refused. (Any other error from a write leaves it unknown
+ *  whether the shell ran — callers must assume it might still.) */
+export class SandboxCredentialRefused extends Error {}
+
+/** Refused because the sandbox has been shared (its fence marker exists). */
+export class SandboxSharedError extends SandboxCredentialRefused {
   constructor() {
     super("The project sandbox has been shared; personal credentials are refused");
+  }
+}
+
+/** Refused because the write ran after its deadline (sandbox clock). */
+export class SandboxCredentialWriteExpired extends SandboxCredentialRefused {
+  constructor() {
+    super("The credential write reached the sandbox after its deadline; nothing was written");
   }
 }
 
@@ -274,6 +286,12 @@ export async function purgeOpenCodeCredentials(projectId: string): Promise<{ sto
 export async function writeOpenCodeAuth(
   projectId: string,
   input: OpenCodeAuthInput,
+  opts: {
+    /** Codex writes: the sandbox shell refuses to write after this instant
+     *  (by its own clock), so a command that reaches the sandbox late —
+     *  after the caller's in-flight window — writes nothing. */
+    notAfter?: Date;
+  } = {},
 ): Promise<void> {
   const sandbox = await getOrCreatePersistentSandbox(projectId);
   const paths = await resolveOpenCodePaths(projectId);
@@ -299,8 +317,12 @@ export async function writeOpenCodeAuth(
     // in as base64 and is decoded only after the marker check passes.
     const b64 = Buffer.from(JSON.stringify(payload), "utf-8").toString("base64");
     const tmp = `${SH_AUTH}.w${Date.now().toString(36)}`;
+    const deadline = opts.notAfter ? Math.floor(opts.notAfter.getTime() / 1000) : null;
     const script = [
       `[ -n "$HOME" ] || exit 1`,
+      ...(deadline != null
+        ? [`NOW=$(date +%s) || exit 1`, `if [ "$NOW" -ge ${deadline} ]; then echo ${EXPIRED_MARKER}; exit 10; fi`]
+        : []),
       `if [ -e ${SH_MARKER} ]; then echo ${FENCED_MARKER}; exit 9; fi`,
       `mkdir -p ${SH_DATA_DIR} && chmod 700 ${SH_DATA_DIR} || exit 1`,
       `umask 077`,
@@ -311,6 +333,7 @@ export async function writeOpenCodeAuth(
     ].join("\n");
     const res = await sandbox.runCommand({ cmd: "sh", args: ["-c", script] });
     const out = (await res.stdout()).trim();
+    if (out.includes(EXPIRED_MARKER)) throw new SandboxCredentialWriteExpired();
     if (out.includes(FENCED_MARKER)) throw new SandboxSharedError();
     if (res.exitCode !== 0 || !out.includes(WRITTEN_MARKER)) {
       throw new Error(`writeOpenCodeAuth: codex write failed (exit ${res.exitCode})`);

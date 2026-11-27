@@ -34,7 +34,7 @@ import { getDb } from "@/db";
 import { chatSessions, projectMembers, projects, type Project } from "@/db/schema";
 import { REDIS_CONFIGURED, redis } from "@/lib/redis";
 import { isSandboxPlatform } from "@/lib/project-platform";
-import { purgeOpenCodeCredentials } from "@/lib/agent/opencode/setup";
+import { SandboxCredentialRefused, purgeOpenCodeCredentials } from "@/lib/agent/opencode/setup";
 import { getTurnRecords, isTurnLive, markTurnDead } from "@/lib/agent/claude-code/turn-registry";
 import { revokeToolToken } from "@/lib/agent/claude-code/tool-token";
 import { revokeLlmProxyToken } from "@/lib/agent/llm-proxy/token";
@@ -138,14 +138,18 @@ export async function secureProjectForSharing(
       .returning({
         platform: projects.platform,
         sandboxCredentials: projects.sandboxCredentials,
-        writerInFlight: sql<boolean>`coalesce(${projects.credentialWriteUntil} > now(), false)`,
+        credentialWriteUntil: projects.credentialWriteUntil,
       });
     if (!state) throw new Error(`secureProjectForSharing: project ${projectId} not found`);
     // A writer that claimed before this share may still be running (it can
     // outlive the lock, never its route): don't let anyone in until it has
     // finished or certainly died. shared_at is already set, so no new
     // writer can claim meanwhile.
-    if (state.writerInFlight) throw new SandboxCredentialWriteInProgress();
+    // Compared on the app clock, which also set the window (independent of
+    // the database's time zone).
+    if (state.credentialWriteUntil && state.credentialWriteUntil.getTime() > Date.now()) {
+      throw new SandboxCredentialWriteInProgress();
+    }
     if (state.sandboxCredentials === "none") return { stoppedAgents: 0 };
 
     let stoppedAgents = 0;
@@ -166,7 +170,7 @@ export async function secureProjectForSharing(
  */
 export async function withPersonalSandboxCredential<T>(
   projectId: string,
-  fn: () => Promise<T>,
+  fn: (claim: { until: Date }) => Promise<T>,
   opts: { waitMs?: number } = {},
 ): Promise<{ ok: true; value: T } | { ok: false; reason: "shared" }> {
   return withCredentialLock(projectId, opts.waitMs ?? 15_000, async () => {
@@ -185,16 +189,24 @@ export async function withPersonalSandboxCredential<T>(
     }
     const claim = await claimSandboxForCredential(projectId);
     if (!claim) return { ok: false, reason: "shared" };
-    try {
-      return { ok: true, value: await fn() };
-    } finally {
-      // Done: release the in-flight window (only our own claim's).
-      await getDb()
+    const release = () =>
+      getDb()
         .update(projects)
         .set({ credentialWriteUntil: null })
         .where(and(eq(projects.id, projectId), eq(projects.credentialWriteUntil, claim.until)))
         .catch((err) => console.warn("[sandbox-credentials] could not release write window:", err));
+    let value: T;
+    try {
+      value = await fn(claim);
+    } catch (err) {
+      // Release early only when the sandbox definitely wrote nothing. Any
+      // other failure (transport error, timeout) leaves it unknown whether
+      // the shell is still running, so the window stays until it expires.
+      if (err instanceof SandboxCredentialRefused) await release();
+      throw err;
     }
+    await release();
+    return { ok: true, value };
   });
 }
 

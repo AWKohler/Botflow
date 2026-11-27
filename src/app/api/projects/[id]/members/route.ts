@@ -151,7 +151,7 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            "An agent using your ChatGPT plan is starting in this project. Try again shortly. (ChatGPT sign-in is now turned off for this project, as it will be once it's shared.)",
+            "An agent using your ChatGPT plan is starting in this project. Try again in a few minutes. (ChatGPT sign-in is now turned off for this project, as it will be once it's shared.)",
           codexBlocked: true,
         },
         { status: 409 },
