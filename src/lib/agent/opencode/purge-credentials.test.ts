@@ -146,7 +146,7 @@ describe.skipIf(!hasProcTools())('purgeOpenCodeCredentials (real script, local s
     });
   });
 
-  test('kills a Codex write shell stalled mid-write (and its children)', async () => {
+  test('kills a Codex write shell stalled mid-write, and its children', async () => {
     const { purgeOpenCodeCredentials } = await import('./setup');
     // Same tag a real write shell carries; `sleep` stands in for the stall.
     const writer = spawn('/bin/sh', ['-c', ': BOTFLOW_CRED_WRITER; sleep 300; true'], {
@@ -163,6 +163,9 @@ describe.skipIf(!hasProcTools())('purgeOpenCodeCredentials (real script, local s
     );
     await purgeOpenCodeCredentials(projectId);
     await vi.waitFor(() => expect(writer.exitCode !== null || writer.signalCode !== null).toBe(true));
+    // The stalled `sleep` child is gone too.
+    const left = execFileSync('sh', ['-c', "pgrep -f '^sleep 300$' | wc -l"], { encoding: 'utf8' });
+    expect(Number(left.trim())).toBe(0);
   });
 
   test('a sandbox with nothing running reports zero and succeeds', async () => {
@@ -254,6 +257,7 @@ describe('purgeOpenCodeCredentials fails closed on unexpected output', () => {
   test.each([
     [{ exitCode: 3, stdout: 'BOTFLOW_PURGE_PROCS_LEFT' }],
     [{ exitCode: 4, stdout: 'BOTFLOW_PURGE_FILE_LEFT' }],
+    [{ exitCode: 11, stdout: 'BOTFLOW_PURGE_WRITER_LEFT' }],
     [{ exitCode: 0, stdout: '' }],
     [{ exitCode: 1, stdout: 'BOTFLOW_PURGED 0' }],
   ])('%o → throws', async (override) => {

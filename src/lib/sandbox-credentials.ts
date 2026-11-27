@@ -23,10 +23,11 @@
  *       state in one statement), so a share always sees a writer that may
  *       write, and a writer that loses never writes;
  *     - in the sandbox, the purge first sets a sticky marker, and every
- *       Codex write is one shell that refuses if the marker exists and
- *       re-checks it after writing (src/lib/agent/opencode/setup.ts). A
- *       write shell that starts after the marker exists writes nothing; one
- *       that started before it finishes long before the purge verifies.
+ *       Codex write is one tagged shell that refuses if the marker exists
+ *       (or its own deadline passed) and re-checks the marker after writing
+ *       (src/lib/agent/opencode/setup.ts). A write shell that starts after
+ *       the marker exists writes nothing; one that started before it is
+ *       killed by the purge, which fails closed if any survives.
  */
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, lte, or, sql } from "drizzle-orm";

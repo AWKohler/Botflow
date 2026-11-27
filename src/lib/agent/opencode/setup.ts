@@ -243,6 +243,18 @@ const SH_MARKER = "$HOME/.botflow/sandbox-shared";
 const SH_DATA_DIR = "$HOME/.local/share/opencode";
 const SH_AUTH = `${SH_DATA_DIR}/auth.json`;
 
+/** Shell lines that find, freeze and kill tagged Codex write shells and
+ *  their children. */
+function killWriterLines(): string[] {
+  return [
+    `W=$(pgrep -f ${WRITER_PATTERN}); rc=$?`,
+    `if [ $rc -gt 1 ]; then echo BOTFLOW_PURGE_PGREP_ERROR; exit 6; fi`,
+    // Freeze each writer first so it can't fork a new (untagged) child
+    // between its children being killed and itself.
+    `for p in $W; do kill -STOP "$p" 2>/dev/null; pkill -KILL -P "$p" 2>/dev/null; kill -KILL "$p" 2>/dev/null; done`,
+  ];
+}
+
 /**
  * Remove every trace of a personal credential from the project sandbox:
  * set the shared fence marker, delete OpenCode's auth store (and temp
@@ -252,14 +264,6 @@ const SH_AUTH = `${SH_DATA_DIR}/auth.json`;
  * count as failure, never as "nothing running". Throws unless verified.
  * Returns how many agent bridges (running turns) were stopped.
  */
-function killWriterLines(): string[] {
-  return [
-    `W=$(pgrep -f ${WRITER_PATTERN}); rc=$?`,
-    `if [ $rc -gt 1 ]; then echo BOTFLOW_PURGE_PGREP_ERROR; exit 6; fi`,
-    `for p in $W; do pkill -KILL -P "$p" 2>/dev/null; kill -KILL "$p" 2>/dev/null; done`,
-  ];
-}
-
 export async function purgeOpenCodeCredentials(projectId: string): Promise<{ stoppedAgents: number }> {
   const sandbox = await getOrCreatePersistentSandbox(projectId);
   const auth = SH_AUTH;

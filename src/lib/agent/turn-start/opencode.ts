@@ -88,6 +88,7 @@ import {
   readOpenCodeAuth,
   SandboxSharedError,
   SandboxCredentialWriteExpired,
+  SandboxCredentialNotDispatched,
   writeOpenCodeScripts,
   writeOpenCodeAppendPrompt,
   resolveOpenCodePaths,
@@ -323,6 +324,9 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
       // The sandbox's own fence refused the write: it was shared meanwhile.
       if (err instanceof SandboxSharedError) {
         return { ok: false, response: agentUnavailableResponse("codex_shared_project") };
+      }
+      if (err instanceof SandboxCredentialNotDispatched) {
+        return { ok: false, response: settlingResponse("This project's sandbox couldn't be reached. Try again in a moment.") };
       }
       if (err instanceof SandboxCredentialWriteExpired) {
         return { ok: false, response: jsonError(503, "Setting up this turn took too long. Send your message again.") };
