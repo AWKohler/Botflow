@@ -269,7 +269,7 @@ export async function drainThreadQueue(input: {
     return { started: true, turnId: result.turnId, queueId: item.id };
   }
   const refusal = await readRefusal(result.response);
-  if (refusal.reason === "thread_busy" || refusal.reason === "capacity") {
+  if (refusal.reason === "thread_busy" || refusal.reason === "capacity" || refusal.reason === "codex_settling") {
     // Transient: put it back; the next turn end (or the client backstop) retries.
     await settle(item.id, { status: "queued" });
     return { started: false, why: "busy" };

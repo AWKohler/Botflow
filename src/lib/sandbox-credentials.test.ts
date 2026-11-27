@@ -305,6 +305,27 @@ describe('read mode (post-turn rotation sync)', () => {
     await expect(secureProjectForSharing(p.id)).resolves.toEqual({ stoppedAgents: 0 });
   });
 
+  test('a read that outlives its lease while a share admits someone returns nothing to adopt', async () => {
+    const { withPersonalSandboxCredential, secureProjectForSharing } = await import('./sandbox-credentials');
+    const { fakeRedis } = await import('@/test/redis-fake');
+    const p = await createProject({ userId: OWNER });
+    const res = await withPersonalSandboxCredential(
+      p.id,
+      async () => {
+        // Lease expires mid-read; a share completes and a member is let in,
+        // who plants a token the stalled read then returns.
+        await fakeRedis.del(`sandbox-credential-lock:${p.id}`);
+        await secureProjectForSharing(p.id);
+        await currentTestDb().insert(projectMembers).values({
+          projectId: p.id, userId: 'user_editor', invitedEmail: 'e@example.test', invitedBy: OWNER, status: 'active',
+        });
+        return { type: 'oauth', access: 'planted', refresh: 'planted' };
+      },
+      { mode: 'read' },
+    );
+    expect(res).toEqual({ ok: false, reason: 'shared' });
+  });
+
   test('still refuses on a shared project', async () => {
     const { withPersonalSandboxCredential } = await import('./sandbox-credentials');
     const p = await createProject({ userId: OWNER, sharedAt: new Date() });

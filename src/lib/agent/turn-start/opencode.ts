@@ -315,7 +315,7 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
       });
     } catch (err) {
       if (err instanceof SandboxCredentialLockTimeout) {
-        return { ok: false, response: jsonError(503, "This project is busy changing its sharing settings. Try again in a moment.") };
+        return { ok: false, response: settlingResponse("This project is busy changing its sharing settings. Try again in a moment.") };
       }
       if (err instanceof SandboxCredentialLockUnavailable) {
         return { ok: false, response: jsonError(503, "ChatGPT sign-in isn't available on this deployment (it needs Redis). Pick a different model.") };
@@ -333,7 +333,7 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
       if (locked.reason === "busy") {
         // An earlier setup in this project ended without a clear result and
         // may still be finishing; its window closes within a few minutes.
-        return { ok: false, response: jsonError(503, "This project's previous ChatGPT setup is still settling. Try again in a few minutes.") };
+        return { ok: false, response: settlingResponse("This project's previous ChatGPT setup is still settling. Try again in a few minutes.") };
       }
       return { ok: false, response: agentUnavailableResponse("codex_shared_project") };
     }
@@ -644,24 +644,31 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
             // its auth file is untrusted and nothing is adopted from it (the
             // share itself purged it).
             if (useCodex && writtenRefreshToken) {
-              withPersonalSandboxCredential(projectId, async () => {
-                const auth = await readOpenCodeAuth(projectId);
-                const openai = auth?.openai as
+              // Read under the lock; adopt only what survives the re-check
+              // after the read (never from inside the read itself).
+              withPersonalSandboxCredential(
+                projectId,
+                async () => (await readOpenCodeAuth(projectId))?.openai as
                   | { type?: string; access?: string; refresh?: string; expires?: number }
-                  | undefined;
-                if (
-                  openai?.type === "oauth" &&
-                  openai.refresh &&
-                  openai.access &&
-                  openai.refresh !== writtenRefreshToken
-                ) {
-                  await setUserCredentials(userId, {
-                    codexOAuthAccessToken: openai.access,
-                    codexOAuthRefreshToken: openai.refresh,
-                    codexOAuthExpiresAt: openai.expires ?? null,
-                  });
-                }
-              }, { mode: "read" }).catch((err) => console.warn("[opencode] codex post-turn sync failed:", err));
+                  | undefined,
+                { mode: "read" },
+              )
+                .then(async (read) => {
+                  const openai = read.ok ? read.value : undefined;
+                  if (
+                    openai?.type === "oauth" &&
+                    openai.refresh &&
+                    openai.access &&
+                    openai.refresh !== writtenRefreshToken
+                  ) {
+                    await setUserCredentials(userId, {
+                      codexOAuthAccessToken: openai.access,
+                      codexOAuthRefreshToken: openai.refresh,
+                      codexOAuthExpiresAt: openai.expires ?? null,
+                    });
+                  }
+                })
+                .catch((err) => console.warn("[opencode] codex post-turn sync failed:", err));
             }
             // Deliberately NO token revocation here: the bridge runs detached and
             // legitimately outlives this route (maxDuration kill, client
@@ -738,4 +745,13 @@ async function resolveCodexCredentialsForTurn(
     // No sandbox / no auth file yet — nothing to recover.
   }
   return getFreshCodexCredentials(codexAuth, userId);
+}
+
+/** 503 with reason "codex_settling": a transient wait on the project's
+ *  credential state. The thread queue puts such a message back to retry. */
+function settlingResponse(message: string): Response {
+  return new Response(JSON.stringify({ error: message, reason: "codex_settling" }), {
+    status: 503,
+    headers: { "Content-Type": "application/json" },
+  });
 }

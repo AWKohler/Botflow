@@ -193,7 +193,18 @@ export async function withPersonalSandboxCredential<T>(
       return { ok: false, reason: "shared" };
     }
     if (opts.mode === "read") {
-      return { ok: true, value: await fn({ until: new Date(0) }) };
+      const value = await fn({ until: new Date(0) });
+      // Re-validate AFTER the sandbox read: a read that outlived its lease
+      // may have run after a share admitted someone who planted the file.
+      // Callers must only act on the returned value, never inside fn.
+      const after = await loadCredentialState(projectId);
+      const [memberAfter] = await getDb()
+        .select({ id: projectMembers.id })
+        .from(projectMembers)
+        .where(eq(projectMembers.projectId, projectId))
+        .limit(1);
+      if (!after || after.sharedAt || memberAfter) return { ok: false, reason: "shared" };
+      return { ok: true, value };
     }
     const claim = await claimSandboxForCredential(projectId);
     if (claim === "shared" || claim === "busy") return { ok: false, reason: claim };
