@@ -14,6 +14,7 @@ import { requireProjectAccess } from "@/lib/project-access";
 import { SHARING_ENABLED } from "@/lib/feature-flags";
 import { getUserTier } from "@/lib/tier";
 import { getEmailForClerkUser } from "@/lib/email";
+import { getUserCredentials } from "@/lib/user-credentials";
 import {
   findClerkUserByVerifiedEmail,
   inviteExpired,
@@ -62,6 +63,10 @@ export async function GET(
 
   return NextResponse.json({
     role: access.role,
+    chatgptOffOnShare:
+      access.role === "owner" &&
+      access.project.sharedAt == null &&
+      Boolean((await getUserCredentials(userId)).codexOAuthAccessToken),
     editorsCanPush: access.project.editorsCanPush,
     editorsManageBackend: access.project.editorsManageBackend,
     shareOwnerCredits: access.project.shareOwnerCredits,

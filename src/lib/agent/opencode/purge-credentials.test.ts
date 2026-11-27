@@ -24,7 +24,11 @@ vi.mock('@/lib/vercel-sandbox', () => ({
         const { exitCode, stdout } = sandboxState.override;
         return { exitCode, stdout: async () => stdout, stderr: async () => '' };
       }
-      const env = { ...process.env, ...(sandboxState.pathOverride ? { PATH: sandboxState.pathOverride } : {}) };
+      const env = {
+        ...process.env,
+        HOME: sandboxState.home,
+        ...(sandboxState.pathOverride ? { PATH: sandboxState.pathOverride } : {}),
+      };
       try {
         const out = execFileSync('/bin/sh', args, { encoding: 'utf8', env });
         return { exitCode: 0, stdout: async () => out, stderr: async () => '' };
@@ -87,11 +91,20 @@ function startFakeBridge(): ChildProcess {
 
 /** A PATH holding only the basic tools the scripts need, optionally with a
  *  fake pgrep that fails with exit status 2. */
-function restrictedPath(opts: { brokenPgrep?: boolean }): string {
+function restrictedPath(opts: { brokenPgrep?: boolean; mvSharesSandbox?: boolean }): string {
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'bf-bin-'));
-  for (const tool of ['rm', 'touch', 'mkdir', 'sleep', 'grep', 'printf', 'cat', 'tr', 'wc']) {
+  const tools = ['rm', 'touch', 'mkdir', 'sleep', 'grep', 'printf', 'cat', 'tr', 'wc', 'chmod', 'base64'];
+  if (!opts.mvSharesSandbox) tools.push('mv');
+  if (!opts.mvSharesSandbox && !opts.brokenPgrep) tools.push('pgrep', 'pkill');
+  for (const tool of tools) {
     const real = execFileSync('sh', ['-c', `command -v ${tool} || true`], { encoding: 'utf8' }).trim();
     if (real.startsWith('/')) fs.symlinkSync(real, path.join(bin, tool));
+  }
+  if (opts.mvSharesSandbox) {
+    // A purge lands exactly between the write's two marker checks.
+    const realMv = execFileSync('sh', ['-c', 'command -v mv'], { encoding: 'utf8' }).trim();
+    fs.writeFileSync(path.join(bin, 'mv'), `#!/bin/sh\nmkdir -p "$HOME/.botflow" && touch "$HOME/.botflow/sandbox-shared"\nexec ${realMv} "$@"\n`);
+    fs.chmodSync(path.join(bin, 'mv'), 0o755);
   }
   if (opts.brokenPgrep) {
     for (const tool of ['pgrep', 'pkill']) {
@@ -132,7 +145,9 @@ describe.skipIf(!hasProcTools())('purgeOpenCodeCredentials (real script, local s
 
   test('without pgrep/pkill it refuses instead of assuming nothing runs', async () => {
     const { purgeOpenCodeCredentials } = await import('./setup');
-    sandboxState.pathOverride = restrictedPath({});
+    sandboxState.pathOverride = restrictedPath({ mvSharesSandbox: false });
+    fs.rmSync(path.join(sandboxState.pathOverride, 'pgrep'));
+    fs.rmSync(path.join(sandboxState.pathOverride, 'pkill'));
     await expect(purgeOpenCodeCredentials(projectId)).rejects.toThrow(/not verified/);
   });
 
@@ -162,6 +177,15 @@ describe('fenced Codex write and read (real script, local shell)', () => {
     fs.writeFileSync(markerPath, '');
     await expect(writeOpenCodeAuth(projectId, { codex })).rejects.toBeInstanceOf(SandboxSharedError);
     expect(fs.existsSync(authPath)).toBe(false);
+    expect(fs.readdirSync(path.dirname(authPath))).toEqual([]);
+  });
+
+  test('a share landing between the two marker checks leaves no token behind', async () => {
+    const { writeOpenCodeAuth, SandboxSharedError } = await import('./setup');
+    fs.rmSync(authPath);
+    sandboxState.pathOverride = restrictedPath({ mvSharesSandbox: true });
+    await expect(writeOpenCodeAuth(projectId, { codex })).rejects.toBeInstanceOf(SandboxSharedError);
+    expect(fs.existsSync(markerPath)).toBe(true);
     expect(fs.readdirSync(path.dirname(authPath))).toEqual([]);
   });
 

@@ -159,3 +159,33 @@ describe('belt and braces', () => {
     expect((await getTurnRecord(p.id, cc.id))?.dead).toBeFalsy();
   });
 });
+
+describe('compare-and-set: correctness does not depend on the lock', () => {
+  test('a writer whose lease expired after claiming is still seen — the share purges', async () => {
+    const { secureProjectForSharing, withPersonalSandboxCredential } = await import('./sandbox-credentials');
+    const { fakeRedis } = await import('@/test/redis-fake');
+    const p = await createProject({ userId: OWNER });
+    purge.fn.mockResolvedValue({ stoppedAgents: 0 });
+    let shareResult: unknown;
+    await withPersonalSandboxCredential(p.id, async () => {
+      // Simulate the lease expiring mid-write: the lock vanishes and a share runs now.
+      await fakeRedis.del(`sandbox-credential-lock:${p.id}`);
+      shareResult = await secureProjectForSharing(p.id);
+    });
+    expect(shareResult).toEqual({ stoppedAgents: 0 });
+    expect(purge.fn).toHaveBeenCalledTimes(1);
+    expect((await row(p.id)).sharedAt).toBeInstanceOf(Date);
+  });
+
+  test('a writer that claims after the share committed is refused', async () => {
+    const { withPersonalSandboxCredential } = await import('./sandbox-credentials');
+    const p = await createProject({ userId: OWNER });
+    // shared_at lands between the writer's read and its claim: the claim's
+    // WHERE shared_at IS NULL is what stops it.
+    await currentTestDb().update(projects).set({ sharedAt: new Date() }).where(eq(projects.id, p.id));
+    const fn = vi.fn(async () => {});
+    expect(await withPersonalSandboxCredential(p.id, fn)).toEqual({ ok: false, reason: 'shared' });
+    expect(fn).not.toHaveBeenCalled();
+    expect((await row(p.id)).sandboxCredentials).toBe('none');
+  });
+});

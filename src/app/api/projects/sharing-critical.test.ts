@@ -166,6 +166,16 @@ describe('projects shared before credential tracking', () => {
     expect(prepare.fn).not.toHaveBeenCalled();
   });
 
+  test('callers that ask for it get a typed "securing" error instead of null', async () => {
+    const p = await createProject({ userId: OWNER, sandboxCredentials: null, sharedAt: new Date('2026-07-01') });
+    await addMember(p.id, EDITOR);
+    prepare.fn.mockRejectedValue(new Error('sandbox unreachable'));
+    const { requireProjectAccess, ProjectSecuringError } = await import('@/lib/project-access');
+    await expect(
+      requireProjectAccess(p.id, EDITOR, 'editor', { onSecuringFailure: 'throw' }),
+    ).rejects.toBeInstanceOf(ProjectSecuringError);
+  });
+
   test('the owner is never blocked by it', async () => {
     const p = await createProject({ userId: OWNER, sandboxCredentials: null, sharedAt: new Date('2026-07-01') });
     prepare.fn.mockRejectedValue(new Error('sandbox unreachable'));

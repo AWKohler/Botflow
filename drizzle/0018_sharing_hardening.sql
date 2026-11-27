@@ -1,8 +1,8 @@
 -- Sharing hardening (part 1).
 -- Additive + data cleanup; idempotent; safe on a live database.
--- Run with scripts/migrate-sharing-hardening.mjs: once BEFORE the code that
--- reads these columns deploys, and once AFTER the deploy has fully rolled
--- out (re-runs the shared_at backfill for invites the old code wrote).
+-- Run with scripts/migrate-sharing-hardening.mjs BEFORE the code that reads
+-- these columns deploys. After the deploy, once no old instance can still
+-- serve a request, run it again with --post-deploy (see the script).
 
 -- 1. Sticky "this project has been shared" marker. Backfilled from every
 --    member row ever written (any status), so a project that was shared,
@@ -28,7 +28,8 @@ UPDATE "projects" SET "html_snapshot_url" = NULL
  WHERE "html_snapshot_url" IS NOT NULL
    AND NOT ("html_snapshot_url" ~ '^https://(utfs\.io|[a-z0-9-]+\.ufs\.sh)/f/[^/?#]+$'
             AND substring("html_snapshot_url" from '/f/([^/?#]+)$') IS NOT DISTINCT FROM "html_snapshot_key");
+-- Thumbnails are only ever shown as <img>, and older ones have no stored
+-- key, so for them only the UploadThing URL form is required.
 UPDATE "projects" SET "thumbnail_url" = NULL
  WHERE "thumbnail_url" IS NOT NULL
-   AND NOT ("thumbnail_url" ~ '^https://(utfs\.io|[a-z0-9-]+\.ufs\.sh)/f/[^/?#]+$'
-            AND substring("thumbnail_url" from '/f/([^/?#]+)$') IS NOT DISTINCT FROM "thumbnail_key");
+   AND "thumbnail_url" !~ '^https://(utfs\.io|[a-z0-9-]+\.ufs\.sh)/f/[^/?#]+$';

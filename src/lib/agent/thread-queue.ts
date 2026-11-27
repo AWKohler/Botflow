@@ -62,7 +62,15 @@ export async function enqueueMessage(input: {
       projectId: input.projectId,
       threadId: input.threadId,
       userId: input.userId,
-      message: { id: input.message.id, role: "user", parts: input.message.parts },
+      message: {
+        id: input.message.id,
+        role: "user",
+        parts: input.message.parts,
+        // Only the routing acknowledgement survives from client metadata.
+        ...(typeof (input.message.metadata as Record<string, unknown> | undefined)?.[QUEUED_ROUTING_REASON_KEY] === "string"
+          ? { metadata: { [QUEUED_ROUTING_REASON_KEY]: (input.message.metadata as Record<string, string>)[QUEUED_ROUTING_REASON_KEY] } }
+          : {}),
+      },
     })
     .returning();
   return row;

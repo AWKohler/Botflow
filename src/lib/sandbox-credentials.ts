@@ -16,14 +16,20 @@
  *  3. Both of the above and every Codex credential write/adoption run under
  *     one per-project lock, so "a Codex turn is writing tokens" and "the
  *     project is becoming shared" don't interleave in the database.
- *  4. Correctness of the sandbox itself does NOT depend on that lock's
- *     timing: the purge first sets a sticky marker inside the sandbox, and
- *     every Codex write checks it before and after writing
- *     (src/lib/agent/opencode/setup.ts), so even a credential write that
- *     outlives its lease can't leave a token behind.
+ *  4. Correctness does NOT depend on that lock's timing:
+ *     - in the database, sharing and the writer's claim are single
+ *       compare-and-set statements (a writer may mark the sandbox 'present'
+ *       only while shared_at IS NULL; sharing sets shared_at and reads the
+ *       state in one statement), so a share always sees a writer that may
+ *       write, and a writer that loses never writes;
+ *     - in the sandbox, the purge first sets a sticky marker, and every
+ *       Codex write is one shell that refuses if the marker exists and
+ *       re-checks it after writing (src/lib/agent/opencode/setup.ts). A
+ *       write shell that starts after the marker exists writes nothing; one
+ *       that started before it finishes long before the purge verifies.
  */
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { chatSessions, projectMembers, projects, type Project } from "@/db/schema";
 import { REDIS_CONFIGURED, redis } from "@/lib/redis";
@@ -44,11 +50,16 @@ export class SandboxCredentialLockTimeout extends Error {
   }
 }
 
+/** No real Redis is configured, so the credential lock can't be taken. */
+export class SandboxCredentialLockUnavailable extends Error {
+  constructor() {
+    super("Sandbox credential operations need Redis (UPSTASH_REDIS_REST_URL/TOKEN)");
+  }
+}
+
 async function withCredentialLock<T>(projectId: string, waitMs: number, fn: () => Promise<T>): Promise<T> {
   // The no-op Redis fallback "grants" every lock; never accept that here.
-  if (!REDIS_CONFIGURED) {
-    throw new Error("Sandbox credential operations need Redis (UPSTASH_REDIS_REST_URL/TOKEN)");
-  }
+  if (!REDIS_CONFIGURED) throw new SandboxCredentialLockUnavailable();
   const key = lockKey(projectId);
   const token = randomUUID();
   const deadline = Date.now() + waitMs;
@@ -103,11 +114,17 @@ export async function secureProjectForSharing(
 ): Promise<SecureForSharingResult> {
   return withCredentialLock(projectId, opts.waitMs ?? 45_000, async () => {
     const db = getDb();
-    const state = await loadCredentialState(projectId);
+    // ONE statement marks the project shared and reads the credential state
+    // as of that moment. A credential writer flips the state to 'present'
+    // only WHERE shared_at IS NULL, so either its flip landed first (we see
+    // 'present' and purge) or it fails and never writes — whatever the
+    // timing of either side.
+    const [state] = await db
+      .update(projects)
+      .set({ sharedAt: sql`coalesce(${projects.sharedAt}, now())` })
+      .where(eq(projects.id, projectId))
+      .returning({ platform: projects.platform, sandboxCredentials: projects.sandboxCredentials });
     if (!state) throw new Error(`secureProjectForSharing: project ${projectId} not found`);
-    if (!state.sharedAt) {
-      await db.update(projects).set({ sharedAt: new Date() }).where(eq(projects.id, projectId));
-    }
     if (state.sandboxCredentials === "none") return { stoppedAgents: 0 };
 
     let stoppedAgents = 0;
@@ -145,9 +162,15 @@ export async function withPersonalSandboxCredential<T>(
       await getDb().update(projects).set({ sharedAt: new Date() }).where(eq(projects.id, projectId));
       return { ok: false, reason: "shared" };
     }
-    if (state.sandboxCredentials !== "present") {
-      await getDb().update(projects).set({ sandboxCredentials: "present" }).where(eq(projects.id, projectId));
-    }
+    // Compare-and-set: claim the sandbox for a personal credential only if
+    // the project is STILL unshared at this instant (pairs with the single
+    // statement in secureProjectForSharing).
+    const claimed = await getDb()
+      .update(projects)
+      .set({ sandboxCredentials: "present" })
+      .where(and(eq(projects.id, projectId), isNull(projects.sharedAt)))
+      .returning({ id: projects.id });
+    if (claimed.length === 0) return { ok: false, reason: "shared" };
     return { ok: true, value: await fn() };
   });
 }

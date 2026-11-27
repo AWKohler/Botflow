@@ -20,7 +20,8 @@ export type AgentUnavailableReason =
   | "no_anthropic_credentials"
   | "no_provider_credentials"
   | "codex_reconnect"
-  | "codex_shared_project";
+  | "codex_shared_project"
+  | "codex_shared_project_unacknowledged";
 
 const UNAVAILABLE_COPY: Record<Exclude<AgentUnavailableReason, DerivationReason>, string> = {
   // The client derived a different agent than the server — its credential
@@ -34,17 +35,22 @@ const UNAVAILABLE_COPY: Record<Exclude<AgentUnavailableReason, DerivationReason>
   codex_reconnect:
     "Your ChatGPT sign-in has expired or was revoked. Reconnect ChatGPT in Settings → Connections, then try again.",
   codex_shared_project:
-    "This project was just shared, so your ChatGPT plan can't be used here any more. Send again to run on your OpenAI key or plan credits, or pick a different model.",
+    "This project is shared, so your ChatGPT plan can't be used here. The model chip now shows how this model will run — send again to go ahead, or pick a different model.",
+  codex_shared_project_unacknowledged:
+    "Your ChatGPT plan can't be used on a shared project. Pick a different model, or add an OpenAI API key in Settings → Connections.",
 };
 
 /** 422 + `{ error, reason }`. There is no fallback agent: the client shows
  *  `error` in the agent panel's error banner. */
-export function agentUnavailableResponse(reason: AgentUnavailableReason): Response {
+export function agentUnavailableResponse(
+  reason: AgentUnavailableReason,
+  extra?: Record<string, unknown>,
+): Response {
   const message =
     reason in UNAVAILABLE_COPY
       ? UNAVAILABLE_COPY[reason as keyof typeof UNAVAILABLE_COPY]
       : describeDerivation(reason as DerivationReason).body;
-  return new Response(JSON.stringify({ error: message, reason }), {
+  return new Response(JSON.stringify({ ...extra, error: message, reason }), {
     status: 422,
     headers: { "Content-Type": "application/json" },
   });

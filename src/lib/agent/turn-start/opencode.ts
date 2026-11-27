@@ -29,6 +29,7 @@ import {
 } from "@/lib/codex-oauth";
 import {
   SandboxCredentialLockTimeout,
+  SandboxCredentialLockUnavailable,
   personalSandboxCredentialsAllowed,
   withPersonalSandboxCredential,
 } from "@/lib/sandbox-credentials";
@@ -191,7 +192,15 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
   // Never silently move a turn off the user's ChatGPT plan onto their API
   // key or plan credits: only proceed if the client already showed it.
   if (derived.reason.startsWith("codex_blocked_") && ctx.expectedRoutingReason !== derived.reason) {
-    return { ok: false, response: agentUnavailableResponse("codex_shared_project") };
+    return {
+      ok: false,
+      response: agentUnavailableResponse(
+        // No routing info at all (e.g. a client that doesn't send it): a
+        // plain explanation instead of "send again", which couldn't work.
+        ctx.expectedRoutingReason ? "codex_shared_project" : "codex_shared_project_unacknowledged",
+        { derivedReason: derived.reason },
+      ),
+    };
   }
 
   const modelRef = resolveOpenCodeModel(selectedModel, { useTogetherKimi: USE_TOGETHER_KIMI });
@@ -301,6 +310,9 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
     } catch (err) {
       if (err instanceof SandboxCredentialLockTimeout) {
         return { ok: false, response: jsonError(503, "This project is busy changing its sharing settings. Try again in a moment.") };
+      }
+      if (err instanceof SandboxCredentialLockUnavailable) {
+        return { ok: false, response: jsonError(503, "ChatGPT sign-in isn't available on this deployment (it needs Redis). Pick a different model.") };
       }
       // The sandbox's own fence refused the write: it was shared meanwhile.
       if (err instanceof SandboxSharedError) {

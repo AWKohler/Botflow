@@ -209,10 +209,14 @@ export class SandboxSharedError extends Error {
 /** Sticky in-sandbox "this sandbox has been shared" marker. It is the fence
  *  that makes credential safety independent of any lock's timing: a purge
  *  creates it FIRST, and every Codex write checks it before AND after
- *  writing, so whichever order the two land in, no token file survives. */
-function sharedMarkerPath(home: string): string {
-  return `${home}/.botflow/sandbox-shared`;
-}
+ *  writing, so whichever order the two land in, no token file survives.
+ *
+ *  The credential scripts below locate everything from the sandbox's own
+ *  $HOME at run time (matching resolveOpenCodePaths' dataDir), never from a
+ *  cached path that could be stale after a sandbox provider switch. */
+const SH_MARKER = "$HOME/.botflow/sandbox-shared";
+const SH_DATA_DIR = "$HOME/.local/share/opencode";
+const SH_AUTH = `${SH_DATA_DIR}/auth.json`;
 
 /**
  * Remove every trace of a personal credential from the project sandbox:
@@ -225,15 +229,15 @@ function sharedMarkerPath(home: string): string {
  */
 export async function purgeOpenCodeCredentials(projectId: string): Promise<{ stoppedAgents: number }> {
   const sandbox = await getOrCreatePersistentSandbox(projectId);
-  const paths = await resolveOpenCodePaths(projectId);
-  const auth = paths.authPath;
-  const marker = sharedMarkerPath(paths.home);
+  const auth = SH_AUTH;
+  const marker = SH_MARKER;
   const pat = `'${OPENCODE_PROCESS_PATTERN}'`;
   const bridges = `'${OPENCODE_BRIDGE_PATTERN}'`;
   // pgrep exit status: 0 = matches, 1 = no matches, anything else = error.
   const script = [
     `command -v pgrep >/dev/null 2>&1 && command -v pkill >/dev/null 2>&1 || { echo BOTFLOW_PURGE_NO_TOOLS; exit 5; }`,
-    `mkdir -p ${paths.home}/.botflow && touch ${marker} || { echo BOTFLOW_PURGE_NO_MARKER; exit 7; }`,
+    `[ -n "$HOME" ] || { echo BOTFLOW_PURGE_NO_HOME; exit 8; }`,
+    `mkdir -p $HOME/.botflow && touch ${marker} || { echo BOTFLOW_PURGE_NO_MARKER; exit 7; }`,
     `rm -f ${auth} ${auth}.*`,
     `B=$(pgrep -f ${bridges}); rc=$?`,
     `if [ $rc -gt 1 ]; then echo BOTFLOW_PURGE_PGREP_ERROR; exit 6; fi`,
@@ -294,15 +298,15 @@ export async function writeOpenCodeAuth(
     // One shell, no temp file written before the fence check: content goes
     // in as base64 and is decoded only after the marker check passes.
     const b64 = Buffer.from(JSON.stringify(payload), "utf-8").toString("base64");
-    const marker = sharedMarkerPath(paths.home);
-    const tmp = `${paths.authPath}.w${Date.now().toString(36)}`;
+    const tmp = `${SH_AUTH}.w${Date.now().toString(36)}`;
     const script = [
-      `if [ -e ${marker} ]; then echo ${FENCED_MARKER}; exit 9; fi`,
-      `mkdir -p ${paths.dataDir} && chmod 700 ${paths.dataDir} || exit 1`,
+      `[ -n "$HOME" ] || exit 1`,
+      `if [ -e ${SH_MARKER} ]; then echo ${FENCED_MARKER}; exit 9; fi`,
+      `mkdir -p ${SH_DATA_DIR} && chmod 700 ${SH_DATA_DIR} || exit 1`,
       `umask 077`,
       `printf '%s' '${b64}' | base64 -d > ${tmp} || { rm -f ${tmp}; exit 1; }`,
-      `mv -f ${tmp} ${paths.authPath} || { rm -f ${tmp}; exit 1; }`,
-      `if [ -e ${marker} ]; then rm -f ${paths.authPath}; echo ${FENCED_MARKER}; exit 9; fi`,
+      `mv -f ${tmp} ${SH_AUTH} || { rm -f ${tmp}; exit 1; }`,
+      `if [ -e ${SH_MARKER} ]; then rm -f ${SH_AUTH}; echo ${FENCED_MARKER}; exit 9; fi`,
       `echo ${WRITTEN_MARKER}`,
     ].join("\n");
     const res = await sandbox.runCommand({ cmd: "sh", args: ["-c", script] });
@@ -339,11 +343,9 @@ export async function readOpenCodeAuth(
   projectId: string,
 ): Promise<Record<string, unknown> | null> {
   const sandbox = await getOrCreatePersistentSandbox(projectId);
-  const paths = await resolveOpenCodePaths(projectId);
-  const marker = sharedMarkerPath(paths.home);
   const cmd = await sandbox.runCommand({
     cmd: "sh",
-    args: ["-c", `if [ -e ${marker} ]; then echo ${FENCED_MARKER}; exit 0; fi; cat ${paths.authPath} 2>/dev/null || true`],
+    args: ["-c", `if [ -e ${SH_MARKER} ]; then echo ${FENCED_MARKER}; exit 0; fi; cat ${SH_AUTH} 2>/dev/null || true`],
   });
   const raw = (await cmd.stdout()).trim();
   if (!raw || raw === FENCED_MARKER) return null;

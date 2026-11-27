@@ -74,6 +74,9 @@ type ThreadPanelProps = Props & {
   me: string | null;
   /** Other members viewing this thread right now. */
   viewerIds: string[];
+  /** Filled with this thread's current routing reason, for notes the
+   *  container queues into it. */
+  routingReasonOut?: React.MutableRefObject<{ threadId: string; reason: string } | null>;
 };
 
 interface PendingImage {
@@ -336,6 +339,7 @@ function AgentThreadPanel({
   people,
   me,
   viewerIds,
+  routingReasonOut,
 }: ThreadPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const savedIdsRef = useRef<Set<string>>(new Set());
@@ -699,6 +703,9 @@ function AgentThreadPanel({
   // the project was shared from another tab, so the ChatGPT plan is off.
   const routingReasonRef = useRef(derivedBackend.reason);
   routingReasonRef.current = derivedBackend.reason;
+  // The container queues system notes into this thread; it sends the same
+  // acknowledgement (see below, "agent-modal-complete").
+  if (routingReasonOut) routingReasonOut.current = { threadId, reason: derivedBackend.reason };
   // Who to name when the model provider is down. ChatGPT-plan turns talk to
   // OpenAI's ChatGPT backend directly (not the API), so say that.
   const outageProviderLabelRef = useRef('The model provider');
@@ -3110,6 +3117,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // the chat whose agent asked, through its server-side queue: it starts now
   // if that agent is idle, or right after its current turn.
   const currentThreadIdRef = useRef(currentThreadId);
+  const currentRoutingRef = useRef<{ threadId: string; reason: string } | null>(null);
   currentThreadIdRef.current = currentThreadId;
   useEffect(() => {
     const handler = (e: Event) => {
@@ -3160,7 +3168,11 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       fetch(`/api/projects/${encodeURIComponent(projectId)}/threads/${encodeURIComponent(target)}/queue`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: { id: crypto.randomUUID(), role: 'user', parts: [{ type: 'text', text: note }] } }),
+        body: JSON.stringify({
+          message: { id: crypto.randomUUID(), role: 'user', parts: [{ type: 'text', text: note }] },
+          routingReason:
+            currentRoutingRef.current?.threadId === target ? currentRoutingRef.current.reason : undefined,
+        }),
       })
         .then(() => refresh())
         .catch((err) => console.error('Failed to deliver the modal-completion note:', err));
@@ -3190,6 +3202,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           people={people}
           me={me}
           viewerIds={(viewers[currentThreadId] ?? []).filter((id) => id !== me)}
+          routingReasonOut={currentRoutingRef}
         />
       ) : (
         <div className="flex h-full items-center justify-center bg-surface text-xs text-muted">
