@@ -19,7 +19,8 @@ export type AgentUnavailableReason =
   | "backend_mismatch"
   | "no_anthropic_credentials"
   | "no_provider_credentials"
-  | "codex_reconnect";
+  | "codex_reconnect"
+  | "codex_shared_project";
 
 const UNAVAILABLE_COPY: Record<Exclude<AgentUnavailableReason, DerivationReason>, string> = {
   // The client derived a different agent than the server — its credential
@@ -32,6 +33,8 @@ const UNAVAILABLE_COPY: Record<Exclude<AgentUnavailableReason, DerivationReason>
     "No usable credentials for this model's provider. Check Settings → Connections.",
   codex_reconnect:
     "Your ChatGPT sign-in has expired or was revoked. Reconnect ChatGPT in Settings → Connections, then try again.",
+  codex_shared_project:
+    "ChatGPT sign-in can't be used on a shared project yet. Pick a different model, or add an OpenAI API key in Settings → Connections.",
 };
 
 /** 422 + `{ error, reason }`. There is no fallback agent: the client shows

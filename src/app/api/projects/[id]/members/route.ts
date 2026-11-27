@@ -18,8 +18,10 @@ import {
   findClerkUserByVerifiedEmail,
   inviteExpired,
   normalizeEmail,
+  projectHasCollaborators,
   sendInviteEmail,
 } from "@/lib/sharing";
+import { prepareProjectForSharing } from "@/lib/sharing-guard";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -124,6 +126,21 @@ export async function POST(
   }
   if (existing[0] && existing[0].status === "pending" && !inviteExpired(existing[0])) {
     return NextResponse.json({ error: "An invite to that email is already pending." }, { status: 409 });
+  }
+
+  // Going from private to shared: make the sandbox safe for another person
+  // first (stop agents holding the owner's personal credential, delete it).
+  // Fail closed — never share a sandbox we couldn't scrub.
+  if (!(await projectHasCollaborators(id))) {
+    try {
+      await prepareProjectForSharing(access.project);
+    } catch (err) {
+      console.error("[sharing] could not prepare project for sharing:", err);
+      return NextResponse.json(
+        { error: "Couldn't prepare this project for sharing. Try again in a minute." },
+        { status: 503 },
+      );
+    }
   }
 
   const clerkUser = await findClerkUserByVerifiedEmail(email);

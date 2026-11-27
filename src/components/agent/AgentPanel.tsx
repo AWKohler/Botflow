@@ -417,13 +417,18 @@ function AgentThreadPanel({
   // follows the OWNER's tier — the server sends sharedTier on the project GET
   // and re-derives it authoritatively per turn. Wins over the personal tier.
   const sharedTierRef = useRef<'pro' | 'max' | null>(null);
+  // A shared project never runs on ChatGPT (Codex) sign-in: those tokens
+  // would sit in a sandbox every member can read. Mirrors the server rule in
+  // src/lib/agent/turn-start/opencode.ts.
+  const [projectShared, setProjectShared] = useState(false);
   useEffect(() => {
     let cancelled = false;
     fetch(`/api/projects/${encodeURIComponent(projectId)}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((p: { sharedTier?: string; name?: string } | null) => {
+      .then((p: { sharedTier?: string; name?: string; hasCollaborators?: boolean } | null) => {
         if (cancelled) return;
         if (typeof p?.name === 'string') setProjectName(p.name);
+        setProjectShared(p?.hasCollaborators === true);
         if (p?.sharedTier === 'pro' || p?.sharedTier === 'max') {
           sharedTierRef.current = p.sharedTier;
           setUserTier(p.sharedTier);
@@ -532,7 +537,7 @@ function AgentThreadPanel({
       Boolean(platform && isSandboxPlatform(platform));
     const anthropic = oauthRunnable || hasAnthropicKey || null;
     return {
-      openai: hasCodexOAuth || hasOpenAIKey || null,
+      openai: (hasCodexOAuth && !projectShared) || hasOpenAIKey || null,
       anthropic,
       fireworks: hasFireworksKey === true ? true : null,
       google: hasGoogleKey === true ? true : null,
@@ -540,6 +545,7 @@ function AgentThreadPanel({
     };
   }, [
     hasCodexOAuth,
+    projectShared,
     hasOpenAIKey,
     hasClaudeOAuth,
     hasAnthropicKey,
@@ -564,7 +570,7 @@ function AgentThreadPanel({
         creds: {
           hasClaudeOAuth: Boolean(hasClaudeOAuth),
           hasAnthropicKey: Boolean(hasAnthropicKey),
-          hasCodexOAuth: Boolean(hasCodexOAuth),
+          hasCodexOAuth: Boolean(hasCodexOAuth) && !projectShared,
           hasOpenAIKey: Boolean(hasOpenAIKey),
           hasFireworksKey: Boolean(hasFireworksKey),
           hasGoogleKey: Boolean(hasGoogleKey),
@@ -580,6 +586,7 @@ function AgentThreadPanel({
       hasClaudeOAuth,
       hasAnthropicKey,
       hasCodexOAuth,
+      projectShared,
       hasOpenAIKey,
       hasFireworksKey,
       hasGoogleKey,

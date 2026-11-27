@@ -3,9 +3,25 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
+function safePreviewUrl(raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+    // Never frame Botflow itself (would put a same-origin page in the frame).
+    if (typeof window !== "undefined" && u.origin === window.location.origin) return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
 function PreviewPopup() {
   const searchParams = useSearchParams();
-  const url = searchParams.get("url") ?? "";
+  // Only a real web preview may be framed here: anything else (data:, blob:,
+  // javascript:, garbage) is refused, so this page can't be used to show
+  // arbitrary content under Botflow's address.
+  const url = safePreviewUrl(searchParams.get("url"));
 
   if (!url) {
     return (

@@ -4,6 +4,7 @@ import { projects, chatImages, projectAssets } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { auth } from '@/lib/auth/server';
 import { requireProjectAccess, sanitizeProjectForRole } from '@/lib/project-access';
+import { projectHasCollaborators } from '@/lib/sharing';
 import { getUserTier } from '@/lib/tier';
 import { deleteConvexBackend } from '@/lib/convex-platform';
 import { deletePersistentSandbox } from '@/lib/vercel-sandbox';
@@ -24,6 +25,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const body: Record<string, unknown> = {
       ...sanitizeProjectForRole(access.project, access.role),
       viewerRole: access.role,
+      // Shared projects never use sandbox-held personal credentials (Codex
+      // sign-in); the agent panel mirrors the server's routing with this.
+      hasCollaborators: await projectHasCollaborators(access.project.id),
     };
     // When the owner shares credits, editors inherit the OWNER's model-tier
     // access (sharing decision 2026-07-06) — the client model selector reads
@@ -50,12 +54,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Public visibility is no longer toggled here — it's gated on deployment and
     // set by the deploy flow (see src/lib/public-bundle.ts). This route only
     // updates non-public project fields.
-    const { model, thumbnailUrl, htmlSnapshotUrl, publicDescription } = body as {
+    // Snapshot/thumbnail URLs are NOT writable here: they are set only by
+    // POST /snapshot, which stores what it renders. Accepting an arbitrary
+    // URL let any editor point viewers at hostile HTML.
+    const { model, publicDescription } = body as {
       model?: string;
-      thumbnailUrl?: string;
-      htmlSnapshotUrl?: string;
       publicDescription?: string;
     };
+    // The public Explore description is the owner's public voice.
+    if (publicDescription !== undefined && access.role !== 'owner') {
+      return NextResponse.json({ error: 'Only the project owner can change the public description.' }, { status: 403 });
+    }
+    if (publicDescription !== undefined && typeof publicDescription !== 'string') {
+      return NextResponse.json({ error: 'Description must be text.' }, { status: 400 });
+    }
     // Current ids and known legacy aliases are accepted (stored resolved).
     if (model && !isAcceptedModelInput(model)) {
       return NextResponse.json({ error: 'Invalid model' }, { status: 400 });
@@ -69,8 +81,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       updatedAt: new Date(),
     };
     if (model) updateData.model = resolveModelId(model);
-    if (thumbnailUrl !== undefined) updateData.thumbnailUrl = thumbnailUrl;
-    if (htmlSnapshotUrl !== undefined) updateData.htmlSnapshotUrl = htmlSnapshotUrl;
     if (publicDescription !== undefined) updateData.publicDescription = publicDescription;
 
     const [updated] = await db

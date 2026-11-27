@@ -188,6 +188,25 @@ export interface OpenCodeAuthInput {
 }
 
 /**
+ * Delete OpenCode's auth store from the project sandbox. Used when a project
+ * gains (or has) collaborators: the store may still hold the owner's real
+ * Codex tokens from an earlier turn, and every member can read the sandbox.
+ * The next turn rewrites the file with whatever it needs. Throws when the
+ * sandbox can't be reached so callers can fail closed.
+ */
+export async function scrubOpenCodeAuth(projectId: string): Promise<void> {
+  const sandbox = await getOrCreatePersistentSandbox(projectId);
+  const paths = await resolveOpenCodePaths(projectId);
+  const res = await sandbox.runCommand({
+    cmd: "sh",
+    args: ["-c", `rm -f ${paths.authPath} ${paths.authPath}.tmp`],
+  });
+  if (res.exitCode !== 0) {
+    throw new Error(`scrubOpenCodeAuth: rm exited ${res.exitCode}`);
+  }
+}
+
+/**
  * Write the turn's credential surface into OpenCode's auth store. With the
  * LLM proxy this is a bfap_ token, never a real key — the sole exception is
  * the Codex OAuth entry (see OpenCodeAuthInput). Provider ids verified

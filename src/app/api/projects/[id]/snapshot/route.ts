@@ -23,6 +23,7 @@ import { getDb } from "@/db";
 import { projects } from "@/db/schema";
 import { requireProjectAccess } from "@/lib/project-access";
 import { renderHtmlToThumbnail } from "@/lib/server-screenshot";
+import { stripActiveContent } from "@/lib/snapshot-html";
 import { getUserTierAndLimits } from "@/lib/tier";
 import { getDailyScreenshots, incrementDailyScreenshots } from "@/lib/usage";
 
@@ -59,6 +60,11 @@ export async function POST(
 
     const updates: Partial<typeof projects.$inferInsert> = {};
     const staleKeys: string[] = [];
+
+    // Snapshot HTML is untrusted (any editor can send any HTML here). Strip
+    // script-bearing content before it is stored or rendered; viewers render
+    // it in a fully sandboxed iframe regardless (src/lib/snapshot-html.ts).
+    if (typeof body.html === "string") body.html = stripActiveContent(body.html);
 
     if (typeof body.html === "string" && body.html.trim()) {
       const bytes = Buffer.byteLength(body.html, "utf-8");

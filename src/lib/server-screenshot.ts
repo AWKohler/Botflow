@@ -69,6 +69,30 @@ export async function launchScreenshotBrowser(): Promise<Browser | null> {
 }
 
 /**
+ * Network policy for the thumbnail renderer: inline data, or public https on
+ * port 443 by hostname. Hostnames that are IP literals, localhost-like, or
+ * internal-looking are refused, so a snapshot can't make the renderer reach
+ * (and photograph) anything on the server's own network.
+ */
+export function isAllowedThumbnailRequest(raw: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (u.protocol === "data:" || u.protocol === "about:") return true;
+  if (u.protocol !== "https:") return false;
+  if (u.port && u.port !== "443") return false;
+  if (u.username || u.password) return false;
+  const host = u.hostname.toLowerCase().replace(/\.$/, "");
+  if (!host.includes(".")) return false; // single-label → internal
+  if (host.startsWith("[") || /^[\d.]+$/.test(host) || /^0x/i.test(host)) return false; // IP literal
+  if (/(^|\.)(localhost|local|internal|localdomain|home\.arpa)$/.test(host)) return false;
+  return true;
+}
+
+/**
  * Render an HTML string (a self-contained preview snapshot: scripts stripped,
  * styles + images inlined by the injected runtime's serializer) to a JPEG
  * thumbnail buffer. Returns null when rendering isn't possible; never throws
@@ -83,6 +107,16 @@ export async function renderHtmlToThumbnail(html: string): Promise<Buffer | null
       return drawPlaceholder();
     }
     const page = await browser.newPage();
+    // The HTML is untrusted (any project editor can submit it). No script
+    // runs, and the only network the page may use is public https on the
+    // default port — never loopback, link-local, private ranges or IP
+    // literals (the Lambda runtime API lives on 127.0.0.1).
+    await page.setJavaScriptEnabled(false);
+    await page.setRequestInterception(true);
+    page.on("request", (request) => {
+      if (isAllowedThumbnailRequest(request.url())) void request.continue();
+      else void request.abort();
+    });
     await page.setViewport({ ...THUMB_VIEWPORT, deviceScaleFactor: 1 });
     // 'load' is the strongest waitUntil setContent supports; the snapshot has
     // no scripts and mostly-inlined assets, so it settles fast.

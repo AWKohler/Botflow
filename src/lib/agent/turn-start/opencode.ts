@@ -27,6 +27,7 @@ import {
   getFreshCodexCredentials,
   shouldAdoptSandboxCodexAuth,
 } from "@/lib/codex-oauth";
+import { projectHasCollaborators } from "@/lib/sharing";
 import {
   getOrCreatePersistentSandbox,
 } from "@/lib/vercel-sandbox";
@@ -80,6 +81,7 @@ import {
   ensureOpenCodeInstalled,
   writeOpenCodeAuth,
   readOpenCodeAuth,
+  scrubOpenCodeAuth,
   writeOpenCodeScripts,
   writeOpenCodeAppendPrompt,
   resolveOpenCodePaths,
@@ -158,6 +160,14 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
 
   const creds = await getUserCredentials(userId);
   const credFlags = credFlagsFromUserCredentials(creds);
+  // Codex (ChatGPT-plan) sign-in puts REAL tokens in the sandbox, which every
+  // collaborator can read. On a shared project it is never used: OpenAI
+  // models fall back to the user's own key or platform mode, both of which
+  // ride the LLM proxy (the sandbox only ever holds a bfap_ token).
+  const sharedProject = await projectHasCollaborators(projectId);
+  if (sharedProject && credFlags.hasCodexOAuth) {
+    credFlags.hasCodexOAuth = false;
+  }
   const userTier = await getUserTier(userId);
   // Single source of truth: re-derive the backend server-side so the routing
   // decision is tamper-proof. With the LLM proxy, this is also what keeps
@@ -174,6 +184,9 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
     return { ok: false, response: agentUnavailableResponse("backend_mismatch") };
   }
   if (!derived.runnable) {
+    if (sharedProject && creds.codexOAuthAccessToken && MODEL_CONFIGS[selectedModel].provider === "openai") {
+      return { ok: false, response: agentUnavailableResponse("codex_shared_project") };
+    }
     return { ok: false, response: agentUnavailableResponse(derived.reason) };
   }
 
@@ -522,6 +535,7 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
     startedAt: Date.now(),
     toolToken,
     ...(llmProxyToken ? { llmProxyToken } : {}),
+    ...(useCodex ? { holdsSandboxCredential: true } : {}),
   }).catch(() => {});
   await releaseThreadSpawnLock(threadId);
 
@@ -618,9 +632,19 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
             // sandbox auth.json holds the new pair and our stored refresh token
             // is dead. Persist the rotation so the next turn's server-side
             // refresh doesn't 401.
-            if (useCodex && writtenRefreshToken) {
-              readOpenCodeAuth(projectId)
-                .then((auth) => {
+            //
+            // If the project gained collaborators while this turn ran, the
+            // file is no longer trustworthy (a member could have planted a
+            // pair) and must not stay readable: adopt nothing, delete it.
+            if (useCodex) {
+              projectHasCollaborators(projectId)
+                .then(async (nowShared) => {
+                  if (nowShared) {
+                    await scrubOpenCodeAuth(projectId);
+                    return;
+                  }
+                  if (!writtenRefreshToken) return;
+                  const auth = await readOpenCodeAuth(projectId);
                   const openai = auth?.openai as
                     | { type?: string; access?: string; refresh?: string; expires?: number }
                     | undefined;
@@ -630,14 +654,14 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
                     openai.access &&
                     openai.refresh !== writtenRefreshToken
                   ) {
-                    return setUserCredentials(userId, {
+                    await setUserCredentials(userId, {
                       codexOAuthAccessToken: openai.access,
                       codexOAuthRefreshToken: openai.refresh,
                       codexOAuthExpiresAt: openai.expires ?? null,
                     });
                   }
                 })
-                .catch(() => {});
+                .catch((err) => console.warn("[opencode] codex post-turn sync failed:", err));
             }
             // Deliberately NO token revocation here: the bridge runs detached and
             // legitimately outlives this route (maxDuration kill, client
