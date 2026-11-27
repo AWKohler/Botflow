@@ -36,7 +36,7 @@ export default async function WorkspacePage({
     // shared (or after deploy): give securing the sandbox time to finish
     // here, so the panel's own requests then find it ready.
     access = await requireProjectAccess(projectId, userId, 'editor', {
-      securingWaitMs: 45_000,
+      securingWaitMs: 30_000,
       onSecuringFailure: 'throw',
     });
   } catch (err) {

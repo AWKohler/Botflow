@@ -161,31 +161,57 @@ describe('belt and braces', () => {
 });
 
 describe('compare-and-set: correctness does not depend on the lock', () => {
-  test('a writer whose lease expired after claiming is still seen — the share purges', async () => {
-    const { secureProjectForSharing, withPersonalSandboxCredential } = await import('./sandbox-credentials');
+  test('a writer whose lease expired is still in flight — the share admits nobody until it ends', async () => {
+    const { secureProjectForSharing, withPersonalSandboxCredential, SandboxCredentialWriteInProgress } = await import(
+      './sandbox-credentials'
+    );
     const { fakeRedis } = await import('@/test/redis-fake');
     const p = await createProject({ userId: OWNER });
     purge.fn.mockResolvedValue({ stoppedAgents: 0 });
-    let shareResult: unknown;
+    let duringWrite: unknown;
     await withPersonalSandboxCredential(p.id, async () => {
-      // Simulate the lease expiring mid-write: the lock vanishes and a share runs now.
+      // The lease expires mid-write: the lock vanishes and a share runs now.
       await fakeRedis.del(`sandbox-credential-lock:${p.id}`);
-      shareResult = await secureProjectForSharing(p.id);
+      duringWrite = await secureProjectForSharing(p.id).catch((e) => e);
     });
-    expect(shareResult).toEqual({ stoppedAgents: 0 });
-    expect(purge.fn).toHaveBeenCalledTimes(1);
+    expect(duringWrite).toBeInstanceOf(SandboxCredentialWriteInProgress);
+    expect(purge.fn).not.toHaveBeenCalled();
+    // Shared already (sticky): no new writer can claim.
     expect((await row(p.id)).sharedAt).toBeInstanceOf(Date);
+    // The writer finished and released its window: now the share purges.
+    expect((await row(p.id)).credentialWriteUntil).toBeNull();
+    expect(await secureProjectForSharing(p.id)).toEqual({ stoppedAgents: 0 });
+    expect(purge.fn).toHaveBeenCalledTimes(1);
   });
 
-  test('a writer that claims after the share committed is refused', async () => {
-    const { withPersonalSandboxCredential } = await import('./sandbox-credentials');
+  test('a writer that died without releasing blocks admission only until its window passes', async () => {
+    const { secureProjectForSharing, SandboxCredentialWriteInProgress } = await import('./sandbox-credentials');
+    const p = await createProject({ userId: OWNER, sandboxCredentials: 'present', credentialWriteUntil: new Date(Date.now() + 60_000) });
+    await expect(secureProjectForSharing(p.id)).rejects.toBeInstanceOf(SandboxCredentialWriteInProgress);
+    await currentTestDb().update(projects).set({ credentialWriteUntil: new Date(Date.now() - 1000) }).where(eq(projects.id, p.id));
+    purge.fn.mockResolvedValue({ stoppedAgents: 0 });
+    await secureProjectForSharing(p.id);
+    expect(purge.fn).toHaveBeenCalledTimes(1);
+  });
+
+  test('the claim itself refuses once shared_at is set (the WHERE shared_at IS NULL)', async () => {
+    const { claimSandboxForCredential } = await import('./sandbox-credentials');
     const p = await createProject({ userId: OWNER });
-    // shared_at lands between the writer's read and its claim: the claim's
-    // WHERE shared_at IS NULL is what stops it.
     await currentTestDb().update(projects).set({ sharedAt: new Date() }).where(eq(projects.id, p.id));
-    const fn = vi.fn(async () => {});
-    expect(await withPersonalSandboxCredential(p.id, fn)).toEqual({ ok: false, reason: 'shared' });
-    expect(fn).not.toHaveBeenCalled();
-    expect((await row(p.id)).sandboxCredentials).toBe('none');
+    expect(await claimSandboxForCredential(p.id)).toBeNull();
+    const r = await row(p.id);
+    expect(r.sandboxCredentials).toBe('none');
+    expect(r.credentialWriteUntil).toBeNull();
+  });
+
+  test('an unshared project is claimed with an in-flight window', async () => {
+    const { claimSandboxForCredential } = await import('./sandbox-credentials');
+    const p = await createProject({ userId: OWNER });
+    const claim = await claimSandboxForCredential(p.id);
+    expect(claim).not.toBeNull();
+    const r = await row(p.id);
+    expect(r.sandboxCredentials).toBe('present');
+    expect(r.credentialWriteUntil?.getTime()).toBe(claim!.until.getTime());
+    expect(claim!.until.getTime()).toBeGreaterThan(Date.now() + 300_000);
   });
 });

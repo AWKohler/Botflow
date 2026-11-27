@@ -60,7 +60,9 @@ async function run() {
     // clean. Once no old instance can serve (deploy live for longer than the
     // longest function duration, 300s, plus any Skew Protection max age):
     // re-backfill shared_at for invites the old code wrote, and send every
-    // shared project back to "unknown" so its next member access re-purges.
+    // project marked clean back to "unknown" — shared or not, since an old
+    // instance could have run a Codex turn on a project the new code had just
+    // created as clean — so the next member access or first share re-purges.
     const [backfilled] = await sql.query(
       `WITH m AS (SELECT project_id, min(invited_at) AS first_invited FROM project_members GROUP BY project_id)
        UPDATE projects p SET shared_at = m.first_invited FROM m
@@ -69,10 +71,11 @@ async function run() {
     ).then((rows) => [rows.length]);
     const reset = await sql.query(
       `UPDATE projects SET sandbox_credentials = NULL
-        WHERE shared_at IS NOT NULL AND sandbox_credentials IS NOT DISTINCT FROM 'none'
+        WHERE sandbox_credentials = 'none'
        RETURNING id`,
     );
-    console.log(`post-deploy: shared_at backfilled on ${backfilled} project(s); ${reset.length} shared project(s) set to re-verify`);
+    console.log(`post-deploy: shared_at backfilled on ${backfilled} project(s); ${reset.length} project(s) set to re-verify`);
+    console.log('Note: the next member access of an active shared project re-purges its sandbox, stopping running OpenCode agents. Run at a quiet hour.');
     console.log('\n✅ Post-deploy step complete.');
     return;
   }

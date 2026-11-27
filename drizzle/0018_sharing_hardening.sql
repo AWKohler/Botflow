@@ -19,6 +19,8 @@ UPDATE "projects" p
 --    (unknown → purged before anyone else gets access). The app sets 'none'
 --    on the projects it creates.
 ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "sandbox_credentials" text;
+-- While a personal-credential write may still be in flight, sharing waits.
+ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "credential_write_until" timestamp;
 
 -- 3. Snapshot/thumbnail URLs that PATCH /api/projects/[id] used to accept
 --    from any editor. A real upload is exactly an UploadThing file URL

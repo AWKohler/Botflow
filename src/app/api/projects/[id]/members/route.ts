@@ -21,7 +21,12 @@ import {
   normalizeEmail,
   sendInviteEmail,
 } from "@/lib/sharing";
-import { secureProjectForSharing } from "@/lib/sandbox-credentials";
+import {
+  SandboxCredentialLockTimeout,
+  SandboxCredentialLockUnavailable,
+  SandboxCredentialWriteInProgress,
+  secureProjectForSharing,
+} from "@/lib/sandbox-credentials";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -142,6 +147,25 @@ export async function POST(
     ({ stoppedAgents } = await secureProjectForSharing(id));
   } catch (err) {
     console.error("[sharing] could not secure project for sharing:", err);
+    if (err instanceof SandboxCredentialWriteInProgress) {
+      return NextResponse.json(
+        {
+          error:
+            "An agent using your ChatGPT plan is starting in this project. Try again shortly. (ChatGPT sign-in is now turned off for this project, as it will be once it's shared.)",
+          codexBlocked: true,
+        },
+        { status: 409 },
+      );
+    }
+    if (err instanceof SandboxCredentialLockTimeout) {
+      return NextResponse.json(
+        { error: "This project's sharing settings are being changed right now. Try again in a moment." },
+        { status: 503 },
+      );
+    }
+    if (err instanceof SandboxCredentialLockUnavailable) {
+      return NextResponse.json({ error: "Sharing isn't available on this deployment right now." }, { status: 503 });
+    }
     return NextResponse.json(
       {
         error:

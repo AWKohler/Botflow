@@ -865,7 +865,7 @@ function AgentThreadPanel({
       // thread's queue instead of showing an error.
       try {
         const parsed = JSON.parse(msg) as { reason?: string };
-        if (parsed?.reason === 'codex_shared_project') {
+        if (parsed?.reason?.startsWith('codex_shared_project') || parsed?.reason?.startsWith('codex_blocked_')) {
           // The project is shared now (another tab/device, or a share that
           // failed half-way): re-read it so the model chip shows the real
           // routing, then let the banner below explain.

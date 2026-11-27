@@ -121,6 +121,10 @@ export const projects = pgTable('projects', {
    *  NO database default: only code that tracks this column may claim a new
    *  project is clean, so rows written by an older deployment stay unknown. */
   sandboxCredentials: text('sandbox_credentials').$defaultFn(() => 'none'),
+  /** Set while a personal-credential write that was cleared to run may still
+   *  be in flight (longer than any route can live), cleared when it ends.
+   *  Nobody else is admitted while it's in the future. */
+  credentialWriteUntil: timestamp('credential_write_until'),
   // Soft delete — null means active. Set for Pro/Max users on delete; Free = immediate hard delete.
   deletedAt: timestamp('deleted_at'),
   // ─── Reaper / lifecycle fields ────────────────────────────────────────────

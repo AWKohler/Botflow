@@ -50,6 +50,18 @@ export class SandboxCredentialLockTimeout extends Error {
   }
 }
 
+/** A personal-credential write cleared to run before the project was shared
+ *  may still be in flight; nobody else may be admitted until it ends. */
+export class SandboxCredentialWriteInProgress extends Error {
+  constructor() {
+    super("A personal-credential write may still be in flight in this project's sandbox");
+  }
+}
+
+/** Longer than any route that writes a personal credential can live
+ *  (maxDuration 300s), so a stalled writer is certainly dead after it. */
+const CREDENTIAL_WRITE_WINDOW_SECONDS = 360;
+
 /** No real Redis is configured, so the credential lock can't be taken. */
 export class SandboxCredentialLockUnavailable extends Error {
   constructor() {
@@ -123,8 +135,17 @@ export async function secureProjectForSharing(
       .update(projects)
       .set({ sharedAt: sql`coalesce(${projects.sharedAt}, now())` })
       .where(eq(projects.id, projectId))
-      .returning({ platform: projects.platform, sandboxCredentials: projects.sandboxCredentials });
+      .returning({
+        platform: projects.platform,
+        sandboxCredentials: projects.sandboxCredentials,
+        writerInFlight: sql<boolean>`coalesce(${projects.credentialWriteUntil} > now(), false)`,
+      });
     if (!state) throw new Error(`secureProjectForSharing: project ${projectId} not found`);
+    // A writer that claimed before this share may still be running (it can
+    // outlive the lock, never its route): don't let anyone in until it has
+    // finished or certainly died. shared_at is already set, so no new
+    // writer can claim meanwhile.
+    if (state.writerInFlight) throw new SandboxCredentialWriteInProgress();
     if (state.sandboxCredentials === "none") return { stoppedAgents: 0 };
 
     let stoppedAgents = 0;
@@ -162,17 +183,38 @@ export async function withPersonalSandboxCredential<T>(
       await getDb().update(projects).set({ sharedAt: new Date() }).where(eq(projects.id, projectId));
       return { ok: false, reason: "shared" };
     }
-    // Compare-and-set: claim the sandbox for a personal credential only if
-    // the project is STILL unshared at this instant (pairs with the single
-    // statement in secureProjectForSharing).
-    const claimed = await getDb()
-      .update(projects)
-      .set({ sandboxCredentials: "present" })
-      .where(and(eq(projects.id, projectId), isNull(projects.sharedAt)))
-      .returning({ id: projects.id });
-    if (claimed.length === 0) return { ok: false, reason: "shared" };
-    return { ok: true, value: await fn() };
+    const claim = await claimSandboxForCredential(projectId);
+    if (!claim) return { ok: false, reason: "shared" };
+    try {
+      return { ok: true, value: await fn() };
+    } finally {
+      // Done: release the in-flight window (only our own claim's).
+      await getDb()
+        .update(projects)
+        .set({ credentialWriteUntil: null })
+        .where(and(eq(projects.id, projectId), eq(projects.credentialWriteUntil, claim.until)))
+        .catch((err) => console.warn("[sandbox-credentials] could not release write window:", err));
+    }
   });
+}
+
+/**
+ * Compare-and-set: claim the sandbox for a personal credential only if the
+ * project is STILL unshared at this instant (pairs with the single
+ * statement in secureProjectForSharing), opening the in-flight window that
+ * keeps a share from admitting anyone until the write is over.
+ * Returns null when the project is shared. Exported for tests.
+ */
+export async function claimSandboxForCredential(projectId: string): Promise<{ until: Date } | null> {
+  // Millisecond precision (computed here, not with now()) so the release
+  // below can match this exact value after a round trip.
+  const until = new Date(Date.now() + CREDENTIAL_WRITE_WINDOW_SECONDS * 1000);
+  const [row] = await getDb()
+    .update(projects)
+    .set({ sandboxCredentials: "present", credentialWriteUntil: until })
+    .where(and(eq(projects.id, projectId), isNull(projects.sharedAt)))
+    .returning({ id: projects.id });
+  return row ? { until } : null;
 }
 
 /** After a purge killed every OpenCode process: mark their turns dead (so
