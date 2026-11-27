@@ -4,7 +4,7 @@ import { projects, chatImages, projectAssets } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { auth } from '@/lib/auth/server';
 import { requireProjectAccess, sanitizeProjectForRole } from '@/lib/project-access';
-import { projectHasCollaborators } from '@/lib/sharing';
+import { personalSandboxCredentialsAllowed } from '@/lib/sandbox-credentials';
 import { getUserTier } from '@/lib/tier';
 import { deleteConvexBackend } from '@/lib/convex-platform';
 import { deletePersistentSandbox } from '@/lib/vercel-sandbox';
@@ -25,9 +25,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const body: Record<string, unknown> = {
       ...sanitizeProjectForRole(access.project, access.role),
       viewerRole: access.role,
-      // Shared projects never use sandbox-held personal credentials (Codex
-      // sign-in); the agent panel mirrors the server's routing with this.
-      hasCollaborators: await projectHasCollaborators(access.project.id),
+      // A project that has ever been shared never uses sandbox-held personal
+      // credentials (Codex sign-in); the agent panel mirrors the server's
+      // routing with this.
+      codexBlocked: !personalSandboxCredentialsAllowed(access.project),
     };
     // When the owner shares credits, editors inherit the OWNER's model-tier
     // access (sharing decision 2026-07-06) — the client model selector reads

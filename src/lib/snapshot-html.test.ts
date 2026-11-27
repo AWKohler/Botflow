@@ -39,15 +39,13 @@ describe('stripActiveContent', () => {
 });
 
 describe('isAllowedThumbnailRequest (server renderer network policy)', () => {
-  test.each([
-    'data:image/png;base64,AA==',
-    'https://fonts.gstatic.com/s/inter.woff2',
-    'https://images.example.com/a.png',
-  ])('allows %s', (url) => {
+  test.each(['data:image/png;base64,AA==', 'about:blank'])('allows %s', (url) => {
     expect(isAllowedThumbnailRequest(url)).toBe(true);
   });
 
   test.each([
+    'https://fonts.gstatic.com/s/inter.woff2',
+    'https://images.example.com/a.png',
     'http://example.com/a.png',
     'http://127.0.0.1:9001/2018-06-01/runtime/invocation/next',
     'https://127.0.0.1/',

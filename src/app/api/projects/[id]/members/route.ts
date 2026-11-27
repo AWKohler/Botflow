@@ -18,14 +18,15 @@ import {
   findClerkUserByVerifiedEmail,
   inviteExpired,
   normalizeEmail,
-  projectHasCollaborators,
   sendInviteEmail,
 } from "@/lib/sharing";
-import { prepareProjectForSharing } from "@/lib/sharing-guard";
+import { secureProjectForSharing } from "@/lib/sandbox-credentials";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// The first invite may resume the sandbox to purge a personal credential.
+export const maxDuration = 120;
 
 export async function GET(
   _req: NextRequest,
@@ -128,19 +129,18 @@ export async function POST(
     return NextResponse.json({ error: "An invite to that email is already pending." }, { status: 409 });
   }
 
-  // Going from private to shared: make the sandbox safe for another person
-  // first (stop agents holding the owner's personal credential, delete it).
-  // Fail closed — never share a sandbox we couldn't scrub.
-  if (!(await projectHasCollaborators(id))) {
-    try {
-      await prepareProjectForSharing(access.project);
-    } catch (err) {
-      console.error("[sharing] could not prepare project for sharing:", err);
-      return NextResponse.json(
-        { error: "Couldn't prepare this project for sharing. Try again in a minute." },
-        { status: 503 },
-      );
-    }
+  // Before anyone else can get access: mark the project shared (sticky) and
+  // make sure its sandbox holds no personal credential — stopping agents
+  // that run on one. Fail closed: never share a sandbox we couldn't verify.
+  let stoppedAgents = 0;
+  try {
+    ({ stoppedAgents } = await secureProjectForSharing(id));
+  } catch (err) {
+    console.error("[sharing] could not secure project for sharing:", err);
+    return NextResponse.json(
+      { error: "Couldn't prepare this project's sandbox for sharing. Try again in a minute." },
+      { status: 503 },
+    );
   }
 
   const clerkUser = await findClerkUserByVerifiedEmail(email);
@@ -171,6 +171,7 @@ export async function POST(
 
   return NextResponse.json({
     ok: true,
+    stoppedAgents,
     status: values.status,
     message: clerkUser
       ? "Added — they have access now."

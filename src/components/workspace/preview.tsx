@@ -616,10 +616,9 @@ export function Preview({
   const openInNewTab = useCallback(() => {
     if (activePreview?.baseUrl) {
       const previewUrl = buildPreviewUrl(activePreview.baseUrl, currentPath ?? internalPath);
-      window.open(
-        `/preview-popup?url=${encodeURIComponent(previewUrl)}`,
-        "_blank"
-      );
+      // Open the preview on its own address — never framed under Botflow's
+      // (a framed page there could pose as Botflow).
+      window.open(previewUrl, "_blank", "noopener,noreferrer");
     }
   }, [activePreview, currentPath, internalPath]);
 

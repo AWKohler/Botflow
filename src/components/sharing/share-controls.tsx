@@ -24,6 +24,7 @@ import { TextInput } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 import { Button, buttonClass } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { notifyProjectSharingChanged } from "@/lib/sharing-events";
 import { SHARING_ENABLED } from "@/lib/feature-flags";
 import { cn } from "@/lib/utils";
 import { phoneSheetBackdropClass, phoneSheetBodyClass, phoneSheetClass, phoneSheetCloseClass, phoneSheetGrabberClass, phoneSheetTitleClass, usePhoneSheetModal } from "@/components/ui/sheet";
@@ -330,9 +331,19 @@ function SharePopover({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: value }),
       });
-      const data = (await res.json()) as { message?: string; error?: string };
+      const data = (await res.json()) as { message?: string; error?: string; stoppedAgents?: number };
       if (res.ok) {
         toast({ title: "Invited", description: data.message });
+        if (data.stoppedAgents && data.stoppedAgents > 0) {
+          // Sharing purged the owner's ChatGPT sign-in from the sandbox, which
+          // meant stopping agents that were running on it.
+          toast({
+            title: "Running agent stopped",
+            description:
+              "An agent using your ChatGPT plan was stopped because this project is now shared. Send your message again — it will run on your OpenAI key or plan credits.",
+          });
+        }
+        notifyProjectSharingChanged(projectId);
         setEmail("");
         void reload();
       } else {

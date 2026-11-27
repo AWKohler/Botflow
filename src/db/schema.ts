@@ -112,6 +112,14 @@ export const projects = pgTable('projects', {
    *  platform-wide (TOS escape hatch, plan §5.1) — enforced at credential
    *  resolution, never trusted from the client. */
   shareOwnerOauth: boolean('share_owner_oauth').notNull().default(false),
+  /** First time anyone besides the owner was invited. Sticky: never cleared,
+   *  because a sandbox someone else could use is never trusted again with a
+   *  personal credential (src/lib/sandbox-credentials.ts). */
+  sharedAt: timestamp('shared_at'),
+  /** Whether the sandbox may hold a personal credential (Codex sign-in):
+   *  'none' | 'present'. NULL on rows that predate tracking = unknown, which
+   *  is treated like 'present'. */
+  sandboxCredentials: text('sandbox_credentials').default('none'),
   // Soft delete — null means active. Set for Pro/Max users on delete; Free = immediate hard delete.
   deletedAt: timestamp('deleted_at'),
   // ─── Reaper / lifecycle fields ────────────────────────────────────────────

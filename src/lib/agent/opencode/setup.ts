@@ -187,23 +187,46 @@ export interface OpenCodeAuthInput {
   } | null;
 }
 
+/** Matches every OpenCode process we launch (bridge + `opencode serve`):
+ *  both run from under ~/.botflow/opencode/. The bracket keeps pgrep/pkill
+ *  from matching the shell that runs them. */
+const OPENCODE_PROCESS_PATTERN = "[/]\\.botflow/opencode/";
+
+export const PURGE_OK_MARKER = "BOTFLOW_PURGED";
+
 /**
- * Delete OpenCode's auth store from the project sandbox. Used when a project
- * gains (or has) collaborators: the store may still hold the owner's real
- * Codex tokens from an earlier turn, and every member can read the sandbox.
- * The next turn rewrites the file with whatever it needs. Throws when the
- * sandbox can't be reached so callers can fail closed.
+ * Remove every trace of a personal credential from the project sandbox:
+ * delete OpenCode's auth store, kill every OpenCode process (one started
+ * before the delete may hold tokens in memory; one started after has none),
+ * delete again, then VERIFY no process is left and the file is gone.
+ * Throws unless verified, so callers fail closed. Only call under the
+ * sandbox credential lock (src/lib/sandbox-credentials.ts).
  */
-export async function scrubOpenCodeAuth(projectId: string): Promise<void> {
+export async function purgeOpenCodeCredentials(projectId: string): Promise<{ stoppedAgents: number }> {
   const sandbox = await getOrCreatePersistentSandbox(projectId);
   const paths = await resolveOpenCodePaths(projectId);
-  const res = await sandbox.runCommand({
-    cmd: "sh",
-    args: ["-c", `rm -f ${paths.authPath} ${paths.authPath}.tmp`],
-  });
-  if (res.exitCode !== 0) {
-    throw new Error(`scrubOpenCodeAuth: rm exited ${res.exitCode}`);
+  const auth = paths.authPath;
+  const pat = `'${OPENCODE_PROCESS_PATTERN}'`;
+  const script = [
+    `rm -f ${auth} ${auth}.tmp`,
+    `N=$(pgrep -f ${pat} | wc -l | tr -d ' ')`,
+    `pkill -TERM -f ${pat} 2>/dev/null || true`,
+    `i=0`,
+    `while [ $i -lt 30 ] && pgrep -f ${pat} >/dev/null 2>&1; do sleep 0.1; i=$((i+1)); done`,
+    `pkill -KILL -f ${pat} 2>/dev/null || true`,
+    `sleep 0.2`,
+    `rm -f ${auth} ${auth}.tmp`,
+    `if pgrep -f ${pat} >/dev/null 2>&1; then echo BOTFLOW_PURGE_PROCS_LEFT; exit 3; fi`,
+    `if [ -e ${auth} ]; then echo BOTFLOW_PURGE_FILE_LEFT; exit 4; fi`,
+    `echo "${PURGE_OK_MARKER} $N"`,
+  ].join("\n");
+  const res = await sandbox.runCommand({ cmd: "sh", args: ["-c", script] });
+  const out = (await res.stdout()).trim();
+  const match = out.match(new RegExp(`${PURGE_OK_MARKER} (\\d+)`));
+  if (res.exitCode !== 0 || !match) {
+    throw new Error(`purgeOpenCodeCredentials: not verified (exit ${res.exitCode}): ${out.slice(0, 200)}`);
   }
+  return { stoppedAgents: Number(match[1]) };
 }
 
 /**

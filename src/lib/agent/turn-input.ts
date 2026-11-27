@@ -34,7 +34,7 @@ const UNAVAILABLE_COPY: Record<Exclude<AgentUnavailableReason, DerivationReason>
   codex_reconnect:
     "Your ChatGPT sign-in has expired or was revoked. Reconnect ChatGPT in Settings → Connections, then try again.",
   codex_shared_project:
-    "ChatGPT sign-in can't be used on a shared project yet. Pick a different model, or add an OpenAI API key in Settings → Connections.",
+    "This project was just shared, so your ChatGPT plan can't be used here any more. Send again to run on your OpenAI key or plan credits, or pick a different model.",
 };
 
 /** 422 + `{ error, reason }`. There is no fallback agent: the client shows

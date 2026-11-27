@@ -69,27 +69,13 @@ export async function launchScreenshotBrowser(): Promise<Browser | null> {
 }
 
 /**
- * Network policy for the thumbnail renderer: inline data, or public https on
- * port 443 by hostname. Hostnames that are IP literals, localhost-like, or
- * internal-looking are refused, so a snapshot can't make the renderer reach
- * (and photograph) anything on the server's own network.
+ * Network policy for the thumbnail renderer: none. Snapshots are
+ * self-contained (styles and images are inlined when captured), so only
+ * inline data is loaded. Any network access would let a snapshot make the
+ * renderer reach, and photograph, something on the server's own network.
  */
 export function isAllowedThumbnailRequest(raw: string): boolean {
-  let u: URL;
-  try {
-    u = new URL(raw);
-  } catch {
-    return false;
-  }
-  if (u.protocol === "data:" || u.protocol === "about:") return true;
-  if (u.protocol !== "https:") return false;
-  if (u.port && u.port !== "443") return false;
-  if (u.username || u.password) return false;
-  const host = u.hostname.toLowerCase().replace(/\.$/, "");
-  if (!host.includes(".")) return false; // single-label → internal
-  if (host.startsWith("[") || /^[\d.]+$/.test(host) || /^0x/i.test(host)) return false; // IP literal
-  if (/(^|\.)(localhost|local|internal|localdomain|home\.arpa)$/.test(host)) return false;
-  return true;
+  return raw.startsWith("data:") || raw === "about:blank";
 }
 
 /**
@@ -107,10 +93,8 @@ export async function renderHtmlToThumbnail(html: string): Promise<Buffer | null
       return drawPlaceholder();
     }
     const page = await browser.newPage();
-    // The HTML is untrusted (any project editor can submit it). No script
-    // runs, and the only network the page may use is public https on the
-    // default port — never loopback, link-local, private ranges or IP
-    // literals (the Lambda runtime API lives on 127.0.0.1).
+    // The HTML is untrusted (any project editor can submit it): no script
+    // runs and no network is used (see isAllowedThumbnailRequest).
     await page.setJavaScriptEnabled(false);
     await page.setRequestInterception(true);
     page.on("request", (request) => {

@@ -61,9 +61,10 @@ export async function POST(
     const updates: Partial<typeof projects.$inferInsert> = {};
     const staleKeys: string[] = [];
 
-    // Snapshot HTML is untrusted (any editor can send any HTML here). Strip
-    // script-bearing content before it is stored or rendered; viewers render
-    // it in a fully sandboxed iframe regardless (src/lib/snapshot-html.ts).
+    // Snapshot HTML is untrusted (any editor can send any HTML here). What
+    // keeps it inert is how it is rendered — a fully sandboxed iframe for
+    // viewers, a JavaScript-off, network-off browser for the thumbnail. The
+    // strip below is only best-effort defense in depth (src/lib/snapshot-html.ts).
     if (typeof body.html === "string") body.html = stripActiveContent(body.html);
 
     if (typeof body.html === "string" && body.html.trim()) {

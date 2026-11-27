@@ -22,25 +22,6 @@ export function inviteExpired(m: Pick<ProjectMember, 'status' | 'invitedAt'>): b
 }
 
 /**
- * True when anyone besides the owner has, or is about to get, access to the
- * project: an active member or a live (unexpired) pending invite. Used to
- * keep personal credentials out of shared sandboxes.
- */
-export async function projectHasCollaborators(projectId: string): Promise<boolean> {
-  if (!SHARING_ENABLED) return false;
-  const rows = await getDb()
-    .select({ status: projectMembers.status, invitedAt: projectMembers.invitedAt })
-    .from(projectMembers)
-    .where(
-      and(
-        eq(projectMembers.projectId, projectId),
-        inArray(projectMembers.status, ['active', 'pending']),
-      ),
-    );
-  return rows.some((m) => !inviteExpired(m));
-}
-
-/**
  * Find an existing Clerk user by email — matching VERIFIED addresses only,
  * so an unverified claim on someone else's email can never capture an invite.
  */

@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { projects, projectMembers, type Project } from '@/db/schema';
 import { SHARING_ENABLED } from '@/lib/feature-flags';
+import { secureProjectForSharing } from '@/lib/sandbox-credentials';
 
 /**
  * Roles a user can hold on a project. The owner is projects.userId (never a
@@ -56,6 +57,20 @@ export async function requireProjectAccess(
     )
     .limit(1);
   if (!member) return null;
+
+  // A sandbox that may still hold the owner's personal credential (projects
+  // shared before credential tracking, or a racing share) is purged before
+  // any member gets in. Fail closed: no verified purge, no access. Runs once
+  // per project — it leaves sandboxCredentials = 'none'.
+  if (project.sandboxCredentials !== 'none') {
+    try {
+      await secureProjectForSharing(project.id);
+    } catch (err) {
+      console.error(`[project-access] withholding editor access to ${project.id}: sandbox not verified clean`, err);
+      return null;
+    }
+    return { project: { ...project, sandboxCredentials: 'none' }, role: 'editor' };
+  }
   return { project, role: 'editor' };
 }
 

@@ -54,10 +54,6 @@ export interface ClaudeCodeTurnRecord {
   /** The turn's LLM-proxy token (bfap_) — same revocation rail: killing the
    *  bridge must also cut off its inference access. */
   llmProxyToken?: string;
-  /** True when this turn's agent holds a REAL personal credential inside the
-   *  sandbox (Codex ChatGPT-plan sign-in). Sharing a project stops such turns
-   *  before anyone else gets access (src/lib/sharing-guard.ts). */
-  holdsSandboxCredential?: boolean;
   /** True once an end_turn event has been observed for this turn. */
   endedNormally?: boolean;
   /** Epoch ms when end_turn was observed. */

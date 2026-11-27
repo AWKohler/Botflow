@@ -29,6 +29,7 @@ import {
 } from '@/lib/agent/backend-resolution';
 import { deriveAgentBackend, describeDerivation } from '@/lib/agent/derive-backend';
 import { BackendChip, BackendGlyphInfo } from './BackendBadge';
+import { PROJECT_SHARING_CHANGED_EVENT } from '@/lib/sharing-events';
 import { ThinkingBlock } from './ThinkingBlock';
 import { QuestionPrompt, type QuestionConfig, type QuestionAnswerPayload } from './QuestionPrompt';
 import {
@@ -417,18 +418,28 @@ function AgentThreadPanel({
   // follows the OWNER's tier — the server sends sharedTier on the project GET
   // and re-derives it authoritatively per turn. Wins over the personal tier.
   const sharedTierRef = useRef<'pro' | 'max' | null>(null);
-  // A shared project never runs on ChatGPT (Codex) sign-in: those tokens
-  // would sit in a sandbox every member can read. Mirrors the server rule in
-  // src/lib/agent/turn-start/opencode.ts.
+  // A project that has ever been shared never runs on ChatGPT (Codex)
+  // sign-in: those tokens would sit in a sandbox someone else can reach.
+  // Mirrors the server rule (src/lib/sandbox-credentials.ts); refreshed when
+  // the share sheet changes membership.
   const [projectShared, setProjectShared] = useState(false);
+  const [projectInfoVersion, setProjectInfoVersion] = useState(0);
+  useEffect(() => {
+    const onSharingChanged = (e: Event) => {
+      const detail = (e as CustomEvent<{ projectId?: string }>).detail;
+      if (!detail?.projectId || detail.projectId === projectId) setProjectInfoVersion((v) => v + 1);
+    };
+    window.addEventListener(PROJECT_SHARING_CHANGED_EVENT, onSharingChanged);
+    return () => window.removeEventListener(PROJECT_SHARING_CHANGED_EVENT, onSharingChanged);
+  }, [projectId]);
   useEffect(() => {
     let cancelled = false;
     fetch(`/api/projects/${encodeURIComponent(projectId)}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((p: { sharedTier?: string; name?: string; hasCollaborators?: boolean } | null) => {
+      .then((p: { sharedTier?: string; name?: string; codexBlocked?: boolean } | null) => {
         if (cancelled) return;
         if (typeof p?.name === 'string') setProjectName(p.name);
-        setProjectShared(p?.hasCollaborators === true);
+        setProjectShared(p?.codexBlocked === true);
         if (p?.sharedTier === 'pro' || p?.sharedTier === 'max') {
           sharedTierRef.current = p.sharedTier;
           setUserTier(p.sharedTier);
@@ -436,7 +447,7 @@ function AgentThreadPanel({
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [projectId]);
+  }, [projectId, projectInfoVersion]);
 
   const fetchCredits = useCallback(() => {
     fetch('/api/usage/credits')
@@ -570,7 +581,7 @@ function AgentThreadPanel({
         creds: {
           hasClaudeOAuth: Boolean(hasClaudeOAuth),
           hasAnthropicKey: Boolean(hasAnthropicKey),
-          hasCodexOAuth: Boolean(hasCodexOAuth) && !projectShared,
+          hasCodexOAuth: Boolean(hasCodexOAuth),
           hasOpenAIKey: Boolean(hasOpenAIKey),
           hasFireworksKey: Boolean(hasFireworksKey),
           hasGoogleKey: Boolean(hasGoogleKey),
@@ -579,6 +590,7 @@ function AgentThreadPanel({
         },
         tier: userTier,
         useTogetherKimi,
+        codexBlocked: projectShared,
       }),
     [
       model,

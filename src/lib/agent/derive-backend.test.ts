@@ -258,3 +258,67 @@ describe("describeDerivation — copy", () => {
     assert.match(describeDerivation("platform_key_opencode").body, /never enter the sandbox/);
   });
 });
+
+describe("deriveAgentBackend — shared project blocks ChatGPT (Codex) sign-in", () => {
+  test("Codex only, paid tier → plan credits, and says why", async () => {
+    const { deriveAgentBackend } = await load();
+    const out = deriveAgentBackend({
+      model: "gpt-6.1-sol",
+      platform: "sandboxed-web",
+      creds: { ...NO_CREDS, hasCodexOAuth: true },
+      tier: "pro",
+      codexBlocked: true,
+    });
+    assert.deepEqual(out, { backend: "opencode", runnable: true, reason: "codex_blocked_platform" });
+  });
+
+  test("Codex + OpenAI key → the key, and says why", async () => {
+    const { deriveAgentBackend } = await load();
+    const out = deriveAgentBackend({
+      model: "gpt-6.1-sol",
+      platform: "sandboxed-web",
+      creds: { ...NO_CREDS, hasCodexOAuth: true, hasOpenAIKey: true },
+      codexBlocked: true,
+    });
+    assert.deepEqual(out, { backend: "opencode", runnable: true, reason: "codex_blocked_byok" });
+  });
+
+  test("Codex only, tier too low for platform → not runnable, with the shared-project reason", async () => {
+    const { deriveAgentBackend, describeDerivation } = await load();
+    const out = deriveAgentBackend({
+      model: "gpt-6.1-sol",
+      platform: "sandboxed-web",
+      creds: { ...NO_CREDS, hasCodexOAuth: true },
+      tier: "free",
+      codexBlocked: true,
+    });
+    assert.equal(out.runnable, false);
+    assert.equal(out.reason, "codex_blocked_unavailable");
+    assert.match(describeDerivation(out.reason).body, /shared project/);
+  });
+
+  test("never derives codex_oauth_opencode when blocked", async () => {
+    const { deriveAgentBackend } = await load();
+    for (const tier of ["free", "pro", "max"] as const) {
+      const out = deriveAgentBackend({
+        model: "gpt-6.1-sol",
+        platform: "sandboxed-web",
+        creds: { ...NO_CREDS, hasCodexOAuth: true },
+        tier,
+        codexBlocked: true,
+      });
+      assert.notEqual(out.reason, "codex_oauth_opencode");
+    }
+  });
+
+  test("blocking is a no-op for users without Codex sign-in", async () => {
+    const { deriveAgentBackend } = await load();
+    const out = deriveAgentBackend({
+      model: "gpt-6.1-sol",
+      platform: "sandboxed-web",
+      creds: { ...NO_CREDS, hasOpenAIKey: true },
+      codexBlocked: true,
+    });
+    assert.equal(out.reason, "byok_opencode");
+  });
+});
