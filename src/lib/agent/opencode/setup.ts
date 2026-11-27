@@ -188,11 +188,12 @@ export interface OpenCodeAuthInput {
 }
 
 /** Matches every OpenCode process we launch (bridge + `opencode serve`):
- *  both run from under ~/.botflow/opencode/. The bracket keeps pgrep/pkill
- *  from matching the shell that runs them. */
-const OPENCODE_PROCESS_PATTERN = "[/]\\.botflow/opencode/";
+ *  both run from under $HOME/.botflow/opencode/ (resolveOpenCodePaths uses
+ *  the sandbox's $HOME). Expanded at run time, so the text of the shell
+ *  running pgrep/pkill (which holds the unexpanded "$HOME") never matches. */
+const OPENCODE_PROCESS_PATTERN = '"$HOME/.botflow/opencode/"';
 /** Just the bridges — one per running agent turn. */
-const OPENCODE_BRIDGE_PATTERN = "[/]\\.botflow/opencode/opencode-bridge";
+const OPENCODE_BRIDGE_PATTERN = '"$HOME/.botflow/opencode/opencode-bridge"';
 
 export const PURGE_OK_MARKER = "BOTFLOW_PURGED";
 const FENCED_MARKER = "BOTFLOW_FENCED";
@@ -243,8 +244,8 @@ export async function purgeOpenCodeCredentials(projectId: string): Promise<{ sto
   const sandbox = await getOrCreatePersistentSandbox(projectId);
   const auth = SH_AUTH;
   const marker = SH_MARKER;
-  const pat = `'${OPENCODE_PROCESS_PATTERN}'`;
-  const bridges = `'${OPENCODE_BRIDGE_PATTERN}'`;
+  const pat = OPENCODE_PROCESS_PATTERN;
+  const bridges = OPENCODE_BRIDGE_PATTERN;
   // pgrep exit status: 0 = matches, 1 = no matches, anything else = error.
   const script = [
     `command -v pgrep >/dev/null 2>&1 && command -v pkill >/dev/null 2>&1 || { echo BOTFLOW_PURGE_NO_TOOLS; exit 5; }`,

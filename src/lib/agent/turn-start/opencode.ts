@@ -330,6 +330,11 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
       throw err;
     }
     if (!locked.ok) {
+      if (locked.reason === "busy") {
+        // An earlier setup in this project ended without a clear result and
+        // may still be finishing; its window closes within a few minutes.
+        return { ok: false, response: jsonError(503, "This project's previous ChatGPT setup is still settling. Try again in a few minutes.") };
+      }
       return { ok: false, response: agentUnavailableResponse("codex_shared_project") };
     }
     if (!locked.value) {
@@ -656,7 +661,7 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
                     codexOAuthExpiresAt: openai.expires ?? null,
                   });
                 }
-              }).catch((err) => console.warn("[opencode] codex post-turn sync failed:", err));
+              }, { mode: "read" }).catch((err) => console.warn("[opencode] codex post-turn sync failed:", err));
             }
             // Deliberately NO token revocation here: the bridge runs detached and
             // legitimately outlives this route (maxDuration kill, client

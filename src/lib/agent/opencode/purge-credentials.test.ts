@@ -122,8 +122,12 @@ describe.skipIf(!hasProcTools())('purgeOpenCodeCredentials (real script, local s
     const b = startFakeBridge();
     await vi.waitFor(
       () => {
-        // Bracketed so the pattern can't match this pgrep's own shell.
-        const n = execFileSync('sh', ['-c', `pgrep -f '[/]\\.botflow/opencode/opencode-bridge' | wc -l`], { encoding: 'utf8' });
+        // "$HOME" stays unexpanded in this shell's own command line, so the
+        // pattern can't match it — and it only sees this test's processes.
+        const n = execFileSync('sh', ['-c', 'pgrep -f "$HOME/.botflow/opencode/opencode-bridge" | wc -l'], {
+          encoding: 'utf8',
+          env: { ...process.env, HOME: sandboxState.home },
+        });
         expect(Number(n.trim())).toBeGreaterThanOrEqual(2);
       },
       { timeout: 10_000, interval: 100 },

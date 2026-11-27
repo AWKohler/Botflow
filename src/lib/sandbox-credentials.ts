@@ -29,7 +29,7 @@
  *       that started before it finishes long before the purge verifies.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { chatSessions, projectMembers, projects, type Project } from "@/db/schema";
 import { REDIS_CONFIGURED, redis } from "@/lib/redis";
@@ -171,8 +171,13 @@ export async function secureProjectForSharing(
 export async function withPersonalSandboxCredential<T>(
   projectId: string,
   fn: (claim: { until: Date }) => Promise<T>,
-  opts: { waitMs?: number } = {},
-): Promise<{ ok: true; value: T } | { ok: false; reason: "shared" }> {
+  opts: {
+    waitMs?: number;
+    /** 'read' (e.g. the post-turn rotation sync) only reads the sandbox: it
+     *  runs under the lock and the shared checks but claims no write window. */
+    mode?: "write" | "read";
+  } = {},
+): Promise<{ ok: true; value: T } | { ok: false; reason: "shared" | "busy" }> {
   return withCredentialLock(projectId, opts.waitMs ?? 15_000, async () => {
     const state = await loadCredentialState(projectId);
     if (!state || !personalSandboxCredentialsAllowed(state)) return { ok: false, reason: "shared" };
@@ -187,8 +192,11 @@ export async function withPersonalSandboxCredential<T>(
       await getDb().update(projects).set({ sharedAt: new Date() }).where(eq(projects.id, projectId));
       return { ok: false, reason: "shared" };
     }
+    if (opts.mode === "read") {
+      return { ok: true, value: await fn({ until: new Date(0) }) };
+    }
     const claim = await claimSandboxForCredential(projectId);
-    if (!claim) return { ok: false, reason: "shared" };
+    if (claim === "shared" || claim === "busy") return { ok: false, reason: claim };
     const release = () =>
       getDb()
         .update(projects)
@@ -213,20 +221,33 @@ export async function withPersonalSandboxCredential<T>(
 /**
  * Compare-and-set: claim the sandbox for a personal credential only if the
  * project is STILL unshared at this instant (pairs with the single
- * statement in secureProjectForSharing), opening the in-flight window that
- * keeps a share from admitting anyone until the write is over.
- * Returns null when the project is shared. Exported for tests.
+ * statement in secureProjectForSharing) AND no earlier write's window is
+ * still open — an earlier write that failed ambiguously may still be
+ * running, and replacing its window would let a share admit someone while
+ * it does. Opens the in-flight window that keeps a share from admitting
+ * anyone until this write is over. Exported for tests.
  */
-export async function claimSandboxForCredential(projectId: string): Promise<{ until: Date } | null> {
+export async function claimSandboxForCredential(
+  projectId: string,
+): Promise<{ until: Date } | "shared" | "busy"> {
+  const now = new Date();
   // Millisecond precision (computed here, not with now()) so the release
-  // below can match this exact value after a round trip.
-  const until = new Date(Date.now() + CREDENTIAL_WRITE_WINDOW_SECONDS * 1000);
+  // can match this exact value after a round trip.
+  const until = new Date(now.getTime() + CREDENTIAL_WRITE_WINDOW_SECONDS * 1000);
   const [row] = await getDb()
     .update(projects)
     .set({ sandboxCredentials: "present", credentialWriteUntil: until })
-    .where(and(eq(projects.id, projectId), isNull(projects.sharedAt)))
+    .where(
+      and(
+        eq(projects.id, projectId),
+        isNull(projects.sharedAt),
+        or(isNull(projects.credentialWriteUntil), lte(projects.credentialWriteUntil, now)),
+      ),
+    )
     .returning({ id: projects.id });
-  return row ? { until } : null;
+  if (row) return { until };
+  const state = await loadCredentialState(projectId);
+  return !state || state.sharedAt ? "shared" : "busy";
 }
 
 /** After a purge killed every OpenCode process: mark their turns dead (so

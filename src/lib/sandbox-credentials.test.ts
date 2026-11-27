@@ -199,7 +199,7 @@ describe('compare-and-set: correctness does not depend on the lock', () => {
     const { claimSandboxForCredential } = await import('./sandbox-credentials');
     const p = await createProject({ userId: OWNER });
     await currentTestDb().update(projects).set({ sharedAt: new Date() }).where(eq(projects.id, p.id));
-    expect(await claimSandboxForCredential(p.id)).toBeNull();
+    expect(await claimSandboxForCredential(p.id)).toBe('shared');
     const r = await row(p.id);
     expect(r.sandboxCredentials).toBe('none');
     expect(r.credentialWriteUntil).toBeNull();
@@ -209,11 +209,11 @@ describe('compare-and-set: correctness does not depend on the lock', () => {
     const { claimSandboxForCredential } = await import('./sandbox-credentials');
     const p = await createProject({ userId: OWNER });
     const claim = await claimSandboxForCredential(p.id);
-    expect(claim).not.toBeNull();
+    if (typeof claim === 'string') throw new Error(`expected a claim, got ${claim}`);
     const r = await row(p.id);
     expect(r.sandboxCredentials).toBe('present');
-    expect(r.credentialWriteUntil?.getTime()).toBe(claim!.until.getTime());
-    expect(claim!.until.getTime()).toBeGreaterThan(Date.now() + 300_000);
+    expect(r.credentialWriteUntil?.getTime()).toBe(claim.until.getTime());
+    expect(claim.until.getTime()).toBeGreaterThan(Date.now() + 300_000);
   });
 });
 
@@ -253,5 +253,63 @@ describe('the in-flight window is released only when the write definitely ended'
       expect((await row(p.id)).credentialWriteUntil?.getTime()).toBe(claim.until.getTime());
     });
     expect(seen).toBeInstanceOf(Date);
+  });
+});
+
+describe('an unresolved earlier write is never replaced', () => {
+  test('A fails ambiguously → retry B is refused (busy) → sharing still refuses until A\'s window passes', async () => {
+    const { secureProjectForSharing, withPersonalSandboxCredential, SandboxCredentialWriteInProgress } = await import(
+      './sandbox-credentials'
+    );
+    const p = await createProject({ userId: OWNER });
+    await expect(
+      withPersonalSandboxCredential(p.id, async () => {
+        throw new Error('socket hang up');
+      }),
+    ).rejects.toThrow();
+    const windowA = (await row(p.id)).credentialWriteUntil;
+    const b = vi.fn(async () => 'written');
+    expect(await withPersonalSandboxCredential(p.id, b)).toEqual({ ok: false, reason: 'busy' });
+    expect(b).not.toHaveBeenCalled();
+    expect((await row(p.id)).credentialWriteUntil?.getTime()).toBe(windowA?.getTime());
+    await expect(secureProjectForSharing(p.id)).rejects.toBeInstanceOf(SandboxCredentialWriteInProgress);
+  });
+
+  test('overlapping claims (lease expired): the second claim is refused while the first is in flight', async () => {
+    const { claimSandboxForCredential, withPersonalSandboxCredential } = await import('./sandbox-credentials');
+    const { fakeRedis } = await import('@/test/redis-fake');
+    const p = await createProject({ userId: OWNER });
+    let second: unknown;
+    await withPersonalSandboxCredential(p.id, async () => {
+      await fakeRedis.del(`sandbox-credential-lock:${p.id}`);
+      second = await claimSandboxForCredential(p.id);
+    });
+    expect(second).toBe('busy');
+  });
+
+  test('once the earlier window has passed, a new write may claim', async () => {
+    const { claimSandboxForCredential } = await import('./sandbox-credentials');
+    const p = await createProject({ userId: OWNER, sandboxCredentials: 'present', credentialWriteUntil: new Date(Date.now() - 1000) });
+    expect(typeof (await claimSandboxForCredential(p.id))).toBe('object');
+  });
+});
+
+describe('read mode (post-turn rotation sync)', () => {
+  test('opens no write window and never blocks sharing', async () => {
+    const { withPersonalSandboxCredential, secureProjectForSharing } = await import('./sandbox-credentials');
+    const p = await createProject({ userId: OWNER });
+    expect(await withPersonalSandboxCredential(p.id, async () => 'read', { mode: 'read' })).toEqual({ ok: true, value: 'read' });
+    const r = await row(p.id);
+    expect(r.credentialWriteUntil).toBeNull();
+    expect(r.sandboxCredentials).toBe('none');
+    await expect(secureProjectForSharing(p.id)).resolves.toEqual({ stoppedAgents: 0 });
+  });
+
+  test('still refuses on a shared project', async () => {
+    const { withPersonalSandboxCredential } = await import('./sandbox-credentials');
+    const p = await createProject({ userId: OWNER, sharedAt: new Date() });
+    const fn = vi.fn(async () => {});
+    expect(await withPersonalSandboxCredential(p.id, fn, { mode: 'read' })).toEqual({ ok: false, reason: 'shared' });
+    expect(fn).not.toHaveBeenCalled();
   });
 });
