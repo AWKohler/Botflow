@@ -60,7 +60,7 @@ export class SandboxCredentialWriteInProgress extends Error {
 
 /** Longer than any route that writes a personal credential can live
  *  (maxDuration 300s), so a stalled writer is certainly dead after it. */
-const CREDENTIAL_WRITE_WINDOW_SECONDS = 360;
+export const CREDENTIAL_WRITE_WINDOW_SECONDS = 360;
 
 /** No real Redis is configured, so the credential lock can't be taken. */
 export class SandboxCredentialLockUnavailable extends Error {

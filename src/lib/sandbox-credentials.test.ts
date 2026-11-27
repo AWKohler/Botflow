@@ -334,3 +334,29 @@ describe('read mode (post-turn rotation sync)', () => {
     expect(fn).not.toHaveBeenCalled();
   });
 });
+
+describe('the write window outlives every route that can write a credential', () => {
+  test('every route that can start an OpenCode turn has maxDuration below the window', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const { CREDENTIAL_WRITE_WINDOW_SECONDS } = await import('./sandbox-credentials');
+    const appDir = path.resolve(__dirname, '../app');
+    const routes: string[] = [];
+    const walk = (d: string) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const full = path.join(d, e.name);
+        if (e.isDirectory()) walk(full);
+        else if (e.name === 'route.ts') routes.push(full);
+      }
+    };
+    walk(appDir);
+    const starters = routes.filter((f) => /\b(startOpenCodeTurn|drainThreadQueue)\b/.test(fs.readFileSync(f, 'utf8')));
+    expect(starters.length).toBeGreaterThanOrEqual(4);
+    for (const f of starters) {
+      const m = fs.readFileSync(f, 'utf8').match(/export const maxDuration = (\d+)/);
+      expect(m, `${path.relative(appDir, f)} must declare maxDuration`).not.toBeNull();
+      // A minute of margin: the write's own sandbox deadline is window − 60s.
+      expect(Number(m![1]), path.relative(appDir, f)).toBeLessThanOrEqual(CREDENTIAL_WRITE_WINDOW_SECONDS - 60);
+    }
+  });
+});

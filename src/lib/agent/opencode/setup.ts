@@ -197,6 +197,11 @@ const OPENCODE_BRIDGE_PATTERN = '"$HOME/.botflow/opencode/opencode-bridge"';
 
 export const PURGE_OK_MARKER = "BOTFLOW_PURGED";
 const FENCED_MARKER = "BOTFLOW_FENCED";
+/** No-op tag every Codex write shell carries in its command line, so a purge
+ *  can find and kill one that stalled mid-write. Matched with a bracketed
+ *  pattern so the purge's own shell never matches itself. */
+const WRITER_TAG = "BOTFLOW_CRED_WRITER";
+const WRITER_PATTERN = "'[B]OTFLOW_CRED_WRITER'";
 const EXPIRED_MARKER = "BOTFLOW_EXPIRED";
 const WRITTEN_MARKER = "BOTFLOW_WRITTEN";
 
@@ -209,6 +214,13 @@ export class SandboxCredentialRefused extends Error {}
 export class SandboxSharedError extends SandboxCredentialRefused {
   constructor() {
     super("The project sandbox has been shared; personal credentials are refused");
+  }
+}
+
+/** Never sent to the sandbox (it couldn't be reached), so nothing ran. */
+export class SandboxCredentialNotDispatched extends SandboxCredentialRefused {
+  constructor(cause: unknown) {
+    super("The credential write was never sent to the sandbox", { cause });
   }
 }
 
@@ -240,6 +252,14 @@ const SH_AUTH = `${SH_DATA_DIR}/auth.json`;
  * count as failure, never as "nothing running". Throws unless verified.
  * Returns how many agent bridges (running turns) were stopped.
  */
+function killWriterLines(): string[] {
+  return [
+    `W=$(pgrep -f ${WRITER_PATTERN}); rc=$?`,
+    `if [ $rc -gt 1 ]; then echo BOTFLOW_PURGE_PGREP_ERROR; exit 6; fi`,
+    `for p in $W; do pkill -KILL -P "$p" 2>/dev/null; kill -KILL "$p" 2>/dev/null; done`,
+  ];
+}
+
 export async function purgeOpenCodeCredentials(projectId: string): Promise<{ stoppedAgents: number }> {
   const sandbox = await getOrCreatePersistentSandbox(projectId);
   const auth = SH_AUTH;
@@ -251,6 +271,10 @@ export async function purgeOpenCodeCredentials(projectId: string): Promise<{ sto
     `command -v pgrep >/dev/null 2>&1 && command -v pkill >/dev/null 2>&1 || { echo BOTFLOW_PURGE_NO_TOOLS; exit 5; }`,
     `[ -n "$HOME" ] || { echo BOTFLOW_PURGE_NO_HOME; exit 8; }`,
     `mkdir -p $HOME/.botflow && touch ${marker} || { echo BOTFLOW_PURGE_NO_MARKER; exit 7; }`,
+    // A Codex write shell that passed its marker check before the touch
+    // above (and stalled) holds the token in its arguments: kill it and its
+    // children now, and again just before verifying.
+    ...killWriterLines(),
     `rm -f ${auth} ${auth}.*`,
     `B=$(pgrep -f ${bridges}); rc=$?`,
     `if [ $rc -gt 1 ]; then echo BOTFLOW_PURGE_PGREP_ERROR; exit 6; fi`,
@@ -259,8 +283,12 @@ export async function purgeOpenCodeCredentials(projectId: string): Promise<{ sto
     `i=0`,
     `while [ $i -lt 30 ]; do pgrep -f ${pat} >/dev/null 2>&1; rc=$?; [ $rc -eq 1 ] && break; [ $rc -gt 1 ] && { echo BOTFLOW_PURGE_PGREP_ERROR; exit 6; }; sleep 0.1; i=$((i+1)); done`,
     `pkill -KILL -f ${pat} 2>/dev/null`,
+    ...killWriterLines(),
     `sleep 0.2`,
     `rm -f ${auth} ${auth}.*`,
+    `pgrep -f ${WRITER_PATTERN} >/dev/null 2>&1; rc=$?`,
+    `if [ $rc -eq 0 ]; then echo BOTFLOW_PURGE_WRITER_LEFT; exit 11; fi`,
+    `if [ $rc -ne 1 ]; then echo BOTFLOW_PURGE_PGREP_ERROR; exit 6; fi`,
     `pgrep -f ${pat} >/dev/null 2>&1; rc=$?`,
     `if [ $rc -eq 0 ]; then echo BOTFLOW_PURGE_PROCS_LEFT; exit 3; fi`,
     `if [ $rc -ne 1 ]; then echo BOTFLOW_PURGE_PGREP_ERROR; exit 6; fi`,
@@ -294,8 +322,17 @@ export async function writeOpenCodeAuth(
     notAfter?: Date;
   } = {},
 ): Promise<void> {
-  const sandbox = await getOrCreatePersistentSandbox(projectId);
-  const paths = await resolveOpenCodePaths(projectId);
+  // For a Codex write, failing to reach the sandbox means nothing was sent,
+  // which callers may treat as a definite "nothing written".
+  let sandbox: Awaited<ReturnType<typeof getOrCreatePersistentSandbox>>;
+  let paths: OpenCodeSandboxPaths;
+  try {
+    sandbox = await getOrCreatePersistentSandbox(projectId);
+    paths = await resolveOpenCodePaths(projectId);
+  } catch (err) {
+    if (input.codex?.accessToken) throw new SandboxCredentialNotDispatched(err);
+    throw err;
+  }
 
   const payload: Record<string, unknown> = {};
   if (input.codex?.accessToken) {
@@ -320,6 +357,7 @@ export async function writeOpenCodeAuth(
     const tmp = `${SH_AUTH}.w${Date.now().toString(36)}`;
     const deadline = opts.notAfter ? Math.floor(opts.notAfter.getTime() / 1000) : null;
     const script = [
+      `: ${WRITER_TAG}`,
       `[ -n "$HOME" ] || exit 1`,
       ...(deadline != null
         ? [`NOW=$(date +%s) || exit 1`, `if [ "$NOW" -ge ${deadline} ]; then echo ${EXPIRED_MARKER}; exit 10; fi`]

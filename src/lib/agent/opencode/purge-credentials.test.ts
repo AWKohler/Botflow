@@ -14,11 +14,14 @@ import path from 'node:path';
 const sandboxState = vi.hoisted(() => ({
   home: '',
   pathOverride: null as null | string,
+  unreachable: false,
   override: null as null | { exitCode: number; stdout: string },
 }));
 
 vi.mock('@/lib/vercel-sandbox', () => ({
-  getOrCreatePersistentSandbox: async () => ({
+  getOrCreatePersistentSandbox: async () => {
+    if (sandboxState.unreachable) throw new Error('sandbox host unreachable');
+    return {
     runCommand: async ({ args }: { cmd: string; args: string[] }) => {
       if (sandboxState.override) {
         const { exitCode, stdout } = sandboxState.override;
@@ -37,7 +40,8 @@ vi.mock('@/lib/vercel-sandbox', () => ({
         return { exitCode: err.status, stdout: async () => err.stdout ?? '', stderr: async () => '' };
       }
     },
-  }),
+    };
+  },
 }));
 vi.mock('@/lib/agent/claude-code/setup', () => ({
   resolveSandboxPaths: async () => ({ home: sandboxState.home }),
@@ -61,6 +65,7 @@ let projectId = '';
 beforeEach(() => {
   sandboxState.override = null;
   sandboxState.pathOverride = null;
+  sandboxState.unreachable = false;
   projectId = randomUUID();
   sandboxState.home = fs.mkdtempSync(path.join(os.tmpdir(), 'bf-purge-'));
   const dataDir = path.join(sandboxState.home, '.local/share/opencode');
@@ -141,6 +146,25 @@ describe.skipIf(!hasProcTools())('purgeOpenCodeCredentials (real script, local s
     });
   });
 
+  test('kills a Codex write shell stalled mid-write (and its children)', async () => {
+    const { purgeOpenCodeCredentials } = await import('./setup');
+    // Same tag a real write shell carries; `sleep` stands in for the stall.
+    const writer = spawn('/bin/sh', ['-c', ': BOTFLOW_CRED_WRITER; sleep 300; true'], {
+      stdio: 'ignore',
+      env: { ...process.env, HOME: sandboxState.home },
+    });
+    children.push(writer);
+    await vi.waitFor(
+      () => {
+        const n = execFileSync('sh', ['-c', "pgrep -f '[B]OTFLOW_CRED_WRITER' | wc -l"], { encoding: 'utf8' });
+        expect(Number(n.trim())).toBeGreaterThanOrEqual(1);
+      },
+      { timeout: 10_000, interval: 100 },
+    );
+    await purgeOpenCodeCredentials(projectId);
+    await vi.waitFor(() => expect(writer.exitCode !== null || writer.signalCode !== null).toBe(true));
+  });
+
   test('a sandbox with nothing running reports zero and succeeds', async () => {
     const { purgeOpenCodeCredentials } = await import('./setup');
     expect(await purgeOpenCodeCredentials(projectId)).toEqual({ stoppedAgents: 0 });
@@ -182,6 +206,14 @@ describe('fenced Codex write and read (real script, local shell)', () => {
     await expect(writeOpenCodeAuth(projectId, { codex })).rejects.toBeInstanceOf(SandboxSharedError);
     expect(fs.existsSync(authPath)).toBe(false);
     expect(fs.readdirSync(path.dirname(authPath))).toEqual([]);
+  });
+
+  test('an unreachable sandbox is a definite "nothing written"', async () => {
+    const { writeOpenCodeAuth, SandboxCredentialNotDispatched, SandboxCredentialRefused } = await import('./setup');
+    sandboxState.unreachable = true;
+    const err = await writeOpenCodeAuth(projectId, { codex }).catch((e) => e);
+    expect(err).toBeInstanceOf(SandboxCredentialNotDispatched);
+    expect(err).toBeInstanceOf(SandboxCredentialRefused);
   });
 
   test('a write that reaches the sandbox after its deadline writes nothing', async () => {
