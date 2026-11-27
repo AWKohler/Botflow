@@ -15,18 +15,27 @@
  *     process is killed and the auth store deleted, verified, fail-closed.
  *  3. Both of the above and every Codex credential write/adoption run under
  *     one per-project lock, so "a Codex turn is writing tokens" and "the
- *     project is becoming shared" can never interleave.
+ *     project is becoming shared" don't interleave in the database.
+ *  4. Correctness of the sandbox itself does NOT depend on that lock's
+ *     timing: the purge first sets a sticky marker inside the sandbox, and
+ *     every Codex write checks it before and after writing
+ *     (src/lib/agent/opencode/setup.ts), so even a credential write that
+ *     outlives its lease can't leave a token behind.
  */
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { projects, type Project } from "@/db/schema";
-import { redis } from "@/lib/redis";
+import { chatSessions, projectMembers, projects, type Project } from "@/db/schema";
+import { REDIS_CONFIGURED, redis } from "@/lib/redis";
 import { isSandboxPlatform } from "@/lib/project-platform";
 import { purgeOpenCodeCredentials } from "@/lib/agent/opencode/setup";
+import { getTurnRecords, isTurnLive, markTurnDead } from "@/lib/agent/claude-code/turn-registry";
+import { revokeToolToken } from "@/lib/agent/claude-code/tool-token";
+import { revokeLlmProxyToken } from "@/lib/agent/llm-proxy/token";
 
-/** Longer than any critical section (cold sandbox resume + purge). */
-const LOCK_TTL_SECONDS = 180;
+/** Covers a cold sandbox resume + purge. Sandbox safety doesn't depend on
+ *  it (see rule 4); it only keeps the database state consistent. */
+const LOCK_TTL_SECONDS = 60;
 const lockKey = (projectId: string) => `sandbox-credential-lock:${projectId}`;
 
 export class SandboxCredentialLockTimeout extends Error {
@@ -36,6 +45,10 @@ export class SandboxCredentialLockTimeout extends Error {
 }
 
 async function withCredentialLock<T>(projectId: string, waitMs: number, fn: () => Promise<T>): Promise<T> {
+  // The no-op Redis fallback "grants" every lock; never accept that here.
+  if (!REDIS_CONFIGURED) {
+    throw new Error("Sandbox credential operations need Redis (UPSTASH_REDIS_REST_URL/TOKEN)");
+  }
   const key = lockKey(projectId);
   const token = randomUUID();
   const deadline = Date.now() + waitMs;
@@ -100,6 +113,7 @@ export async function secureProjectForSharing(
     let stoppedAgents = 0;
     if (isSandboxPlatform(state.platform)) {
       ({ stoppedAgents } = await purgeOpenCodeCredentials(projectId));
+      await retireOpenCodeTurns(projectId);
     }
     await db.update(projects).set({ sandboxCredentials: "none" }).where(eq(projects.id, projectId));
     return { stoppedAgents };
@@ -120,9 +134,37 @@ export async function withPersonalSandboxCredential<T>(
   return withCredentialLock(projectId, opts.waitMs ?? 15_000, async () => {
     const state = await loadCredentialState(projectId);
     if (!state || !personalSandboxCredentialsAllowed(state)) return { ok: false, reason: "shared" };
+    // Belt and braces: any member row at all (e.g. an invite written by an
+    // older deployment that didn't set shared_at) means shared.
+    const [member] = await getDb()
+      .select({ id: projectMembers.id })
+      .from(projectMembers)
+      .where(eq(projectMembers.projectId, projectId))
+      .limit(1);
+    if (member) {
+      await getDb().update(projects).set({ sharedAt: new Date() }).where(eq(projects.id, projectId));
+      return { ok: false, reason: "shared" };
+    }
     if (state.sandboxCredentials !== "present") {
       await getDb().update(projects).set({ sandboxCredentials: "present" }).where(eq(projects.id, projectId));
     }
     return { ok: true, value: await fn() };
   });
+}
+
+/** After a purge killed every OpenCode process: mark their turns dead (so
+ *  threads stop showing them as running and recovery won't reattach) and
+ *  revoke their callback and LLM-proxy tokens. */
+async function retireOpenCodeTurns(projectId: string): Promise<void> {
+  const threads = await getDb()
+    .select({ id: chatSessions.id })
+    .from(chatSessions)
+    .where(eq(chatSessions.projectId, projectId));
+  const records = await getTurnRecords(projectId, threads.map((t) => t.id));
+  for (const [threadId, record] of records) {
+    if (record.backend !== "opencode" || !isTurnLive(record)) continue;
+    if (record.toolToken) await revokeToolToken(record.toolToken).catch(() => {});
+    if (record.llmProxyToken) await revokeLlmProxyToken(record.llmProxyToken).catch(() => {});
+    await markTurnDead(projectId, threadId, record.turnId).catch(() => {});
+  }
 }

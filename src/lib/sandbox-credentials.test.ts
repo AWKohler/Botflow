@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm';
 import { projects } from '@/db/schema';
 import { currentTestDb, setupTestDb } from '@/test/db';
 import { createProject } from '@/test/factories';
+import { chatSessions, projectMembers } from '@/db/schema';
 
 const purge = vi.hoisted(() => ({ fn: vi.fn(async (projectId: string) => { void projectId; return { stoppedAgents: 0 }; }) }));
 vi.mock('@/lib/agent/opencode/setup', () => ({
@@ -126,5 +127,35 @@ describe('withPersonalSandboxCredential', () => {
     );
     release();
     await held;
+  });
+});
+
+describe('belt and braces', () => {
+  test('any member row means shared, even if shared_at was never set (older deployment)', async () => {
+    const { withPersonalSandboxCredential } = await import('./sandbox-credentials');
+    const p = await createProject({ userId: OWNER });
+    // Written directly, as an older deployment would: no shared_at.
+    await currentTestDb().insert(projectMembers).values({
+      projectId: p.id, invitedEmail: 'x@example.test', invitedBy: OWNER, status: 'pending',
+    });
+    const fn = vi.fn(async () => {});
+    expect(await withPersonalSandboxCredential(p.id, fn)).toEqual({ ok: false, reason: 'shared' });
+    expect(fn).not.toHaveBeenCalled();
+    expect((await row(p.id)).sharedAt).toBeInstanceOf(Date);
+  });
+
+  test('turns killed by a purge are marked dead and their tokens revoked', async () => {
+    const { secureProjectForSharing } = await import('./sandbox-credentials');
+    const { setTurnRecord, getTurnRecord } = await import('@/lib/agent/claude-code/turn-registry');
+    const p = await createProject({ userId: OWNER, sandboxCredentials: 'present' });
+    const [oc] = await currentTestDb().insert(chatSessions).values({ projectId: p.id, createdBy: OWNER }).returning();
+    const [cc] = await currentTestDb().insert(chatSessions).values({ projectId: p.id, createdBy: OWNER }).returning();
+    await setTurnRecord(p.id, { turnId: 't1', threadId: oc.id, backend: 'opencode', eventFile: '/tmp/x', startedAt: Date.now() });
+    await setTurnRecord(p.id, { turnId: 't2', threadId: cc.id, backend: 'claude-code', eventFile: '/tmp/y', startedAt: Date.now() });
+    purge.fn.mockResolvedValue({ stoppedAgents: 1 });
+    await secureProjectForSharing(p.id);
+    expect((await getTurnRecord(p.id, oc.id))?.dead).toBe(true);
+    // Claude Code turns hold no personal credential and are left alone.
+    expect((await getTurnRecord(p.id, cc.id))?.dead).toBeFalsy();
   });
 });

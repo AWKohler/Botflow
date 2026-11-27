@@ -82,7 +82,11 @@ export interface DeriveBackendOutput {
 
 export function deriveAgentBackend(input: DeriveBackendInput): DeriveBackendOutput {
   const { model, platform, tier, useTogetherKimi } = input;
-  const codexBlocked = input.codexBlocked === true && input.creds.hasCodexOAuth === true;
+  // Only where Codex sign-in would actually have been used (OpenAI models).
+  const codexBlocked =
+    input.codexBlocked === true &&
+    !isAnthropicModel(model) &&
+    openCodeCredModeForModel(model, input.creds, useTogetherKimi === true) === "codex-oauth";
   const creds = codexBlocked ? { ...input.creds, hasCodexOAuth: false } : input.creds;
 
   if (!platform || !isSandboxPlatform(platform)) {

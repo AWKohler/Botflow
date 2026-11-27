@@ -153,6 +153,19 @@ describe('projects shared before credential tracking', () => {
     expect((await callRoute(GET, { params: { id: p.id } })).status).toBe(404);
   });
 
+  test('a member row written without shared_at (older deployment) is healed on first access, no sandbox woken', async () => {
+    const p = await createProject({ userId: OWNER });
+    await currentTestDb().insert(projectMembers).values({
+      projectId: p.id, userId: EDITOR, invitedEmail: 'e@example.test', invitedBy: OWNER, status: 'active',
+    });
+    await signInAs(EDITOR);
+    const { GET } = await projectRoute();
+    const res = await callRoute(GET, { params: { id: p.id } });
+    expect(res.status).toBe(200);
+    expect((await res.json()).codexBlocked).toBe(true);
+    expect(prepare.fn).not.toHaveBeenCalled();
+  });
+
   test('the owner is never blocked by it', async () => {
     const p = await createProject({ userId: OWNER, sandboxCredentials: null, sharedAt: new Date('2026-07-01') });
     prepare.fn.mockRejectedValue(new Error('sandbox unreachable'));

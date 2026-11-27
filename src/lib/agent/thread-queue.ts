@@ -24,6 +24,10 @@ import { ensureThreadSegment, getThread, threadModel } from "./threads";
 import { startClaudeCodeTurn } from "./turn-start/claude-code";
 import { startOpenCodeTurn } from "./turn-start/opencode";
 
+/** UIMessage metadata key carrying the routing reason the sender's page
+ *  showed (see TurnStartContext.expectedRoutingReason). */
+export const QUEUED_ROUTING_REASON_KEY = "botflowRoutingReason";
+
 /** What viewers see for each waiting message. */
 export interface QueueItemSummary {
   id: string;
@@ -235,7 +239,17 @@ export async function drainThreadQueue(input: {
 
   let result;
   try {
-    result = await start({ userId: item.userId, projectId, platform, messages, project, thread, origin });
+    const queuedReason = (queued.metadata as Record<string, unknown> | undefined)?.[QUEUED_ROUTING_REASON_KEY];
+    result = await start({
+      userId: item.userId,
+      projectId,
+      platform,
+      messages,
+      project,
+      thread,
+      origin,
+      expectedRoutingReason: typeof queuedReason === "string" ? queuedReason : undefined,
+    });
   } catch (err) {
     console.error("[thread-queue] start threw:", err);
     await settle(item.id, { status: "queued" });

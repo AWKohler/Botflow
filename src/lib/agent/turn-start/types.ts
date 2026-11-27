@@ -15,6 +15,11 @@ export interface TurnStartContext {
   thread: Thread;
   /** Origin the sandbox calls back to (tool callbacks, LLM proxy, turn-finished). */
   origin: string;
+  /** Routing reason the client showed the user. When the server's own
+   *  derivation would quietly move the turn off the user's ChatGPT plan
+   *  (shared project), it refuses unless the client already showed that.
+   *  Absent on server-started (queued) turns, which therefore refuse too. */
+  expectedRoutingReason?: string;
 }
 
 export type TurnStartResult =

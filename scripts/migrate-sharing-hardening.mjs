@@ -1,7 +1,8 @@
 // Sharing hardening part 1: sticky projects.shared_at (backfilled),
 // projects.sandbox_credentials, and cleanup of snapshot/thumbnail URLs that
 // don't belong to a real upload. Idempotent.
-// Usage: node scripts/migrate-sharing-hardening.mjs
+// Usage: node scripts/migrate-sharing-hardening.mjs [--dry-run]
+// Run once before the deploy and once after it has fully rolled out.
 // Reads DATABASE_URL from .env.local (falls back to process.env), mirroring the
 // other scripts/migrate-*.mjs runners (raw SQL via @neondatabase/serverless).
 import { neon } from '@neondatabase/serverless';
@@ -30,6 +31,23 @@ async function run() {
   const [before] = await sql.query(
     `SELECT count(*)::int AS projects FROM projects`,
   );
+
+  // Dry run: what the URL cleanup would clear (only meaningful once the
+  // columns exist; the URL columns always do).
+  const URL_OK = (col, key) =>
+    `(${col} ~ '^https://(utfs\\.io|[a-z0-9-]+\\.ufs\\.sh)/f/[^/?#]+$' AND substring(${col} from '/f/([^/?#]+)$') IS NOT DISTINCT FROM ${key})`;
+  const [preview] = await sql.query(
+    `SELECT count(*) FILTER (WHERE html_snapshot_url IS NOT NULL AND NOT ${URL_OK('html_snapshot_url', 'html_snapshot_key')})::int AS snapshots,
+            count(*) FILTER (WHERE thumbnail_url IS NOT NULL AND NOT ${URL_OK('thumbnail_url', 'thumbnail_key')})::int AS thumbnails,
+            (SELECT count(DISTINCT project_id)::int FROM project_members) AS shared
+       FROM projects`,
+  );
+  console.log(`projects: ${before.projects}; ever shared: ${preview.shared}`);
+  console.log(`URL cleanup would clear: ${preview.snapshots} snapshot URL(s), ${preview.thumbnails} thumbnail URL(s)`);
+  if (process.argv.includes('--dry-run')) {
+    console.log('\n--dry-run: no changes made.');
+    return;
+  }
 
   const migrationPath = path.resolve(process.cwd(), 'drizzle/0018_sharing_hardening.sql');
   const ddl = fs.readFileSync(migrationPath, 'utf8')

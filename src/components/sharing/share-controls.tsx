@@ -331,23 +331,30 @@ function SharePopover({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: value }),
       });
-      const data = (await res.json()) as { message?: string; error?: string; stoppedAgents?: number };
+      const data = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+        stoppedAgents?: number;
+      };
+      // Even a failed invite may have changed how this project's agents can
+      // run (preparing to share is sticky), so always refresh the panel.
+      notifyProjectSharingChanged(projectId);
       if (res.ok) {
         toast({ title: "Invited", description: data.message });
         if (data.stoppedAgents && data.stoppedAgents > 0) {
-          // Sharing purged the owner's ChatGPT sign-in from the sandbox, which
-          // meant stopping agents that were running on it.
           toast({
-            title: "Running agent stopped",
+            title: data.stoppedAgents === 1 ? "A running agent was stopped" : `${data.stoppedAgents} running agents were stopped`,
             description:
-              "An agent using your ChatGPT plan was stopped because this project is now shared. Send your message again — it will run on your OpenAI key or plan credits.",
+              "Sharing clears personal sign-ins from the project's sandbox, which meant stopping agents that were running in it. Send your message again to continue.",
           });
         }
-        notifyProjectSharingChanged(projectId);
         setEmail("");
         void reload();
       } else {
-        toast({ title: "Couldn't invite", description: data.error ?? "Something went wrong." });
+        toast({
+          title: "Couldn't invite",
+          description: data.error ?? (res.status >= 500 ? "The server took too long. Try again in a minute." : "Something went wrong."),
+        });
       }
     } finally {
       setInviting(false);

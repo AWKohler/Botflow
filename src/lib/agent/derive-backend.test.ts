@@ -322,3 +322,28 @@ describe("deriveAgentBackend — shared project blocks ChatGPT (Codex) sign-in",
     assert.equal(out.reason, "byok_opencode");
   });
 });
+
+describe("deriveAgentBackend — Codex block only affects models that would use Codex", () => {
+  test("Gemini on a Google key in a shared project keeps its normal reason", async () => {
+    const { deriveAgentBackend } = await load();
+    const out = deriveAgentBackend({
+      model: "gemini-3.1-pro-preview",
+      platform: "sandboxed-web",
+      creds: { ...NO_CREDS, hasCodexOAuth: true, hasGoogleKey: true },
+      codexBlocked: true,
+    });
+    assert.equal(out.reason, "byok_opencode");
+  });
+
+  test("a non-OpenAI platform model too low for the tier still says tier_too_low", async () => {
+    const { deriveAgentBackend } = await load();
+    const out = deriveAgentBackend({
+      model: "fireworks-kimi-k3",
+      platform: "sandboxed-web",
+      creds: { ...NO_CREDS, hasCodexOAuth: true },
+      tier: "free",
+      codexBlocked: true,
+    });
+    assert.equal(out.reason, "tier_too_low");
+  });
+});

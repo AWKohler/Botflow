@@ -138,7 +138,11 @@ export async function POST(
   } catch (err) {
     console.error("[sharing] could not secure project for sharing:", err);
     return NextResponse.json(
-      { error: "Couldn't prepare this project's sandbox for sharing. Try again in a minute." },
+      {
+        error:
+          "Couldn't prepare this project's sandbox for sharing. Try again in a minute. (ChatGPT sign-in is now turned off for this project, as it will be once it's shared.)",
+        codexBlocked: true,
+      },
       { status: 503 },
     );
   }

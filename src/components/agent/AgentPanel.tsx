@@ -29,7 +29,7 @@ import {
 } from '@/lib/agent/backend-resolution';
 import { deriveAgentBackend, describeDerivation } from '@/lib/agent/derive-backend';
 import { BackendChip, BackendGlyphInfo } from './BackendBadge';
-import { PROJECT_SHARING_CHANGED_EVENT } from '@/lib/sharing-events';
+import { PROJECT_SHARING_CHANGED_EVENT, notifyProjectSharingChanged } from '@/lib/sharing-events';
 import { ThinkingBlock } from './ThinkingBlock';
 import { QuestionPrompt, type QuestionConfig, type QuestionAnswerPayload } from './QuestionPrompt';
 import {
@@ -694,6 +694,11 @@ function AgentThreadPanel({
   //     backend; the transport (a useRef) sees fresh values without rebuild. ---
   const agentBackendRef = useRef<AgentBackend>(agentBackend);
   agentBackendRef.current = agentBackend;
+  // Sent with each turn so the server can refuse (instead of silently
+  // re-billing) when its routing differs from what this page showed — e.g.
+  // the project was shared from another tab, so the ChatGPT plan is off.
+  const routingReasonRef = useRef(derivedBackend.reason);
+  routingReasonRef.current = derivedBackend.reason;
   // Who to name when the model provider is down. ChatGPT-plan turns talk to
   // OpenAI's ChatGPT backend directly (not the API), so say that.
   const outageProviderLabelRef = useRef('The model provider');
@@ -746,7 +751,7 @@ function AgentThreadPanel({
       const finalMessages = repairOrphanedToolCalls(scoped);
 
       return {
-        body: { ...(body ?? {}), messages: finalMessages },
+        body: { ...(body ?? {}), messages: finalMessages, routingReason: routingReasonRef.current },
         api: backend === 'claude-code' ? '/api/agent/claude-code' : '/api/agent/opencode',
       };
     },
@@ -853,6 +858,12 @@ function AgentThreadPanel({
       // thread's queue instead of showing an error.
       try {
         const parsed = JSON.parse(msg) as { reason?: string };
+        if (parsed?.reason === 'codex_shared_project') {
+          // The project is shared now (another tab/device, or a share that
+          // failed half-way): re-read it so the model chip shows the real
+          // routing, then let the banner below explain.
+          notifyProjectSharingChanged(projectId);
+        }
         if (parsed?.reason === 'thread_busy') {
           const pending = messagesRef.current[messagesRef.current.length - 1];
           if (pending?.role === 'user') {
@@ -1615,7 +1626,7 @@ function AgentThreadPanel({
       try {
         const res = await fetch(
           `/api/projects/${encodeURIComponent(projectId)}/threads/${encodeURIComponent(threadId)}/queue`,
-          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }) },
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message, routingReason: routingReasonRef.current }) },
         );
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string };

@@ -85,6 +85,7 @@ import {
   ensureOpenCodeInstalled,
   writeOpenCodeAuth,
   readOpenCodeAuth,
+  SandboxSharedError,
   writeOpenCodeScripts,
   writeOpenCodeAppendPrompt,
   resolveOpenCodePaths,
@@ -186,6 +187,11 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
   }
   if (!derived.runnable) {
     return { ok: false, response: agentUnavailableResponse(derived.reason) };
+  }
+  // Never silently move a turn off the user's ChatGPT plan onto their API
+  // key or plan credits: only proceed if the client already showed it.
+  if (derived.reason.startsWith("codex_blocked_") && ctx.expectedRoutingReason !== derived.reason) {
+    return { ok: false, response: agentUnavailableResponse("codex_shared_project") };
   }
 
   const modelRef = resolveOpenCodeModel(selectedModel, { useTogetherKimi: USE_TOGETHER_KIMI });
@@ -295,6 +301,10 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
     } catch (err) {
       if (err instanceof SandboxCredentialLockTimeout) {
         return { ok: false, response: jsonError(503, "This project is busy changing its sharing settings. Try again in a moment.") };
+      }
+      // The sandbox's own fence refused the write: it was shared meanwhile.
+      if (err instanceof SandboxSharedError) {
+        return { ok: false, response: agentUnavailableResponse("codex_shared_project") };
       }
       throw err;
     }

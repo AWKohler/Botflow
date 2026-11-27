@@ -58,18 +58,20 @@ export async function requireProjectAccess(
     .limit(1);
   if (!member) return null;
 
-  // A sandbox that may still hold the owner's personal credential (projects
-  // shared before credential tracking, or a racing share) is purged before
-  // any member gets in. Fail closed: no verified purge, no access. Runs once
-  // per project — it leaves sandboxCredentials = 'none'.
-  if (project.sandboxCredentials !== 'none') {
+  // A member is about to get in. If the project isn't recorded as shared
+  // yet (an invite written by an older deployment) or its sandbox may still
+  // hold the owner's personal credential (projects shared before tracking),
+  // secure it first. Fail closed: no verified purge, no access. One-time —
+  // it leaves shared_at set and sandboxCredentials = 'none'. Short wait so a
+  // short route doesn't hang behind another request doing the same work.
+  if (!project.sharedAt || project.sandboxCredentials !== 'none') {
     try {
-      await secureProjectForSharing(project.id);
+      await secureProjectForSharing(project.id, { waitMs: 10_000 });
     } catch (err) {
       console.error(`[project-access] withholding editor access to ${project.id}: sandbox not verified clean`, err);
       return null;
     }
-    return { project: { ...project, sandboxCredentials: 'none' }, role: 'editor' };
+    return { project: { ...project, sharedAt: project.sharedAt ?? new Date(), sandboxCredentials: 'none' }, role: 'editor' };
   }
   return { project, role: 'editor' };
 }
