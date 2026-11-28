@@ -187,18 +187,156 @@ export interface OpenCodeAuthInput {
   } | null;
 }
 
+/** Matches every OpenCode process we launch (bridge + `opencode serve`):
+ *  both run from under $HOME/.botflow/opencode/ (resolveOpenCodePaths uses
+ *  the sandbox's $HOME). Expanded at run time, so the text of the shell
+ *  running pgrep/pkill (which holds the unexpanded "$HOME") never matches. */
+const OPENCODE_PROCESS_PATTERN = '"$HOME/.botflow/opencode/"';
+/** Just the bridges — one per running agent turn. */
+const OPENCODE_BRIDGE_PATTERN = '"$HOME/.botflow/opencode/opencode-bridge"';
+
+export const PURGE_OK_MARKER = "BOTFLOW_PURGED";
+const FENCED_MARKER = "BOTFLOW_FENCED";
+/** No-op tag every Codex write shell carries in its command line, so a purge
+ *  can find and kill one that stalled mid-write. Matched with a bracketed
+ *  pattern so the purge's own shell never matches itself. */
+const WRITER_TAG = "BOTFLOW_CRED_WRITER";
+const WRITER_PATTERN = "'[B]OTFLOW_CRED_WRITER'";
+const EXPIRED_MARKER = "BOTFLOW_EXPIRED";
+const WRITTEN_MARKER = "BOTFLOW_WRITTEN";
+
+/** A personal-credential write that DEFINITELY wrote nothing: the sandbox
+ *  shell ran and refused. (Any other error from a write leaves it unknown
+ *  whether the shell ran — callers must assume it might still.) */
+export class SandboxCredentialRefused extends Error {}
+
+/** Refused because the sandbox has been shared (its fence marker exists). */
+export class SandboxSharedError extends SandboxCredentialRefused {
+  constructor() {
+    super("The project sandbox has been shared; personal credentials are refused");
+  }
+}
+
+/** Never sent to the sandbox (it couldn't be reached), so nothing ran. */
+export class SandboxCredentialNotDispatched extends SandboxCredentialRefused {
+  constructor(cause: unknown) {
+    super("The credential write was never sent to the sandbox", { cause });
+  }
+}
+
+/** Refused because the write ran after its deadline (sandbox clock). */
+export class SandboxCredentialWriteExpired extends SandboxCredentialRefused {
+  constructor() {
+    super("The credential write reached the sandbox after its deadline; nothing was written");
+  }
+}
+
+/** Sticky in-sandbox "this sandbox has been shared" marker. It is the fence
+ *  that makes credential safety independent of any lock's timing: a purge
+ *  creates it FIRST, and every Codex write checks it before AND after
+ *  writing, so whichever order the two land in, no token file survives.
+ *
+ *  The credential scripts below locate everything from the sandbox's own
+ *  $HOME at run time (matching resolveOpenCodePaths' dataDir), never from a
+ *  cached path that could be stale after a sandbox provider switch. */
+const SH_MARKER = "$HOME/.botflow/sandbox-shared";
+const SH_DATA_DIR = "$HOME/.local/share/opencode";
+const SH_AUTH = `${SH_DATA_DIR}/auth.json`;
+
+/** Shell lines that find, freeze and kill tagged Codex write shells and
+ *  their children. */
+function killWriterLines(): string[] {
+  return [
+    `W=$(pgrep -f ${WRITER_PATTERN}); rc=$?`,
+    `if [ $rc -gt 1 ]; then echo BOTFLOW_PURGE_PGREP_ERROR; exit 6; fi`,
+    // Freeze each writer first so it can't fork a new (untagged) child
+    // between its children being killed and itself.
+    `for p in $W; do kill -STOP "$p" 2>/dev/null; pkill -KILL -P "$p" 2>/dev/null; kill -KILL "$p" 2>/dev/null; done`,
+  ];
+}
+
+/**
+ * Remove every trace of a personal credential from the project sandbox:
+ * set the shared fence marker, delete OpenCode's auth store (and temp
+ * variants), kill every OpenCode process (one started before the delete may
+ * hold tokens in memory; one started after has none), delete again, then
+ * VERIFY no process is left and the file is gone. Process-listing errors
+ * count as failure, never as "nothing running". Throws unless verified.
+ * Returns how many agent bridges (running turns) were stopped.
+ */
+export async function purgeOpenCodeCredentials(projectId: string): Promise<{ stoppedAgents: number }> {
+  const sandbox = await getOrCreatePersistentSandbox(projectId);
+  const auth = SH_AUTH;
+  const marker = SH_MARKER;
+  const pat = OPENCODE_PROCESS_PATTERN;
+  const bridges = OPENCODE_BRIDGE_PATTERN;
+  // pgrep exit status: 0 = matches, 1 = no matches, anything else = error.
+  const script = [
+    `command -v pgrep >/dev/null 2>&1 && command -v pkill >/dev/null 2>&1 || { echo BOTFLOW_PURGE_NO_TOOLS; exit 5; }`,
+    `[ -n "$HOME" ] || { echo BOTFLOW_PURGE_NO_HOME; exit 8; }`,
+    `mkdir -p $HOME/.botflow && touch ${marker} || { echo BOTFLOW_PURGE_NO_MARKER; exit 7; }`,
+    // A Codex write shell that passed its marker check before the touch
+    // above (and stalled) holds the token in its arguments: kill it and its
+    // children now, and again just before verifying.
+    ...killWriterLines(),
+    `rm -f ${auth} ${auth}.*`,
+    `B=$(pgrep -f ${bridges}); rc=$?`,
+    `if [ $rc -gt 1 ]; then echo BOTFLOW_PURGE_PGREP_ERROR; exit 6; fi`,
+    `N=$(printf '%s' "$B" | grep -c . || true)`,
+    `pkill -TERM -f ${pat} 2>/dev/null`,
+    `i=0`,
+    `while [ $i -lt 30 ]; do pgrep -f ${pat} >/dev/null 2>&1; rc=$?; [ $rc -eq 1 ] && break; [ $rc -gt 1 ] && { echo BOTFLOW_PURGE_PGREP_ERROR; exit 6; }; sleep 0.1; i=$((i+1)); done`,
+    `pkill -KILL -f ${pat} 2>/dev/null`,
+    ...killWriterLines(),
+    `sleep 0.2`,
+    `rm -f ${auth} ${auth}.*`,
+    `pgrep -f ${WRITER_PATTERN} >/dev/null 2>&1; rc=$?`,
+    `if [ $rc -eq 0 ]; then echo BOTFLOW_PURGE_WRITER_LEFT; exit 11; fi`,
+    `if [ $rc -ne 1 ]; then echo BOTFLOW_PURGE_PGREP_ERROR; exit 6; fi`,
+    `pgrep -f ${pat} >/dev/null 2>&1; rc=$?`,
+    `if [ $rc -eq 0 ]; then echo BOTFLOW_PURGE_PROCS_LEFT; exit 3; fi`,
+    `if [ $rc -ne 1 ]; then echo BOTFLOW_PURGE_PGREP_ERROR; exit 6; fi`,
+    `if [ -e ${auth} ]; then echo BOTFLOW_PURGE_FILE_LEFT; exit 4; fi`,
+    `echo "${PURGE_OK_MARKER} $N"`,
+  ].join("\n");
+  const res = await sandbox.runCommand({ cmd: "sh", args: ["-c", script] });
+  const out = (await res.stdout()).trim();
+  const match = out.match(new RegExp(`${PURGE_OK_MARKER} (\\d+)`));
+  if (res.exitCode !== 0 || !match) {
+    throw new Error(`purgeOpenCodeCredentials: not verified (exit ${res.exitCode}): ${out.slice(0, 200)}`);
+  }
+  return { stoppedAgents: Number(match[1]) };
+}
+
 /**
  * Write the turn's credential surface into OpenCode's auth store. With the
  * LLM proxy this is a bfap_ token, never a real key — the sole exception is
- * the Codex OAuth entry (see OpenCodeAuthInput). Provider ids verified
- * against opencode 1.17.13's catalog.
+ * the Codex OAuth entry (see OpenCodeAuthInput), which is written FENCED:
+ * refused if the sandbox's shared marker exists before the write, and
+ * removed again if it appears during it (throws SandboxSharedError).
+ * Provider ids verified against opencode 1.17.13's catalog.
  */
 export async function writeOpenCodeAuth(
   projectId: string,
   input: OpenCodeAuthInput,
+  opts: {
+    /** Codex writes: the sandbox shell refuses to write after this instant
+     *  (by its own clock), so a command that reaches the sandbox late —
+     *  after the caller's in-flight window — writes nothing. */
+    notAfter?: Date;
+  } = {},
 ): Promise<void> {
-  const sandbox = await getOrCreatePersistentSandbox(projectId);
-  const paths = await resolveOpenCodePaths(projectId);
+  // For a Codex write, failing to reach the sandbox means nothing was sent,
+  // which callers may treat as a definite "nothing written".
+  let sandbox: Awaited<ReturnType<typeof getOrCreatePersistentSandbox>>;
+  let paths: OpenCodeSandboxPaths;
+  try {
+    sandbox = await getOrCreatePersistentSandbox(projectId);
+    paths = await resolveOpenCodePaths(projectId);
+  } catch (err) {
+    if (input.codex?.accessToken) throw new SandboxCredentialNotDispatched(err);
+    throw err;
+  }
 
   const payload: Record<string, unknown> = {};
   if (input.codex?.accessToken) {
@@ -214,6 +352,36 @@ export async function writeOpenCodeAuth(
   }
   if (Object.keys(payload).length === 0) {
     throw new Error("writeOpenCodeAuth: no credentials provided");
+  }
+
+  if (input.codex?.accessToken) {
+    // One shell, no temp file written before the fence check: content goes
+    // in as base64 and is decoded only after the marker check passes.
+    const b64 = Buffer.from(JSON.stringify(payload), "utf-8").toString("base64");
+    const tmp = `${SH_AUTH}.w${Date.now().toString(36)}`;
+    const deadline = opts.notAfter ? Math.floor(opts.notAfter.getTime() / 1000) : null;
+    const script = [
+      `: ${WRITER_TAG}`,
+      `[ -n "$HOME" ] || exit 1`,
+      ...(deadline != null
+        ? [`NOW=$(date +%s) || exit 1`, `if [ "$NOW" -ge ${deadline} ]; then echo ${EXPIRED_MARKER}; exit 10; fi`]
+        : []),
+      `if [ -e ${SH_MARKER} ]; then echo ${FENCED_MARKER}; exit 9; fi`,
+      `mkdir -p ${SH_DATA_DIR} && chmod 700 ${SH_DATA_DIR} || exit 1`,
+      `umask 077`,
+      `printf '%s' '${b64}' | base64 -d > ${tmp} || { rm -f ${tmp}; exit 1; }`,
+      `mv -f ${tmp} ${SH_AUTH} || { rm -f ${tmp}; exit 1; }`,
+      `if [ -e ${SH_MARKER} ]; then rm -f ${SH_AUTH}; echo ${FENCED_MARKER}; exit 9; fi`,
+      `echo ${WRITTEN_MARKER}`,
+    ].join("\n");
+    const res = await sandbox.runCommand({ cmd: "sh", args: ["-c", script] });
+    const out = (await res.stdout()).trim();
+    if (out.includes(EXPIRED_MARKER)) throw new SandboxCredentialWriteExpired();
+    if (out.includes(FENCED_MARKER)) throw new SandboxSharedError();
+    if (res.exitCode !== 0 || !out.includes(WRITTEN_MARKER)) {
+      throw new Error(`writeOpenCodeAuth: codex write failed (exit ${res.exitCode})`);
+    }
+    return;
   }
 
   await sandbox.runCommand({
@@ -233,22 +401,20 @@ export async function writeOpenCodeAuth(
 }
 
 /**
- * Read back the sandbox's auth.json (or null if unreadable). Used after a
- * turn to detect whether opencode rotated the Codex refresh token mid-turn —
- * if it did, the route persists the rotated pair so the next turn's
- * server-side refresh doesn't use a stale token.
+ * Read back the sandbox's auth.json to recover a Codex token rotation.
+ * Returns null — adopt nothing — if unreadable, or if the sandbox has ever
+ * been shared (its contents may have been planted by someone else).
  */
 export async function readOpenCodeAuth(
   projectId: string,
 ): Promise<Record<string, unknown> | null> {
   const sandbox = await getOrCreatePersistentSandbox(projectId);
-  const paths = await resolveOpenCodePaths(projectId);
   const cmd = await sandbox.runCommand({
     cmd: "sh",
-    args: ["-c", `cat ${paths.authPath} 2>/dev/null || true`],
+    args: ["-c", `if [ -e ${SH_MARKER} ]; then echo ${FENCED_MARKER}; exit 0; fi; cat ${SH_AUTH} 2>/dev/null || true`],
   });
   const raw = (await cmd.stdout()).trim();
-  if (!raw) return null;
+  if (!raw || raw === FENCED_MARKER) return null;
   try {
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {

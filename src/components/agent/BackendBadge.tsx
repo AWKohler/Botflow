@@ -148,6 +148,10 @@ const CHIP_VISIBLE_REASONS: ReadonlySet<DerivationReason> = new Set<DerivationRe
   "byok_opencode",
   // Error state: the model exists but this plan can't run it on credits.
   "tier_too_low",
+  // Shared project: the user's ChatGPT plan isn't used — say so.
+  "codex_blocked_byok",
+  "codex_blocked_platform",
+  "codex_blocked_unavailable",
 ]);
 
 export interface BackendChipProps {

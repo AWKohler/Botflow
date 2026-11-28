@@ -69,6 +69,16 @@ export async function launchScreenshotBrowser(): Promise<Browser | null> {
 }
 
 /**
+ * Network policy for the thumbnail renderer: none. Snapshots are
+ * self-contained (styles and images are inlined when captured), so only
+ * inline data is loaded. Any network access would let a snapshot make the
+ * renderer reach, and photograph, something on the server's own network.
+ */
+export function isAllowedThumbnailRequest(raw: string): boolean {
+  return raw.startsWith("data:") || raw === "about:blank";
+}
+
+/**
  * Render an HTML string (a self-contained preview snapshot: scripts stripped,
  * styles + images inlined by the injected runtime's serializer) to a JPEG
  * thumbnail buffer. Returns null when rendering isn't possible; never throws
@@ -83,6 +93,14 @@ export async function renderHtmlToThumbnail(html: string): Promise<Buffer | null
       return drawPlaceholder();
     }
     const page = await browser.newPage();
+    // The HTML is untrusted (any project editor can submit it): no script
+    // runs and no network is used (see isAllowedThumbnailRequest).
+    await page.setJavaScriptEnabled(false);
+    await page.setRequestInterception(true);
+    page.on("request", (request) => {
+      if (isAllowedThumbnailRequest(request.url())) void request.continue();
+      else void request.abort();
+    });
     await page.setViewport({ ...THUMB_VIEWPORT, deviceScaleFactor: 1 });
     // 'load' is the strongest waitUntil setContent supports; the snapshot has
     // no scripts and mostly-inlined assets, so it settles fast.

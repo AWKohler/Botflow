@@ -55,3 +55,9 @@ export function getRedis(): Redis {
 }
 
 export const redis = getRedis();
+
+/** False when the no-op stub is in use. Anything that relies on Redis for
+ *  correctness (locks), not just caching, must check this and fail closed. */
+export const REDIS_CONFIGURED = Boolean(
+  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN,
+);

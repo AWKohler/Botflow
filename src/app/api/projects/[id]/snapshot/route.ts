@@ -23,6 +23,7 @@ import { getDb } from "@/db";
 import { projects } from "@/db/schema";
 import { requireProjectAccess } from "@/lib/project-access";
 import { renderHtmlToThumbnail } from "@/lib/server-screenshot";
+import { stripActiveContent } from "@/lib/snapshot-html";
 import { getUserTierAndLimits } from "@/lib/tier";
 import { getDailyScreenshots, incrementDailyScreenshots } from "@/lib/usage";
 
@@ -59,6 +60,12 @@ export async function POST(
 
     const updates: Partial<typeof projects.$inferInsert> = {};
     const staleKeys: string[] = [];
+
+    // Snapshot HTML is untrusted (any editor can send any HTML here). What
+    // keeps it inert is how it is rendered — a fully sandboxed iframe for
+    // viewers, a JavaScript-off, network-off browser for the thumbnail. The
+    // strip below is only best-effort defense in depth (src/lib/snapshot-html.ts).
+    if (typeof body.html === "string") body.html = stripActiveContent(body.html);
 
     if (typeof body.html === "string" && body.html.trim()) {
       const bytes = Buffer.byteLength(body.html, "utf-8");

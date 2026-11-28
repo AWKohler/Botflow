@@ -368,7 +368,7 @@ describe('owner-only fields never reach editors', () => {
     const res = await callRoute(mod[method], {
       method,
       params: { id: p.id },
-      body: method === 'PATCH' ? { publicDescription: 'x' } : undefined,
+      body: method === 'PATCH' ? { model: 'gpt-6-luna' } : undefined,
     });
     expect(res.status).toBe(200);
     const text = await res.text();

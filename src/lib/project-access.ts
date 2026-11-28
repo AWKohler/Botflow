@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { projects, projectMembers, type Project } from '@/db/schema';
 import { SHARING_ENABLED } from '@/lib/feature-flags';
+import { secureProjectForSharing } from '@/lib/sandbox-credentials';
 
 /**
  * Roles a user can hold on a project. The owner is projects.userId (never a
@@ -29,10 +30,28 @@ export interface ProjectAccess {
  * owner plus ACTIVE members when SHARING_ENABLED; with the flag off,
  * behavior is strictly single-owner regardless of member rows.
  */
+/** A member's access is waiting on the project's sandbox being secured for
+ *  sharing (see requireProjectAccess). Thrown only to callers that ask for
+ *  it (`onSecuringFailure: 'throw'`), e.g. the editor page, which shows a
+ *  "preparing" state instead of "no access". */
+export class ProjectSecuringError extends Error {
+  constructor(public readonly projectId: string, cause: unknown) {
+    super(`Project ${projectId} is being secured for sharing`, { cause });
+  }
+}
+
+export interface RequireProjectAccessOptions {
+  /** How long to wait for another request securing the same project. */
+  securingWaitMs?: number;
+  /** 'deny' (default) → null, like no access; 'throw' → ProjectSecuringError. */
+  onSecuringFailure?: 'deny' | 'throw';
+}
+
 export async function requireProjectAccess(
   projectId: string,
   userId: string,
   minRole: ProjectRole = 'editor',
+  opts: RequireProjectAccessOptions = {},
 ): Promise<ProjectAccess | null> {
   const db = getDb();
   const [project] = await db
@@ -56,6 +75,23 @@ export async function requireProjectAccess(
     )
     .limit(1);
   if (!member) return null;
+
+  // A member is about to get in. If the project isn't recorded as shared
+  // yet (an invite written by an older deployment) or its sandbox may still
+  // hold the owner's personal credential (projects shared before tracking),
+  // secure it first. Fail closed: no verified purge, no access. One-time —
+  // it leaves shared_at set and sandboxCredentials = 'none'. Short wait so a
+  // short route doesn't hang behind another request doing the same work.
+  if (!project.sharedAt || project.sandboxCredentials !== 'none') {
+    try {
+      await secureProjectForSharing(project.id, { waitMs: opts.securingWaitMs ?? 10_000 });
+    } catch (err) {
+      console.error(`[project-access] withholding editor access to ${project.id}: sandbox not verified clean`, err);
+      if (opts.onSecuringFailure === 'throw') throw new ProjectSecuringError(project.id, err);
+      return null;
+    }
+    return { project: { ...project, sharedAt: project.sharedAt ?? new Date(), sandboxCredentials: 'none' }, role: 'editor' };
+  }
   return { project, role: 'editor' };
 }
 

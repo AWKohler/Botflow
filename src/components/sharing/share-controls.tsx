@@ -24,6 +24,7 @@ import { TextInput } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 import { Button, buttonClass } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { notifyProjectSharingChanged } from "@/lib/sharing-events";
 import { SHARING_ENABLED } from "@/lib/feature-flags";
 import { cn } from "@/lib/utils";
 import { phoneSheetBackdropClass, phoneSheetBodyClass, phoneSheetClass, phoneSheetCloseClass, phoneSheetGrabberClass, phoneSheetTitleClass, usePhoneSheetModal } from "@/components/ui/sheet";
@@ -54,6 +55,10 @@ interface SharingState {
   editorsManageBackend: boolean;
   shareOwnerCredits: boolean;
   shareOwnerOauth: boolean;
+  /** Owner only: inviting someone will turn off the owner's ChatGPT plan
+   *  for this project for good (it has never been shared and the owner has
+   *  ChatGPT connected). */
+  chatgptOffOnShare?: boolean;
   members: Member[];
 }
 
@@ -330,15 +335,39 @@ function SharePopover({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: value }),
       });
-      const data = (await res.json()) as { message?: string; error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+        stoppedAgents?: number;
+      };
       if (res.ok) {
         toast({ title: "Invited", description: data.message });
+        if (data.stoppedAgents && data.stoppedAgents > 0) {
+          toast({
+            title: data.stoppedAgents === 1 ? "A running agent was stopped" : `${data.stoppedAgents} running agents were stopped`,
+            description:
+              "Sharing clears personal sign-ins from the project's sandbox, which meant stopping agents that were running in it. Send your message again to continue.",
+          });
+        }
         setEmail("");
         void reload();
       } else {
-        toast({ title: "Couldn't invite", description: data.error ?? "Something went wrong." });
+        toast({
+          title: "Couldn't invite",
+          description: data.error ?? (res.status >= 500 ? "The server took too long. Try again in a minute." : "Something went wrong."),
+        });
       }
+    } catch {
+      // The request may or may not have reached the server.
+      toast({
+        title: "Couldn't reach Botflow",
+        description: "We're not sure the invite went through. Check the list below, then try again if needed.",
+      });
+      void reload();
     } finally {
+      // Even a failed or interrupted invite may have changed how this
+      // project's agents can run (preparing to share is sticky).
+      notifyProjectSharingChanged(projectId);
       setInviting(false);
     }
   };
@@ -457,6 +486,12 @@ function SharePopover({
               </Button>
             </div>
           )
+        )}
+        {isOwner && state?.chatgptOffOnShare && (
+          <p className="-mt-2 mb-4 text-[12px] leading-snug text-muted">
+            Sharing turns off your ChatGPT plan for this project, for good: personal sign-ins can&apos;t live in a sandbox
+            other people can use. Its GPT models will run on your OpenAI key or plan credits instead.
+          </p>
         )}
 
         <div className="space-y-1 mb-4">

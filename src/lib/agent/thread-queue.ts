@@ -24,6 +24,10 @@ import { ensureThreadSegment, getThread, threadModel } from "./threads";
 import { startClaudeCodeTurn } from "./turn-start/claude-code";
 import { startOpenCodeTurn } from "./turn-start/opencode";
 
+/** UIMessage metadata key carrying the routing reason the sender's page
+ *  showed (see TurnStartContext.expectedRoutingReason). */
+export const QUEUED_ROUTING_REASON_KEY = "botflowRoutingReason";
+
 /** What viewers see for each waiting message. */
 export interface QueueItemSummary {
   id: string;
@@ -58,7 +62,15 @@ export async function enqueueMessage(input: {
       projectId: input.projectId,
       threadId: input.threadId,
       userId: input.userId,
-      message: { id: input.message.id, role: "user", parts: input.message.parts },
+      message: {
+        id: input.message.id,
+        role: "user",
+        parts: input.message.parts,
+        // Only the routing acknowledgement survives from client metadata.
+        ...(typeof (input.message.metadata as Record<string, unknown> | undefined)?.[QUEUED_ROUTING_REASON_KEY] === "string"
+          ? { metadata: { [QUEUED_ROUTING_REASON_KEY]: (input.message.metadata as Record<string, string>)[QUEUED_ROUTING_REASON_KEY] } }
+          : {}),
+      },
     })
     .returning();
   return row;
@@ -235,7 +247,17 @@ export async function drainThreadQueue(input: {
 
   let result;
   try {
-    result = await start({ userId: item.userId, projectId, platform, messages, project, thread, origin });
+    const queuedReason = (queued.metadata as Record<string, unknown> | undefined)?.[QUEUED_ROUTING_REASON_KEY];
+    result = await start({
+      userId: item.userId,
+      projectId,
+      platform,
+      messages,
+      project,
+      thread,
+      origin,
+      expectedRoutingReason: typeof queuedReason === "string" ? queuedReason : undefined,
+    });
   } catch (err) {
     console.error("[thread-queue] start threw:", err);
     await settle(item.id, { status: "queued" });
@@ -247,7 +269,7 @@ export async function drainThreadQueue(input: {
     return { started: true, turnId: result.turnId, queueId: item.id };
   }
   const refusal = await readRefusal(result.response);
-  if (refusal.reason === "thread_busy" || refusal.reason === "capacity") {
+  if (refusal.reason === "thread_busy" || refusal.reason === "capacity" || refusal.reason === "codex_settling") {
     // Transient: put it back; the next turn end (or the client backstop) retries.
     await settle(item.id, { status: "queued" });
     return { started: false, why: "busy" };

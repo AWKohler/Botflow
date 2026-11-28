@@ -43,6 +43,7 @@ vi.mock('@/db', async () => {
 
 vi.mock('@/lib/redis', () => ({
   redis: fakeRedis,
+  REDIS_CONFIGURED: true,
   getRedis: () => fakeRedis,
 }));
 

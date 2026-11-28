@@ -2,7 +2,6 @@
 
 import { Input } from "@/components/ui/input";
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import html2canvas from "html2canvas";
 import Image from "next/image";
 import { Button, buttonClass } from "@/components/ui/button";
 import { Menu, MenuItem } from "@/components/ui/menu";
@@ -26,6 +25,7 @@ import { VisualEditorPanel, VISUAL_EDITOR_PANEL_ID } from "@/components/workspac
 import { PHONE_QUERY } from "@/components/ui/sheet";
 import { PreviewInfo } from "@/lib/preview-store";
 import { buildPreviewUrl } from "@/lib/preview-url";
+import { SNAPSHOT_IFRAME_SANDBOX, escapeHtmlAttribute } from "@/lib/snapshot-html";
 import {
   isWebLikePlatform,
   type ProjectPlatform,
@@ -54,8 +54,6 @@ interface PreviewProps {
    *  project. Drives the loading carousel / blur veil over the live preview.
    *  Follow-up messages never blur. */
   isInitialBuild?: boolean;
-  /** Fetch page HTML via WebContainer (bypasses CORS) */
-  onFetchHtml?: (url: string) => Promise<string>;
   /** Visual editor: when true, clicking an element in the preview selects it. */
   editMode?: boolean;
   /** Visual editor: called when an element is selected in the preview. */
@@ -254,340 +252,6 @@ function ResponsiveCanvas({ iframeUrl }: { iframeUrl: string }) {
   );
 }
 
-/* ──────────────────────────────────────────
-   Figma Canvas – Static full-page capture view
-
-   1. HTML is fetched via WebContainer (bypasses CORS)
-   2. Rendered in hidden same-origin srcdoc iframes at correct viewport dims
-   3. Captured to images via html2canvas (windowHeight preserves correct vh)
-   4. Displayed as static <img> elements – no iframes, no scrollbars
-   ────────────────────────────────────────── */
-const FIGMA_VIEWPORTS = [
-  { key: "desktop", label: "Desktop", width: 1440, height: 900 },
-  { key: "tablet", label: "Tablet", width: 768, height: 1024 },
-  { key: "mobile", label: "Mobile", width: 375, height: 812 },
-] as const;
-
-interface CapturedFrame {
-  key: string;
-  label: string;
-  width: number;
-  height: number;
-  dataUrl: string;
-}
-
-function FigmaCanvas({
-  previewUrl,
-  reloadKey,
-  fetchHtml,
-}: {
-  previewUrl: string;
-  reloadKey: number;
-  fetchHtml: (url: string) => Promise<string>;
-}) {
-  const [zoom, setZoom] = useState(0.3);
-  const [pan, setPan] = useState({ x: 40, y: 40 });
-  const isPanning = useRef(false);
-  const lastMouse = useRef({ x: 0, y: 0 });
-  const [frames, setFrames] = useState<CapturedFrame[]>([]);
-  const [isCapturing, setIsCapturing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const captureId = useRef(0);
-
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      setZoom((z) => Math.min(1.5, Math.max(0.08, z - e.deltaY * 0.001)));
-    } else {
-      setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
-    }
-  }, []);
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (
-      e.button === 1 ||
-      (e.target as HTMLElement).dataset.canvas === "bg"
-    ) {
-      e.preventDefault();
-      isPanning.current = true;
-      lastMouse.current = { x: e.clientX, y: e.clientY };
-    }
-  }, []);
-
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isPanning.current) return;
-    setPan((p) => ({
-      x: p.x + e.clientX - lastMouse.current.x,
-      y: p.y + e.clientY - lastMouse.current.y,
-    }));
-    lastMouse.current = { x: e.clientX, y: e.clientY };
-  }, []);
-
-  const handleMouseUp = useCallback(() => {
-    isPanning.current = false;
-  }, []);
-
-  /* Capture a single viewport from the fetched HTML */
-  const captureViewport = useCallback(
-    (
-      html: string,
-      vp: (typeof FIGMA_VIEWPORTS)[number],
-      thisCapture: number,
-    ): Promise<CapturedFrame | null> =>
-      new Promise((resolve) => {
-        if (captureId.current !== thisCapture) return resolve(null);
-
-        const iframe = document.createElement("iframe");
-        iframe.style.cssText = `position:fixed;left:-9999px;top:0;width:${vp.width}px;height:${vp.height}px;border:none;visibility:hidden;`;
-        iframe.setAttribute("sandbox", "allow-same-origin allow-scripts");
-        document.body.appendChild(iframe);
-        iframe.srcdoc = html;
-
-        iframe.onload = async () => {
-          try {
-            // Give JS time to hydrate / render
-            await new Promise((r) => setTimeout(r, 1500));
-            if (captureId.current !== thisCapture) {
-              document.body.removeChild(iframe);
-              return resolve(null);
-            }
-
-            const doc = iframe.contentDocument;
-            if (!doc) throw new Error("No contentDocument");
-
-            const scrollH = doc.documentElement.scrollHeight;
-
-            const canvas = await html2canvas(
-              doc.documentElement,
-              {
-                width: vp.width,
-                height: scrollH,
-                useCORS: true,
-                logging: false,
-                imageTimeout: 8000,
-                // windowHeight keeps 100vh at the real viewport height
-                // even though we capture the full scrollHeight
-                windowWidth: vp.width,
-                windowHeight: vp.height,
-              } as Parameters<typeof html2canvas>[1],
-            );
-
-            const dataUrl = canvas.toDataURL("image/png");
-            document.body.removeChild(iframe);
-
-            resolve({
-              key: vp.key,
-              label: vp.label,
-              width: vp.width,
-              height: scrollH,
-              dataUrl,
-            });
-          } catch (err) {
-            console.error(`Figma capture ${vp.label}:`, err);
-            if (iframe.parentNode) document.body.removeChild(iframe);
-            resolve(null);
-          }
-        };
-      }),
-    [],
-  );
-
-  /* Capture all viewports */
-  const captureAll = useCallback(async () => {
-    if (!previewUrl) return;
-    const thisCapture = ++captureId.current;
-    setIsCapturing(true);
-    setError(null);
-
-    try {
-      let html = await fetchHtml(previewUrl);
-
-      // Inject <base> so relative asset URLs (JS/CSS/images) resolve
-      // to the preview server origin
-      const baseTag = `<base href="${previewUrl}">`;
-      if (html.includes("<head>")) {
-        html = html.replace("<head>", `<head>${baseTag}`);
-      } else {
-        html = `<head>${baseTag}</head>` + html;
-      }
-
-      // Disable animations/transitions for a clean static capture
-      html = html.replace(
-        "</head>",
-        `<style>*,*::before,*::after{animation-duration:0s!important;transition-duration:0s!important;scroll-behavior:auto!important;}</style></head>`,
-      );
-
-      const results: CapturedFrame[] = [];
-      for (const vp of FIGMA_VIEWPORTS) {
-        const frame = await captureViewport(html, vp, thisCapture);
-        if (frame) results.push(frame);
-      }
-
-      if (captureId.current === thisCapture) {
-        setFrames(results);
-      }
-    } catch (err) {
-      console.error("Figma capture failed:", err);
-      if (captureId.current === thisCapture) {
-        setError(
-          "Could not capture preview. Make sure the dev server is running.",
-        );
-      }
-    } finally {
-      if (captureId.current === thisCapture) {
-        setIsCapturing(false);
-      }
-    }
-  }, [previewUrl, fetchHtml, captureViewport]);
-
-  // Capture on mount and when reloadKey changes
-  useEffect(() => {
-    captureAll();
-  }, [captureAll, reloadKey]);
-
-  const GAP = 60;
-
-  return (
-    <div
-      className="w-full h-full overflow-hidden relative select-none"
-      style={{
-        background: `radial-gradient(circle, var(--color-border) 1px, transparent 1px)`,
-        backgroundSize: "24px 24px",
-        cursor: isPanning.current ? "grabbing" : "default",
-      }}
-      onWheel={handleWheel}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-      data-canvas="bg"
-    >
-      {/* Zoom controls */}
-      <div className="absolute top-3 right-3 z-20 flex items-center gap-2 bg-elevated/95 backdrop-blur-sm border border-border rounded-full px-3 py-1.5 shadow-sm">
-        <button
-          onClick={() => setZoom((z) => Math.max(0.08, z - 0.05))}
-          className="text-muted hover:text-fg text-sm font-medium w-5 h-5 flex items-center justify-center"
-        >
-          &minus;
-        </button>
-        <span className="text-xs text-muted min-w-[40px] text-center tabular-nums">
-          {Math.round(zoom * 100)}%
-        </span>
-        <button
-          onClick={() => setZoom((z) => Math.min(1.5, z + 0.05))}
-          className="text-muted hover:text-fg text-sm font-medium w-5 h-5 flex items-center justify-center"
-        >
-          +
-        </button>
-        <div className="w-px h-3 bg-border" />
-        <button
-          onClick={() => {
-            setZoom(0.3);
-            setPan({ x: 40, y: 40 });
-          }}
-          className="text-xs text-muted hover:text-fg"
-        >
-          Reset
-        </button>
-        <div className="w-px h-3 bg-border" />
-        <button
-          onClick={captureAll}
-          disabled={isCapturing}
-          className="text-xs text-muted hover:text-fg disabled:opacity-50"
-        >
-          {isCapturing ? "Capturing…" : "Recapture"}
-        </button>
-      </div>
-
-      {/* Loading overlay */}
-      {isCapturing && frames.length === 0 && (
-        <div
-          className="absolute inset-0 z-10 flex items-center justify-center"
-          data-canvas="bg"
-        >
-          <div className="flex flex-col items-center gap-3 bg-elevated/95 backdrop-blur-sm border border-border rounded-xl px-6 py-4 shadow-lg">
-            <span className="inline-flex h-6 w-6 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-            <span className="text-sm text-muted">
-              Capturing viewports…
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Error state */}
-      {error && !isCapturing && (
-        <div
-          className="absolute inset-0 z-10 flex items-center justify-center"
-          data-canvas="bg"
-        >
-          <div className="flex flex-col items-center gap-3 bg-elevated/95 backdrop-blur-sm border border-border rounded-xl px-6 py-4 shadow-lg max-w-sm text-center">
-            <span className="text-sm text-muted">{error}</span>
-            <button
-              onClick={captureAll}
-              className="text-xs text-accent hover:underline"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Pannable & zoomable surface — static images, no iframes */}
-      <div
-        style={{
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-          transformOrigin: "0 0",
-        }}
-        className="flex items-start"
-        data-canvas="bg"
-      >
-        {frames.map((frame, i) => (
-          <div
-            key={frame.key}
-            style={{ marginLeft: i === 0 ? 0 : GAP, width: frame.width }}
-            className="flex-shrink-0"
-          >
-            {/* Top bar */}
-            <div
-              className="flex items-center justify-between px-4 py-2"
-              style={{
-                background: "var(--color-accent)",
-                borderTop: "3px solid var(--color-accent)",
-                borderLeft: "2px solid var(--color-accent)",
-                borderRight: "2px solid var(--color-accent)",
-              }}
-            >
-              <span className="text-accent-foreground text-sm font-semibold">
-                {frame.label}
-              </span>
-              <span className="text-accent-foreground/70 text-xs tabular-nums">
-                {frame.width} x {frame.height}
-              </span>
-            </div>
-
-            {/* Captured image — full page, no scrollbar */}
-            <div
-              style={{
-                width: frame.width,
-                borderLeft: "2px solid var(--color-accent)",
-                borderRight: "2px solid var(--color-accent)",
-                borderBottom: "2px solid var(--color-accent)",
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={frame.dataUrl}
-                alt={`${frame.label} – ${frame.width}×${frame.height}`}
-                style={{ width: frame.width, display: "block" }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 const LOADING_MESSAGES = [
   "Setting up your project...",
   "Scaffolding files and folders...",
@@ -645,7 +309,6 @@ export function Preview({
   htmlSnapshotUrl,
   isAgentWorking,
   isInitialBuild,
-  onFetchHtml,
   editMode = false,
   onElementSelected,
   projectId,
@@ -953,10 +616,9 @@ export function Preview({
   const openInNewTab = useCallback(() => {
     if (activePreview?.baseUrl) {
       const previewUrl = buildPreviewUrl(activePreview.baseUrl, currentPath ?? internalPath);
-      window.open(
-        `/preview-popup?url=${encodeURIComponent(previewUrl)}`,
-        "_blank"
-      );
+      // Open the preview on its own address — never framed under Botflow's
+      // (a framed page there could pose as Botflow).
+      window.open(previewUrl, "_blank", "noopener,noreferrer");
     }
   }, [activePreview, currentPath, internalPath]);
 
@@ -1173,7 +835,7 @@ export function Preview({
     <foreignObject x="18" y="18" width="390" height="844">
       <div class="size-full overflow-hidden rounded-[55.75px] object-contain relative" style="transform-origin: center center; background:#ffffff; padding-top:62px; padding-bottom:34px;">
         <div class="w-full h-full relative overflow-hidden">
-          <iframe srcdoc="${snapshotHtml?.replace(/"/g, '&quot;').replace(/\$/g, '$$$$') || ""}" class="border-0 w-full select-none h-full" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" style="opacity: 0.6;"></iframe>
+          <iframe srcdoc="${escapeHtmlAttribute(snapshotHtml ?? "").replace(/\$/g, '$$$$')}" class="border-0 w-full select-none h-full" sandbox="${SNAPSHOT_IFRAME_SANDBOX}" style="opacity: 0.6;"></iframe>
           <div class="flex flex-col items-center justify-center absolute inset-0 z-[3] bg-black/40 backdrop-blur-[1px]" style="transform-origin: center center;">
             <button class="flex items-center justify-center w-20 h-20 rounded-full bg-white/90 hover:bg-white hover:scale-110 shadow-2xl transition-all duration-300" onclick="this.innerHTML='<span class=\\'inline-flex h-8 w-8 rounded-full border-4 border-success-border border-t-transparent animate-spin\\'></span>'">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1246,7 +908,7 @@ export function Preview({
               srcDoc={snapshotHtml || ''}
               className="w-full h-full border-none"
               title="Project Snapshot"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              sandbox={SNAPSHOT_IFRAME_SANDBOX}
             />
             {/* Blur veil with play button — emphasizes "switched off" while
                 keeping the app recognizable underneath */}
@@ -1789,17 +1451,6 @@ export function Preview({
         <div className="flex-1 overflow-hidden relative">
           <ResponsiveCanvas iframeUrl={iframeUrl} />
         </div>
-      ) : effectiveDevice === "figma" && onFetchHtml ? (
-        <div className="flex-1 overflow-hidden relative">
-          <FigmaCanvas
-            previewUrl={buildPreviewUrl(
-              activePreview.baseUrl,
-              (currentPath ?? internalPath) || "/",
-            )}
-            reloadKey={reloadKey ?? 0}
-            fetchHtml={onFetchHtml}
-          />
-        </div>
       ) : (
         <div className="flex-1 flex items-center justify-center overflow-auto relative">
           <div
@@ -1846,7 +1497,7 @@ export function Preview({
                   srcDoc={snapshotHtml || ''}
                   className="w-full h-full border-none"
                   title="Project Snapshot"
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                  sandbox={SNAPSHOT_IFRAME_SANDBOX}
                 />
                 <div
                   className="absolute inset-0"

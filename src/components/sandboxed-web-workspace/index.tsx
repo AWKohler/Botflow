@@ -53,7 +53,6 @@ import {
   Tablet,
   Smartphone,
   AppWindow,
-  Frame,
   ArrowUpRight,
   ChevronLeft,
   ChevronRight,
@@ -100,7 +99,6 @@ const PREVIEW_DEVICES = [
   { id: "tablet", label: "Tablet", hint: "768 px", icon: Tablet },
   { id: "mobile", label: "Phone", hint: "375 px", icon: Smartphone },
   { id: "responsive", label: "All sizes", hint: "Side by side", icon: AppWindow },
-  { id: "figma", label: "Snapshots", hint: "Static", icon: Frame },
 ] as const;
 
 interface SandboxedWebWorkspaceProps {

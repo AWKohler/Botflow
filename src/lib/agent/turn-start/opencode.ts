@@ -28,6 +28,12 @@ import {
   shouldAdoptSandboxCodexAuth,
 } from "@/lib/codex-oauth";
 import {
+  SandboxCredentialLockTimeout,
+  SandboxCredentialLockUnavailable,
+  personalSandboxCredentialsAllowed,
+  withPersonalSandboxCredential,
+} from "@/lib/sandbox-credentials";
+import {
   getOrCreatePersistentSandbox,
 } from "@/lib/vercel-sandbox";
 import {
@@ -80,6 +86,9 @@ import {
   ensureOpenCodeInstalled,
   writeOpenCodeAuth,
   readOpenCodeAuth,
+  SandboxSharedError,
+  SandboxCredentialWriteExpired,
+  SandboxCredentialNotDispatched,
   writeOpenCodeScripts,
   writeOpenCodeAppendPrompt,
   resolveOpenCodePaths,
@@ -158,6 +167,11 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
 
   const creds = await getUserCredentials(userId);
   const credFlags = credFlagsFromUserCredentials(creds);
+  // Codex (ChatGPT-plan) sign-in puts REAL tokens in the sandbox. A project
+  // that has ever been shared never gets one (src/lib/sandbox-credentials.ts):
+  // OpenAI models run on the user's own key or platform mode instead, both of
+  // which ride the LLM proxy (the sandbox only ever holds a bfap_ token).
+  const codexBlocked = !personalSandboxCredentialsAllowed(project);
   const userTier = await getUserTier(userId);
   // Single source of truth: re-derive the backend server-side so the routing
   // decision is tamper-proof. With the LLM proxy, this is also what keeps
@@ -169,12 +183,26 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
     creds: credFlags,
     tier: userTier,
     useTogetherKimi: USE_TOGETHER_KIMI,
+    codexBlocked,
   });
   if (derived.backend !== "opencode") {
     return { ok: false, response: agentUnavailableResponse("backend_mismatch") };
   }
   if (!derived.runnable) {
     return { ok: false, response: agentUnavailableResponse(derived.reason) };
+  }
+  // Never silently move a turn off the user's ChatGPT plan onto their API
+  // key or plan credits: only proceed if the client already showed it.
+  if (derived.reason.startsWith("codex_blocked_") && ctx.expectedRoutingReason !== derived.reason) {
+    return {
+      ok: false,
+      response: agentUnavailableResponse(
+        // No routing info at all (e.g. a client that doesn't send it): a
+        // plain explanation instead of "send again", which couldn't work.
+        ctx.expectedRoutingReason ? "codex_shared_project" : "codex_shared_project_unacknowledged",
+        { derivedReason: derived.reason },
+      ),
+    };
   }
 
   const modelRef = resolveOpenCodeModel(selectedModel, { useTogetherKimi: USE_TOGETHER_KIMI });
@@ -205,63 +233,8 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
   //   /api/internal/llm-proxy/<provider>, which also meters + bills
   //   platform-mode requests.
   const turnId = Math.random().toString(36).slice(2, 10);
-  const credMode = openCodeCredModeForModel(selectedModel, credFlags, USE_TOGETHER_KIMI);
+  const credMode = openCodeCredModeForModel(selectedModel, codexBlocked ? { ...credFlags, hasCodexOAuth: false } : credFlags, USE_TOGETHER_KIMI);
   const useCodex = credMode === "codex-oauth";
-
-  // Recover a mid-turn Codex token rotation that a killed route never
-  // persisted: the finally-block rotation sync below can't run when the
-  // platform hard-kills the route at maxDuration, so a rotation from the
-  // PREVIOUS turn may exist only in the sandbox's auth.json. Adopt it before
-  // deriving this turn's token — otherwise we'd refresh with (and re-write)
-  // a dead pair and 401.
-  let codexAuth = {
-    codexOAuthAccessToken: creds.codexOAuthAccessToken,
-    codexOAuthRefreshToken: creds.codexOAuthRefreshToken,
-    codexOAuthExpiresAt: creds.codexOAuthExpiresAt,
-  };
-  if (useCodex) {
-    try {
-      const sandboxAuth = await readOpenCodeAuth(projectId);
-      const openai = sandboxAuth?.openai as
-        | { type?: string; access?: string; refresh?: string; expires?: number }
-        | undefined;
-      // Only a NEWER pair (OpenCode rotated mid-turn) — never the older one
-      // left behind after our own refresh or a fresh sign-in, which would
-      // overwrite good tokens with dead ones on every turn.
-      if (
-        openai?.type === "oauth" &&
-        shouldAdoptSandboxCodexAuth(openai, {
-          refreshToken: creds.codexOAuthRefreshToken,
-          expiresAt: creds.codexOAuthExpiresAt,
-        })
-      ) {
-        codexAuth = {
-          codexOAuthAccessToken: openai.access!,
-          codexOAuthRefreshToken: openai.refresh!,
-          codexOAuthExpiresAt: openai.expires ?? null,
-        };
-        await setUserCredentials(userId, {
-          codexOAuthAccessToken: openai.access,
-          codexOAuthRefreshToken: openai.refresh,
-          codexOAuthExpiresAt: openai.expires ?? null,
-        }).catch(() => {});
-      }
-    } catch {
-      // No sandbox / no auth file yet — nothing to recover.
-    }
-  }
-
-  // Proactive refresh: the set is written into the sandbox at turn start and
-  // must survive the whole turn. A refresh ROTATES the refresh token, so the
-  // sandbox must get the whole fresh set (access + refresh + expiry) — never
-  // the new access token with the old, now-dead refresh token.
-  const codex = useCodex ? await getFreshCodexCredentials(codexAuth, userId) : null;
-  const writtenRefreshToken = codex?.refreshToken ?? null;
-  if (useCodex && !codex) {
-    // The refresh failed (expired or revoked sign-in) — ask the user to
-    // reconnect instead of starting a turn that can only 401.
-    return { ok: false, response: agentUnavailableResponse("codex_reconnect") };
-  }
 
   const proxyProvider = proxyProviderForOpenCodeId(modelRef.providerID);
   let llmProxyToken: string | null = null;
@@ -319,18 +292,69 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
     return { ok: false, response: jsonError(500, installResult.error) };
   }
 
-  await writeOpenCodeAuth(projectId, {
-    codex: codex
-      ? {
-          accessToken: codex.accessToken,
-          refreshToken: codex.refreshToken,
-          expiresAt: codex.expiresAt,
-        }
-      : null,
-    proxy: llmProxyToken
-      ? { providerID: modelRef.providerID, token: llmProxyToken }
-      : null,
-  });
+  // Codex credentials are adopted, refreshed and written ONLY under the
+  // project's sandbox-credential lock, and only while the project has never
+  // been shared — so they can never land in (or be read back from) a sandbox
+  // someone else can use, even if a share races this turn.
+  let writtenRefreshToken: string | null = null;
+  if (useCodex) {
+    let locked;
+    try {
+      locked = await withPersonalSandboxCredential(projectId, async (claim) => {
+        const codex = await resolveCodexCredentialsForTurn(projectId, userId, creds);
+        if (!codex) return null;
+        await writeOpenCodeAuth(
+          projectId,
+          {
+            codex: { accessToken: codex.accessToken, refreshToken: codex.refreshToken, expiresAt: codex.expiresAt },
+            proxy: null,
+          },
+          // A minute inside the in-flight window, by the sandbox's clock.
+          { notAfter: new Date(claim.until.getTime() - 60_000) },
+        );
+        return codex;
+      });
+    } catch (err) {
+      if (err instanceof SandboxCredentialLockTimeout) {
+        return { ok: false, response: settlingResponse("This project is busy changing its sharing settings. Try again in a moment.") };
+      }
+      if (err instanceof SandboxCredentialLockUnavailable) {
+        return { ok: false, response: jsonError(503, "ChatGPT sign-in isn't available on this deployment (it needs Redis). Pick a different model.") };
+      }
+      // The sandbox's own fence refused the write: it was shared meanwhile.
+      if (err instanceof SandboxSharedError) {
+        return { ok: false, response: agentUnavailableResponse("codex_shared_project") };
+      }
+      if (err instanceof SandboxCredentialNotDispatched) {
+        return { ok: false, response: settlingResponse("This project's sandbox couldn't be reached. Try again in a moment.") };
+      }
+      if (err instanceof SandboxCredentialWriteExpired) {
+        return { ok: false, response: jsonError(503, "Setting up this turn took too long. Send your message again.") };
+      }
+      throw err;
+    }
+    if (!locked.ok) {
+      if (locked.reason === "busy") {
+        // An earlier setup in this project ended without a clear result and
+        // may still be finishing; its window closes within a few minutes.
+        return { ok: false, response: settlingResponse("This project's previous ChatGPT setup is still settling. Try again in a few minutes.") };
+      }
+      return { ok: false, response: agentUnavailableResponse("codex_shared_project") };
+    }
+    if (!locked.value) {
+      // The refresh failed (expired or revoked sign-in) — ask the user to
+      // reconnect instead of starting a turn that can only 401.
+      return { ok: false, response: agentUnavailableResponse("codex_reconnect") };
+    }
+    writtenRefreshToken = locked.value.refreshToken ?? null;
+  } else {
+    await writeOpenCodeAuth(projectId, {
+      codex: null,
+      proxy: llmProxyToken
+        ? { providerID: modelRef.providerID, token: llmProxyToken }
+        : null,
+    });
+  }
   await writeOpenCodeScripts(projectId);
 
   // Convex-specific tools/prompt gate on this — MuhKoo has a backend but no
@@ -618,26 +642,37 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
             // sandbox auth.json holds the new pair and our stored refresh token
             // is dead. Persist the rotation so the next turn's server-side
             // refresh doesn't 401.
+            //
+            // Under the credential lock and only while the project has never
+            // been shared: once anyone else could have touched the sandbox,
+            // its auth file is untrusted and nothing is adopted from it (the
+            // share itself purged it).
             if (useCodex && writtenRefreshToken) {
-              readOpenCodeAuth(projectId)
-                .then((auth) => {
-                  const openai = auth?.openai as
-                    | { type?: string; access?: string; refresh?: string; expires?: number }
-                    | undefined;
+              // Read under the lock; adopt only what survives the re-check
+              // after the read (never from inside the read itself).
+              withPersonalSandboxCredential(
+                projectId,
+                async () => (await readOpenCodeAuth(projectId))?.openai as
+                  | { type?: string; access?: string; refresh?: string; expires?: number }
+                  | undefined,
+                { mode: "read" },
+              )
+                .then(async (read) => {
+                  const openai = read.ok ? read.value : undefined;
                   if (
                     openai?.type === "oauth" &&
                     openai.refresh &&
                     openai.access &&
                     openai.refresh !== writtenRefreshToken
                   ) {
-                    return setUserCredentials(userId, {
+                    await setUserCredentials(userId, {
                       codexOAuthAccessToken: openai.access,
                       codexOAuthRefreshToken: openai.refresh,
                       codexOAuthExpiresAt: openai.expires ?? null,
                     });
                   }
                 })
-                .catch(() => {});
+                .catch((err) => console.warn("[opencode] codex post-turn sync failed:", err));
             }
             // Deliberately NO token revocation here: the bridge runs detached and
             // legitimately outlives this route (maxDuration kill, client
@@ -661,4 +696,66 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
       return createUIMessageStreamResponse({ stream });
     },
   };
+}
+
+/**
+ * The Codex credential set for this turn. Recovers a mid-turn rotation a
+ * killed route never persisted (the post-turn sync can't run when the
+ * platform hard-kills the route at maxDuration, so a rotation from the
+ * PREVIOUS turn may exist only in the sandbox's auth.json), then refreshes
+ * proactively: the set is written at turn start and must survive the whole
+ * turn, and a refresh ROTATES the refresh token, so the sandbox gets the
+ * whole fresh set — never a new access token with a dead refresh token.
+ *
+ * Reads the sandbox, so callers MUST hold the sandbox credential lock via
+ * withPersonalSandboxCredential (never-shared projects only).
+ */
+async function resolveCodexCredentialsForTurn(
+  projectId: string,
+  userId: string,
+  creds: Awaited<ReturnType<typeof getUserCredentials>>,
+) {
+  let codexAuth = {
+    codexOAuthAccessToken: creds.codexOAuthAccessToken,
+    codexOAuthRefreshToken: creds.codexOAuthRefreshToken,
+    codexOAuthExpiresAt: creds.codexOAuthExpiresAt,
+  };
+  try {
+    const sandboxAuth = await readOpenCodeAuth(projectId);
+    const openai = sandboxAuth?.openai as
+      | { type?: string; access?: string; refresh?: string; expires?: number }
+      | undefined;
+    // Only a NEWER pair (OpenCode rotated mid-turn) — never the older one
+    // left behind after our own refresh or a fresh sign-in.
+    if (
+      openai?.type === "oauth" &&
+      shouldAdoptSandboxCodexAuth(openai, {
+        refreshToken: creds.codexOAuthRefreshToken,
+        expiresAt: creds.codexOAuthExpiresAt,
+      })
+    ) {
+      codexAuth = {
+        codexOAuthAccessToken: openai.access!,
+        codexOAuthRefreshToken: openai.refresh!,
+        codexOAuthExpiresAt: openai.expires ?? null,
+      };
+      await setUserCredentials(userId, {
+        codexOAuthAccessToken: openai.access,
+        codexOAuthRefreshToken: openai.refresh,
+        codexOAuthExpiresAt: openai.expires ?? null,
+      }).catch(() => {});
+    }
+  } catch {
+    // No sandbox / no auth file yet — nothing to recover.
+  }
+  return getFreshCodexCredentials(codexAuth, userId);
+}
+
+/** 503 with reason "codex_settling": a transient wait on the project's
+ *  credential state. The thread queue puts such a message back to retry. */
+function settlingResponse(message: string): Response {
+  return new Response(JSON.stringify({ error: message, reason: "codex_settling" }), {
+    status: 503,
+    headers: { "Content-Type": "application/json" },
+  });
 }

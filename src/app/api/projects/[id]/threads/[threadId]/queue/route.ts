@@ -5,6 +5,7 @@
  * agent is busy; the server starts it as the caller when the running turn
  * ends. Also tries to start it right away, in case the turn just finished.
  */
+import { QUEUED_ROUTING_REASON_KEY } from '@/lib/agent/thread-queue';
 import { NextRequest, NextResponse } from 'next/server';
 import type { UIMessage } from 'ai';
 import { auth } from '@/lib/auth/server';
@@ -32,13 +33,18 @@ export async function POST(
     if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     if (!(await getThread(id, threadId))) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    const body = (await req.json().catch(() => ({}))) as { message?: UIMessage };
+    const body = (await req.json().catch(() => ({}))) as { message?: UIMessage; routingReason?: unknown };
     const message = body.message;
     if (!message?.id || message.role !== 'user' || !Array.isArray(message.parts) || message.parts.length === 0) {
       return NextResponse.json({ error: 'A user message is required' }, { status: 400 });
     }
 
-    const item = await enqueueMessage({ projectId: id, threadId, userId, message });
+    // The routing the sender's page showed travels with the message, so the
+    // server-started turn can refuse rather than silently re-bill it.
+    const stored: UIMessage = typeof body.routingReason === 'string'
+      ? { ...message, metadata: { ...(message.metadata as Record<string, unknown> | undefined), [QUEUED_ROUTING_REASON_KEY]: body.routingReason } }
+      : message;
+    const item = await enqueueMessage({ projectId: id, threadId, userId, message: stored });
     const drain = await drainThreadQueue({ projectId: id, threadId, origin: new URL(req.url).origin });
     return NextResponse.json({ ok: true, queueId: item.id, drain });
   } catch (err) {

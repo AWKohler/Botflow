@@ -29,6 +29,7 @@ import {
 } from '@/lib/agent/backend-resolution';
 import { deriveAgentBackend, describeDerivation } from '@/lib/agent/derive-backend';
 import { BackendChip, BackendGlyphInfo } from './BackendBadge';
+import { PROJECT_SHARING_CHANGED_EVENT, notifyProjectSharingChanged } from '@/lib/sharing-events';
 import { ThinkingBlock } from './ThinkingBlock';
 import { QuestionPrompt, type QuestionConfig, type QuestionAnswerPayload } from './QuestionPrompt';
 import {
@@ -73,6 +74,9 @@ type ThreadPanelProps = Props & {
   me: string | null;
   /** Other members viewing this thread right now. */
   viewerIds: string[];
+  /** Filled with this thread's current routing reason, for notes the
+   *  container queues into it. */
+  routingReasonOut?: React.MutableRefObject<{ threadId: string; reason: string } | null>;
 };
 
 interface PendingImage {
@@ -335,6 +339,7 @@ function AgentThreadPanel({
   people,
   me,
   viewerIds,
+  routingReasonOut,
 }: ThreadPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const savedIdsRef = useRef<Set<string>>(new Set());
@@ -417,13 +422,28 @@ function AgentThreadPanel({
   // follows the OWNER's tier — the server sends sharedTier on the project GET
   // and re-derives it authoritatively per turn. Wins over the personal tier.
   const sharedTierRef = useRef<'pro' | 'max' | null>(null);
+  // A project that has ever been shared never runs on ChatGPT (Codex)
+  // sign-in: those tokens would sit in a sandbox someone else can reach.
+  // Mirrors the server rule (src/lib/sandbox-credentials.ts); refreshed when
+  // the share sheet changes membership.
+  const [projectShared, setProjectShared] = useState(false);
+  const [projectInfoVersion, setProjectInfoVersion] = useState(0);
+  useEffect(() => {
+    const onSharingChanged = (e: Event) => {
+      const detail = (e as CustomEvent<{ projectId?: string }>).detail;
+      if (!detail?.projectId || detail.projectId === projectId) setProjectInfoVersion((v) => v + 1);
+    };
+    window.addEventListener(PROJECT_SHARING_CHANGED_EVENT, onSharingChanged);
+    return () => window.removeEventListener(PROJECT_SHARING_CHANGED_EVENT, onSharingChanged);
+  }, [projectId]);
   useEffect(() => {
     let cancelled = false;
     fetch(`/api/projects/${encodeURIComponent(projectId)}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((p: { sharedTier?: string; name?: string } | null) => {
+      .then((p: { sharedTier?: string; name?: string; codexBlocked?: boolean } | null) => {
         if (cancelled) return;
         if (typeof p?.name === 'string') setProjectName(p.name);
+        setProjectShared(p?.codexBlocked === true);
         if (p?.sharedTier === 'pro' || p?.sharedTier === 'max') {
           sharedTierRef.current = p.sharedTier;
           setUserTier(p.sharedTier);
@@ -431,7 +451,7 @@ function AgentThreadPanel({
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [projectId]);
+  }, [projectId, projectInfoVersion]);
 
   const fetchCredits = useCallback(() => {
     fetch('/api/usage/credits')
@@ -532,7 +552,7 @@ function AgentThreadPanel({
       Boolean(platform && isSandboxPlatform(platform));
     const anthropic = oauthRunnable || hasAnthropicKey || null;
     return {
-      openai: hasCodexOAuth || hasOpenAIKey || null,
+      openai: (hasCodexOAuth && !projectShared) || hasOpenAIKey || null,
       anthropic,
       fireworks: hasFireworksKey === true ? true : null,
       google: hasGoogleKey === true ? true : null,
@@ -540,6 +560,7 @@ function AgentThreadPanel({
     };
   }, [
     hasCodexOAuth,
+    projectShared,
     hasOpenAIKey,
     hasClaudeOAuth,
     hasAnthropicKey,
@@ -573,6 +594,7 @@ function AgentThreadPanel({
         },
         tier: userTier,
         useTogetherKimi,
+        codexBlocked: projectShared,
       }),
     [
       model,
@@ -580,6 +602,7 @@ function AgentThreadPanel({
       hasClaudeOAuth,
       hasAnthropicKey,
       hasCodexOAuth,
+      projectShared,
       hasOpenAIKey,
       hasFireworksKey,
       hasGoogleKey,
@@ -675,6 +698,14 @@ function AgentThreadPanel({
   //     backend; the transport (a useRef) sees fresh values without rebuild. ---
   const agentBackendRef = useRef<AgentBackend>(agentBackend);
   agentBackendRef.current = agentBackend;
+  // Sent with each turn so the server can refuse (instead of silently
+  // re-billing) when its routing differs from what this page showed — e.g.
+  // the project was shared from another tab, so the ChatGPT plan is off.
+  const routingReasonRef = useRef(derivedBackend.reason);
+  routingReasonRef.current = derivedBackend.reason;
+  // The container queues system notes into this thread; it sends the same
+  // acknowledgement (see below, "agent-modal-complete").
+  if (routingReasonOut) routingReasonOut.current = { threadId, reason: derivedBackend.reason };
   // Who to name when the model provider is down. ChatGPT-plan turns talk to
   // OpenAI's ChatGPT backend directly (not the API), so say that.
   const outageProviderLabelRef = useRef('The model provider');
@@ -727,7 +758,7 @@ function AgentThreadPanel({
       const finalMessages = repairOrphanedToolCalls(scoped);
 
       return {
-        body: { ...(body ?? {}), messages: finalMessages },
+        body: { ...(body ?? {}), messages: finalMessages, routingReason: routingReasonRef.current },
         api: backend === 'claude-code' ? '/api/agent/claude-code' : '/api/agent/opencode',
       };
     },
@@ -834,6 +865,12 @@ function AgentThreadPanel({
       // thread's queue instead of showing an error.
       try {
         const parsed = JSON.parse(msg) as { reason?: string };
+        if (parsed?.reason?.startsWith('codex_shared_project') || parsed?.reason?.startsWith('codex_blocked_')) {
+          // The project is shared now (another tab/device, or a share that
+          // failed half-way): re-read it so the model chip shows the real
+          // routing, then let the banner below explain.
+          notifyProjectSharingChanged(projectId);
+        }
         if (parsed?.reason === 'thread_busy') {
           const pending = messagesRef.current[messagesRef.current.length - 1];
           if (pending?.role === 'user') {
@@ -1596,7 +1633,7 @@ function AgentThreadPanel({
       try {
         const res = await fetch(
           `/api/projects/${encodeURIComponent(projectId)}/threads/${encodeURIComponent(threadId)}/queue`,
-          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }) },
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message, routingReason: routingReasonRef.current }) },
         );
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -3080,6 +3117,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // the chat whose agent asked, through its server-side queue: it starts now
   // if that agent is idle, or right after its current turn.
   const currentThreadIdRef = useRef(currentThreadId);
+  const currentRoutingRef = useRef<{ threadId: string; reason: string } | null>(null);
   currentThreadIdRef.current = currentThreadId;
   useEffect(() => {
     const handler = (e: Event) => {
@@ -3130,7 +3168,11 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       fetch(`/api/projects/${encodeURIComponent(projectId)}/threads/${encodeURIComponent(target)}/queue`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: { id: crypto.randomUUID(), role: 'user', parts: [{ type: 'text', text: note }] } }),
+        body: JSON.stringify({
+          message: { id: crypto.randomUUID(), role: 'user', parts: [{ type: 'text', text: note }] },
+          routingReason:
+            currentRoutingRef.current?.threadId === target ? currentRoutingRef.current.reason : undefined,
+        }),
       })
         .then(() => refresh())
         .catch((err) => console.error('Failed to deliver the modal-completion note:', err));
@@ -3160,6 +3202,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           people={people}
           me={me}
           viewerIds={(viewers[currentThreadId] ?? []).filter((id) => id !== me)}
+          routingReasonOut={currentRoutingRef}
         />
       ) : (
         <div className="flex h-full items-center justify-center bg-surface text-xs text-muted">

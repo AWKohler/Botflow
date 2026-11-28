@@ -42,7 +42,13 @@ export type DerivationReason =
   | "byok_opencode"
   | "platform_key_opencode"
   | "tier_too_low"
-  | "unsupported_platform";
+  | "unsupported_platform"
+  // The user has ChatGPT (Codex) sign-in, but this project has been shared,
+  // so it can't be used (src/lib/sandbox-credentials.ts). Runs on the user's
+  // OpenAI key / plan credits instead, or can't run at all.
+  | "codex_blocked_byok"
+  | "codex_blocked_platform"
+  | "codex_blocked_unavailable";
 
 export interface DeriveBackendInput {
   model: ModelId;
@@ -56,6 +62,9 @@ export interface DeriveBackendInput {
   /** From the USE_TOGETHER_KIMI server flag (client learns it via
    *  /api/user-settings). Decides which BYOK key applies to Kimi. */
   useTogetherKimi?: boolean;
+  /** The project has been shared, so ChatGPT (Codex) sign-in — a real token
+   *  in the sandbox — must not be used. */
+  codexBlocked?: boolean;
 }
 
 export interface DeriveBackendOutput {
@@ -72,7 +81,13 @@ export interface DeriveBackendOutput {
 }
 
 export function deriveAgentBackend(input: DeriveBackendInput): DeriveBackendOutput {
-  const { model, platform, creds, tier, useTogetherKimi } = input;
+  const { model, platform, tier, useTogetherKimi } = input;
+  // Only where Codex sign-in would actually have been used (OpenAI models).
+  const codexBlocked =
+    input.codexBlocked === true &&
+    !isAnthropicModel(model) &&
+    openCodeCredModeForModel(model, input.creds, useTogetherKimi === true) === "codex-oauth";
+  const creds = codexBlocked ? { ...input.creds, hasCodexOAuth: false } : input.creds;
 
   if (!platform || !isSandboxPlatform(platform)) {
     return { backend: "opencode", runnable: false, reason: "unsupported_platform" };
@@ -95,13 +110,13 @@ export function deriveAgentBackend(input: DeriveBackendInput): DeriveBackendOutp
       return { backend: "opencode", runnable: true, reason: "codex_oauth_opencode" };
     }
     if (credMode === "byok") {
-      return { backend: "opencode", runnable: true, reason: "byok_opencode" };
+      return { backend: "opencode", runnable: true, reason: codexBlocked ? "codex_blocked_byok" : "byok_opencode" };
     }
     // Platform mode — the proxy injects the server key; tier gates access.
     if (!tierAllowsPlatform()) {
-      return { backend: "opencode", runnable: false, reason: "tier_too_low" };
+      return { backend: "opencode", runnable: false, reason: codexBlocked ? "codex_blocked_unavailable" : "tier_too_low" };
     }
-    return { backend: "opencode", runnable: true, reason: "platform_key_opencode" };
+    return { backend: "opencode", runnable: true, reason: codexBlocked ? "codex_blocked_platform" : "platform_key_opencode" };
   }
 
   // ── Anthropic model from here on ───────────────────────────────────────
@@ -192,6 +207,27 @@ export function describeDerivation(reason: DerivationReason): {
         title: "Agents need a sandbox project",
         body:
           "Agents run inside the project's sandbox, and this project doesn't have one. Open it again to migrate it, or create a new project.",
+      };
+    case "codex_blocked_byok":
+      return {
+        chipTitle: "Your API key · shared project",
+        title: "Your ChatGPT plan can't be used on a shared project",
+        body:
+          "ChatGPT sign-in needs your real tokens inside the project's sandbox, which everyone on a shared project can reach, so it's turned off here. This model runs on your own OpenAI API key instead (it never enters the sandbox). Your other, unshared projects still use your ChatGPT plan.",
+      };
+    case "codex_blocked_platform":
+      return {
+        chipTitle: "Your plan's credits · shared project",
+        title: "Your ChatGPT plan can't be used on a shared project",
+        body:
+          "ChatGPT sign-in needs your real tokens inside the project's sandbox, which everyone on a shared project can reach, so it's turned off here. This model runs on your Botflow plan's credits instead. Your other, unshared projects still use your ChatGPT plan.",
+      };
+    case "codex_blocked_unavailable":
+      return {
+        chipTitle: "ChatGPT plan unavailable here",
+        title: "Your ChatGPT plan can't be used on a shared project",
+        body:
+          "ChatGPT sign-in needs your real tokens inside the project's sandbox, which everyone on a shared project can reach, so it's turned off here. Add an OpenAI API key in Settings → Connections, or pick a different model.",
       };
     case "no_credentials":
       return {

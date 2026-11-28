@@ -12,7 +12,6 @@ export default function robots(): MetadataRoute.Robots {
         '/workspace/',
         '/projects',
         '/settings',
-        '/preview-popup',
         '/start',
       ],
     },

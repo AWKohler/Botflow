@@ -30,6 +30,9 @@ interface RequestBody {
   platform?: string;
   /** Thread to run in. Omitted by older clients → the most recent thread. */
   threadId?: string;
+  /** The routing reason the client derived (and showed). The server refuses
+   *  rather than silently switching how the turn is billed. */
+  routingReason?: string;
 }
 
 export async function POST(req: Request) {
@@ -49,7 +52,7 @@ export async function POST(req: Request) {
     return jsonError(400, "Invalid JSON body");
   }
 
-  const { messages, projectId, platform, threadId: requestedThreadId } = body;
+  const { messages, projectId, platform, threadId: requestedThreadId, routingReason } = body;
   if (!Array.isArray(messages) || messages.length === 0) {
     return jsonError(400, "messages array required");
   }
@@ -93,6 +96,7 @@ export async function POST(req: Request) {
     project,
     thread,
     origin: new URL(req.url).origin,
+    expectedRoutingReason: typeof routingReason === "string" ? routingReason : undefined,
   });
   return started.ok ? started.toResponse() : started.response;
 }

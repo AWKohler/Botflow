@@ -14,16 +14,25 @@ import { requireProjectAccess } from "@/lib/project-access";
 import { SHARING_ENABLED } from "@/lib/feature-flags";
 import { getUserTier } from "@/lib/tier";
 import { getEmailForClerkUser } from "@/lib/email";
+import { getUserCredentials } from "@/lib/user-credentials";
 import {
   findClerkUserByVerifiedEmail,
   inviteExpired,
   normalizeEmail,
   sendInviteEmail,
 } from "@/lib/sharing";
+import {
+  SandboxCredentialLockTimeout,
+  SandboxCredentialLockUnavailable,
+  SandboxCredentialWriteInProgress,
+  secureProjectForSharing,
+} from "@/lib/sandbox-credentials";
 import { enforce, identifierFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// The first invite may resume the sandbox to purge a personal credential.
+export const maxDuration = 120;
 
 export async function GET(
   _req: NextRequest,
@@ -59,6 +68,10 @@ export async function GET(
 
   return NextResponse.json({
     role: access.role,
+    chatgptOffOnShare:
+      access.role === "owner" &&
+      access.project.sharedAt == null &&
+      Boolean((await getUserCredentials(userId)).codexOAuthAccessToken),
     editorsCanPush: access.project.editorsCanPush,
     editorsManageBackend: access.project.editorsManageBackend,
     shareOwnerCredits: access.project.shareOwnerCredits,
@@ -126,6 +139,43 @@ export async function POST(
     return NextResponse.json({ error: "An invite to that email is already pending." }, { status: 409 });
   }
 
+  // Before anyone else can get access: mark the project shared (sticky) and
+  // make sure its sandbox holds no personal credential — stopping agents
+  // that run on one. Fail closed: never share a sandbox we couldn't verify.
+  let stoppedAgents = 0;
+  try {
+    ({ stoppedAgents } = await secureProjectForSharing(id));
+  } catch (err) {
+    console.error("[sharing] could not secure project for sharing:", err);
+    if (err instanceof SandboxCredentialWriteInProgress) {
+      return NextResponse.json(
+        {
+          error:
+            "An agent using your ChatGPT plan is starting in this project. Try again in a few minutes. (ChatGPT sign-in is now turned off for this project, as it will be once it's shared.)",
+          codexBlocked: true,
+        },
+        { status: 409 },
+      );
+    }
+    if (err instanceof SandboxCredentialLockTimeout) {
+      return NextResponse.json(
+        { error: "This project's sharing settings are being changed right now. Try again in a moment." },
+        { status: 503 },
+      );
+    }
+    if (err instanceof SandboxCredentialLockUnavailable) {
+      return NextResponse.json({ error: "Sharing isn't available on this deployment right now." }, { status: 503 });
+    }
+    return NextResponse.json(
+      {
+        error:
+          "Couldn't prepare this project's sandbox for sharing. Try again in a minute. (ChatGPT sign-in is now turned off for this project, as it will be once it's shared.)",
+        codexBlocked: true,
+      },
+      { status: 503 },
+    );
+  }
+
   const clerkUser = await findClerkUserByVerifiedEmail(email);
   const values = {
     userId: clerkUser?.userId ?? null,
@@ -154,6 +204,7 @@ export async function POST(
 
   return NextResponse.json({
     ok: true,
+    stoppedAgents,
     status: values.status,
     message: clerkUser
       ? "Added — they have access now."
