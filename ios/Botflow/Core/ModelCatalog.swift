@@ -64,22 +64,35 @@ enum ModelCatalog {
 
     static let all: [AIModel] = [
         AIModel(id: "gpt-6-luna", name: "GPT-6 Luna", provider: .openai, contextTokens: 1_050_000, costMultiplier: 0.3, requiredTier: .free),
-        AIModel(id: "fireworks-minimax-m3", name: "MiniMax-M3", provider: .fireworks, contextTokens: 196_600, costMultiplier: 1, requiredTier: .free, supportsImages: false),
-        AIModel(id: "fireworks-kimi-k2p7", name: "Kimi K2.7", provider: .fireworks, contextTokens: 262_144, costMultiplier: 3, requiredTier: .free),
-        AIModel(id: "gpt-6.1-sol", name: "GPT-6.1 Sol", provider: .openai, contextTokens: 1_050_000, costMultiplier: 6, requiredTier: .pro),
+        AIModel(id: "fireworks-deepseek-v4p1-flash", name: "DeepSeek V4.1 Flash", provider: .fireworks, contextTokens: 1_048_576, costMultiplier: 0.7, requiredTier: .free),
+        AIModel(id: "gpt-6.2-sol", name: "GPT-6.2 Sol", provider: .openai, contextTokens: 1_050_000, costMultiplier: 6, requiredTier: .pro),
         AIModel(id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", provider: .anthropic, contextTokens: 200_000, personalContextTokens: 1_000_000, costMultiplier: 6, requiredTier: .pro),
-        AIModel(id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro", provider: .google, contextTokens: 1_000_000, costMultiplier: 6, requiredTier: .pro),
+        AIModel(id: "fireworks-kimi-k3p1-pro", name: "Kimi K3.1 Pro", provider: .fireworks, contextTokens: 1_048_576, costMultiplier: 6, requiredTier: .pro),
         AIModel(id: "grok-4.7", name: "Grok 4.7", provider: .xai, contextTokens: 500_000, costMultiplier: 7, requiredTier: .pro),
-        AIModel(id: "fireworks-kimi-k3", name: "Kimi K3", provider: .fireworks, contextTokens: 1_000_000, costMultiplier: 9, requiredTier: .pro),
+        AIModel(id: "gemini-4-neon", name: "Gemini 4 Neon", provider: .google, contextTokens: 1_000_000, costMultiplier: 8, requiredTier: .pro),
         AIModel(id: "claude-opus-5-5", name: "Claude Opus 5.5", provider: .anthropic, contextTokens: 200_000, personalContextTokens: 1_000_000, costMultiplier: 11, requiredTier: .pro),
-        AIModel(id: "claude-fable-5-1", name: "Claude Fable 5.1", provider: .anthropic, contextTokens: 1_000_000, costMultiplier: 26, requiredTier: .max),
-        AIModel(id: "gpt-6-astra", name: "GPT-6 Astra", provider: .openai, contextTokens: 1_050_000, costMultiplier: 31, requiredTier: .max),
+        AIModel(id: "claude-fable-5-2", name: "Claude Fable 5.2", provider: .anthropic, contextTokens: 1_000_000, costMultiplier: 21, requiredTier: .max),
+        AIModel(id: "gpt-6.2-astra", name: "GPT-6.2 Astra", provider: .openai, contextTokens: 1_050_000, costMultiplier: 22, requiredTier: .max),
     ]
 
+    /// Mirrors `LEGACY_MODEL_ALIASES` in `src/lib/agent/models.ts`, so a
+    /// project still saved under a retired id shows its successor.
     private static let aliases: [String: String] = [
-        "gpt-6-sol": "gpt-6.1-sol", "gpt-5.6-sol": "gpt-6.1-sol", "gpt-5.6-terra": "gpt-6.1-sol",
-        "gpt-5.6-luna": "gpt-6-luna", "claude-sonnet-5": "claude-sonnet-5-5", "claude-opus-5": "claude-opus-5-5",
-        "claude-fable-5": "claude-fable-5-1", "grok-4.5": "grok-4.7",
+        "gpt-6-astra": "gpt-6.2-astra", "gpt-6.1-sol": "gpt-6.2-sol", "gpt-6-sol": "gpt-6.2-sol",
+        "gpt-5.6-sol": "gpt-6.2-sol", "gpt-5.6-terra": "gpt-6.2-sol", "gpt-5.5": "gpt-6.2-sol", "gpt-5.4": "gpt-6.2-sol",
+        "gpt-5.6-luna": "gpt-6-luna", "gpt-5.3-codex": "gpt-6-luna", "gpt-5.2": "gpt-6-luna", "gpt-4.1": "gpt-6-luna",
+        "claude-sonnet-5": "claude-sonnet-5-5", "claude-sonnet-4.5": "claude-sonnet-5-5", "claude-sonnet-4.6": "claude-sonnet-5-5",
+        "claude-sonnet-4-6": "claude-sonnet-5-5", "claude-haiku-4.5": "claude-sonnet-5-5",
+        "claude-opus-5": "claude-opus-5-5", "claude-opus-4-8": "claude-opus-5-5", "claude-opus-4-7": "claude-opus-5-5",
+        "claude-opus-4.7": "claude-opus-5-5", "claude-opus-4.6": "claude-opus-5-5", "claude-opus-4.5": "claude-opus-5-5",
+        "claude-opus-4-1": "claude-opus-5-5",
+        "claude-fable-5-1": "claude-fable-5-2", "claude-fable-5": "claude-fable-5-2",
+        "gemini-3.1-pro-preview": "gemini-4-neon", "grok-4.5": "grok-4.7",
+        "fireworks-kimi-k2p7": "fireworks-deepseek-v4p1-flash", "fireworks-kimi-k2p6": "fireworks-deepseek-v4p1-flash",
+        "fireworks-glm-5": "fireworks-deepseek-v4p1-flash", "fireworks-glm-5p1": "fireworks-deepseek-v4p1-flash",
+        "fireworks-glm-5p2": "fireworks-deepseek-v4p1-flash", "fireworks-kimi-k3": "fireworks-kimi-k3p1-pro",
+        "fireworks-minimax-m3": "gpt-6-luna", "fireworks-minimax-m2p7": "gpt-6-luna", "fireworks-minimax-m2p5": "gpt-6-luna",
+        "fireworks-minimax-m2p1": "gpt-6-luna", "kimi-k2.5": "gpt-6-luna", "kimi-k2-thinking-turbo": "gpt-6-luna",
     ]
 
     static func model(_ id: String?) -> AIModel {
@@ -142,8 +155,7 @@ struct ModelAccess: Equatable, Sendable {
         case .xai:
             if connections.hasXaiKey { return ownKey(model) }
         case .fireworks:
-            let kimiOnTogether = model.id == "fireworks-kimi-k2p7" && connections.useTogetherKimi == true
-            if kimiOnTogether ? connections.hasTogetherKey : connections.hasFireworksKey { return ownKey(model) }
+            if connections.hasFireworksKey { return ownKey(model) }
         }
         return meetsTier ? credits : needsPlan
     }

@@ -33,7 +33,7 @@ const binary = readFileSync(path.join(dir, "package/bin/opencode")).toString("la
 
 let missing = 0;
 for (const config of Object.values(MODEL_CONFIGS)) {
-  const ref = resolveOpenCodeModel(config.id, { useTogetherKimi: false });
+  const ref = resolveOpenCodeModel(config.id);
   const inCatalog = binary.includes(`"${ref.modelID}":{id:"${ref.modelID}"`);
   const declared = hasCatalogGapDeclaration(ref);
   if (!inCatalog && !declared) missing++;

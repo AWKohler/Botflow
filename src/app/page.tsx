@@ -1394,8 +1394,8 @@ export default function LandingV2() {
   const PENDING_PARAMS_KEY = 'huggable_pending_start_params';
   const PENDING_NAME_KEY = 'huggable_pending_project_name';
   const serverKeyModels = useMemo(() => new Set([
-    'fireworks-minimax-m3', 'fireworks-kimi-k2p7', 'fireworks-kimi-k3',
-    'gpt-6.1-sol', 'gpt-6-luna', 'claude-sonnet-5-5', 'claude-opus-5-5',
+    'fireworks-deepseek-v4p1-flash', 'fireworks-kimi-k3p1-pro',
+    'gpt-6.2-sol', 'gpt-6-luna', 'claude-sonnet-5-5', 'claude-opus-5-5',
   ]), []);
   const landingSignInModalAppearance = {
     elements: {
@@ -1472,7 +1472,7 @@ export default function LandingV2() {
     if (serverKeyModels.has(model)) return true;
     const hasOpenAICreds = hasCodexOAuth || hasOpenAIKey;
     const keyChecks: Record<string, { hasKey: boolean | null; provider: string }> = {
-      'gpt-6-astra': { hasKey: hasOpenAICreds, provider: 'OpenAI' },
+      'gpt-6.2-astra': { hasKey: hasOpenAICreds, provider: 'OpenAI' },
     };
     const check = keyChecks[model];
     if (check?.hasKey === false) {

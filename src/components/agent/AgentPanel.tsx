@@ -358,9 +358,6 @@ function AgentThreadPanel({
   const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
   const [hasGoogleKey, setHasGoogleKey] = useState<boolean | null>(null);
   const [hasXaiKey, setHasXaiKey] = useState<boolean | null>(null);
-  const [hasTogetherKey, setHasTogetherKey] = useState<boolean | null>(null);
-  // Server flag (USE_TOGETHER_KIMI): Kimi K2.7 is served by Together AI, not Fireworks.
-  const [useTogetherKimi, setUseTogetherKimi] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -569,10 +566,8 @@ function AgentThreadPanel({
           hasFireworksKey: Boolean(hasFireworksKey),
           hasGoogleKey: Boolean(hasGoogleKey),
           hasXaiKey: Boolean(hasXaiKey),
-          hasTogetherKey: Boolean(hasTogetherKey),
         },
         tier: userTier,
-        useTogetherKimi,
       }),
     [
       model,
@@ -584,9 +579,7 @@ function AgentThreadPanel({
       hasFireworksKey,
       hasGoogleKey,
       hasXaiKey,
-      hasTogetherKey,
       userTier,
-      useTogetherKimi,
     ],
   );
   const agentBackend = derivedBackend.backend;
@@ -681,9 +674,7 @@ function AgentThreadPanel({
   outageProviderLabelRef.current =
     derivedBackend.reason === 'codex_oauth_opencode'
       ? "OpenAI's ChatGPT service"
-      : model === 'fireworks-kimi-k2p7' && useTogetherKimi
-        ? 'Together AI'
-        : PROVIDER_LABELS[MODEL_CONFIGS[model].provider] ?? 'The model provider';
+      : PROVIDER_LABELS[MODEL_CONFIGS[model].provider] ?? 'The model provider';
 
   // --- Stable transport ref (v6) ---
   // Endpoint is chosen per-request from the derived agent backend (see
@@ -1500,8 +1491,6 @@ function AgentThreadPanel({
           setHasFireworksKey(Boolean(data?.hasFireworksKey));
           setHasGoogleKey(Boolean(data?.hasGoogleKey));
           setHasXaiKey(Boolean(data?.hasXaiKey));
-          setHasTogetherKey(Boolean(data?.hasTogetherKey));
-          setUseTogetherKimi(Boolean(data?.useTogetherKimi));
         }
       } catch {}
     })();
@@ -1522,8 +1511,6 @@ function AgentThreadPanel({
           setHasFireworksKey(Boolean(data?.hasFireworksKey));
           setHasGoogleKey(Boolean(data?.hasGoogleKey));
           setHasXaiKey(Boolean(data?.hasXaiKey));
-          setHasTogetherKey(Boolean(data?.hasTogetherKey));
-          setUseTogetherKimi(Boolean(data?.useTogetherKimi));
         })
         .catch(() => {});
     };
@@ -2776,7 +2763,6 @@ function AgentThreadPanel({
               variant="composer"
               openDirection="up"
               align="end"
-              useTogetherKimi={useTogetherKimi}
               leading={<BackendGlyphInfo backend={agentBackend} tooltipPlacement="above-end" />}
             />
             <div className="flex items-center gap-1">

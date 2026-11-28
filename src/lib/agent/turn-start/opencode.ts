@@ -52,7 +52,6 @@ import {
 import {
   REVENUECAT_ENABLED,
   STRIPE_CONNECT_ENABLED,
-  USE_TOGETHER_KIMI,
 } from "@/lib/feature-flags";
 import {
   OAUTH_PROVIDER_IDS,
@@ -168,7 +167,6 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
     platform,
     creds: credFlags,
     tier: userTier,
-    useTogetherKimi: USE_TOGETHER_KIMI,
   });
   if (derived.backend !== "opencode") {
     return { ok: false, response: agentUnavailableResponse("backend_mismatch") };
@@ -177,7 +175,7 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
     return { ok: false, response: agentUnavailableResponse(derived.reason) };
   }
 
-  const modelRef = resolveOpenCodeModel(selectedModel, { useTogetherKimi: USE_TOGETHER_KIMI });
+  const modelRef = resolveOpenCodeModel(selectedModel);
 
   const userPrompt = extractCurrentUserText(messages);
   // Resolve attached images server-side (self-contained payload; the sandbox
@@ -205,7 +203,7 @@ export async function startOpenCodeTurn(ctx: TurnStartContext): Promise<TurnStar
   //   /api/internal/llm-proxy/<provider>, which also meters + bills
   //   platform-mode requests.
   const turnId = Math.random().toString(36).slice(2, 10);
-  const credMode = openCodeCredModeForModel(selectedModel, credFlags, USE_TOGETHER_KIMI);
+  const credMode = openCodeCredModeForModel(selectedModel, credFlags);
   const useCodex = credMode === "codex-oauth";
 
   // Recover a mid-turn Codex token rotation that a killed route never

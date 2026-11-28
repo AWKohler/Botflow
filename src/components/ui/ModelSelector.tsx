@@ -23,9 +23,6 @@ export interface ModelSelectorProps {
    *  prompt box next to its round icon buttons (attach, send). */
   variant?: 'default' | 'composer';
   className?: string;
-  /** When true, Kimi K2.7 is served by Together AI (USE_TOGETHER_KIMI flag),
-   *  so its provider badge reads "Together" instead of "Fireworks". */
-  useTogetherKimi?: boolean;
   /** Optional content rendered inside the trigger pill, left of the model
    *  name and separated by a divider — e.g. the agent backend glyph, so the
    *  agent identity and the model read as one body. */
@@ -44,24 +41,22 @@ const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic',
   fireworks: 'Fireworks',
-  together: 'Together',
   google: 'Google',
   xai: 'xAI',
 };
 
 /** Minimum tier required to use a model on server-side keys (must match backend MODEL_TIER_REQUIREMENT) */
 const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
-  'fireworks-minimax-m3': 'free',
-  'fireworks-kimi-k2p7': 'free',
-  'fireworks-kimi-k3': 'pro',   // Pro+ for server key; free requires BYOK (Fireworks)
-  'gpt-6-astra': 'max',         // Max-only
-  'gpt-6.1-sol': 'pro',         // Pro+ for server key; free requires BYOK/OAuth
-  'gpt-6-luna': 'free',         // free — default model, served on the platform key
-  'claude-sonnet-5-5': 'pro',   // Pro+
-  'claude-opus-5-5': 'pro',     // Pro+
-  'claude-fable-5-1': 'max',    // Max-only
-  'gemini-3.1-pro-preview': 'pro', // Pro+ for server key; free requires BYOK
-  'grok-4.7': 'pro',            // Pro+ for server key; free requires BYOK (xAI)
+  'fireworks-deepseek-v4p1-flash': 'free',
+  'fireworks-kimi-k3p1-pro': 'pro', // Pro+ for server key; free requires BYOK (Fireworks)
+  'gpt-6.2-astra': 'max',           // Max-only
+  'gpt-6.2-sol': 'pro',             // Pro+ for server key; free requires BYOK/OAuth
+  'gpt-6-luna': 'free',             // free — default model, served on the platform key
+  'claude-sonnet-5-5': 'pro',       // Pro+
+  'claude-opus-5-5': 'pro',         // Pro+
+  'claude-fable-5-2': 'max',        // Max-only
+  'gemini-4-neon': 'pro',           // Pro+ for server key; free requires BYOK
+  'grok-4.7': 'pro',                // Pro+ for server key; free requires BYOK (xAI)
 };
 
 /**
@@ -69,16 +64,15 @@ const MODEL_SERVER_TIER: Partial<Record<ModelId, 'free' | 'pro' | 'max'>> = {
  * Selecting these skips the "missing API key" BYOK check.
  */
 const SERVER_KEY_MODELS = new Set<ModelId>([
-  'fireworks-minimax-m3',
-  'fireworks-kimi-k2p7',
-  'fireworks-kimi-k3',
-  'gpt-6-astra',
-  'gpt-6.1-sol',
+  'fireworks-deepseek-v4p1-flash',
+  'fireworks-kimi-k3p1-pro',
+  'gpt-6.2-astra',
+  'gpt-6.2-sol',
   'gpt-6-luna',
   'claude-sonnet-5-5',
   'claude-opus-5-5',
-  'claude-fable-5-1',
-  'gemini-3.1-pro-preview',
+  'claude-fable-5-2',
+  'gemini-4-neon',
   'grok-4.7',
 ]);
 
@@ -101,7 +95,7 @@ function formatContextSize(tokens: number): string {
 const MODEL_ORDER: ModelId[] = (Object.keys(MODEL_CONFIGS) as ModelId[])
   .sort((a, b) => MODEL_CONFIGS[a].costMultiplier - MODEL_CONFIGS[b].costMultiplier);
 
-export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', variant = 'default', className, useTogetherKimi = false, leading, openDirection = 'down', align }: ModelSelectorProps) {
+export function ModelSelector({ value, onChange, providerAccess, userTier = 'free', onTierLocked, size = 'md', variant = 'default', className, leading, openDirection = 'down', align }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -112,14 +106,8 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
   // under the header or off the side of the screen.
   const isPhone = useIsPhone();
 
-  /** Provider label for the dropdown badge — reflects the live Kimi→Together redirect. */
-  const providerLabel = useCallback(
-    (modelId: ModelId) => {
-      if (modelId === 'fireworks-kimi-k2p7' && useTogetherKimi) return PROVIDER_LABELS.together;
-      return PROVIDER_LABELS[MODEL_CONFIGS[modelId].provider];
-    },
-    [useTogetherKimi],
-  );
+  /** Provider label for the dropdown badge. */
+  const providerLabel = (modelId: ModelId) => PROVIDER_LABELS[MODEL_CONFIGS[modelId].provider];
 
   const currentConfig = MODEL_CONFIGS[value];
 
@@ -211,7 +199,6 @@ export function ModelSelector({ value, onChange, providerAccess, userTier = 'fre
         const disabledReason = isDisabled ? modelDisabledReason(modelId) : '';
 
         const tierBadge = requiredTierRank > 0 ? TIER_LABELS[requiredTier] : null;
-        // Kimi K2.7 is x3 on both providers — Together homologated to Fireworks pricing.
         const modelCostLabel = costLabel(modelId);
 
         return (

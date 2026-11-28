@@ -24,7 +24,6 @@ const NO_CREDS = {
   hasOpenAIKey: false,
   hasFireworksKey: false,
   hasGoogleKey: false,
-  hasTogetherKey: false,
 };
 
 async function load() {
@@ -35,7 +34,7 @@ describe("deriveAgentBackend — non-Anthropic models", () => {
   test("openai model + Codex OAuth → opencode (codex_oauth_opencode)", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasCodexOAuth: true },
     });
@@ -49,7 +48,7 @@ describe("deriveAgentBackend — non-Anthropic models", () => {
   test("openai model + OpenAI BYOK only → opencode (byok_opencode)", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasOpenAIKey: true },
     });
@@ -60,7 +59,7 @@ describe("deriveAgentBackend — non-Anthropic models", () => {
   test("openai model + NO personal creds → opencode PLATFORM mode for paid tiers", async () => {
     const { deriveAgentBackend } = await load();
     const out = deriveAgentBackend({
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS },
       tier: "pro",
@@ -75,7 +74,7 @@ describe("deriveAgentBackend — non-Anthropic models", () => {
   test("tier gate: free tier can't run pro platform models (tier_too_low, hidden); free models pass", async () => {
     const { deriveAgentBackend } = await load();
     const gated = deriveAgentBackend({
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS },
       tier: "free",
@@ -85,7 +84,7 @@ describe("deriveAgentBackend — non-Anthropic models", () => {
     assert.equal(gated.reason, "tier_too_low");
 
     const freeModel = deriveAgentBackend({
-      model: "fireworks-minimax-m3",
+      model: "fireworks-deepseek-v4p1-flash",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS },
       tier: "free",
@@ -98,14 +97,14 @@ describe("deriveAgentBackend — non-Anthropic models", () => {
   test("google model: key → byok mode; no key → platform mode", async () => {
     const { deriveAgentBackend } = await load();
     const withKey = deriveAgentBackend({
-      model: "gemini-3.1-pro-preview",
+      model: "gemini-4-neon",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasGoogleKey: true },
     });
     assert.equal(withKey.reason, "byok_opencode");
 
     const withoutKey = deriveAgentBackend({
-      model: "gemini-3.1-pro-preview",
+      model: "gemini-4-neon",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasOpenAIKey: true, hasFireworksKey: true }, // wrong providers
       tier: "pro",
@@ -114,38 +113,29 @@ describe("deriveAgentBackend — non-Anthropic models", () => {
     assert.equal(withoutKey.reason, "platform_key_opencode");
   });
 
-  test("kimi honors USE_TOGETHER_KIMI for the BYOK mode; missing key falls to platform mode", async () => {
+  test("fireworks model: Fireworks key → byok mode; no key → platform mode on the free tier", async () => {
     const { deriveAgentBackend } = await load();
-    const togetherOnWithTogetherKey = deriveAgentBackend({
-      model: "fireworks-kimi-k2p7",
-      platform: "sandboxed-web",
-      creds: { ...NO_CREDS, hasTogetherKey: true },
-      useTogetherKimi: true,
-    });
-    assert.equal(togetherOnWithTogetherKey.reason, "byok_opencode");
-
-    const togetherOnWithOnlyFireworksKey = deriveAgentBackend({
-      model: "fireworks-kimi-k2p7",
+    const withKey = deriveAgentBackend({
+      model: "fireworks-deepseek-v4p1-flash",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS, hasFireworksKey: true },
-      useTogetherKimi: true,
+    });
+    assert.equal(withKey.reason, "byok_opencode");
+
+    const withoutKey = deriveAgentBackend({
+      model: "fireworks-deepseek-v4p1-flash",
+      platform: "sandboxed-web",
+      creds: { ...NO_CREDS, hasOpenAIKey: true }, // wrong provider
       tier: "free",
     });
-    assert.equal(togetherOnWithOnlyFireworksKey.backend, "opencode");
-    assert.equal(togetherOnWithOnlyFireworksKey.reason, "platform_key_opencode");
-
-    const togetherOffWithFireworksKey = deriveAgentBackend({
-      model: "fireworks-kimi-k2p7",
-      platform: "sandboxed-web",
-      creds: { ...NO_CREDS, hasFireworksKey: true },
-      useTogetherKimi: false,
-    });
-    assert.equal(togetherOffWithFireworksKey.reason, "byok_opencode");
+    assert.equal(withoutKey.backend, "opencode");
+    assert.equal(withoutKey.runnable, true);
+    assert.equal(withoutKey.reason, "platform_key_opencode");
   });
 
   test("non-sandbox platform has no agent, whatever the creds", async () => {
     const { deriveAgentBackend } = await load();
-    for (const model of ["gpt-6.1-sol", "claude-sonnet-5-5"] as const) {
+    for (const model of ["gpt-6.2-sol", "claude-sonnet-5-5"] as const) {
       const out = deriveAgentBackend({
         model,
         platform: "web",
@@ -198,7 +188,7 @@ describe("deriveAgentBackend — Anthropic tree", () => {
     assert.equal(paid.reason, "platform_key_opencode");
 
     const maxOnly = deriveAgentBackend({
-      model: "claude-fable-5-1",
+      model: "claude-fable-5-2",
       platform: "sandboxed-web",
       creds: { ...NO_CREDS },
       tier: "pro", // fable requires max on platform credits

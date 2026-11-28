@@ -11,6 +11,7 @@ import { generateText, tool } from "ai";
 import { createFireworks } from "@ai-sdk/fireworks";
 import { z } from "zod";
 import { getUserTier } from "@/lib/tier";
+import { MODEL_CONFIGS } from "@/lib/agent/models";
 import {
   adjustPlatformCredits,
   calculateCredits,
@@ -21,8 +22,9 @@ import {
 import { recordTokenUsage } from "@/lib/usage";
 import { sandboxBash } from "@/lib/vercel-sandbox";
 
-const MINIMAX_API_MODEL = "accounts/fireworks/models/minimax-m3";
-const MINIMAX_CREDIT_MODEL = "fireworks-minimax-m3";
+// The free-tier Fireworks model (DeepSeek V4.1 Flash); billed under its id.
+const METADATA_CREDIT_MODEL = "fireworks-deepseek-v4p1-flash" as const;
+const METADATA_API_MODEL = MODEL_CONFIGS[METADATA_CREDIT_MODEL].apiModelId;
 
 // Apple's hard limits.
 const LIMITS = { name: 30, subtitle: 30, description: 4000, keywords: 100 } as const;
@@ -67,7 +69,7 @@ export async function draftAppStoreMetadata(opts: {
   // ── Budget: monthly cap + atomic weekly reservation (estimate) ───────────
   const tier = await getUserTier(opts.userId);
   const estimate = calculateCredits({
-    model: MINIMAX_CREDIT_MODEL,
+    model: METADATA_CREDIT_MODEL,
     inputTokens: 8_000,
     outputTokens: 1_500,
     cachedReadTokens: 0,
@@ -108,7 +110,7 @@ export async function draftAppStoreMetadata(opts: {
   try {
     const fireworks = createFireworks({ apiKey });
     const result = await generateText({
-      model: fireworks(MINIMAX_API_MODEL),
+      model: fireworks(METADATA_API_MODEL),
       system:
         "You are an App Store Optimization (ASO) expert. Write compelling, HONEST App Store " +
         "metadata for an iOS app. Respect Apple's exact limits: name ≤30 chars, subtitle ≤30 " +
@@ -150,13 +152,13 @@ export async function draftAppStoreMetadata(opts: {
 
   // ── Reconcile reservation → actual usage ─────────────────────────────────
   const actual = calculateCredits({
-    model: MINIMAX_CREDIT_MODEL,
+    model: METADATA_CREDIT_MODEL,
     inputTokens: inTok,
     outputTokens: outTok,
     cachedReadTokens: 0,
     cacheWriteTokens: 0,
   });
-  await recordTokenUsage(opts.userId, MINIMAX_CREDIT_MODEL, inTok, outTok, actual).catch(() => {});
+  await recordTokenUsage(opts.userId, METADATA_CREDIT_MODEL, inTok, outTok, actual).catch(() => {});
   await adjustPlatformCredits(opts.userId, actual - estimate).catch(() => {});
 
   return { ok: true, metadata: drafted, creditsCharged: actual };

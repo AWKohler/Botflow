@@ -22,14 +22,16 @@ Botflow supports a curated selection of frontier models. Switch between them at 
 
 | Model | Provider | Context window | Images |
 |-------|----------|---------------|--------|
-| **GPT-5.3** (default) | OpenAI | 400k tokens | ✓ |
-| **GPT-5.4** | OpenAI | 400k tokens | ✓ |
-| **Claude Sonnet 4** | Anthropic | 200k tokens | ✓ |
-| **Claude Opus 4.7** | Anthropic | 200k tokens | ✓ |
-| **Gemini 3.1 Pro** | Google | 1M tokens | ✓ |
-| **MiniMax-M2.5** | Fireworks | 32k tokens | — |
-| **GLM-5.1** | Fireworks | 202k tokens | — |
-| **Kimi K2.6** | Fireworks | 131k tokens | — |
+| **GPT-6 Luna** (default) | OpenAI | 1.05M tokens | ✓ |
+| **DeepSeek V4.1 Flash** | Fireworks | 1M tokens | ✓ |
+| **GPT-6.2 Sol** | OpenAI | 1.05M tokens | ✓ |
+| **Claude Sonnet 5.5** | Anthropic | 200k tokens (1M on your own Claude account) | ✓ |
+| **Kimi K3.1 Pro** | Fireworks | 1M tokens | ✓ |
+| **Grok 4.7** | xAI | 500k tokens | ✓ |
+| **Gemini 4 Neon** | Google | 1M tokens | ✓ |
+| **Claude Opus 5.5** | Anthropic | 200k tokens (1M on your own Claude account) | ✓ |
+| **Claude Fable 5.2** | Anthropic | 1M tokens | ✓ |
+| **GPT-6.2 Astra** | OpenAI | 1.05M tokens | ✓ |
 
 <Note>
 The token counter at the bottom of the agent panel shows your estimated usage against the selected model's limit. When you approach the limit, start a new session with **Reset** or break your work into smaller tasks.
@@ -41,7 +43,7 @@ The agent needs credentials to call a model. You can supply these three ways:
 
 ### 1. Platform credits (Pro / Max)
 
-Pro and Max plans include a monthly allotment of platform-managed credits. Credits are normalised across models — 1 MiniMax token = 1 credit, for example, while cached input tokens cost less. No API key required.
+Pro and Max plans include a monthly allotment of platform-managed credits. Credits are normalised across models — 1 credit is worth $0.30 per million tokens of provider list price, and cached input tokens cost less. No API key required.
 
 ### 2. Bring your own API key
 

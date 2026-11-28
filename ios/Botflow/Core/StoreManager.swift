@@ -53,7 +53,7 @@ struct PlanOffer: Identifiable, Hashable {
             tier: .max,
             name: "Max",
             tagline: "The highest limits and every model.",
-            features: ["Unlimited projects", "The largest monthly credits", "Claude Fable and GPT-6 Astra on credits", "Priority support"],
+            features: ["Unlimited projects", "The largest monthly credits", "Claude Fable and GPT-6.2 Astra on credits", "Priority support"],
             webMonthlyCents: 6000,
             webYearlyCents: 60000
         ),

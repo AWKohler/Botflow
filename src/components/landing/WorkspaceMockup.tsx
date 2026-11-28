@@ -274,7 +274,7 @@ export function WorkspaceMockup({
   codeContent,
   defaultView = 'preview',
   agentWorking = false,
-  modelName = 'GPT-6.1 Sol',
+  modelName = 'GPT-6.2 Sol',
   className,
   hideAgentPanel = false,
   chatOnly = false,

@@ -16,9 +16,14 @@ Pinned versions (env-overridable; installed locally in the sandbox under
   (2026-10-12) because 1.18.30's bundled catalog lacked five models from the
   October catalog (GPT-6.1 Sol, GPT-6 Luna, Claude Sonnet/Opus 5.5, Grok 4.7),
   so they ran with `reasoning`/`attachment` off and no context limit. 1.19.0
-  dropped Kimi K2.7 Code from its catalog; that model now carries an explicit
-  declaration (`CATALOG_GAP_DECLARATIONS` in `src/lib/agent/opencode/models.ts`,
-  values from 1.18.30's entry), verified to pass 1.19.0's config validation.
+  dropped Kimi K2.7 Code from its catalog (the model has since left the
+  lineup). The 2026-11 lineup (GPT-6.2 Astra/Sol, Claude Fable 5.2, Gemini 4
+  Neon, DeepSeek V4.1 Flash 1017, Kimi K3.1 Pro) postdates 1.19.0, so each
+  carries an explicit declaration (`CATALOG_GAP_DECLARATIONS` in
+  `src/lib/agent/opencode/models.ts`, values from models.dev), verified to
+  load in the 1.19.0 binary (`opencode models <provider> --verbose`). 1.19.6
+  carries Fable 5.2, DeepSeek and Kimi K3.1 Pro; GPT-6.2 and Gemini 4 Neon are
+  in no release yet.
   **Whenever a model is added or the pin moves, run**
   `node --import tsx scripts/check-opencode-catalog.ts` — it downloads the
   pinned binary and reports models it doesn't cover. The compatibility

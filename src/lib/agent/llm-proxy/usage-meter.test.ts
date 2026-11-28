@@ -239,7 +239,7 @@ describe("rewriteRequestBody", () => {
   test("platform mode rejects off-allowlist models", () => {
     const out = rewriteRequestBody(JSON.stringify({ model: "gpt-4o", stream: true }), {
       dialect: "openai-chat",
-      enforceModelAllowlist: ["gpt-6.1-sol"],
+      enforceModelAllowlist: ["gpt-6.2-sol"],
       capOutputTokens: 32000,
     });
     assert.ok("rejected" in out);
@@ -247,8 +247,8 @@ describe("rewriteRequestBody", () => {
 
   test("injects include_usage even when the client disabled it, and inserts the output cap when absent", () => {
     const out = rewriteRequestBody(
-      JSON.stringify({ model: "gpt-6.1-sol", stream: true, stream_options: { include_usage: false } }),
-      { dialect: "openai-chat", enforceModelAllowlist: ["gpt-6.1-sol"], capOutputTokens: 32000 },
+      JSON.stringify({ model: "gpt-6.2-sol", stream: true, stream_options: { include_usage: false } }),
+      { dialect: "openai-chat", enforceModelAllowlist: ["gpt-6.2-sol"], capOutputTokens: 32000 },
     );
     assert.ok(!("rejected" in out));
     const body = JSON.parse(out.body);
@@ -270,7 +270,7 @@ describe("rewriteRequestBody", () => {
   test("google: clamps generationConfig.maxOutputTokens; model gate deferred to URL", () => {
     const out = rewriteRequestBody(
       JSON.stringify({ contents: [], generationConfig: { maxOutputTokens: 500000 } }),
-      { dialect: "google", enforceModelAllowlist: ["gemini-3.1-pro-preview"], capOutputTokens: 32000 },
+      { dialect: "google", enforceModelAllowlist: ["gemini-4-neon"], capOutputTokens: 32000 },
     );
     assert.ok(!("rejected" in out));
     assert.equal(JSON.parse(out.body).generationConfig.maxOutputTokens, 32000);
@@ -306,7 +306,7 @@ describe("rewriteRequestBody", () => {
     );
     assert.ok(!("rejected" in countTokens));
     assert.equal(JSON.parse(countTokens.body).output_config, undefined);
-    for (const model of ["claude-fable-5-1", "claude-haiku-4-5"]) {
+    for (const model of ["claude-fable-5-2", "claude-haiku-4-5"]) {
       const out = rewriteRequestBody(
         JSON.stringify({ model, max_tokens: 10 }),
         { dialect: "anthropic", enforceModelAllowlist: null, capOutputTokens: null, anthropicMessagesCall: true },
@@ -319,7 +319,7 @@ describe("rewriteRequestBody", () => {
   test("anthropic: adaptive-only models drop explicit thinking and relax forced tool_choice", () => {
     const out = rewriteRequestBody(
       JSON.stringify({
-        model: "claude-fable-5-1",
+        model: "claude-fable-5-2",
         max_tokens: 10,
         thinking: { type: "enabled", budget_tokens: 4096 },
         tool_choice: { type: "tool", name: "x", disable_parallel_tool_use: true },

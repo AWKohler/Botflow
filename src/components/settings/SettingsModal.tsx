@@ -41,8 +41,6 @@ const PROVIDERS: Array<{
   { provider: 'xai', label: 'xAI (Grok)', field: 'xaiApiKey', placeholder: 'xai-...' },
   { provider: 'moonshot', label: 'Moonshot', field: 'moonshotApiKey', placeholder: 'moonshot-...' },
   { provider: 'fireworks', label: 'Fireworks AI', field: 'fireworksApiKey', placeholder: 'fw-...' },
-  // Only rendered when the USE_TOGETHER_KIMI flag is on (Kimi routed to Together AI).
-  { provider: 'together', label: 'Together AI', field: 'togetherApiKey', placeholder: 'together-...' },
 ];
 
 const connectionButtonClass =
@@ -107,9 +105,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
   const [hasKey, setHasKey] = useState<Record<Provider, boolean>>({
     openai: false, anthropic: false, moonshot: false, fireworks: false, together: false, google: false, xai: false,
   });
-  // Server-controlled flag (USE_TOGETHER_KIMI): gates the Together AI key input.
-  const [useTogetherKimi, setUseTogetherKimi] = useState(false);
-  const savedKeyCount = PROVIDERS.filter((p) => (p.provider !== 'together' || useTogetherKimi) && hasKey[p.provider]).length;
+  const savedKeyCount = PROVIDERS.filter((p) => hasKey[p.provider]).length;
   const [hasClaudeOAuth, setHasClaudeOAuth] = useState(false);
   const [hasCodexOAuth, setHasCodexOAuth] = useState(false);
   const [hasConvexOAuth, setHasConvexOAuth] = useState(false);
@@ -176,7 +172,6 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
               google: Boolean(data?.hasGoogleKey),
               xai: Boolean(data?.hasXaiKey),
             });
-            setUseTogetherKimi(Boolean(data?.useTogetherKimi));
             setHasClaudeOAuth(Boolean(data?.hasClaudeOAuth));
             setHasCodexOAuth(Boolean(data?.hasCodexOAuth));
             setHasConvexOAuth(Boolean(data?.hasConvexOAuth));
@@ -805,7 +800,7 @@ export function SettingsModal({ open, onClose, defaultTab = 'usage', workspaceCo
                         )}
                       </p>
                       <div className="space-y-4">
-                        {PROVIDERS.filter(p => p.provider !== 'together' || useTogetherKimi).map(({ provider, label, placeholder }) => (
+                        {PROVIDERS.map(({ provider, label, placeholder }) => (
                           <div key={provider}>
                             <label className="flex items-center gap-2 text-sm font-medium text-fg mb-1.5">
                               {label}

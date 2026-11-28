@@ -16,7 +16,6 @@ import { requireProjectAccess } from "@/lib/project-access";
 import { normalizeProjectPlatform } from "@/lib/project-platform";
 import { getUserCredentials } from "@/lib/user-credentials";
 import { getUserTier } from "@/lib/tier";
-import { USE_TOGETHER_KIMI } from "@/lib/feature-flags";
 import { credFlagsFromUserCredentials } from "./backend-resolution";
 import { deriveAgentBackend } from "./derive-backend";
 import { getTurnRecord, isTurnLive } from "./claude-code/turn-registry";
@@ -229,7 +228,6 @@ export async function drainThreadQueue(input: {
     platform,
     creds: credFlagsFromUserCredentials(creds),
     tier,
-    useTogetherKimi: USE_TOGETHER_KIMI,
   });
   const start = derived.backend === "claude-code" ? startClaudeCodeTurn : startOpenCodeTurn;
 

@@ -12,10 +12,6 @@
  */
 import { MODEL_CONFIGS, type ModelId } from "@/lib/agent/models";
 
-/** Together AI's OpenAI-compatible Kimi K2.7-Code model identifier. Duplicated
- *  from /api/agent (route-local constant) — do not import route code here. */
-export const TOGETHER_KIMI_MODEL = "moonshotai/Kimi-K2.7-Code";
-
 export interface OpenCodeCredFlags {
   /** ChatGPT-plan (Codex) OAuth tokens on file. */
   hasCodexOAuth?: boolean;
@@ -23,7 +19,6 @@ export interface OpenCodeCredFlags {
   hasFireworksKey?: boolean;
   hasGoogleKey?: boolean;
   hasXaiKey?: boolean;
-  hasTogetherKey?: boolean;
 }
 
 export interface OpenCodeModelRef {
@@ -46,17 +41,59 @@ export interface OpenCodeModelRef {
  * that had the model. `node --import tsx scripts/check-opencode-catalog.ts`
  * lists gaps; add an entry here (or bump the pin) for each one it reports.
  */
+const OPENAI_GPT_62 = {
+  attachment: true,
+  reasoning: true,
+  tool_call: true,
+  temperature: false,
+  modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+  limit: { context: 1050000, input: 922000, output: 128000 },
+};
+
 const CATALOG_GAP_DECLARATIONS: Record<string, Record<string, unknown>> = {
-  // Dropped from the catalog in opencode 1.19.0; values from 1.18.30's entry.
-  "fireworks-ai/accounts/fireworks/models/kimi-k2p7-code": {
-    name: "Kimi K2.7 Code",
+  // The 2026-11 lineup postdates the pinned 1.19.0 catalog. Values copied
+  // from models.dev (2026-11-27). OpenCode 1.19.6 carries Fable 5.2, DeepSeek
+  // V4.1 Flash 1017 and Kimi K3.1 Pro; GPT-6.2 and Gemini 4 Neon are in no
+  // release yet. Drop each entry once a pin bump brings it into the catalog.
+  "openai/gpt-6.2-astra": { name: "GPT-6.2 Astra", ...OPENAI_GPT_62 },
+  "openai/gpt-6.2-sol": { name: "GPT-6.2 Sol", ...OPENAI_GPT_62 },
+  "anthropic/claude-fable-5-2": {
+    name: "Claude Fable 5.2",
+    attachment: true,
+    reasoning: true,
+    tool_call: true,
+    temperature: false,
+    modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+    limit: { context: 1000000, output: 128000 },
+  },
+  "google/gemini-4-neon": {
+    name: "Gemini 4 Neon",
+    attachment: true,
+    reasoning: true,
+    tool_call: true,
+    temperature: true,
+    modalities: { input: ["text", "image", "video", "audio", "pdf"], output: ["text"] },
+    limit: { context: 1048576, output: 65536 },
+  },
+  "fireworks-ai/accounts/fireworks/models/deepseek-v4p1-flash-1017": {
+    name: "DeepSeek V4.1 Flash 1017",
     attachment: true,
     reasoning: true,
     tool_call: true,
     temperature: true,
     interleaved: { field: "reasoning_content" },
     modalities: { input: ["text", "image"], output: ["text"] },
-    limit: { context: 262000, output: 262000 },
+    limit: { context: 1048576, output: 384000 },
+  },
+  "fireworks-ai/accounts/fireworks/models/kimi-k3p1-pro": {
+    name: "Kimi K3.1 Pro",
+    attachment: true,
+    reasoning: true,
+    tool_call: true,
+    temperature: false,
+    interleaved: { field: "reasoning_content" },
+    modalities: { input: ["text", "image"], output: ["text"] },
+    limit: { context: 1048576, output: 1048576 },
   },
 };
 
@@ -76,10 +113,7 @@ export function hasCatalogGapDeclaration(ref: OpenCodeModelRef): boolean {
  * LLM proxy) — personal-credential Anthropic traffic never reaches OpenCode
  * (OAuth per ToS and BYOK both route to Claude Code; see derive-backend).
  */
-export function resolveOpenCodeModel(
-  model: ModelId,
-  opts: { useTogetherKimi: boolean },
-): OpenCodeModelRef {
+export function resolveOpenCodeModel(model: ModelId): OpenCodeModelRef {
   const config = MODEL_CONFIGS[model];
   switch (config.provider) {
     case "anthropic":
@@ -91,9 +125,6 @@ export function resolveOpenCodeModel(
     case "xai":
       return withDeclaration({ providerID: "xai", modelID: config.apiModelId });
     case "fireworks":
-      if (model === "fireworks-kimi-k2p7" && opts.useTogetherKimi) {
-        return withDeclaration({ providerID: "togetherai", modelID: TOGETHER_KIMI_MODEL });
-      }
       return withDeclaration({ providerID: "fireworks-ai", modelID: config.apiModelId });
   }
 }
@@ -119,7 +150,6 @@ export type OpenCodeCredMode = "byok" | "codex-oauth" | null;
 export function openCodeCredModeForModel(
   model: ModelId,
   creds: OpenCodeCredFlags | null | undefined,
-  useTogetherKimi: boolean,
 ): OpenCodeCredMode {
   if (!creds) return null;
   const config = MODEL_CONFIGS[model];
@@ -134,9 +164,6 @@ export function openCodeCredModeForModel(
     case "xai":
       return creds.hasXaiKey ? "byok" : null;
     case "fireworks":
-      if (model === "fireworks-kimi-k2p7" && useTogetherKimi) {
-        return creds.hasTogetherKey ? "byok" : null;
-      }
       return creds.hasFireworksKey ? "byok" : null;
   }
 }

@@ -84,20 +84,30 @@ final class ModelAccessTests: XCTestCase {
     }
 
     func testMaxOnlyModelsAreLockedOnPro() {
-        XCTAssertFalse(access("claude-fable-5-1", Connections(), .pro).runnable)
-        XCTAssertTrue(access("claude-fable-5-1", Connections(), .max).runnable)
+        XCTAssertFalse(access("claude-fable-5-2", Connections(), .pro).runnable)
+        XCTAssertTrue(access("claude-fable-5-2", Connections(), .max).runnable)
         // A personal credential unlocks it on any plan.
-        XCTAssertTrue(access("gpt-6-astra", Connections(hasCodexOAuth: true), .free).runnable)
+        XCTAssertTrue(access("gpt-6.2-astra", Connections(hasCodexOAuth: true), .free).runnable)
     }
 
     func testOwnKeysBeatTheTierGate() {
-        XCTAssertEqual(access("gemini-3.1-pro-preview", Connections(hasGoogleKey: true)).source, .ownKey)
-        XCTAssertFalse(access("gemini-3.1-pro-preview").runnable)
+        XCTAssertEqual(access("gemini-4-neon", Connections(hasGoogleKey: true)).source, .ownKey)
+        XCTAssertFalse(access("gemini-4-neon").runnable)
+        XCTAssertEqual(access("fireworks-kimi-k3p1-pro", Connections(hasFireworksKey: true)).source, .ownKey)
+        // The free Fireworks model runs on plan credits without a key.
+        XCTAssertEqual(access("fireworks-deepseek-v4p1-flash").source, .planCredits)
     }
 
     func testUnknownAndRenamedModelsResolve() {
         XCTAssertEqual(ModelCatalog.model("no-such-model").id, ModelCatalog.defaultId)
         XCTAssertEqual(ModelCatalog.model("claude-opus-5").id, "claude-opus-5-5")
+        // The 2026-11 lineup change: retired ids land on their successors.
+        XCTAssertEqual(ModelCatalog.model("fireworks-kimi-k2p7").id, "fireworks-deepseek-v4p1-flash")
+        XCTAssertEqual(ModelCatalog.model("fireworks-minimax-m3").id, "gpt-6-luna")
+        XCTAssertEqual(ModelCatalog.model("gemini-3.1-pro-preview").id, "gemini-4-neon")
+        XCTAssertEqual(ModelCatalog.model("claude-fable-5-1").id, "claude-fable-5-2")
+        XCTAssertEqual(ModelCatalog.model("gpt-6.1-sol").id, "gpt-6.2-sol")
+        XCTAssertEqual(ModelCatalog.model("fireworks-kimi-k3").id, "fireworks-kimi-k3p1-pro")
     }
 }
 

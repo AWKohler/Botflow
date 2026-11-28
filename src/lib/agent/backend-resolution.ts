@@ -39,6 +39,5 @@ export function credFlagsFromUserCredentials(creds: {
     hasFireworksKey: Boolean(creds.fireworksApiKey),
     hasGoogleKey: Boolean(creds.googleApiKey),
     hasXaiKey: Boolean(creds.xaiApiKey),
-    hasTogetherKey: Boolean(creds.togetherApiKey),
   };
 }

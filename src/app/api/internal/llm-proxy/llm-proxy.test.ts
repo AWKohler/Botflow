@@ -183,7 +183,7 @@ describe('platform mode', () => {
     seedCredits(0, 0);
     const calls = mockAnthropic();
     const token = await mintLlmProxyToken(binding());
-    const res = await proxyCall({ token, body: { model: 'claude-fable-5-1', max_tokens: 10, messages: [] } });
+    const res = await proxyCall({ token, body: { model: 'claude-fable-5-2', max_tokens: 10, messages: [] } });
     expect(res.status).toBe(403);
     expect(calls).toEqual([]);
     expect(await counters()).toEqual({ w: 0, m: 0 });
@@ -196,7 +196,7 @@ describe('platform mode', () => {
     const res = await proxyCall({
       token,
       path: ['v1', 'messages', 'batches'],
-      body: { requests: [{ custom_id: 'a', params: { model: 'claude-fable-5-1', max_tokens: 64000, messages: [] } }] },
+      body: { requests: [{ custom_id: 'a', params: { model: 'claude-fable-5-2', max_tokens: 64000, messages: [] } }] },
     });
     expect(res.status).toBe(403);
     expect(calls).toEqual([]);

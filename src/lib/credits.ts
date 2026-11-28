@@ -49,40 +49,56 @@ function perMTok(input: number, cachedInput: number, output: number, cacheWrite?
 }
 
 // All rates are zero-markup pass-through of the provider's list price
-// (verified 2026-10-04 against platform.claude.com/docs/en/about-claude/pricing
-// and developers.openai.com/api/docs/pricing). Arguments: input, cached read,
-// output, cache write — all $/MTok.
+// (verified 2026-11-27 against platform.claude.com/docs/en/about-claude/pricing,
+// developers.openai.com/api/docs/pricing, aistudio.google.com/docs/pricing,
+// docs.x.ai/docs/models and fireworks.ai/pricing). Arguments: input, cached
+// read, output, cache write — all $/MTok.
 export const MODEL_PRICING: Record<string, ModelPricing> = {
-  'fireworks-minimax-m3': perMTok(0.30, 0.06, 1.20),
-  'fireworks-kimi-k2p7':  perMTok(0.95, 0.19, 4.00),
-  'fireworks-kimi-k3':    perMTok(3.00, 0.30, 15.00),
+  // Fireworks: caching is automatic with no write fee (cache misses bill as
+  // uncached input), so no cacheWrite argument.
+  'fireworks-deepseek-v4p1-flash': perMTok(0.30, 0.006, 1.20),
+  'fireworks-kimi-k3p1-pro':       perMTok(2.00, 0.20, 10.00),
 
-  // GPT-6 family. Cache writes bill at 1.25× input (GPT-5.6+ explicit
-  // caching; the meter extracts cache_write_tokens). Reads are 0.1× input,
-  // except 6.1 Sol at 0.05×. >272K prompts use LONG_CONTEXT_PRICING below.
-  'gpt-6-astra': perMTok(10.00, 1.00, 50.00, 12.50),
-  'gpt-6.1-sol': perMTok( 2.00, 0.10, 10.00,  2.50),
-  'gpt-6-luna':  perMTok( 0.10, 0.01,  0.50,  0.125),
+  // GPT-6 family. Cache writes bill at 1.25× input — the 30-minute retention
+  // OpenAI applies by default (the meter extracts cache_write_tokens; Botflow
+  // never requests the 12-hour retention, which bills 2.5×). Reads: 6.2 Astra
+  // and the Sols 0.05× input, Luna 0.1×. >272K prompts use
+  // LONG_CONTEXT_PRICING below.
+  'gpt-6.2-astra': perMTok( 8.00, 0.40, 40.00, 10.00),
+  'gpt-6.2-sol':   perMTok( 2.00, 0.10, 10.00,  2.50),
+  'gpt-6-luna':    perMTok( 0.10, 0.01,  0.50,  0.125),
 
-  // Claude 5.5 / 5.1 generation. Cache write = 5-minute ephemeral (1.25×
-  // input) — the only TTL Botflow requests. Reads: Opus 5.5 is 0.05× input,
-  // Fable 5.1 is 0.025×, Sonnet 5.5 the standard 0.1×. Flat pricing across
-  // the full 1M window (no long-context tier).
+  // Claude 5.5 / Fable 5.2. Cache write = 5-minute ephemeral (1.25× input) —
+  // the only TTL Botflow requests. Reads: Opus 5.5 and Sonnet 5.5 are 0.05×
+  // input, Fable 5.2 0.025×. Flat pricing across the full 1M window (no
+  // long-context tier).
   'claude-opus-5-5':   perMTok( 4.00, 0.20, 20.00,  5.00),
-  'claude-sonnet-5-5': perMTok( 2.00, 0.20, 10.00,  2.50),
-  'claude-fable-5-1':  perMTok(10.00, 0.25, 50.00, 12.50),
+  'claude-sonnet-5-5': perMTok( 2.00, 0.10, 10.00,  2.50),
+  'claude-fable-5-2':  perMTok( 8.00, 0.20, 40.00, 10.00),
 
-  // Gemini 3.1 Pro at ≤200K — cache write billed at full input price.
-  'gemini-3.1-pro-preview': perMTok(2.00, 0.20, 12.00, 2.00),
+  // Gemini 4 Neon: implicit caching only (no explicit caches, so no write or
+  // storage fee; Google reports only cached reads), flat across the 1M window.
+  'gemini-4-neon': perMTok(3.00, 0.15, 15.00),
   // xAI Grok 4.7 (docs.x.ai/docs/pricing). Same rates grok-4.5 billed at
   // when they were verified live against cost_in_usd_ticks. Cache is
   // passive/read-only (no cache-write billing); the read discount is only
   // 75% ($2→$0.50).
   'grok-4.7': perMTok(2.00, 0.50, 6.00),
 
+  // MiniMax-M3 left the lineup but stays the credit base unit (BASE_PRICE),
+  // the cost-hint baseline and the unknown-id fallback below; its own usage
+  // rows (old proxy tokens) still settle at its real price.
+  'fireworks-minimax-m3': perMTok(0.30, 0.06, 1.20),
+
   // ── Retired ids (resolveModelId maps them to successors) ──────────────────
   // Kept ONLY so a proxy token minted before a deploy still settles at the
   // real price instead of the MiniMax fallback. Current list prices.
+  'gpt-6-astra':            perMTok(10.00, 1.00, 50.00, 12.50),
+  'gpt-6.1-sol':            perMTok( 2.00, 0.10, 10.00,  2.50),
+  'claude-fable-5-1':       perMTok(10.00, 0.25, 50.00, 12.50),
+  'gemini-3.1-pro-preview': perMTok( 2.00, 0.20, 12.00,  2.00),
+  'fireworks-kimi-k2p7':    perMTok( 0.95, 0.19,  4.00),
+  'fireworks-kimi-k3':      perMTok( 3.00, 0.30, 15.00),
   'gpt-5.6-sol':     perMTok(4.00, 0.40, 20.00, 5.00),
   'gpt-5.6-terra':   perMTok(2.00, 0.20, 12.00, 2.50),
   'gpt-5.6-luna':    perMTok(0.20, 0.02,  1.20, 0.25),
@@ -105,11 +121,13 @@ export const LONG_CONTEXT_PRICING: Record<
   { threshold: number; pricing: ModelPricing; /** long rates apply AT the threshold (≥), not just above it */ inclusive?: boolean }
 > = {
   // OpenAI: >272K input tokens — 2× input/cache, 1.5× output.
-  'gpt-6-astra': { threshold: 272_000, pricing: perMTok(20.00, 2.00, 75.00, 25.00) },
-  'gpt-6.1-sol': { threshold: 272_000, pricing: perMTok( 4.00, 0.20, 15.00,  5.00) },
-  'gpt-6-luna':  { threshold: 272_000, pricing: perMTok( 0.20, 0.02,  0.75,  0.25) },
-  'gpt-5.6-sol': { threshold: 272_000, pricing: perMTok( 8.00, 0.80, 30.00, 10.00) }, // retired id
-  // Gemini 3.1 Pro: >200K.
+  'gpt-6.2-astra': { threshold: 272_000, pricing: perMTok(16.00, 0.80, 60.00, 20.00) },
+  'gpt-6.2-sol':   { threshold: 272_000, pricing: perMTok( 4.00, 0.20, 15.00,  5.00) },
+  'gpt-6-luna':    { threshold: 272_000, pricing: perMTok( 0.20, 0.02,  0.75,  0.25) },
+  'gpt-6-astra':   { threshold: 272_000, pricing: perMTok(20.00, 2.00, 75.00, 25.00) }, // retired id
+  'gpt-6.1-sol':   { threshold: 272_000, pricing: perMTok( 4.00, 0.20, 15.00,  5.00) }, // retired id
+  'gpt-5.6-sol':   { threshold: 272_000, pricing: perMTok( 8.00, 0.80, 30.00, 10.00) }, // retired id
+  // Gemini 3.1 Pro: >200K (retired id; Gemini 4 Neon has no long-context tier).
   'gemini-3.1-pro-preview': { threshold: 200_000, pricing: perMTok(4.00, 0.40, 18.00, 4.00) },
   // Grok: every rate doubles once the prompt REACHES 200K ("≥ 200k tokens";
   // all tokens in the request bill long — docs.x.ai/docs/pricing).
@@ -136,7 +154,8 @@ function blendedCost(p: ModelPricing): number {
 
 /**
  * The selector multiplier a model's pricing implies: blended cost over the
- * mix above relative to MiniMax-M3 (= x1). Rounded to one decimal below 1,
+ * mix above relative to MiniMax-M3 (= x1; retired from the lineup but kept as
+ * the baseline so existing multipliers don't move). Rounded to one decimal below 1,
  * else to the nearest integer. MODEL_CONFIGS[*].costMultiplier must equal
  * this (enforced in billing-invariants.test.ts).
  */

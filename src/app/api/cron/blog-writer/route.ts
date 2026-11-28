@@ -158,7 +158,7 @@ async function runWriter(args: {
 }): Promise<WriterResult> {
   const apiKey = process.env.FIREWORKS_API_KEY;
   if (!apiKey) {
-    throw new Error('FIREWORKS_API_KEY is not set — required to run Kimi K2.7');
+    throw new Error('FIREWORKS_API_KEY is not set — required to run DeepSeek V4.1 Flash');
   }
   const fireworks = createFireworks({ apiKey });
 
@@ -171,7 +171,7 @@ async function runWriter(args: {
   const userPrompt = buildWriterUserPrompt(args.feedSummary) + recentBit;
 
   const result = await generateText({
-    model: fireworks('accounts/fireworks/models/kimi-k2p7-code'),
+    model: fireworks('accounts/fireworks/models/deepseek-v4p1-flash-1017'),
     system: WRITER_SYSTEM_PROMPT,
     prompt: userPrompt,
     tools: {

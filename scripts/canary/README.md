@@ -7,11 +7,11 @@ everything it creates.
 
 | Suite | When | What |
 |---|---|---|
-| `daily` | 06:00 every day | Claude Code × Sonnet 5.5, Opus 5.5 (Claude subscription) · OpenCode × GPT-6 Luna, GPT-6.1 Sol (ChatGPT subscription). Asserts zero platform credits charged. |
-| `weekly` | Sundays 07:30 | OpenCode × Gemini 3.1 Pro, Grok 4.7, MiniMax-M3 on platform keys (cheapest per remaining provider). |
+| `daily` | 06:00 every day | Claude Code × Sonnet 5.5, Opus 5.5 (Claude subscription) · OpenCode × GPT-6 Luna, GPT-6.2 Sol (ChatGPT subscription). Asserts zero platform credits charged. |
+| `weekly` | Sundays 07:30 | OpenCode × Gemini 4 Neon, Grok 4.7, DeepSeek V4.1 Flash on platform keys (cheapest per remaining provider). |
 | `sweep` | manual | Only clean up leftovers. |
 
-Fable 5.1 and GPT-6 Astra are intentionally not run (cost); if the cheaper
+Fable 5.2 and GPT-6.2 Astra are intentionally not run (cost); if the cheaper
 models on the same harness pass, they're covered.
 
 Per harness group: create `[canary] …` project (no backend) → sandbox session

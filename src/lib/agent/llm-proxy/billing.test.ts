@@ -77,7 +77,7 @@ describe("settlement credit parity with /api/agent", () => {
 
   test("personal-cred modes bill zero, exactly like isUsingPersonalCredentials", () => {
     assert.equal(
-      computeSettlementCredits(usageOf(50_000, 2_000, 10_000, 0), "gpt-6.1-sol", "byok"),
+      computeSettlementCredits(usageOf(50_000, 2_000, 10_000, 0), "gpt-6.2-sol", "byok"),
       0,
     );
     assert.equal(
@@ -86,14 +86,20 @@ describe("settlement credit parity with /api/agent", () => {
     );
   });
 
-  test("long-context surcharge triggers off uncached+cachedRead (gemini past 200K)", () => {
-    const below = computeSettlementCredits(usageOf(200_000, 1_000, 100_000, 0), "gemini-3.1-pro-preview", "platform");
-    const above = computeSettlementCredits(usageOf(300_000, 1_000, 200_000, 0), "gemini-3.1-pro-preview", "platform");
-    // Same output; above-threshold input must be priced strictly steeper than
-    // a linear scale of the below-threshold rate.
-    const belowPerToken = below / 200_000;
+  test("long-context surcharge triggers off uncached+cachedRead (gpt-6.2-sol past 272K)", () => {
+    const below = computeSettlementCredits(usageOf(250_000, 1_000, 100_000, 0), "gpt-6.2-sol", "platform");
+    const above = computeSettlementCredits(usageOf(300_000, 1_000, 120_000, 0), "gpt-6.2-sol", "platform");
+    // Similar output; above-threshold input must be priced strictly steeper
+    // than a linear scale of the below-threshold rate.
+    const belowPerToken = below / 250_000;
     const abovePerToken = above / 300_000;
     assert.ok(abovePerToken > belowPerToken, `expected surcharge: ${abovePerToken} > ${belowPerToken}`);
+  });
+
+  test("gemini-4-neon is flat across its 1M window (no long-context tier)", () => {
+    const short = computeSettlementCredits(usageOf(100_000, 0, 0, 0), "gemini-4-neon", "platform");
+    const long = computeSettlementCredits(usageOf(800_000, 0, 0, 0), "gemini-4-neon", "platform");
+    assert.ok(Math.abs(long / 800_000 / (short / 100_000) - 1) < 0.001);
   });
 
   test("grok-4.7 long-context tier DOUBLES every rate from 200K (xAI long_context)", () => {
@@ -107,13 +113,13 @@ describe("settlement credit parity with /api/agent", () => {
   });
 
   test("long-context boundary: xAI bills long AT 200K (≥), OpenAI only ABOVE 272K (>)", () => {
-    const perTok = (n: number, m: "grok-4.7" | "gpt-6.1-sol") =>
+    const perTok = (n: number, m: "grok-4.7" | "gpt-6.2-sol") =>
       computeSettlementCredits(usageOf(n, 0, 0, 0), m, "platform") / n;
     // grok: 199_999 short, exactly 200_000 already long (2×).
     assert.ok(perTok(200_000, "grok-4.7") / perTok(199_999, "grok-4.7") > 1.99);
-    // gpt-6.1-sol: exactly 272_000 still short; 272_001 long (2× input).
-    assert.ok(Math.abs(perTok(272_000, "gpt-6.1-sol") / perTok(271_999, "gpt-6.1-sol") - 1) < 0.001);
-    assert.ok(perTok(272_001, "gpt-6.1-sol") / perTok(272_000, "gpt-6.1-sol") > 1.99);
+    // gpt-6.2-sol: exactly 272_000 still short; 272_001 long (2× input).
+    assert.ok(Math.abs(perTok(272_000, "gpt-6.2-sol") / perTok(271_999, "gpt-6.2-sol") - 1) < 0.001);
+    assert.ok(perTok(272_001, "gpt-6.2-sol") / perTok(272_000, "gpt-6.2-sol") > 1.99);
   });
 
   test("anthropic cache WRITES are billed (never free)", () => {
@@ -139,8 +145,8 @@ describe("settlement credit parity with /api/agent", () => {
     // usageOf's first arg is prompt_tokens (the total) — reads AND writes are
     // SUBSETS of it, not added on top (live-verified). Reclassifying 800 tokens
     // from plain uncached (1×) to cache-WRITE (1.25×) must cost strictly more.
-    const asWrite = computeSettlementCredits(usageOf(12_800, 300, 11_500, 800), "gpt-6.1-sol", "platform");
-    const asPlainInput = computeSettlementCredits(usageOf(12_800, 300, 11_500, 0), "gpt-6.1-sol", "platform");
+    const asWrite = computeSettlementCredits(usageOf(12_800, 300, 11_500, 800), "gpt-6.2-sol", "platform");
+    const asPlainInput = computeSettlementCredits(usageOf(12_800, 300, 11_500, 0), "gpt-6.2-sol", "platform");
     // Writes cost 1.25× input, so reclassifying them as 1× plain input is cheaper.
     assert.ok(asWrite > asPlainInput, `write premium should exceed plain input: ${asWrite} vs ${asPlainInput}`);
     // And Luna prices writes proportionally to their own input rate.
@@ -164,10 +170,10 @@ describe("reservation estimate", () => {
 
   test("estimate is an upper bound for typical settled cost of the same request", () => {
     const bodyBytes = 40_000; // ~10K tokens estimated
-    const reserved = estimateRequestCredits("fireworks-minimax-m3", bodyBytes, 32_000);
+    const reserved = estimateRequestCredits("fireworks-deepseek-v4p1-flash", bodyBytes, 32_000);
     const settled = computeSettlementCredits(
       usageOf(9_000, 4_000, 8_000, 0), // real usage under the estimate
-      "fireworks-minimax-m3",
+      "fireworks-deepseek-v4p1-flash",
       "platform",
     );
     assert.ok(reserved >= settled);
@@ -176,9 +182,9 @@ describe("reservation estimate", () => {
   test("free tier can afford a typical opencode request (32K inserted cap must NOT reserve the whole weekly budget)", () => {
     // opencode sets no max_tokens; the rewrite inserts the 32K cap. The
     // reservation must use the realistic output estimate, not the cap —
-    // otherwise MiniMax's 4.0 output multiplier alone (128K credits) exceeds
+    // otherwise DeepSeek Flash's 4.0 output multiplier alone (128K credits) exceeds
     // the free tier's default 125K weekly budget and every call 402s.
-    const reserved = estimateRequestCredits("fireworks-minimax-m3", 20_000, 32_000);
+    const reserved = estimateRequestCredits("fireworks-deepseek-v4p1-flash", 20_000, 32_000);
     const FREE_WEEKLY_DEFAULT = 500_000 / 4;
     assert.ok(
       reserved < FREE_WEEKLY_DEFAULT,
@@ -188,9 +194,12 @@ describe("reservation estimate", () => {
 });
 
 describe("model reverse-mapping", () => {
-  test("apiModelIds map back; Together kimi maps to the fireworks pricing id", () => {
-    assert.equal(modelIdForProviderModel("accounts/fireworks/models/kimi-k2p7-code"), "fireworks-kimi-k2p7");
-    assert.equal(modelIdForProviderModel("moonshotai/Kimi-K2.7-Code"), "fireworks-kimi-k2p7");
+  test("apiModelIds map back to their pricing ids", () => {
+    assert.equal(
+      modelIdForProviderModel("accounts/fireworks/models/deepseek-v4p1-flash-1017"),
+      "fireworks-deepseek-v4p1-flash",
+    );
+    assert.equal(modelIdForProviderModel("accounts/fireworks/models/kimi-k3p1-pro"), "fireworks-kimi-k3p1-pro");
     assert.equal(modelIdForProviderModel("claude-sonnet-5-5"), "claude-sonnet-5-5");
     assert.equal(modelIdForProviderModel("claude-haiku-4-5-20251001"), null); // CC background model — skip row
     assert.equal(modelIdForProviderModel(null), null);

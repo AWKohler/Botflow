@@ -27,7 +27,6 @@ import {
 } from "@/lib/credits";
 import { recordTokenUsage } from "@/lib/usage";
 import { MODEL_CONFIGS, type ModelId } from "@/lib/agent/models";
-import { TOGETHER_KIMI_MODEL } from "@/lib/agent/opencode/models";
 import type { Tier } from "@/lib/tier";
 import type { LlmProxyBinding } from "./token";
 import type { LlmProxyProvider } from "./providers";
@@ -91,7 +90,6 @@ export function computeSettlementCredits(
  *  Haiku-class background calls) — those return null and skip the usage row. */
 export function modelIdForProviderModel(providerModel: string | null): ModelId | null {
   if (!providerModel) return null;
-  if (providerModel === TOGETHER_KIMI_MODEL) return "fireworks-kimi-k2p7";
   for (const config of Object.values(MODEL_CONFIGS)) {
     if (config.apiModelId === providerModel) return config.id;
   }

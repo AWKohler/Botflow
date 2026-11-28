@@ -32,18 +32,21 @@ function fmt(n: number): string {
 }
 
 const MODEL_DISPLAY: Record<string, string> = {
-  'fireworks-minimax-m3': 'MiniMax M3',
+  'fireworks-deepseek-v4p1-flash': 'DeepSeek V4.1 Flash',
+  'fireworks-kimi-k3p1-pro': 'Kimi K3.1 Pro',
+  'fireworks-minimax-m3': 'MiniMax M3', // historical usage records
   'fireworks-minimax-m2p7': 'MiniMax M2.7', // legacy usage records
   // 'fireworks-glm-5': 'GLM-5',
   'fireworks-glm-5p2': 'GLM-5.2',
   'fireworks-glm-5p1': 'GLM-5.1', // historical usage records
-  'fireworks-kimi-k2p7': 'Kimi K2.7',
+  'fireworks-kimi-k2p7': 'Kimi K2.7', // historical usage records
   'fireworks-kimi-k2p6': 'Kimi K2.6', // historical usage records
-  'fireworks-kimi-k3': 'Kimi K3',
+  'fireworks-kimi-k3': 'Kimi K3', // historical usage records
 
   'claude-sonnet-5-5': 'Claude Sonnet 5.5',
   'claude-opus-5-5': 'Claude Opus 5.5',
-  'claude-fable-5-1': 'Claude Fable 5.1',
+  'claude-fable-5-2': 'Claude Fable 5.2',
+  'claude-fable-5-1': 'Claude Fable 5.1', // historical usage records
   'claude-sonnet-5': 'Claude Sonnet 5', // historical usage records
   'claude-sonnet-4.5': 'Claude Sonnet 4', // legacy usage records
   'claude-sonnet-4.6': 'Claude Sonnet 4.6', // legacy usage records
@@ -56,8 +59,10 @@ const MODEL_DISPLAY: Record<string, string> = {
   'claude-opus-4-8': 'Claude Opus 4.8', // historical usage records
   'claude-opus-5': 'Claude Opus 5',
   'claude-fable-5': 'Claude Fable 5',
-  'gpt-6-astra': 'GPT-6 Astra',
-  'gpt-6.1-sol': 'GPT-6.1 Sol',
+  'gpt-6.2-astra': 'GPT-6.2 Astra',
+  'gpt-6.2-sol': 'GPT-6.2 Sol',
+  'gpt-6-astra': 'GPT-6 Astra', // historical usage records
+  'gpt-6.1-sol': 'GPT-6.1 Sol', // historical usage records
   'gpt-6-luna': 'GPT-6 Luna',
   'gpt-5.6-sol': 'GPT-5.6 Sol', // historical usage records (5.6 family + 5.5)
   'gpt-5.6-terra': 'GPT-5.6 Terra',
@@ -65,7 +70,8 @@ const MODEL_DISPLAY: Record<string, string> = {
   'gpt-5.3-codex': 'GPT-5.3',  // historical usage rows
   'gpt-5.4': 'GPT-5.4',        // historical usage rows
   'gpt-5.5': 'GPT-5.5',
-  'gemini-3.1-pro-preview': 'Gemini 3.1 Pro',
+  'gemini-4-neon': 'Gemini 4 Neon',
+  'gemini-3.1-pro-preview': 'Gemini 3.1 Pro', // historical usage records
   'grok-4.7': 'Grok 4.7',
   'grok-4.5': 'Grok 4.5', // historical usage records
 };

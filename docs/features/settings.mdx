@@ -20,7 +20,7 @@ The Usage tab shows how much of your platform credit budget you've consumed.
 - **Monthly credits** — credits consumed this month vs. your monthly limit
 - **Plan indicator** — your current plan (Free, Pro, or Max)
 
-Credits are normalised across models: 1 MiniMax-M2.5 token = 1 credit; Claude Sonnet 4 and GPT-5.3 tokens are weighted proportionally. Cached input tokens cost significantly less. Requests made with **your own API keys or OAuth** do not count toward your platform budget.
+Credits are normalised across models: 1 credit is worth $0.30 per million tokens of provider list price, so each model's tokens are weighted by what the provider charges. Cached input tokens cost significantly less. Requests made with **your own API keys or OAuth** do not count toward your platform budget.
 
 Credits reset on a rolling weekly and monthly basis (Monday and the 1st of the month).
 
@@ -40,10 +40,10 @@ Paste a key for any provider to use that provider's models without spending plat
 
 | Provider | Key format | Models unlocked |
 |----------|-----------|-----------------|
-| **OpenAI** | `sk-...` | GPT-5.3 Codex, GPT-5.4 |
-| **Anthropic** | `sk-ant-...` | Claude Sonnet 4, Claude Opus 4.7 |
-| **Google AI Studio** | `AIza...` | Gemini 3.1 Pro |
-| **Fireworks AI** | `fw_...` | MiniMax-M2.5, GLM-5.1, Kimi K2.6 |
+| **OpenAI** | `sk-...` | GPT-6 Luna, GPT-6.2 Sol, GPT-6.2 Astra |
+| **Anthropic** | `sk-ant-...` | Claude Sonnet 5.5, Claude Opus 5.5, Claude Fable 5.2 |
+| **Google AI Studio** | `AIza...` | Gemini 4 Neon |
+| **Fireworks AI** | `fw_...` | DeepSeek V4.1 Flash, Kimi K3.1 Pro |
 | **Moonshot** | `moonshot-...` | Moonshot models |
 
 To save a key:

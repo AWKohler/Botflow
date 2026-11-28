@@ -53,9 +53,6 @@ export interface DeriveBackendInput {
   } & OpenCodeCredFlags;
   /** From /api/usage/credits. Gates platform-mode models by tier. */
   tier?: "free" | "pro" | "max";
-  /** From the USE_TOGETHER_KIMI server flag (client learns it via
-   *  /api/user-settings). Decides which BYOK key applies to Kimi. */
-  useTogetherKimi?: boolean;
 }
 
 export interface DeriveBackendOutput {
@@ -72,7 +69,7 @@ export interface DeriveBackendOutput {
 }
 
 export function deriveAgentBackend(input: DeriveBackendInput): DeriveBackendOutput {
-  const { model, platform, creds, tier, useTogetherKimi } = input;
+  const { model, platform, creds, tier } = input;
 
   if (!platform || !isSandboxPlatform(platform)) {
     return { backend: "opencode", runnable: false, reason: "unsupported_platform" };
@@ -90,7 +87,7 @@ export function deriveAgentBackend(input: DeriveBackendInput): DeriveBackendOutp
   };
 
   if (!isAnthropicModel(model)) {
-    const credMode = openCodeCredModeForModel(model, creds, useTogetherKimi === true);
+    const credMode = openCodeCredModeForModel(model, creds);
     if (credMode === "codex-oauth") {
       return { backend: "opencode", runnable: true, reason: "codex_oauth_opencode" };
     }

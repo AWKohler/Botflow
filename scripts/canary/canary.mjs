@@ -49,15 +49,15 @@ const MODEL_RETRIES = 1; // one retry per model cell to filter one-off flakes
 /** Harness groups. Anthropic → Claude Code, everything else → OpenCode. */
 const SUITES = {
   // Paid via the account's Claude + ChatGPT subscriptions (personal creds →
-  // zero platform credits). Fable 5.1 and GPT-6 Astra deliberately excluded.
+  // zero platform credits). Fable 5.2 and GPT-6.2 Astra deliberately excluded.
   daily: [
     { harness: 'claude-code', models: ['claude-sonnet-5-5', 'claude-opus-5-5'], subscription: true },
-    { harness: 'opencode', models: ['gpt-6-luna', 'gpt-6.1-sol'], subscription: true },
+    { harness: 'opencode', models: ['gpt-6-luna', 'gpt-6.2-sol'], subscription: true },
   ],
   // Cheapest model per remaining provider, on platform keys (the account has
   // no keys of its own, so these run in platform mode and use its credits).
   weekly: [
-    { harness: 'opencode', models: ['gemini-3.1-pro-preview', 'grok-4.7', 'fireworks-minimax-m3'], subscription: false },
+    { harness: 'opencode', models: ['gemini-4-neon', 'grok-4.7', 'fireworks-deepseek-v4p1-flash'], subscription: false },
   ],
 };
 

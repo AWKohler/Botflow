@@ -349,7 +349,6 @@ struct Connections: Codable, Sendable {
     var hasTogetherKey: Bool = false
     var hasGoogleKey: Bool = false
     var hasXaiKey: Bool = false
-    var useTogetherKimi: Bool? = false
     var hasClaudeOAuth: Bool? = false
     var hasCodexOAuth: Bool? = false
     var hasConvexOAuth: Bool? = false

@@ -11,16 +11,15 @@ export type Tier = 'free' | 'pro' | 'max';
 
 /** Which tier is required to use a model on server-side keys */
 export const MODEL_TIER_REQUIREMENT: Record<string, Tier> = {
-  'fireworks-minimax-m3': 'free',
-  'fireworks-kimi-k2p7': 'free',
-  'fireworks-kimi-k3': 'pro',        // Pro+ for server key ($3/$15 — Terra-class pricing); free requires BYOK (Fireworks)
-  'gpt-6-astra': 'max',              // Max-only on server key (Fable-class $10/$50); free/pro require BYOK/OAuth
-  'gpt-6.1-sol': 'pro',              // Pro+ for server key; free requires BYOK/OAuth
+  'fireworks-deepseek-v4p1-flash': 'free',
+  'fireworks-kimi-k3p1-pro': 'pro',  // Pro+ for server key; free requires BYOK (Fireworks)
+  'gpt-6.2-astra': 'max',            // Max-only on server key (Fable-class $8/$40); free/pro require BYOK/OAuth
+  'gpt-6.2-sol': 'pro',              // Pro+ for server key; free requires BYOK/OAuth
   'gpt-6-luna': 'free',              // free — platform-served within the free credit allowance (default model)
   'claude-sonnet-5-5': 'pro',        // Pro+ for server key
   'claude-opus-5-5': 'pro',          // Pro+ for server key
-  'claude-fable-5-1': 'max',         // Max-only on server key; free/pro require BYOK/OAuth
-  'gemini-3.1-pro-preview': 'pro',   // Pro+ for server key; free requires BYOK
+  'claude-fable-5-2': 'max',         // Max-only on server key; free/pro require BYOK/OAuth
+  'gemini-4-neon': 'pro',            // Pro+ for server key; free requires BYOK
   'grok-4.7': 'pro',                 // Pro+ for server key; free requires BYOK (xAI)
 };
 

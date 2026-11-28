@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/server';
 import { getUserCredentials, setUserCredentials } from '@/lib/user-credentials';
-import { USE_TOGETHER_KIMI } from '@/lib/feature-flags';
 import { isManagedConvexEnabled } from '@/lib/project-platform';
 
 export const dynamic = 'force-dynamic';
@@ -22,9 +21,6 @@ export async function GET() {
       hasTogetherKey: Boolean(creds.togetherApiKey),
       hasGoogleKey: Boolean(creds.googleApiKey),
       hasXaiKey: Boolean(creds.xaiApiKey),
-      // Surface the server-only Together/Kimi flag so the client can decide
-      // whether to show the Together AI BYOK input in the connections tab.
-      useTogetherKimi: USE_TOGETHER_KIMI,
       hasClaudeOAuth: Boolean(creds.claudeOAuthAccessToken),
       hasCodexOAuth: Boolean(creds.codexOAuthAccessToken),
       hasConvexOAuth: Boolean(creds.convexOAuthAccessToken),

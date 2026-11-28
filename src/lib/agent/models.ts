@@ -3,17 +3,16 @@
  */
 
 export type ModelId =
-  | "gpt-6-astra"
-  | "gpt-6.1-sol"
+  | "gpt-6.2-astra"
+  | "gpt-6.2-sol"
   | "gpt-6-luna"
   | "claude-sonnet-5-5"
   | "claude-opus-5-5"
-  | "claude-fable-5-1"
-  | "gemini-3.1-pro-preview"
+  | "claude-fable-5-2"
+  | "gemini-4-neon"
   | "grok-4.7"
-  | "fireworks-minimax-m3"
-  | "fireworks-kimi-k2p7"
-  | "fireworks-kimi-k3";
+  | "fireworks-deepseek-v4p1-flash"
+  | "fireworks-kimi-k3p1-pro";
 
 export type Provider = "openai" | "anthropic" | "google" | "xai" | "fireworks";
 
@@ -42,7 +41,8 @@ export interface ModelConfig {
   /** Whether this model supports image/file inputs */
   supportsImages: boolean;
   /**
-   * Rough relative cost shown in the model selector ("x4"), vs MiniMax-M3 = 1.
+   * Rough relative cost shown in the model selector ("x4"), vs MiniMax-M3 = 1
+   * (retired from the lineup, but still the credit base unit in credits.ts).
    * Derived from credits.ts pricing over a representative agent-loop token
    * mix (see costMultiplierFromPricing there) — billing-invariants.test.ts
    * fails if this drifts from the pricing table, so update both together.
@@ -59,7 +59,7 @@ export interface ModelConfig {
   /**
    * Anthropic models whose API rejects explicit thinking config
    * (`disabled` / `budget_tokens`) and forced tool_choice (`any` / `tool`)
-   * with a 400 — Opus 5.5, Sonnet 5.5, Fable 5.1. The LLM proxy normalizes
+   * with a 400 — Opus 5.5, Sonnet 5.5, Fable 5.2. The LLM proxy normalizes
    * those fields so older in-sandbox clients (pinned Claude Code / OpenCode)
    * keep working.
    */
@@ -75,25 +75,24 @@ export interface ModelConfig {
 }
 
 export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
-  "gpt-6-astra": {
-    id: "gpt-6-astra",
+  "gpt-6.2-astra": {
+    id: "gpt-6.2-astra",
     provider: "openai",
-    apiModelId: "gpt-6-astra",
-    displayName: "GPT-6 Astra",
-    // 1,050,000 total context. OpenAI caps the INPUT half at 922K (output at
-    // 128K); we carry the total here like every other entry — the context
-    // meter measures the whole window, not the input sub-cap.
+    apiModelId: "gpt-6.2-astra",
+    displayName: "GPT-6.2 Astra",
+    // 1,050,000 total context (128K max output). We carry the total here like
+    // every other entry — the context meter measures the whole window.
     maxContextTokens: 1_050_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
-    costMultiplier: 31,
+    costMultiplier: 22,
   },
-  "gpt-6.1-sol": {
-    id: "gpt-6.1-sol",
+  "gpt-6.2-sol": {
+    id: "gpt-6.2-sol",
     provider: "openai",
-    apiModelId: "gpt-6.1-sol",
-    displayName: "GPT-6.1 Sol",
+    apiModelId: "gpt-6.2-sol",
+    displayName: "GPT-6.2 Sol",
     maxContextTokens: 1_050_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
@@ -139,28 +138,29 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     effort: "medium",
     adaptiveThinkingOnly: true,
   },
-  "claude-fable-5-1": {
-    id: "claude-fable-5-1",
+  "claude-fable-5-2": {
+    id: "claude-fable-5-2",
     provider: "anthropic",
-    apiModelId: "claude-fable-5-1",
-    displayName: "Claude Fable 5.1",
+    apiModelId: "claude-fable-5-2",
+    displayName: "Claude Fable 5.2",
     maxContextTokens: 1_000_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
-    costMultiplier: 26,
+    costMultiplier: 21,
     adaptiveThinkingOnly: true,
   },
-  "gemini-3.1-pro-preview": {
-    id: "gemini-3.1-pro-preview",
+  "gemini-4-neon": {
+    id: "gemini-4-neon",
     provider: "google",
-    apiModelId: "gemini-3.1-pro-preview",
-    displayName: "Gemini 3.1 Pro",
+    apiModelId: "gemini-4-neon",
+    displayName: "Gemini 4 Neon",
+    // 1M shared window, 64K max output. Flat pricing across the window.
     maxContextTokens: 1_000_000,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
-    costMultiplier: 6,
+    costMultiplier: 8,
   },
   "grok-4.7": {
     id: "grok-4.7",
@@ -173,48 +173,30 @@ export const MODEL_CONFIGS: Record<ModelId, ModelConfig> = {
     supportsImages: true,
     costMultiplier: 7,
   },
-  "fireworks-minimax-m3": {
-    id: "fireworks-minimax-m3",
+  "fireworks-deepseek-v4p1-flash": {
+    id: "fireworks-deepseek-v4p1-flash",
     provider: "fireworks",
-    apiModelId: "accounts/fireworks/models/minimax-m3",
-    displayName: "MiniMax-M3",
-    maxContextTokens: 196_600,
-    warnThreshold: 0.7,
-    criticalThreshold: 0.9,
-    supportsImages: false,
-    costMultiplier: 1,
-  },
-  // "fireworks-glm-5p1": {
-  //   id: "fireworks-glm-5p1",
-  //   provider: "fireworks",
-  //   apiModelId: "accounts/fireworks/models/glm-5p1",
-  //   displayName: "GLM-5.1",
-  //   maxContextTokens: 202_800,
-  //   warnThreshold: 0.7,
-  //   criticalThreshold: 0.9,
-  //   supportsImages: false,
-  // },
-  "fireworks-kimi-k2p7": {
-    id: "fireworks-kimi-k2p7",
-    provider: "fireworks",
-    apiModelId: "accounts/fireworks/models/kimi-k2p7-code",
-    displayName: "Kimi K2.7",
-    maxContextTokens: 262_144,
+    // The 1017 update: same price as the original V4.1 Flash, better on
+    // coding/agentic work and shorter outputs. The Botflow id stays
+    // version-free so a later Flash update is a one-line apiModelId bump.
+    apiModelId: "accounts/fireworks/models/deepseek-v4p1-flash-1017",
+    displayName: "DeepSeek V4.1 Flash",
+    maxContextTokens: 1_048_576,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
-    costMultiplier: 3,
+    costMultiplier: 0.7,
   },
-  "fireworks-kimi-k3": {
-    id: "fireworks-kimi-k3",
+  "fireworks-kimi-k3p1-pro": {
+    id: "fireworks-kimi-k3p1-pro",
     provider: "fireworks",
-    apiModelId: "accounts/fireworks/models/kimi-k3",
-    displayName: "Kimi K3",
-    maxContextTokens: 1_000_000,
+    apiModelId: "accounts/fireworks/models/kimi-k3p1-pro",
+    displayName: "Kimi K3.1 Pro",
+    maxContextTokens: 1_048_576,
     warnThreshold: 0.7,
     criticalThreshold: 0.9,
     supportsImages: true,
-    costMultiplier: 9,
+    costMultiplier: 6,
   },
 };
 
@@ -228,19 +210,20 @@ export const DEFAULT_MODEL_ID: ModelId = "gpt-6-luna";
  * isAcceptedModelInput) — add a row here when a model is replaced.
  */
 const LEGACY_MODEL_ALIASES: Record<string, ModelId> = {
-  // OpenAI → GPT-6 family. There is no GPT-6 Terra; Terra's $2-input slot is
-  // now 6.1 Sol (cheaper output than Terra). GPT-6 Sol is superseded by 6.1
-  // Sol at identical prices with cheaper cache reads.
-  "gpt-6-sol": "gpt-6.1-sol",
-  "gpt-5.6-sol": "gpt-6.1-sol",
-  "gpt-5.6-terra": "gpt-6.1-sol",
+  // OpenAI → GPT-6.2 Astra / Sol, 6 Luna. 6.2 Sol is 6.1 Sol's successor at
+  // identical prices; 6.2 Astra replaces 6 Astra at lower prices.
+  "gpt-6-astra": "gpt-6.2-astra",
+  "gpt-6.1-sol": "gpt-6.2-sol",
+  "gpt-6-sol": "gpt-6.2-sol",
+  "gpt-5.6-sol": "gpt-6.2-sol",
+  "gpt-5.6-terra": "gpt-6.2-sol",
   "gpt-5.6-luna": "gpt-6-luna",
-  "gpt-5.5": "gpt-6.1-sol",
-  "gpt-5.4": "gpt-6.1-sol",
+  "gpt-5.5": "gpt-6.2-sol",
+  "gpt-5.4": "gpt-6.2-sol",
   "gpt-5.3-codex": "gpt-6-luna",
   "gpt-5.2": "gpt-6-luna",
   "gpt-4.1": "gpt-6-luna",
-  // Anthropic → 5.5 / 5.1 generation
+  // Anthropic → 5.5 / Fable 5.2
   "claude-sonnet-5": "claude-sonnet-5-5",
   "claude-sonnet-4.5": "claude-sonnet-5-5",
   "claude-sonnet-4.6": "claude-sonnet-5-5",
@@ -253,19 +236,30 @@ const LEGACY_MODEL_ALIASES: Record<string, ModelId> = {
   "claude-opus-4.6": "claude-opus-5-5",
   "claude-opus-4.5": "claude-opus-5-5",
   "claude-opus-4-1": "claude-opus-5-5",
-  "claude-fable-5": "claude-fable-5-1",
+  "claude-fable-5-1": "claude-fable-5-2",
+  "claude-fable-5": "claude-fable-5-2",
+  // Google → Gemini 4 Neon
+  "gemini-3.1-pro-preview": "gemini-4-neon",
   "grok-4.5": "grok-4.7",
-  // GLM retired — Grok (now 4.7) replaces it in the lineup, but existing GLM-pinned
-  // projects fall back to Kimi (both free tier) so free users aren't paywalled
-  // onto pro Grok. [[grok-glm-replacement]]
-  "fireworks-glm-5": "fireworks-kimi-k2p7",
-  "fireworks-glm-5p1": "fireworks-kimi-k2p7",
-  "fireworks-glm-5p2": "fireworks-kimi-k2p7",
-  "fireworks-kimi-k2p6": "fireworks-kimi-k2p7",
-  "fireworks-minimax-m2p7": "fireworks-minimax-m3",
-  "fireworks-minimax-m2p5": "fireworks-minimax-m3",
-  "kimi-k2.5": "fireworks-minimax-m3",
-  "kimi-k2-thinking-turbo": "fireworks-minimax-m3",
+  // Fireworks. Kimi K2.7 left serverless on Fireworks (2026-09-25) and on
+  // Together; its free-tier slot goes to DeepSeek V4.1 Flash. GLM was retired
+  // earlier (Grok replaced it in the lineup) — GLM-pinned projects follow the
+  // free-tier slot so free users aren't paywalled onto pro Grok.
+  // [[grok-glm-replacement]]
+  "fireworks-kimi-k2p7": "fireworks-deepseek-v4p1-flash",
+  "fireworks-kimi-k2p6": "fireworks-deepseek-v4p1-flash",
+  "fireworks-glm-5": "fireworks-deepseek-v4p1-flash",
+  "fireworks-glm-5p1": "fireworks-deepseek-v4p1-flash",
+  "fireworks-glm-5p2": "fireworks-deepseek-v4p1-flash",
+  "fireworks-kimi-k3": "fireworks-kimi-k3p1-pro",
+  // MiniMax left the lineup (Luna and DeepSeek Flash are cheaper, read
+  // images and have 1M windows); MiniMax-pinned projects move to the default.
+  "fireworks-minimax-m3": "gpt-6-luna",
+  "fireworks-minimax-m2p7": "gpt-6-luna",
+  "fireworks-minimax-m2p5": "gpt-6-luna",
+  "fireworks-minimax-m2p1": "gpt-6-luna",
+  "kimi-k2.5": "gpt-6-luna",
+  "kimi-k2-thinking-turbo": "gpt-6-luna",
 };
 
 /** Resolve stored model value — maps renames; unknown/removed models fall back to default */

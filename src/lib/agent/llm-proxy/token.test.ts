@@ -78,7 +78,7 @@ describe("provider registry", () => {
     assert.equal(p.xai.dialectForPath("v1/chat/completions"), "openai-chat");
     assert.ok(p.together.pathAllowlist.test("v1/chat/completions"));
     assert.ok(!p.together.pathAllowlist.test("v1/models"));
-    assert.ok(p.google.pathAllowlist.test("v1beta/models/gemini-3.1-pro-preview:streamGenerateContent"));
+    assert.ok(p.google.pathAllowlist.test("v1beta/models/gemini-4-neon:streamGenerateContent"));
     assert.ok(!p.google.pathAllowlist.test("v1beta/models/../secrets:generateContent"));
   });
 

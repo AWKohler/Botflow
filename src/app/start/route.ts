@@ -12,7 +12,6 @@ import { resolveModelId } from '@/lib/agent/models';
 import { credFlagsFromUserCredentials } from '@/lib/agent/backend-resolution';
 import { deriveAgentBackend } from '@/lib/agent/derive-backend';
 import { chooseProviderForNewProject } from '@/lib/sandbox-provider';
-import { USE_TOGETHER_KIMI } from '@/lib/feature-flags';
 import { canUseSwift } from '@/lib/swift-access';
 import { randomUUID } from 'node:crypto';
 
@@ -303,7 +302,6 @@ export async function GET(request: Request) {
       model,
       platform,
       creds: credFlagsFromUserCredentials(creds),
-      useTogetherKimi: USE_TOGETHER_KIMI,
     }).backend;
 
     // Free-tier owners get the self-hosted sandbox backend (when the rollout
